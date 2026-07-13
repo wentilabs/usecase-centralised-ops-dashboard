@@ -1,0 +1,293 @@
+"use strict";
+
+// ---------- state ----------
+let DATA = { wbgt: [], noise: [] };
+let TAB = "all";
+let QUERY = "";
+
+const $ = (sel, el = document) => el.querySelector(sel);
+const cardsEl = $("#cards");
+const statusEl = $("#status");
+const ctxEl = $("#ctxmenu");
+
+// ---------- helpers ----------
+const esc = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const sheetUrl = (id) => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`;
+
+function splitGroups(v) {
+  return String(v || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function fmtHHMM(v) {
+  const s = String(v ?? "").padStart(4, "0");
+  return /^\d{4}$/.test(s) ? `${s.slice(0, 2)}:${s.slice(2)}` : String(v ?? "—");
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("en-SG", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// Noise repo's quirky literal column name
+const ASSESS_COL = 'assessment_readings_mm_array("35,45,55")';
+
+// ---------- fires-at derivation ----------
+function wbgtFires(c) {
+  const parts = [];
+  if (c.enable_hourly) parts.push("<b>:00</b> hourly");
+  if (c.enable_intermittent_reports) parts.push("<b>:30</b> if Moderate+, <b>:15/:45</b> if High");
+  if (!parts.length) return "No cadences enabled";
+  let s = parts.join(" · ") + ` — site hours <b>${esc(c.site_hours_start)}:00–${esc(c.site_hours_end)}:00</b>`;
+  if (c.skip_lunch_hour) s += ", skips 12:00";
+  if (c.remove_sunday_notifications) s += ", muted Sundays";
+  return s;
+}
+
+function noiseFires(c) {
+  const parts = [];
+  const win = (a, b) => (a || b ? ` (${fmtHHMM(a)}–${fmtHHMM(b)})` : "");
+  if (c.enable_5min) parts.push(`<b>5-min</b>${win(c.five_min_start_hhmm, c.five_min_end_hhmm)}`);
+  if (c.enable_half_hourly) {
+    const mm = String(c[ASSESS_COL] ?? c.assessment_readings_mm_array ?? "30");
+    parts.push(`<b>half-hourly</b> @ :${esc(mm.split(",").map((m) => m.trim().padStart(2, "0")).join(" :"))}${win(c.half_hourly_start_hhmm, c.half_hourly_end_hhmm)}`);
+  }
+  if (c.enable_hourly) parts.push(`<b>hourly</b>${win(c.hourly_start_hhmm, c.hourly_end_hhmm)}`);
+  if (!parts.length) return "No cadences enabled";
+  let s = parts.join(" · ");
+  if (c.remove_sunday_notifications) s += " — muted Sundays";
+  return s;
+}
+
+// ---------- rendering ----------
+function pill(label, on) {
+  return `<span class="pill ${on ? "on" : "off"}">${esc(label)}</span>`;
+}
+
+function linkBtn(label, href, cls = "") {
+  return `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+}
+
+function autoLinks(usecase, c) {
+  const out = [];
+  if (usecase === "wbgt") {
+    if (c.monthly_sheet_id) out.push(linkBtn("📗 Monthly sheet", sheetUrl(c.monthly_sheet_id)));
+  } else {
+    if (c.google_sheet_id) out.push(linkBtn("📗 Analysis sheet", sheetUrl(c.google_sheet_id)));
+  }
+  if (c.debug_google_sheet_id) out.push(linkBtn("🐛 Debug sheet", sheetUrl(c.debug_google_sheet_id)));
+  if (c.lambda_url) out.push(linkBtn("λ Lambda proxy", c.lambda_url));
+  return out;
+}
+
+function manualLinks(usecase, c) {
+  return (c._links || []).map((l) => {
+    if (l.url) return `<a class="manual" data-link-id="${esc(l.id)}" href="${esc(l.url)}" target="_blank" rel="noopener">🔖 ${esc(l.label)}</a>`;
+    return `<span class="note-item" data-link-id="${esc(l.id)}" title="${esc(l.note)}">📝 ${esc(l.label)}: ${esc(l.note)}</span>`;
+  });
+}
+
+function whatsappChips(c) {
+  const groups = splitGroups(c.whatsapp_group_id);
+  if (!groups.length) return `<span class="chip"><span class="chip-k">no group configured</span></span>`;
+  return groups.map((g) => `<span class="chip" title="WhatsApp group">💬 ${esc(g)}</span>`).join("");
+}
+
+function cardWBGT(c) {
+  return `
+    <div class="pills">
+      ${pill("hourly", c.enable_hourly)}
+      ${pill("intermittent", c.enable_intermittent_reports)}
+      ${pill("skip lunch", c.skip_lunch_hour)}
+      ${pill("mute Sundays", c.remove_sunday_notifications)}
+    </div>
+    <div>
+      <div class="section-label">Fires at</div>
+      <div class="fires">${wbgtFires(c)}</div>
+    </div>
+    <div>
+      <div class="section-label">WhatsApp</div>
+      <div class="chips">
+        ${whatsappChips(c)}
+        ${c.client_id ? `<span class="chip"><span class="chip-k">client</span> ${esc(c.client_id)}</span>` : ""}
+        ${c.instance_name ? `<span class="chip"><span class="chip-k">instance</span> ${esc(c.instance_name)}</span>` : ""}
+      </div>
+    </div>
+    ${c.top_of_hour_band ? `<div class="fires">Current band: <b>${esc(c.top_of_hour_band)}</b></div>` : ""}
+  `;
+}
+
+function cardNoise(c) {
+  return `
+    <div class="pills">
+      ${pill("5-min", c.enable_5min)}
+      ${pill("half-hourly", c.enable_half_hourly)}
+      ${pill("hourly", c.enable_hourly)}
+      ${pill("mute Sundays", c.remove_sunday_notifications)}
+    </div>
+    <div>
+      <div class="section-label">Message formats</div>
+      <div class="chips">
+        <span class="chip"><span class="chip-k">5min</span> ${esc(c.five_min_formatter)}</span>
+        <span class="chip"><span class="chip-k">½hr</span> ${esc(c.half_hourly_formatter)}</span>
+        <span class="chip"><span class="chip-k">1hr</span> ${esc(c.hourly_formatter)}</span>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Fires at</div>
+      <div class="fires">${noiseFires(c)}</div>
+    </div>
+    <div>
+      <div class="section-label">WhatsApp</div>
+      <div class="chips">
+        ${whatsappChips(c)}
+        ${c.client_id ? `<span class="chip"><span class="chip-k">client</span> ${esc(c.client_id)}</span>` : ""}
+        ${c.instance_name ? `<span class="chip"><span class="chip-k">instance</span> ${esc(c.instance_name)}</span>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderCard(usecase, c) {
+  const links = [...autoLinks(usecase, c), ...manualLinks(usecase, c)];
+  return `
+  <article class="card ${c.enabled ? "" : "disabled"}" data-usecase="${usecase}" data-project="${esc(c.project_code)}">
+    <h2>
+      <span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span>
+      ${esc(c.project_code)}
+      <span class="enabled-badge ${c.enabled ? "on" : "off"}">${c.enabled ? "● ENABLED" : "○ DISABLED"}</span>
+    </h2>
+    ${usecase === "wbgt" ? cardWBGT(c) : cardNoise(c)}
+    <div>
+      <div class="section-label">Links <span style="font-weight:400">(right-click card to add)</span></div>
+      <div class="links">${links.join("") || '<span class="chip"><span class="chip-k">none</span></span>'}</div>
+    </div>
+    <footer>
+      <span>${esc(c.source_type || "default")} · ${esc(c.timezone || "Asia/Singapore")}</span>
+      <span>updated ${fmtDate(c.updated_at)}</span>
+    </footer>
+  </article>`;
+}
+
+function render() {
+  const rows = [];
+  for (const usecase of ["wbgt", "noise"]) {
+    if (TAB !== "all" && TAB !== usecase) continue;
+    const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
+    for (const c of list) {
+      if (QUERY && !String(c.project_code).toLowerCase().includes(QUERY)) continue;
+      rows.push(renderCard(usecase, c));
+    }
+  }
+  cardsEl.innerHTML = rows.join("") || $("#tpl-empty").innerHTML;
+
+  const errs = ["wbgt", "noise"].filter((u) => DATA[u] && !Array.isArray(DATA[u]) && DATA[u].error);
+  if (errs.length) {
+    statusEl.textContent = `⚠️ ${errs.map((u) => `${u}: ${DATA[u].error}`).join(" | ")}`;
+  }
+}
+
+// ---------- data ----------
+async function refresh() {
+  statusEl.textContent = "Loading…";
+  try {
+    const res = await fetch("/api/projects");
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || res.status);
+    DATA = body;
+    const count = (u) => (Array.isArray(body[u]) ? body[u].length : 0);
+    statusEl.textContent = `${count("wbgt")} WBGT · ${count("noise")} Noise · fetched ${fmtDate(body.fetchedAt)}`;
+    render();
+  } catch (err) {
+    statusEl.textContent = `⚠️ ${err.message}`;
+  }
+}
+
+// ---------- context menu ----------
+function hideMenu() {
+  ctxEl.hidden = true;
+  ctxEl.innerHTML = "";
+}
+
+function showMenu(x, y, items) {
+  ctxEl.innerHTML = "";
+  for (const it of items) {
+    const b = document.createElement("button");
+    b.textContent = it.label;
+    if (it.danger) b.className = "danger";
+    b.addEventListener("click", () => { hideMenu(); it.action(); });
+    ctxEl.appendChild(b);
+  }
+  ctxEl.hidden = false;
+  const rect = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.min(x, window.innerWidth - rect.width - 8) + "px";
+  ctxEl.style.top = Math.min(y, window.innerHeight - rect.height - 8) + "px";
+}
+
+async function addLink(usecase, project) {
+  const label = prompt(`Link label for ${project}? (e.g. "AWS console", "EventBridge rule")`);
+  if (!label) return;
+  const url = prompt("URL?");
+  if (!url) return;
+  await fetch(`/api/links/${usecase}/${encodeURIComponent(project)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, url }),
+  });
+  refresh();
+}
+
+async function addNote(usecase, project) {
+  const label = prompt(`Note title for ${project}?`);
+  if (!label) return;
+  const note = prompt("Note text?");
+  if (!note) return;
+  await fetch(`/api/links/${usecase}/${encodeURIComponent(project)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, note }),
+  });
+  refresh();
+}
+
+async function deleteLink(usecase, project, id) {
+  await fetch(`/api/links/${usecase}/${encodeURIComponent(project)}/${id}`, { method: "DELETE" });
+  refresh();
+}
+
+document.addEventListener("contextmenu", (e) => {
+  const card = e.target.closest(".card");
+  if (!card) return hideMenu();
+  e.preventDefault();
+  const usecase = card.dataset.usecase;
+  const project = card.dataset.project;
+  const linkEl = e.target.closest("[data-link-id]");
+  const items = [
+    { label: "➕ Add link…", action: () => addLink(usecase, project) },
+    { label: "📝 Add note…", action: () => addNote(usecase, project) },
+  ];
+  if (linkEl) {
+    items.push({ label: "🗑 Delete this item", danger: true, action: () => deleteLink(usecase, project, linkEl.dataset.linkId) });
+  }
+  showMenu(e.clientX, e.clientY, items);
+});
+document.addEventListener("click", hideMenu);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideMenu(); });
+
+// ---------- controls ----------
+$("#tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  TAB = b.dataset.tab;
+  for (const btn of $("#tabs").children) btn.classList.toggle("active", btn === b);
+  render();
+});
+$("#search").addEventListener("input", (e) => {
+  QUERY = e.target.value.trim().toLowerCase();
+  render();
+});
+$("#refresh").addEventListener("click", refresh);
+
+refresh();

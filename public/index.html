@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WohHup Ops — Project Configs</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🗂️</text></svg>">
+</head>
+<body>
+<header>
+  <h1>🗂️ WohHup Ops</h1>
+  <nav id="tabs">
+    <button data-tab="all" class="active">All</button>
+    <button data-tab="wbgt">WBGT</button>
+    <button data-tab="noise">Noise</button>
+  </nav>
+  <input id="search" type="search" placeholder="Filter by project code…" autocomplete="off">
+  <button id="refresh" title="Re-fetch from Supabase">⟳ Refresh</button>
+  <span id="status"></span>
+</header>
+
+<main id="cards"></main>
+
+<div id="ctxmenu" hidden></div>
+<template id="tpl-empty"><p class="empty">No projects match.</p></template>
+<script src="app.js"></script>
+</body>
+</html>

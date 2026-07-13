@@ -58,6 +58,18 @@ async function fetchConfigs(usecase) {
   return res.json();
 }
 
+// Default header links (user-overridable via UI). Supabase table editor URL
+// is derived from the project ref in SUPABASE_URL.
+function defaultHeaderLinks(usecase) {
+  const ref = (SUPABASE_URL.match(/^https?:\/\/([^.]+)\.supabase\.co/) || [])[1];
+  const { schema, table } = SCHEMAS[usecase];
+  return {
+    supabase: ref
+      ? `https://supabase.com/dashboard/project/${ref}/editor?schema=${encodeURIComponent(schema)}#${table}`
+      : "",
+  };
+}
+
 // ---------- links store (the only thing this app writes) ----------
 function readStore() {
   try {
@@ -106,7 +118,27 @@ const server = http.createServer(async (req, res) => {
         fetchedAt: new Date().toISOString(),
         wbgt: wbgtRes.status === "fulfilled" ? attach("wbgt", wbgtRes.value) : { error: String(wbgtRes.reason) },
         noise: noiseRes.status === "fulfilled" ? attach("noise", noiseRes.value) : { error: String(noiseRes.reason) },
+        headerLinks: {
+          wbgt: { ...defaultHeaderLinks("wbgt"), ...(store["header:wbgt"] || {}) },
+          noise: { ...defaultHeaderLinks("noise"), ...(store["header:noise"] || {}) },
+        },
       });
+    }
+
+    // PUT /api/header/:usecase — set/clear one header quick-link URL
+    const headerSet = u.pathname.match(/^\/api\/header\/(wbgt|noise)$/);
+    if (req.method === "PUT" && headerSet) {
+      const { key, url: href } = JSON.parse((await readBody(req)) || "{}");
+      if (!key || !/^[a-z_]+$/.test(key)) return json(res, 400, { error: "bad key" });
+      const storeKey = `header:${headerSet[1]}`;
+      const store2 = readStore();
+      const links = { ...(store2[storeKey] || {}) };
+      if (href) links[key] = String(href).slice(0, 2000);
+      else delete links[key];
+      if (Object.keys(links).length) store2[storeKey] = links;
+      else delete store2[storeKey];
+      writeStore(store2);
+      return json(res, 200, { ok: true });
     }
 
     // POST /api/links/:usecase/:project — add a manual link or note

@@ -1,9 +1,17 @@
 "use strict";
 
 // ---------- state ----------
-let DATA = { wbgt: [], noise: [] };
-let TAB = "all";
+let DATA = { wbgt: [], noise: [], headerLinks: { wbgt: {}, noise: {} } };
+let TAB = "wbgt";
 let QUERY = "";
+
+const HEADER_LINKS = [
+  { key: "supabase", label: "Supabase Table" },
+  { key: "echo", label: "Echo Lambda" },
+  { key: "lambda", label: "AWS Lambda" },
+  { key: "cloudwatch", label: "CloudWatch Logs" },
+  { key: "noiselynx", label: "Noiselynx" },
+];
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const cardsEl = $("#cards");
@@ -109,11 +117,7 @@ function cardWBGT(c) {
     </div>
     <div>
       <div class="section-label">WhatsApp</div>
-      <div class="chips">
-        ${whatsappChips(c)}
-        ${c.client_id ? `<span class="chip"><span class="chip-k">client</span> ${esc(c.client_id)}</span>` : ""}
-        ${c.instance_name ? `<span class="chip"><span class="chip-k">instance</span> ${esc(c.instance_name)}</span>` : ""}
-      </div>
+      <div class="chips">${whatsappChips(c)}</div>
     </div>
     ${c.top_of_hour_band ? `<div class="fires">Current band: <b>${esc(c.top_of_hour_band)}</b></div>` : ""}
   `;
@@ -141,19 +145,22 @@ function cardNoise(c) {
     </div>
     <div>
       <div class="section-label">WhatsApp</div>
-      <div class="chips">
-        ${whatsappChips(c)}
-        ${c.client_id ? `<span class="chip"><span class="chip-k">client</span> ${esc(c.client_id)}</span>` : ""}
-        ${c.instance_name ? `<span class="chip"><span class="chip-k">instance</span> ${esc(c.instance_name)}</span>` : ""}
-      </div>
+      <div class="chips">${whatsappChips(c)}</div>
     </div>
   `;
 }
 
+function hasCadence(usecase, c) {
+  return usecase === "wbgt"
+    ? Boolean(c.enable_hourly || c.enable_intermittent_reports)
+    : Boolean(c.enable_5min || c.enable_half_hourly || c.enable_hourly);
+}
+
 function renderCard(usecase, c) {
   const links = [...autoLinks(usecase, c), ...manualLinks(usecase, c)];
+  const cls = [c.enabled ? "" : "disabled", hasCadence(usecase, c) ? "" : "nocad"].join(" ");
   return `
-  <article class="card ${c.enabled ? "" : "disabled"}" data-usecase="${usecase}" data-project="${esc(c.project_code)}">
+  <article class="card ${cls}" data-usecase="${usecase}" data-project="${esc(c.project_code)}">
     <h2>
       <span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span>
       ${esc(c.project_code)}
@@ -171,21 +178,31 @@ function renderCard(usecase, c) {
   </article>`;
 }
 
+function renderHeaderLinks() {
+  const saved = (DATA.headerLinks && DATA.headerLinks[TAB]) || {};
+  $("#headerlinks").innerHTML = HEADER_LINKS.map(({ key, label }) => {
+    const url = saved[key];
+    return url
+      ? `<a data-hkey="${key}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`
+      : `<a data-hkey="${key}" class="unset" href="#" title="Click to set URL">${esc(label)} ✎</a>`;
+  }).join("");
+}
+
 function render() {
-  const rows = [];
-  for (const usecase of ["wbgt", "noise"]) {
-    if (TAB !== "all" && TAB !== usecase) continue;
-    const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
-    for (const c of list) {
-      if (QUERY && !String(c.project_code).toLowerCase().includes(QUERY)) continue;
-      rows.push(renderCard(usecase, c));
-    }
-  }
+  renderHeaderLinks();
+  const usecase = TAB;
+  const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
+  const rows = list
+    .filter((c) => !QUERY || String(c.project_code).toLowerCase().includes(QUERY))
+    .sort((a, b) => {
+      const cad = hasCadence(usecase, b) - hasCadence(usecase, a); // no-cadence last
+      return cad || String(a.project_code).localeCompare(String(b.project_code));
+    })
+    .map((c) => renderCard(usecase, c));
   cardsEl.innerHTML = rows.join("") || $("#tpl-empty").innerHTML;
 
-  const errs = ["wbgt", "noise"].filter((u) => DATA[u] && !Array.isArray(DATA[u]) && DATA[u].error);
-  if (errs.length) {
-    statusEl.textContent = `⚠️ ${errs.map((u) => `${u}: ${DATA[u].error}`).join(" | ")}`;
+  if (DATA[usecase] && !Array.isArray(DATA[usecase]) && DATA[usecase].error) {
+    statusEl.textContent = `⚠️ ${usecase}: ${DATA[usecase].error}`;
   }
 }
 
@@ -257,7 +274,41 @@ async function deleteLink(usecase, project, id) {
   refresh();
 }
 
+async function setHeaderLink(key, label, current) {
+  const url = prompt(`URL for "${label}" (${TAB.toUpperCase()})? Leave empty to clear.`, current || "");
+  if (url === null) return;
+  await fetch(`/api/header/${TAB}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, url: url.trim() }),
+  });
+  refresh();
+}
+
+$("#headerlinks").addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-hkey]");
+  if (!a) return;
+  if (a.classList.contains("unset")) {
+    e.preventDefault();
+    const def = HEADER_LINKS.find((h) => h.key === a.dataset.hkey);
+    setHeaderLink(a.dataset.hkey, def ? def.label : a.dataset.hkey);
+  }
+});
+
 document.addEventListener("contextmenu", (e) => {
+  const headerLink = e.target.closest("#headerlinks a[data-hkey]");
+  if (headerLink) {
+    e.preventDefault();
+    const key = headerLink.dataset.hkey;
+    const def = HEADER_LINKS.find((h) => h.key === key);
+    const current = ((DATA.headerLinks || {})[TAB] || {})[key] || "";
+    return showMenu(e.clientX, e.clientY, [
+      { label: "✎ Set / edit URL…", action: () => setHeaderLink(key, def ? def.label : key, current) },
+      { label: "🗑 Clear URL", danger: true, action: () => {
+          fetch(`/api/header/${TAB}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, url: "" }) }).then(refresh);
+        } },
+    ]);
+  }
   const card = e.target.closest(".card");
   if (!card) return hideMenu();
   e.preventDefault();

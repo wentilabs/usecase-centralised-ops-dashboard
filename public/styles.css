@@ -44,11 +44,11 @@ header {
   top: 0;
   z-index: 5;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 10px 18px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 h1 { font-size: 16px; margin: 0 6px 0 0; white-space: nowrap; }
@@ -67,8 +67,7 @@ h1 { font-size: 16px; margin: 0 6px 0 0; white-space: nowrap; }
 #refresh:hover { border-color: var(--accent); }
 
 #search {
-  flex: 1;
-  max-width: 280px;
+  flex: 0 1 220px;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -76,6 +75,26 @@ h1 { font-size: 16px; margin: 0 6px 0 0; white-space: nowrap; }
   color: var(--text);
 }
 #status { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+#headerlinks { display: flex; flex-wrap: wrap; gap: 6px; }
+#headerlinks a {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 8px;
+  padding: 5px 11px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  white-space: nowrap;
+}
+#headerlinks a:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#headerlinks a.unset {
+  color: var(--muted);
+  border-style: dashed;
+  border-color: var(--border);
+  background: none;
+}
 
 main {
   display: grid;
@@ -96,6 +115,15 @@ main {
   gap: 10px;
 }
 .card.disabled { opacity: .55; }
+.card.nocad { position: relative; }
+.card.nocad::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--off) 22%, transparent);
+  pointer-events: none;
+}
 .card h2 {
   margin: 0;
   font-size: 16px;
@@ -148,14 +176,15 @@ main {
 }
 .chip .chip-k { color: var(--muted); }
 
-.links { display: flex; flex-wrap: wrap; gap: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
 .links a {
-  font-size: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--accent);
   text-decoration: none;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 7px;
-  padding: 3px 9px;
+  border-radius: 9px;
+  padding: 8px 14px;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .links a:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }

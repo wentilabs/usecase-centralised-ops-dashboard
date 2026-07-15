@@ -108,6 +108,7 @@ function cardWBGT(c) {
     <div class="pills">
       ${pill("hourly", c.enable_hourly)}
       ${pill("intermittent", c.enable_intermittent_reports)}
+      ${pill("5-min alerts", c.enable_5min_alerts)}
       ${pill("skip lunch", c.skip_lunch_hour)}
       ${pill("mute Sundays", c.remove_sunday_notifications)}
     </div>
@@ -120,6 +121,7 @@ function cardWBGT(c) {
       <div class="chips">${whatsappChips(c)}</div>
     </div>
     ${c.top_of_hour_band ? `<div class="fires">Current band: <b>${esc(c.top_of_hour_band)}</b></div>` : ""}
+    ${c.enable_5min_alerts && c.last_5min_alert_level ? `<div class="fires">5-min alert zone: <b>${esc(c.last_5min_alert_level)}</b></div>` : ""}
   `;
 }
 
@@ -152,7 +154,7 @@ function cardNoise(c) {
 
 function hasCadence(usecase, c) {
   return usecase === "wbgt"
-    ? Boolean(c.enable_hourly || c.enable_intermittent_reports)
+    ? Boolean(c.enable_hourly || c.enable_intermittent_reports || c.enable_5min_alerts)
     : Boolean(c.enable_5min || c.enable_half_hourly || c.enable_hourly);
 }
 

@@ -63,6 +63,8 @@ function noiseFires(c) {
     parts.push(`<b>half-hourly</b> @ :${esc(mm.split(",").map((m) => m.trim().padStart(2, "0")).join(" :"))}${win(c.half_hourly_start_hhmm, c.half_hourly_end_hhmm)}`);
   }
   if (c.enable_hourly) parts.push(`<b>hourly</b>${win(c.hourly_start_hhmm, c.hourly_end_hhmm)}`);
+  if (c.three_hour_formatter) parts.push(`<b>3-hr summary</b>`);
+  if (c.morning_formatter) parts.push(`<b>morning</b>${c.morning_summary_start_hhmm ? ` @ ${fmtHHMM(c.morning_summary_start_hhmm)}` : ""}`);
   if (!parts.length) return "No cadences enabled";
   let s = parts.join(" · ");
   if (c.remove_sunday_notifications) s += " — muted Sundays";
@@ -131,6 +133,8 @@ function cardNoise(c) {
       ${pill("5-min", c.enable_5min)}
       ${pill("half-hourly", c.enable_half_hourly)}
       ${pill("hourly", c.enable_hourly)}
+      ${pill("3-hr summary", c.three_hour_formatter)}
+      ${pill("morning summary", c.morning_formatter)}
       ${pill("mute Sundays", c.remove_sunday_notifications)}
     </div>
     <div>
@@ -139,6 +143,8 @@ function cardNoise(c) {
         <span class="chip"><span class="chip-k">5min</span> ${esc(c.five_min_formatter)}</span>
         <span class="chip"><span class="chip-k">½hr</span> ${esc(c.half_hourly_formatter)}</span>
         <span class="chip"><span class="chip-k">1hr</span> ${esc(c.hourly_formatter)}</span>
+        ${c.three_hour_formatter ? `<span class="chip"><span class="chip-k">3hr</span> ${esc(c.three_hour_formatter)}</span>` : ""}
+        ${c.morning_formatter ? `<span class="chip"><span class="chip-k">am</span> ${esc(c.morning_formatter)}</span>` : ""}
       </div>
     </div>
     <div>
@@ -155,7 +161,7 @@ function cardNoise(c) {
 function hasCadence(usecase, c) {
   return usecase === "wbgt"
     ? Boolean(c.enable_hourly || c.enable_intermittent_reports || c.enable_5min_alerts)
-    : Boolean(c.enable_5min || c.enable_half_hourly || c.enable_hourly);
+    : Boolean(c.enable_5min || c.enable_half_hourly || c.enable_hourly || c.three_hour_formatter || c.morning_formatter);
 }
 
 function renderCard(usecase, c) {

@@ -87,8 +87,6 @@ function autoLinks(usecase, c) {
   } else {
     if (c.google_sheet_id) out.push(linkBtn("📗 Analysis sheet", sheetUrl(c.google_sheet_id)));
   }
-  if (c.debug_google_sheet_id) out.push(linkBtn("🐛 Debug sheet", sheetUrl(c.debug_google_sheet_id)));
-  if (c.lambda_url) out.push(linkBtn("λ Lambda proxy", c.lambda_url));
   return out;
 }
 

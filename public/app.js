@@ -46,11 +46,21 @@ const ASSESS_COL = 'assessment_readings_mm_array("35,45,55")';
 function wbgtFires(c) {
   const parts = [];
   if (c.enable_hourly) parts.push("<b>:00</b> hourly");
-  if (c.enable_intermittent_reports) parts.push("<b>:30</b> if Moderate+, <b>:15/:45</b> if High");
+  if (c.enable_intermittent_reports) {
+    // intermittent_reports_formatter: red15 (default) fires :30 on Moderate+
+    // and :15/:45 on High; red30 fires :30 on High only.
+    parts.push(
+      String(c.intermittent_reports_formatter || "red15").toLowerCase() === "red30"
+        ? "<b>:30</b> if High"
+        : "<b>:30</b> if Moderate+, <b>:15/:45</b> if High",
+    );
+  }
+  if (c.enable_5min_alerts) parts.push("<b>5-min</b> on 32/33°C crossings");
   if (!parts.length) return "No cadences enabled";
   let s = parts.join(" · ") + ` — site hours <b>${esc(c.site_hours_start)}:00–${esc(c.site_hours_end)}:00</b>`;
   if (c.skip_lunch_hour) s += ", skips 12:00";
   if (c.remove_sunday_notifications) s += ", muted Sundays";
+  if (c.remove_ph_notifications) s += ", muted PH";
   return s;
 }
 
@@ -63,12 +73,17 @@ function noiseFires(c) {
     parts.push(`<b>half-hourly</b> @ :${esc(mm.split(",").map((m) => m.trim().padStart(2, "0")).join(" :"))}${win(c.half_hourly_start_hhmm, c.half_hourly_end_hhmm)}`);
   }
   if (c.enable_hourly) parts.push(`<b>hourly</b>${win(c.hourly_start_hhmm, c.hourly_end_hhmm)}`);
-  if (c.three_hour_formatter) parts.push(`<b>3-hr summary</b>`);
-  if (c.morning_formatter) parts.push(`<b>morning</b>${c.morning_summary_start_hhmm ? ` @ ${fmtHHMM(c.morning_summary_start_hhmm)}` : ""}`);
+  // These are gated by their own enable_* flags — the formatter columns only
+  // pick the message shape and can be set while the cadence is off.
+  if (c.enable_three_hour_summary) parts.push("<b>3-hr summary</b>");
+  if (c.enable_morning_summary) parts.push(`<b>morning</b>${c.morning_summary_start_hhmm ? ` @ ${fmtHHMM(c.morning_summary_start_hhmm)}` : ""}`);
+  if (c.enable_sunday_leq12h_hourly) parts.push("<b>Sunday Leq12h</b> hourly");
+  if (c.enable_7am_7pm_leq12hr_table) parts.push("<b>Leq12hr table</b> @ 07:00/19:00");
   if (!parts.length) return "No cadences enabled";
-  let s = parts.join(" · ");
-  if (c.remove_sunday_notifications) s += " — muted Sundays";
-  return s;
+  const mutes = [];
+  if (c.remove_sunday_notifications) mutes.push("Sundays");
+  if (c.remove_ph_notifications) mutes.push("PH");
+  return parts.join(" · ") + (mutes.length ? ` — muted ${mutes.join(" + ")}` : "");
 }
 
 // ---------- rendering ----------
@@ -103,46 +118,88 @@ function whatsappChips(c) {
   return groups.map((g) => `<span class="chip" title="WhatsApp group">💬 ${esc(g)}</span>`).join("");
 }
 
+function chip(key, value, title = "") {
+  return `<span class="chip"${title ? ` title="${esc(title)}"` : ""}><span class="chip-k">${esc(key)}</span> ${esc(value)}</span>`;
+}
+
 function cardWBGT(c) {
+  // enable_scrape=false → manual-only project: readings arrive via the
+  // WhatsApp/Telegram photo-ingestion endpoints instead of CloudLynx.
+  const manualOnly = c.enable_scrape === false;
+  const telegram = splitGroups(c.telegram_chat_ids);
+  const sourceChats = splitGroups(c.whatsapp_wbgt_source_chat_ids);
+  const pocGroups = splitGroups(c.poc_alert_wa_groups);
+  const pocPhones = splitGroups(c.poc_phone_numbers);
   return `
     <div class="pills">
       ${pill("hourly", c.enable_hourly)}
       ${pill("intermittent", c.enable_intermittent_reports)}
       ${pill("5-min alerts", c.enable_5min_alerts)}
+      ${pill("scrape", !manualOnly)}
       ${pill("skip lunch", c.skip_lunch_hour)}
       ${pill("mute Sundays", c.remove_sunday_notifications)}
+      ${pill("mute PH", c.remove_ph_notifications)}
+      ${pill("POC mentions", c.enable_red_band_poc_mentions)}
+    </div>
+    <div>
+      <div class="section-label">Formats</div>
+      <div class="chips">
+        ${c.enable_intermittent_reports ? chip("interm", c.intermittent_reports_formatter || "red15 (default)") : ""}
+        ${chip("5min", c.five_min_alert_formatter || "short")}
+        ${chip("sheet fill", c.monthly_sheet_fill_mode || "window")}
+      </div>
     </div>
     <div>
       <div class="section-label">Fires at</div>
       <div class="fires">${wbgtFires(c)}</div>
     </div>
     <div>
-      <div class="section-label">WhatsApp</div>
-      <div class="chips">${whatsappChips(c)}</div>
+      <div class="section-label">Delivery</div>
+      <div class="chips">
+        ${whatsappChips(c)}
+        ${telegram.map((t) => chip("tg", t, "Telegram chat")).join("")}
+        ${c.enable_red_band_poc_mentions && pocGroups.length ? pocGroups.map((g) => chip("poc grp", g, "Group where POCs get @mentioned on 🔴")).join("") : ""}
+        ${c.enable_red_band_poc_mentions && pocPhones.length ? chip("poc", `${pocPhones.length} number${pocPhones.length === 1 ? "" : "s"}`, pocPhones.join(", ")) : ""}
+        ${c.enable_red_band_poc_mentions && !pocPhones.length ? chip("poc", "⚠️ none configured") : ""}
+      </div>
     </div>
+    ${manualOnly ? `
+    <div>
+      <div class="section-label">Manual ingestion</div>
+      <div class="chips">
+        ${sourceChats.length ? sourceChats.map((s) => chip("wa src", s, "Source chat for meter photos")).join("") : chip("wa src", "none")}
+        ${c.whatsapp_manual_sensor_label ? chip("wa label", c.whatsapp_manual_sensor_label) : ""}
+        ${c.telegram_manual_sensor_label ? chip("tg label", c.telegram_manual_sensor_label) : ""}
+      </div>
+    </div>` : ""}
     ${c.top_of_hour_band ? `<div class="fires">Current band: <b>${esc(c.top_of_hour_band)}</b></div>` : ""}
-    ${c.enable_5min_alerts && c.last_5min_alert_level ? `<div class="fires">5-min alert zone: <b>${esc(c.last_5min_alert_level)}</b></div>` : ""}
+    ${c.enable_5min_alerts && c.last_5min_alert_level ? `<div class="fires">5-min alert zone: <b>${esc(c.last_5min_alert_level)}</b> <span style="opacity:.7">(${fmtDate(c.last_5min_alert_at)})</span></div>` : ""}
   `;
 }
 
 function cardNoise(c) {
+  const expiryGroups = splitGroups(c.alert_whatsapp_gid);
   return `
     <div class="pills">
       ${pill("5-min", c.enable_5min)}
       ${pill("half-hourly", c.enable_half_hourly)}
       ${pill("hourly", c.enable_hourly)}
-      ${pill("3-hr summary", c.three_hour_formatter)}
-      ${pill("morning summary", c.morning_formatter)}
+      ${pill("3-hr summary", c.enable_three_hour_summary)}
+      ${pill("morning summary", c.enable_morning_summary)}
+      ${pill("Sunday Leq12h", c.enable_sunday_leq12h_hourly)}
+      ${pill("Leq12hr table", c.enable_7am_7pm_leq12hr_table)}
       ${pill("mute Sundays", c.remove_sunday_notifications)}
+      ${pill("mute PH", c.remove_ph_notifications)}
+      ${pill("expiry alerts", c.allow_expiry_alert)}
     </div>
     <div>
       <div class="section-label">Message formats</div>
       <div class="chips">
-        <span class="chip"><span class="chip-k">5min</span> ${esc(c.five_min_formatter)}</span>
-        <span class="chip"><span class="chip-k">½hr</span> ${esc(c.half_hourly_formatter)}</span>
-        <span class="chip"><span class="chip-k">1hr</span> ${esc(c.hourly_formatter)}</span>
-        ${c.three_hour_formatter ? `<span class="chip"><span class="chip-k">3hr</span> ${esc(c.three_hour_formatter)}</span>` : ""}
-        ${c.morning_formatter ? `<span class="chip"><span class="chip-k">am</span> ${esc(c.morning_formatter)}</span>` : ""}
+        ${chip("5min", c.five_min_formatter)}
+        ${chip("½hr", c.half_hourly_formatter)}
+        ${chip("1hr", c.hourly_formatter)}
+        ${c.three_hour_formatter ? chip("3hr", c.three_hour_formatter) : ""}
+        ${c.morning_formatter ? chip("am", c.morning_formatter) : ""}
       </div>
     </div>
     <div>
@@ -150,16 +207,28 @@ function cardNoise(c) {
       <div class="fires">${noiseFires(c)}</div>
     </div>
     <div>
-      <div class="section-label">WhatsApp</div>
+      <div class="section-label">Delivery</div>
       <div class="chips">${whatsappChips(c)}</div>
     </div>
+    ${c.allow_expiry_alert ? `
+    <div>
+      <div class="section-label">Meter expiry alerts</div>
+      <div class="chips">
+        ${chip("warn at", `${esc(c.days_left_before_alerting)} days left`)}
+        ${expiryGroups.length ? expiryGroups.map((g) => chip("to", g, "Expiry alert recipient")).join("") : chip("to", "⚠️ no group set")}
+      </div>
+    </div>` : ""}
   `;
 }
 
 function hasCadence(usecase, c) {
   return usecase === "wbgt"
     ? Boolean(c.enable_hourly || c.enable_intermittent_reports || c.enable_5min_alerts)
-    : Boolean(c.enable_5min || c.enable_half_hourly || c.enable_hourly || c.three_hour_formatter || c.morning_formatter);
+    : Boolean(
+        c.enable_5min || c.enable_half_hourly || c.enable_hourly ||
+        c.enable_three_hour_summary || c.enable_morning_summary ||
+        c.enable_sunday_leq12h_hourly || c.enable_7am_7pm_leq12hr_table,
+      );
 }
 
 function renderCard(usecase, c) {

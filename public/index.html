@@ -22,6 +22,41 @@
 
 <main id="cards"></main>
 
+<div id="scrim" hidden></div>
+<aside id="editor" hidden aria-label="Project config editor">
+  <header id="editor-head">
+    <div>
+      <h2 id="editor-title"></h2>
+      <div id="editor-sub"></div>
+    </div>
+    <div id="editor-actions">
+      <button id="editor-history" class="ghost" title="Recent changes">🕘 History</button>
+      <button id="editor-close" class="ghost" title="Close (Esc)">✕</button>
+    </div>
+  </header>
+  <div id="editor-body"></div>
+  <footer id="editor-foot">
+    <div id="editor-dirty">No changes</div>
+    <div class="foot-actions">
+      <button id="editor-reset" class="ghost" disabled>Discard</button>
+      <button id="editor-save" class="primary" disabled>Review &amp; save</button>
+    </div>
+  </footer>
+</aside>
+
+<div id="confirm" hidden>
+  <div class="confirm-box">
+    <h3>Apply to Supabase?</h3>
+    <div id="confirm-diff"></div>
+    <input id="confirm-note" type="text" placeholder="Optional note for the audit log (why?)" maxlength="200">
+    <div class="confirm-actions">
+      <button id="confirm-cancel" class="ghost">Cancel</button>
+      <button id="confirm-apply" class="primary">Apply changes</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
 <div id="ctxmenu" hidden></div>
 <template id="tpl-empty"><p class="empty">No projects match.</p></template>
 <script src="app.js"></script>

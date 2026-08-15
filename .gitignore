@@ -2,3 +2,4 @@
 node_modules/
 links.store.json
 .DS_Store
+audit.log.jsonl

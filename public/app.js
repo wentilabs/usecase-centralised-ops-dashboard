@@ -240,6 +240,7 @@ function renderCard(usecase, c) {
       <span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span>
       ${esc(c.project_code)}
       <span class="enabled-badge ${c.enabled ? "on" : "off"}">${c.enabled ? "● ENABLED" : "○ DISABLED"}</span>
+      <button class="edit-btn" title="Edit this project's Supabase config">⚙︎ Edit</button>
     </h2>
     ${usecase === "wbgt" ? cardWBGT(c) : cardNoise(c)}
     <div>
@@ -417,3 +418,265 @@ $("#search").addEventListener("input", (e) => {
 $("#refresh").addEventListener("click", refresh);
 
 refresh();
+
+// ===================== config editor =====================
+// The dashboard is the control surface for Supabase: every field below is
+// written back through PATCH /api/config/:usecase/:project, validated against
+// the live schema, guarded by an updated_at check, and audit-logged.
+
+let SCHEMA = null;          // { wbgt: {fields, groups}, noise: {...} }
+let EDIT = null;            // { usecase, projectCode, row, draft }
+
+const editorEl = $("#editor");
+const scrimEl = $("#scrim");
+
+function toast(message, kind = "") {
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.textContent = message;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), kind === "err" ? 9000 : 4000);
+}
+
+async function loadSchema() {
+  if (SCHEMA) return SCHEMA;
+  const res = await fetch("/api/schema");
+  if (!res.ok) throw new Error("schema unavailable");
+  SCHEMA = await res.json();
+  return SCHEMA;
+}
+
+function displayValue(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  return String(v);
+}
+
+function fieldControl(field, value) {
+  const id = `f_${field.name.replace(/\W/g, "_")}`;
+  const dis = field.readonly ? " disabled" : "";
+  if (field.readonly) return `<div class="ro-value">${esc(displayValue(value))}</div>`;
+
+  if (field.widget === "toggle") {
+    const on = value === true;
+    return `<label class="switch">
+      <input type="checkbox" id="${id}" data-field="${esc(field.name)}"${on ? " checked" : ""}${dis}>
+      <span class="track"></span><span class="state">${on ? "on" : "off"}</span>
+    </label>`;
+  }
+  if (field.widget === "select") {
+    const opts = ["", ...(field.options || [])]
+      .map((o) => `<option value="${esc(o)}"${String(value ?? "") === o ? " selected" : ""}>${o === "" ? "— not set —" : esc(o)}</option>`)
+      .join("");
+    return `<select id="${id}" data-field="${esc(field.name)}"${dis}>${opts}</select>`;
+  }
+  if (field.widget === "number") {
+    return `<input type="number" id="${id}" data-field="${esc(field.name)}" value="${esc(value ?? "")}"${dis}>`;
+  }
+  if (field.widget === "csv") {
+    return `<textarea id="${id}" data-field="${esc(field.name)}" spellcheck="false" placeholder="comma-separated"${dis}>${esc(value ?? "")}</textarea>`;
+  }
+  if (field.widget === "hhmm") {
+    return `<input type="text" id="${id}" data-field="${esc(field.name)}" value="${esc(value ?? "")}" placeholder="HHMM e.g. 0730" maxlength="4"${dis}>`;
+  }
+  return `<input type="text" id="${id}" data-field="${esc(field.name)}" value="${esc(value ?? "")}" spellcheck="false"${dis}>`;
+}
+
+function renderEditor() {
+  const { usecase, row } = EDIT;
+  const spec = SCHEMA[usecase];
+  $("#editor-title").innerHTML =
+    `<span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span> ${esc(row.project_code)}`;
+  $("#editor-sub").textContent = `Editing live Supabase config · last updated ${fmtDate(row.updated_at)}`;
+
+  $("#editor-body").innerHTML = spec.groups.map((g) => `
+    <section class="fieldgroup">
+      <h3>${esc(g.title)}</h3>
+      ${g.fields.map((name) => {
+        const field = spec.fields[name];
+        const value = EDIT.draft[name] !== undefined ? EDIT.draft[name] : row[name];
+        return `<div class="field" data-field-row="${esc(name)}">
+          <div class="field-label">
+            <span class="name">${esc(field.label)}</span>
+            <span class="col">${esc(name)}</span>
+          </div>
+          <div>${fieldControl(field, value)}</div>
+          ${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ""}
+        </div>`;
+      }).join("")}
+    </section>`).join("");
+
+  updateDirty();
+}
+
+function readControl(field, el) {
+  if (field.widget === "toggle") return el.checked;
+  const v = el.value.trim();
+  if (v === "") return null;
+  if (field.widget === "number") return Number(v);
+  return v;
+}
+
+function currentChanges() {
+  const spec = SCHEMA[EDIT.usecase];
+  const out = {};
+  for (const [name, value] of Object.entries(EDIT.draft)) {
+    const before = EDIT.row[name] ?? null;
+    const after = value ?? null;
+    if (JSON.stringify(before) !== JSON.stringify(after)) out[name] = { from: before, to: after, label: spec.fields[name].label };
+  }
+  return out;
+}
+
+function updateDirty() {
+  const changes = currentChanges();
+  const n = Object.keys(changes).length;
+  const el = $("#editor-dirty");
+  el.textContent = n ? `${n} unsaved change${n === 1 ? "" : "s"}` : "No changes";
+  el.classList.toggle("dirty", n > 0);
+  $("#editor-save").disabled = n === 0;
+  $("#editor-reset").disabled = n === 0;
+  for (const row of document.querySelectorAll("[data-field-row]")) {
+    row.classList.toggle("changed", Boolean(changes[row.dataset.fieldRow]));
+  }
+}
+
+$("#editor-body").addEventListener("input", (e) => {
+  const el = e.target.closest("[data-field]");
+  if (!el || !EDIT) return;
+  const name = el.dataset.field;
+  const field = SCHEMA[EDIT.usecase].fields[name];
+  EDIT.draft[name] = readControl(field, el);
+  if (field.widget === "toggle") {
+    const state = el.closest(".switch").querySelector(".state");
+    if (state) state.textContent = el.checked ? "on" : "off";
+  }
+  updateDirty();
+});
+
+async function openEditor(usecase, projectCode) {
+  try {
+    await loadSchema();
+  } catch (err) {
+    return toast("Could not load schema: " + err.message, "err");
+  }
+  const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
+  const row = list.find((r) => r.project_code === projectCode);
+  if (!row) return toast(`${projectCode} not found — try Refresh`, "err");
+  EDIT = { usecase, projectCode, row, draft: {} };
+  editorEl.hidden = false;
+  scrimEl.hidden = false;
+  renderEditor();
+}
+
+function closeEditor(force = false) {
+  if (!EDIT) return;
+  if (!force && Object.keys(currentChanges()).length && !confirm("Discard unsaved changes?")) return;
+  EDIT = null;
+  editorEl.hidden = true;
+  scrimEl.hidden = true;
+}
+
+$("#editor-close").addEventListener("click", () => closeEditor());
+scrimEl.addEventListener("click", () => closeEditor());
+$("#editor-reset").addEventListener("click", () => {
+  EDIT.draft = {};
+  renderEditor();
+});
+
+// ---------- confirm + save ----------
+function diffHtml(changes) {
+  return Object.entries(changes).map(([name, c]) => `
+    <div class="diff-row">
+      <b>${esc(c.label || name)}</b> <code>${esc(name)}</code><br>
+      <span class="diff-from">${esc(displayValue(c.from))}</span>
+      →
+      <span class="diff-to">${esc(displayValue(c.to))}</span>
+    </div>`).join("");
+}
+
+$("#editor-save").addEventListener("click", () => {
+  const changes = currentChanges();
+  if (!Object.keys(changes).length) return;
+  $("#confirm-diff").innerHTML = diffHtml(changes);
+  $("#confirm-note").value = "";
+  $("#confirm").hidden = false;
+  $("#confirm-note").focus();
+});
+
+$("#confirm-cancel").addEventListener("click", () => { $("#confirm").hidden = true; });
+
+$("#confirm-apply").addEventListener("click", async () => {
+  const changes = currentChanges();
+  const payload = {
+    changes: Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.to])),
+    baseUpdatedAt: EDIT.row.updated_at || null,
+    note: $("#confirm-note").value.trim(),
+  };
+  $("#confirm-apply").disabled = true;
+  try {
+    const res = await fetch(`/api/config/${EDIT.usecase}/${encodeURIComponent(EDIT.projectCode)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      toast(body.error + (body.rejected ? ` — ${body.rejected.join("; ")}` : ""), "err");
+      if (res.status === 409 && body.current) {
+        EDIT.row = body.current;
+        EDIT.draft = {};
+        renderEditor();
+      }
+      return;
+    }
+    const n = Object.keys(changes).length;
+    toast(`Saved ${n} change${n === 1 ? "" : "s"} to ${EDIT.projectCode}`, "ok");
+    EDIT.row = body.row;
+    EDIT.draft = {};
+    $("#confirm").hidden = true;
+    renderEditor();
+    await refresh();
+  } catch (err) {
+    toast("Save failed: " + err.message, "err");
+  } finally {
+    $("#confirm-apply").disabled = false;
+  }
+});
+
+// ---------- history ----------
+$("#editor-history").addEventListener("click", async () => {
+  if (!EDIT) return;
+  const res = await fetch(`/api/audit?usecase=${EDIT.usecase}&project=${encodeURIComponent(EDIT.projectCode)}&limit=50`);
+  const { entries } = await res.json();
+  $("#editor-body").innerHTML = `
+    <section class="fieldgroup">
+      <h3>Change history — ${esc(EDIT.projectCode)}</h3>
+      ${entries.length ? entries.map((e) => `
+        <div class="history-entry">
+          <div class="when">${fmtDate(e.at)}</div>
+          ${e.note ? `<div class="note">📝 ${esc(e.note)}</div>` : ""}
+          ${Object.entries(e.changes).map(([k, c]) => `
+            <div class="diff-row"><code>${esc(k)}</code>
+              <span class="diff-from">${esc(displayValue(c.from))}</span> →
+              <span class="diff-to">${esc(displayValue(c.to))}</span>
+            </div>`).join("")}
+        </div>`).join("") : `<p class="empty">No changes recorded yet.</p>`}
+      <button class="ghost" id="history-back">← Back to fields</button>
+    </section>`;
+  $("#history-back").addEventListener("click", renderEditor);
+});
+
+// ---------- entry points ----------
+cardsEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".edit-btn");
+  if (!btn) return;
+  const card = btn.closest(".card");
+  openEditor(card.dataset.usecase, card.dataset.project);
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (!$("#confirm").hidden) $("#confirm").hidden = true;
+    else closeEditor();
+  }
+});

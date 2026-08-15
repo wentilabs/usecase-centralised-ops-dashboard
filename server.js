@@ -2,15 +2,21 @@
 
 /**
  * Ops dashboard server — zero dependencies.
- * Reads project configs from Supabase (both schemas) via PostgREST,
- * serves the static UI, and persists UI-managed links to links.store.json.
- * Supabase config is READ-ONLY; only the local links store is ever written.
+ *
+ * The dashboard is the control surface for both alert systems' project
+ * configs: it reads them from Supabase (both schemas) via PostgREST and
+ * writes edits back, validated against the live schema, guarded against
+ * concurrent external edits, and recorded in an append-only audit log.
+ *
+ * Files written locally: links.store.json (UI links) and audit.log.jsonl
+ * (every config change, with before/after values).
  */
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { buildFieldSpec } = require("./lib/field-spec");
 
 // ---------- env ----------
 loadDotEnv(path.join(__dirname, ".env"));
@@ -23,6 +29,7 @@ const SCHEMAS = {
   noise: { schema: process.env.NOISE_SCHEMA || "noise-meters", table: "noise_project_configs" },
 };
 const LINKS_STORE = path.join(__dirname, "links.store.json");
+const AUDIT_LOG = path.join(__dirname, "audit.log.jsonl");
 
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
   console.error("Missing SUPABASE_URL / SUPABASE_SECRET_KEY. Copy .env.example to .env and fill it in.");
@@ -56,6 +63,112 @@ async function fetchConfigs(usecase) {
     throw new Error(`${usecase} fetch failed: ${res.status} ${body.slice(0, 300)}`);
   }
   return res.json();
+}
+
+// ---------- schema introspection ----------
+// PostgREST publishes an OpenAPI doc describing every column: type, format,
+// default, and pg-enum values. Cached per process; the curated overlay in
+// lib/field-spec.js adds labels/grouping and CHECK-constraint value lists.
+const schemaCache = {};
+
+async function fetchFieldSpec(usecase) {
+  if (schemaCache[usecase]) return schemaCache[usecase];
+  const { schema, table } = SCHEMAS[usecase];
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+    headers: {
+      apikey: SUPABASE_SECRET_KEY,
+      Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+      "Accept-Profile": schema,
+    },
+  });
+  if (!res.ok) throw new Error(`${usecase} schema fetch failed: ${res.status}`);
+  const doc = await res.json();
+  const props = (doc.definitions?.[table]?.properties) || {};
+  const introspected = {};
+  for (const [name, p] of Object.entries(props)) {
+    introspected[name] = { type: p.type, format: p.format, enum: p.enum || null, default: p.default };
+  }
+  schemaCache[usecase] = buildFieldSpec(usecase, introspected);
+  return schemaCache[usecase];
+}
+
+// ---------- config writes ----------
+// Coerce a value coming from the browser into what Postgres expects, and
+// reject anything the schema cannot accept. Empty string → null so clearing
+// a text field blanks the column rather than storing "".
+function coerceValue(field, raw) {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (field.type === "boolean") {
+    if (typeof raw === "boolean") return raw;
+    throw new Error(`${field.name}: expected true/false`);
+  }
+  if (field.type === "integer" || field.type === "number") {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) throw new Error(`${field.name}: expected a number`);
+    if (field.type === "integer" && !Number.isInteger(n)) throw new Error(`${field.name}: expected a whole number`);
+    return n;
+  }
+  const s = String(raw).trim();
+  if (field.options && !field.options.includes(s)) {
+    throw new Error(`${field.name}: "${s}" is not one of ${field.options.join(", ")}`);
+  }
+  if (field.widget === "hhmm" && !/^\d{4}$/.test(s)) throw new Error(`${field.name}: expected HHMM, e.g. 0730`);
+  return s;
+}
+
+async function fetchOneConfig(usecase, projectCode) {
+  const { schema, table } = SCHEMAS[usecase];
+  const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&project_code=eq.${encodeURIComponent(projectCode)}`;
+  const res = await fetch(url, {
+    headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}`, "Accept-Profile": schema },
+  });
+  if (!res.ok) throw new Error(`fetch failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const rows = await res.json();
+  return rows[0] || null;
+}
+
+async function patchConfig(usecase, projectCode, patch, baseUpdatedAt) {
+  const { schema, table } = SCHEMAS[usecase];
+  const params = [`project_code=eq.${encodeURIComponent(projectCode)}`];
+  // Optimistic concurrency: only write if the row still looks like what the
+  // editor loaded. A 0-row result means somebody (or something) changed it
+  // in between — surfaced to the user rather than silently overwritten.
+  if (baseUpdatedAt) params.push(`updated_at=eq.${encodeURIComponent(baseUpdatedAt)}`);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params.join("&")}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_SECRET_KEY,
+      Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+      "Content-Profile": schema,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+  return res.json();
+}
+
+// ---------- audit log (append-only, local) ----------
+function appendAudit(entry) {
+  fs.appendFileSync(AUDIT_LOG, JSON.stringify(entry) + "\n");
+}
+
+function readAudit({ usecase = null, projectCode = null, limit = 200 } = {}) {
+  if (!fs.existsSync(AUDIT_LOG)) return [];
+  const lines = fs.readFileSync(AUDIT_LOG, "utf8").split("\n").filter(Boolean);
+  const out = [];
+  for (let i = lines.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    try {
+      const e = JSON.parse(lines[i]);
+      if (usecase && e.usecase !== usecase) continue;
+      if (projectCode && e.project_code !== projectCode) continue;
+      out.push(e);
+    } catch (_) {
+      /* skip malformed line */
+    }
+  }
+  return out;
 }
 
 // Default header links (user-overridable via UI). Supabase table editor URL
@@ -123,6 +236,91 @@ const server = http.createServer(async (req, res) => {
           noise: { ...defaultHeaderLinks("noise"), ...(store["header:noise"] || {}) },
         },
       });
+    }
+
+    // GET /api/schema — field spec for both use-cases (types, enums, groups)
+    if (req.method === "GET" && u.pathname === "/api/schema") {
+      const [w, n] = await Promise.all([fetchFieldSpec("wbgt"), fetchFieldSpec("noise")]);
+      return json(res, 200, { wbgt: w, noise: n });
+    }
+
+    // GET /api/audit?usecase=&project=&limit= — recent config changes
+    if (req.method === "GET" && u.pathname === "/api/audit") {
+      return json(res, 200, {
+        entries: readAudit({
+          usecase: u.searchParams.get("usecase"),
+          projectCode: u.searchParams.get("project"),
+          limit: Math.min(Number(u.searchParams.get("limit") || 200), 1000),
+        }),
+      });
+    }
+
+    // PATCH /api/config/:usecase/:project — apply validated config changes
+    const cfgPatch = u.pathname.match(/^\/api\/config\/(wbgt|noise)\/(.+)$/);
+    if (req.method === "PATCH" && cfgPatch) {
+      const usecase = cfgPatch[1];
+      const projectCode = decodeURIComponent(cfgPatch[2]);
+      const { changes = {}, baseUpdatedAt = null, note = "" } = JSON.parse((await readBody(req)) || "{}");
+
+      const spec = await fetchFieldSpec(usecase);
+      const before = await fetchOneConfig(usecase, projectCode);
+      if (!before) return json(res, 404, { error: `${projectCode} not found` });
+
+      // Validate + coerce every field before touching the database.
+      const patch = {};
+      const rejected = [];
+      for (const [name, raw] of Object.entries(changes)) {
+        const field = spec.fields[name];
+        if (!field) { rejected.push(`${name}: unknown column`); continue; }
+        if (field.readonly) { rejected.push(`${name}: read-only`); continue; }
+        try {
+          patch[name] = coerceValue(field, raw);
+        } catch (err) {
+          rejected.push(err.message);
+        }
+      }
+      if (rejected.length) return json(res, 400, { error: "Invalid changes", rejected });
+      if (!Object.keys(patch).length) return json(res, 400, { error: "No changes supplied" });
+
+      // Drop no-ops so the audit log only records real transitions.
+      const effective = {};
+      for (const [name, value] of Object.entries(patch)) {
+        if (JSON.stringify(before[name] ?? null) !== JSON.stringify(value)) effective[name] = value;
+      }
+      if (!Object.keys(effective).length) {
+        return json(res, 200, { ok: true, unchanged: true, row: before });
+      }
+
+      let rows;
+      try {
+        rows = await patchConfig(usecase, projectCode, effective, baseUpdatedAt);
+      } catch (err) {
+        return json(res, 502, { error: `Supabase rejected the change: ${err.message}` });
+      }
+      if (!rows.length) {
+        const current = await fetchOneConfig(usecase, projectCode);
+        return json(res, 409, {
+          error: "This project changed in Supabase since you opened the editor — reload and re-apply.",
+          current,
+        });
+      }
+
+      const after = rows[0];
+      const entry = {
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        usecase,
+        project_code: projectCode,
+        note: String(note || "").slice(0, 500),
+        changes: Object.fromEntries(
+          Object.keys(effective).map((k) => [k, { from: before[k] ?? null, to: after[k] ?? null }]),
+        ),
+      };
+      appendAudit(entry);
+      console.log(
+        `[config] ${usecase}/${projectCode} ${Object.keys(effective).map((k) => `${k}=${JSON.stringify(after[k])}`).join(" ")}`,
+      );
+      return json(res, 200, { ok: true, row: after, entry });
     }
 
     // PUT /api/header/:usecase — set/clear one header quick-link URL

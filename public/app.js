@@ -488,24 +488,76 @@ function renderEditor() {
     `<span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span> ${esc(row.project_code)}`;
   $("#editor-sub").textContent = `Editing live Supabase config · last updated ${fmtDate(row.updated_at)}`;
 
-  $("#editor-body").innerHTML = spec.groups.map((g) => `
-    <section class="fieldgroup">
-      <h3>${esc(g.title)}</h3>
-      ${g.fields.map((name) => {
-        const field = spec.fields[name];
-        const value = EDIT.draft[name] !== undefined ? EDIT.draft[name] : row[name];
-        return `<div class="field" data-field-row="${esc(name)}">
-          <div class="field-label">
-            <span class="name">${esc(field.label)}</span>
-            <span class="col">${esc(name)}</span>
-          </div>
-          <div>${fieldControl(field, value)}</div>
-          ${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ""}
-        </div>`;
-      }).join("")}
-    </section>`).join("");
+  $("#editor-body").innerHTML = spec.groups
+    .map((g) => `<section class="fieldgroup"><h3>${esc(g.title)}</h3>${renderFields(spec, row, g.fields)}</section>`)
+    .join("");
 
+  applyConditionalVisibility();
   updateDirty();
+}
+
+// One field. `compact` stacks the label above the control so two or three fit
+// side by side inside a .field-row.
+function renderField(spec, row, name, compact = false) {
+  const field = spec.fields[name];
+  const value = EDIT.draft[name] !== undefined ? EDIT.draft[name] : row[name];
+  const showIf = field.showIf ? ` data-show-if="${esc(field.showIf.field)}" data-show-when="${esc(JSON.stringify(field.showIf.equals))}"` : "";
+  return `<div class="field${compact ? " compact" : ""}" data-field-row="${esc(name)}"${showIf}>
+    <div class="field-label">
+      <span class="name">${esc(field.label)}</span>
+      <span class="col">${esc(name)}</span>
+    </div>
+    <div>${fieldControl(field, value)}</div>
+    ${field.help ? `<div class="field-help">${esc(field.help)}</div>` : ""}
+  </div>`;
+}
+
+// Consecutive fields sharing a `row` key are laid out on one compact row.
+function renderFields(spec, row, names) {
+  const out = [];
+  let i = 0;
+  while (i < names.length) {
+    const rowKey = spec.fields[names[i]].row;
+    if (!rowKey) {
+      out.push(renderField(spec, row, names[i]));
+      i += 1;
+      continue;
+    }
+    const group = [];
+    while (i < names.length && spec.fields[names[i]].row === rowKey) {
+      group.push(names[i]);
+      i += 1;
+    }
+    out.push(
+      `<div class="field-row cols-${group.length}">${group.map((n) => renderField(spec, row, n, true)).join("")}</div>`,
+    );
+  }
+  return out.join("");
+}
+
+// Hide fields whose showIf condition isn't met, using the live draft value so
+// switching a toggle reveals/hides its dependants immediately.
+function applyConditionalVisibility() {
+  if (!EDIT) return;
+  for (const el of document.querySelectorAll("[data-show-if]")) {
+    const dep = el.dataset.showIf;
+    const want = JSON.parse(el.dataset.showWhen);
+    const current = EDIT.draft[dep] !== undefined ? EDIT.draft[dep] : EDIT.row[dep];
+    const hide = JSON.stringify(current ?? null) !== JSON.stringify(want);
+    el.hidden = hide;
+    // A field you can't see must not be saved: drop any staged edit and put
+    // the control back to the stored value.
+    const name = el.dataset.fieldRow;
+    if (hide && EDIT.draft[name] !== undefined) {
+      delete EDIT.draft[name];
+      const ctrl = el.querySelector("[data-field]");
+      if (ctrl) {
+        const stored = EDIT.row[name];
+        if (ctrl.type === "checkbox") ctrl.checked = stored === true;
+        else ctrl.value = stored ?? "";
+      }
+    }
+  }
 }
 
 function readControl(field, el) {
@@ -549,6 +601,7 @@ $("#editor-body").addEventListener("input", (e) => {
   if (field.widget === "toggle") {
     const state = el.closest(".switch").querySelector(".state");
     if (state) state.textContent = el.checked ? "on" : "off";
+    applyConditionalVisibility();
   }
   updateDirty();
 });

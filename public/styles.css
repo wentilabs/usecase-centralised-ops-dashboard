@@ -426,3 +426,20 @@ button.primary:disabled, button.ghost:disabled { opacity: .45; cursor: not-allow
   cursor: pointer;
 }
 .card .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* two/three fields on one compact row */
+.field-row { display: grid; gap: 8px 14px; padding: 2px 0; }
+.field-row.cols-2 { grid-template-columns: 1fr 1fr; }
+.field-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.field.compact {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  align-content: start;
+}
+.field.compact .field-label { padding-top: 0; }
+.field.compact .field-help { grid-column: 1; margin-top: 2px; }
+@media (max-width: 620px) {
+  .field-row.cols-2, .field-row.cols-3 { grid-template-columns: 1fr; }
+  .field { grid-template-columns: 1fr; }
+  .field-help { grid-column: 1; }
+}

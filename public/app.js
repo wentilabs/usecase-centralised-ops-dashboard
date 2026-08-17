@@ -285,6 +285,8 @@ function cardLightning(c) {
       ${pill(`red ${c.red_radius_m ?? "?"}m`, c.red_radius_m)}
       ${pill(`amber ${c.amber_radius_m ?? "?"}m`, c.amber_radius_m)}
       ${pill(`v${c.config_version ?? 1}`, true)}
+      ${pill("mute Sundays", c.remove_sunday_notifications)}
+      ${pill("mute PH", c.remove_ph_notifications)}
     </div>
     <div>
       <div class="section-label">Thresholds</div>
@@ -296,7 +298,7 @@ function cardLightning(c) {
     </div>
     <div>
       <div class="section-label">Fires at</div>
-      <div class="fires">every tick while a qualifying strike is in range — working hours <b>${hoursLine(c)}</b></div>
+      <div class="fires">every tick while a qualifying strike is in range — working hours <b>${hoursLine(c)}</b>${mutesSuffix(c)}</div>
     </div>
     <div>
       <div class="section-label">Delivery</div>

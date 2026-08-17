@@ -1,0 +1,47 @@
+[Unit]
+Description=Centralised Services config dashboard
+Documentation=https://github.com/  # this repo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ops
+Group=ops
+WorkingDirectory=/srv/centralised-services
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+
+# Secrets and settings live outside the checkout. chmod 600, root:ops.
+EnvironmentFile=/etc/centralised-services.env
+
+# Where links.store.json and the audit mirror live, so a redeploy can't wipe them.
+Environment=STATE_DIR=/var/lib/centralised-services
+Environment=NODE_ENV=production
+
+# Bind to loopback only: cloudflared publishes it. If Cloudflare fronts this
+# via a load balancer instead, set HOST=0.0.0.0 here AND restrict the security
+# group to Cloudflare ranges — never one without the other.
+Environment=HOST=127.0.0.1
+Environment=PORT=5178
+
+# Hardening: the process needs nothing but its own state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/centralised-services
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=centralised-services
+
+[Install]
+WantedBy=multi-user.target

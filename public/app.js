@@ -360,7 +360,7 @@ function renderCard(usecase, c) {
       <span class="usecase-tag ${usecase}">${esc(usecaseLabel(usecase))}</span>
       ${esc(c.project_code)}
       <span class="enabled-badge ${c.enabled ? "on" : "off"}">${c.enabled ? "● ENABLED" : "○ DISABLED"}</span>
-      <button class="edit-btn" title="Edit this project's Supabase config">⚙︎ Edit</button>
+      ${SESSION.canEdit ? `<button class="edit-btn" title="Edit this project's Supabase config">⚙︎ Edit</button>` : ""}
     </h2>
     ${(CARD_RENDERERS[usecase] || (() => ""))(c)}
     <div>
@@ -413,6 +413,34 @@ function render() {
 }
 
 // ---------- data ----------
+async function loadSession() {
+  try {
+    const res = await fetch("/api/auth/session");
+    if (!res.ok) return;
+    SESSION = await res.json();
+    renderIdentity();
+  } catch (_) {
+    /* leave defaults; the server is the real gate */
+  }
+}
+
+function renderIdentity() {
+  const el = $("#identity");
+  if (!el) return;
+  if (SESSION.localBypass && !SESSION.email) {
+    el.innerHTML = `<span class="who" title="Local development bypass — no auth required on loopback">local</span>`;
+    return;
+  }
+  const ro = SESSION.canEdit ? "" : ` <span class="ro-badge" title="Your account may view but not change configs">read-only</span>`;
+  el.innerHTML = `<span class="who">${esc(SESSION.email || "signed out")}</span>${ro}` +
+    `<button id="signout" class="ghost" title="Sign out">Sign out</button>`;
+  const btn = $("#signout");
+  if (btn) btn.addEventListener("click", async () => {
+    await fetch("/api/auth/sign-out", { method: "POST" });
+    location.replace("/login");
+  });
+}
+
 async function refresh() {
   statusEl.textContent = "Loading…";
   try {
@@ -550,13 +578,14 @@ $("#search").addEventListener("input", (e) => {
 });
 $("#refresh").addEventListener("click", refresh);
 
-refresh();
+loadSession().then(refresh);
 
 // ===================== config editor =====================
 // The dashboard is the control surface for Supabase: every field below is
 // written back through PATCH /api/config/:usecase/:project, validated against
 // the live schema, guarded by an updated_at check, and audit-logged.
 
+let SESSION = { allowed: true, canEdit: true, email: null, localBypass: true };
 let SCHEMA = null;          // { wbgt: {fields, groups}, noise: {...} }
 let EDIT = null;            // { usecase, projectCode, row, draft }
 
@@ -849,8 +878,10 @@ $("#editor-history").addEventListener("click", async () => {
     <section class="fieldgroup">
       <h3>Change history — ${esc(EDIT.projectCode)}</h3>
       ${entries.length ? entries.map((e) => `
-        <div class="history-entry">
-          <div class="when">${fmtDate(e.at)}</div>
+        <div class="history-entry${e.external ? " external" : ""}">
+          <div class="when">${fmtDate(e.at)} · ${e.external
+            ? `<b title="No dashboard operator recorded — changed directly in Supabase">⚠️ changed outside the dashboard</b>`
+            : esc(e.actor_email || "unknown")}</div>
           ${e.note ? `<div class="note">📝 ${esc(e.note)}</div>` : ""}
           ${Object.entries(e.changes).map(([k, c]) => `
             <div class="diff-row"><code>${esc(k)}</code>

@@ -17,6 +17,17 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { buildFieldSpec } = require("./lib/field-spec");
+const {
+  LOCAL_AUTH_BYPASS_DISABLED_COOKIE,
+  isEmailWhitelisted,
+  canEditConfigs,
+  shouldBypassLocalAuth,
+  canAccessDashboard,
+  getSafeRedirect,
+} = require("./lib/auth-policy");
+const { isPublicPath, isApiPath, isWriteRequest } = require("./lib/route-policy");
+const { authConfig, requestOtp, verifyOtp, verifyAccessToken, forgetToken } = require("./lib/supabase-auth");
+const { makeAuditStore } = require("./lib/audit-store");
 
 // ---------- env ----------
 loadDotEnv(path.join(__dirname, ".env"));
@@ -36,8 +47,18 @@ const SCHEMAS = {
 };
 const USECASES = Object.keys(SCHEMAS);
 const USECASE_RE = USECASES.join("|");
-const LINKS_STORE = path.join(__dirname, "links.store.json");
-const AUDIT_LOG = path.join(__dirname, "audit.log.jsonl");
+// State lives outside the checkout when deployed, so a redeploy can't wipe it.
+const STATE_DIR = process.env.STATE_DIR || __dirname;
+const LINKS_STORE = path.join(STATE_DIR, "links.store.json");
+const AUDIT_LOG = path.join(STATE_DIR, "audit.log.jsonl"); // local mirror only
+const HOST = process.env.HOST || "127.0.0.1";
+const SESSION_COOKIE = "ops_session";
+
+const auditStore = makeAuditStore({
+  supabaseUrl: SUPABASE_URL,
+  supabaseKey: SUPABASE_SECRET_KEY,
+  mirrorPath: AUDIT_LOG,
+});
 
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
   console.error("Missing SUPABASE_URL / SUPABASE_SECRET_KEY. Copy .env.example to .env and fill it in.");
@@ -175,28 +196,6 @@ async function patchConfig(usecase, rowId, patch, baseUpdatedAt) {
   return res.json();
 }
 
-// ---------- audit log (append-only, local) ----------
-function appendAudit(entry) {
-  fs.appendFileSync(AUDIT_LOG, JSON.stringify(entry) + "\n");
-}
-
-function readAudit({ usecase = null, projectCode = null, limit = 200 } = {}) {
-  if (!fs.existsSync(AUDIT_LOG)) return [];
-  const lines = fs.readFileSync(AUDIT_LOG, "utf8").split("\n").filter(Boolean);
-  const out = [];
-  for (let i = lines.length - 1; i >= 0 && out.length < limit; i -= 1) {
-    try {
-      const e = JSON.parse(lines[i]);
-      if (usecase && e.usecase !== usecase) continue;
-      if (projectCode && e.project_code !== projectCode) continue;
-      out.push(e);
-    } catch (_) {
-      /* skip malformed line */
-    }
-  }
-  return out;
-}
-
 // Default header links (user-overridable via UI). Supabase table editor URL
 // is derived from the project ref in SUPABASE_URL.
 function defaultHeaderLinks(usecase) {
@@ -223,6 +222,88 @@ function writeStore(store) {
   fs.renameSync(tmp, LINKS_STORE);
 }
 
+// ---------- session ----------
+function parseCookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function setCookie(res, name, value, { maxAge = null, clear = false } = {}) {
+  const bits = [
+    `${name}=${clear ? "" : encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  // Secure only when actually served over TLS; localhost http would drop it.
+  if (process.env.NODE_ENV === "production") bits.push("Secure");
+  bits.push(`Max-Age=${clear ? 0 : maxAge ?? 28800}`);
+  const existing = res.getHeader("Set-Cookie");
+  const cookie = bits.join("; ");
+  res.setHeader("Set-Cookie", existing ? [].concat(existing, cookie) : cookie);
+}
+
+function hostnameOf(req) {
+  const raw = req.headers["x-forwarded-host"] || req.headers.host || "";
+  const first = String(raw).split(",", 1)[0]?.trim();
+  if (!first) return "";
+  try {
+    return new URL(`http://${first}`).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// Resolves who is asking, and what they may do. Fails closed: if the auth
+// project is unconfigured or unreachable in production, nobody gets in.
+async function resolveSession(req) {
+  const cookies = parseCookies(req);
+  const requestHost = req.headers["x-forwarded-host"] || req.headers.host || undefined;
+  const isLocalBypass = shouldBypassLocalAuth({
+    nodeEnv: process.env.NODE_ENV,
+    hostname: hostnameOf(req),
+    requestHost,
+    bypassSetting: process.env.LOCAL_AUTH_BYPASS,
+    bypassDisabled: cookies[LOCAL_AUTH_BYPASS_DISABLED_COOKIE] === "1",
+  });
+
+  const { configured } = authConfig();
+  const token = cookies[SESSION_COOKIE] || null;
+  let email = null;
+  let authError = false;
+
+  if (!isLocalBypass && configured && token) {
+    const verified = await verifyAccessToken(token);
+    email = verified.email;
+    authError = verified.authError;
+  }
+
+  const allowed = canAccessDashboard({
+    isLocalBypass,
+    configured,
+    email,
+    authError,
+    emailList: process.env.WHITELIST_EMAILS,
+    domainList: process.env.WHITELIST_DOMAINS,
+  });
+
+  return {
+    isLocalBypass,
+    configured,
+    token,
+    email,
+    authError,
+    allowed,
+    canEdit: allowed && (isLocalBypass || canEditConfigs(email, process.env.EDITOR_EMAILS)),
+    actor: isLocalBypass && !email ? "local-bypass" : email,
+  };
+}
+
 // ---------- http helpers ----------
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -247,6 +328,78 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   try {
+    // ---- auth routes (public) ----------------------------------------------
+    // The allow-list is checked BEFORE an OTP is sent and create_user is false,
+    // so an unapproved address can neither receive a code nor be created.
+    if (req.method === "POST" && u.pathname === "/api/auth/request-otp") {
+      const { email = "" } = JSON.parse((await readBody(req)) || "{}");
+      if (!isEmailWhitelisted(email, process.env.WHITELIST_EMAILS, process.env.WHITELIST_DOMAINS)) {
+        // Same response either way — don't reveal who is on the list.
+        console.warn(`[auth] OTP refused for non-whitelisted address`);
+        return json(res, 200, { ok: true });
+      }
+      try {
+        await requestOtp(String(email).trim().toLowerCase());
+      } catch (error) {
+        console.warn(`[auth] ${error.message}`);
+        return json(res, 502, { error: "Could not send the sign-in code. Try again." });
+      }
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === "POST" && u.pathname === "/api/auth/verify-otp") {
+      const { email = "", code = "" } = JSON.parse((await readBody(req)) || "{}");
+      if (!isEmailWhitelisted(email, process.env.WHITELIST_EMAILS, process.env.WHITELIST_DOMAINS)) {
+        return json(res, 403, { error: "This address is not approved for the dashboard." });
+      }
+      try {
+        const session = await verifyOtp(String(email).trim().toLowerCase(), String(code).trim());
+        setCookie(res, SESSION_COOKIE, session.accessToken, { maxAge: session.expiresIn });
+        return json(res, 200, { ok: true, email: session.email });
+      } catch (error) {
+        console.warn(`[auth] ${error.message}`);
+        return json(res, 401, { error: "That code was not accepted." });
+      }
+    }
+
+    if (req.method === "POST" && u.pathname === "/api/auth/sign-out") {
+      const token = parseCookies(req)[SESSION_COOKIE];
+      forgetToken(token);
+      setCookie(res, SESSION_COOKIE, "", { clear: true });
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && u.pathname === "/healthz") {
+      return json(res, 200, { ok: true });
+    }
+
+    // ---- gate every non-public path ---------------------------------------
+    const session = await resolveSession(req);
+    if (req.method === "GET" && u.pathname === "/api/auth/session") {
+      return json(res, 200, {
+        email: session.email,
+        allowed: session.allowed,
+        canEdit: session.canEdit,
+        localBypass: session.isLocalBypass,
+        authConfigured: session.configured,
+      });
+    }
+
+    if (!isPublicPath(u.pathname) && !session.allowed) {
+      res.setHeader("Cache-Control", "private, no-store");
+      if (isApiPath(u.pathname)) return json(res, 401, { error: "Unauthorized" });
+      const redirect = getSafeRedirect(`${u.pathname}${u.search}`);
+      res.writeHead(302, { Location: `/login?redirect=${encodeURIComponent(redirect)}` });
+      return res.end();
+    }
+
+    // Read-only operators may look at everything but change nothing.
+    if (isWriteRequest(req.method) && !isPublicPath(u.pathname) && !session.canEdit) {
+      return json(res, 403, { error: "Your account has read-only access to the dashboard." });
+    }
+
+    if (!isPublicPath(u.pathname)) res.setHeader("Cache-Control", "private, no-store");
+
     // GET /api/projects — live read of both schemas + merged manual links
     if (req.method === "GET" && u.pathname === "/api/projects") {
       const settled = await Promise.allSettled(USECASES.map((u) => fetchConfigs(u)));
@@ -270,14 +423,30 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, Object.fromEntries(USECASES.map((u, i) => [u, specs[i]])));
     }
 
-    // GET /api/audit?usecase=&project=&limit= — recent config changes
+    // GET /api/audit?usecase=&project=&limit= — shared history from Postgres
     if (req.method === "GET" && u.pathname === "/api/audit") {
+      const usecase = u.searchParams.get("usecase");
+      const project = u.searchParams.get("project");
+      try {
+        const entries = await auditStore.list({
+          tableName: usecase && SCHEMAS[usecase] ? SCHEMAS[usecase].table : null,
+          rowId: project,
+          limit: u.searchParams.get("limit") || 200,
+        });
+        return json(res, 200, { entries });
+      } catch (error) {
+        return json(res, 502, { error: String(error.message) });
+      }
+    }
+
+    // POST /api/schema/reload — clear the cached introspection so columns added
+    // to Supabase appear without restarting the service.
+    if (req.method === "POST" && u.pathname === "/api/schema/reload") {
+      for (const key of Object.keys(schemaCache)) delete schemaCache[key];
+      const specs = await Promise.all(USECASES.map((x) => fetchFieldSpec(x)));
       return json(res, 200, {
-        entries: readAudit({
-          usecase: u.searchParams.get("usecase"),
-          projectCode: u.searchParams.get("project"),
-          limit: Math.min(Number(u.searchParams.get("limit") || 200), 1000),
-        }),
+        ok: true,
+        fields: Object.fromEntries(USECASES.map((x, i) => [x, Object.keys(specs[i].fields).length])),
       });
     }
 
@@ -332,21 +501,26 @@ const server = http.createServer(async (req, res) => {
       }
 
       const after = rows[0];
-      const entry = {
-        id: crypto.randomUUID(),
-        at: new Date().toISOString(),
-        usecase,
-        project_code: projectCode,
-        note: String(note || "").slice(0, 500),
-        changes: Object.fromEntries(
-          Object.keys(effective).map((k) => [k, { from: before[k] ?? null, to: after[k] ?? null }]),
-        ),
-      };
-      appendAudit(entry);
-      console.log(
-        `[config] ${usecase}/${projectCode} ${Object.keys(effective).map((k) => `${k}=${JSON.stringify(after[k])}`).join(" ")}`,
+      const changeDiff = Object.fromEntries(
+        Object.keys(effective).map((k) => [k, { from: before[k] ?? null, to: after[k] ?? null }]),
       );
-      return json(res, 200, { ok: true, row: after, entry });
+      // The Postgres trigger already recorded this change; stamp it with who
+      // did it and why. Unstamped rows are edits made outside the dashboard.
+      const annotation = await auditStore.annotate({
+        usecase,
+        tableName: SCHEMAS[usecase].table,
+        rowId: projectCode,
+        newUpdatedAt: after.updated_at,
+        actorEmail: session.actor,
+        note: String(note || "").slice(0, 500),
+        changes: changeDiff,
+      });
+      console.log(
+        `[config] ${usecase}/${projectCode} by ${session.actor || "unknown"} ` +
+          Object.keys(effective).map((k) => `${k}=${JSON.stringify(after[k])}`).join(" ") +
+          (annotation.annotated ? "" : ` (audit annotate: ${annotation.reason || "no matching row"})`),
+      );
+      return json(res, 200, { ok: true, row: after, changes: changeDiff, audit: annotation });
     }
 
     // PUT /api/header/:usecase — set/clear one header quick-link URL
@@ -395,6 +569,7 @@ const server = http.createServer(async (req, res) => {
     // static files
     if (req.method === "GET") {
       let p = u.pathname === "/" ? "/index.html" : u.pathname;
+      if (p === "/login") p = "/login.html"; // extensionless route → file
       const file = path.join(__dirname, "public", path.normalize(p).replace(/^(\.\.[/\\])+/, ""));
       if (file.startsWith(path.join(__dirname, "public")) && fs.existsSync(file) && fs.statSync(file).isFile()) {
         res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
@@ -408,7 +583,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, HOST, () => {
   console.log(`Ops dashboard → http://localhost:${PORT}`);
   console.log(`Schemas: wbgt=${SCHEMAS.wbgt.schema}, noise=${SCHEMAS.noise.schema} (read-only)`);
 });

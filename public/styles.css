@@ -453,3 +453,14 @@ button.primary:disabled, button.ghost:disabled { opacity: .45; cursor: not-allow
 .usecase-tag.haze { background: color-mix(in srgb, #a16207 18%, transparent); color: #d97706; }
 .usecase-tag.lightning { background: color-mix(in srgb, #7c3aed 18%, transparent); color: #8b5cf6; }
 .usecase-tag.ailytics { background: color-mix(in srgb, #0891b2 18%, transparent); color: #06b6d4; }
+
+/* signed-in identity + read-only badge */
+#identity { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
+#identity .who { color: var(--muted); }
+#identity .ro-badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  background: var(--warn-bg); color: var(--warn); border-radius: 999px; padding: 2px 8px;
+}
+#identity button { padding: 4px 10px; font-size: 12px; }
+.history-entry.external { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.history-entry.external .when b { color: var(--warn); }

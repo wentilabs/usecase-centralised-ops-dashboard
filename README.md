@@ -34,7 +34,29 @@ Leave it running while you work; it idles at ~0 CPU.
 - **Right-click a manual link/note** → *Delete this item*.
 - Manual links/notes persist to `links.store.json` (gitignored, local only).
 
+## Auth
+
+Locally, on a loopback hostname, auth is bypassed and everything works as
+before. Deployed (`NODE_ENV=production`) the dashboard requires a Supabase Auth
+email OTP sign-in and an allow-listed address, and **fails closed** when auth is
+unconfigured or unreachable. `EDITOR_EMAILS` makes everyone else read-only —
+their Edit buttons disappear and writes are refused server-side.
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the EC2 + Cloudflare Access runbook.
+
+## Change history
+
+Every config change is recorded in `ops.config_audit` by a Postgres trigger, so
+edits made directly in the Supabase table editor are captured too. Dashboard
+writes are stamped with the operator's email and their note; unstamped rows show
+as **changed outside the dashboard** in the editor's 🕘 History. Run
+[`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) once, and
+expose the `ops` schema in Supabase's API settings.
+
 ## Guarantees
 
-- Supabase is **never written to** — the only writes are to the local `links.store.json`.
-- Server binds to `127.0.0.1` only.
+- Writes are confined to the five `*_project_configs` tables, `ops.config_audit`
+  and the local links store; validated against the live schema, guarded by an
+  `updated_at` concurrency check, and refused for read-only accounts.
+- Read-only/derived columns (job state, audit stamps, identity) can never be written.
+- Binds to `127.0.0.1` unless `HOST` says otherwise.

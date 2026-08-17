@@ -5,6 +5,10 @@
   "description": "Local read-only floating-cards dashboard for WBGT + Noise project configs (Supabase ground truth).",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

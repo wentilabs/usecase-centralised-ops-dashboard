@@ -24,10 +24,18 @@ loadDotEnv(path.join(__dirname, ".env"));
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
 const PORT = Number(process.env.PORT || 5178);
+// Every centralised alert service, one entry each. idColumn is the row
+// identity used for reads and PATCHes — ailytics keys on a uuid `id` while the
+// rest key on project_code.
 const SCHEMAS = {
-  wbgt: { schema: process.env.WBGT_SCHEMA || "wbgts", table: "wbgt_project_configs" },
-  noise: { schema: process.env.NOISE_SCHEMA || "noise-meters", table: "noise_project_configs" },
+  wbgt: { schema: process.env.WBGT_SCHEMA || "wbgts", table: "wbgt_project_configs", idColumn: "project_code", label: "WBGT" },
+  noise: { schema: process.env.NOISE_SCHEMA || "noise-meters", table: "noise_project_configs", idColumn: "project_code", label: "Noise" },
+  haze: { schema: process.env.HAZE_SCHEMA || "haze", table: "haze_project_configs", idColumn: "project_code", label: "Haze" },
+  lightning: { schema: process.env.LIGHTNING_SCHEMA || "lightning", table: "lightning_project_configs", idColumn: "project_code", label: "Lightning" },
+  ailytics: { schema: process.env.AILYTICS_SCHEMA || "ailytics", table: "project_configs", idColumn: "id", label: "Ailytics" },
 };
+const USECASES = Object.keys(SCHEMAS);
+const USECASE_RE = USECASES.join("|");
 const LINKS_STORE = path.join(__dirname, "links.store.json");
 const AUDIT_LOG = path.join(__dirname, "audit.log.jsonl");
 
@@ -51,6 +59,8 @@ function loadDotEnv(file) {
 async function fetchConfigs(usecase) {
   const { schema, table } = SCHEMAS[usecase];
   const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&order=project_code.asc`;
+  // (project_code exists on every config table, including ailytics, so it is
+  // always a valid sort key even where it isn't the identity.)
   const res = await fetch(url, {
     headers: {
       apikey: SUPABASE_SECRET_KEY,
@@ -97,6 +107,22 @@ async function fetchFieldSpec(usecase) {
 // reject anything the schema cannot accept. Empty string → null so clearing
 // a text field blanks the column rather than storing "".
 function coerceValue(field, raw) {
+  // Postgres array columns (e.g. lightning detection types) arrive as an array
+  // of option codes. Empty stays an empty array so a NOT NULL / cardinality
+  // CHECK reports the real reason rather than a null error.
+  if (field.type === "array" || field.widget === "multi") {
+    const arr = Array.isArray(raw)
+      ? raw
+      : String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (field.options) {
+      for (const v of arr) {
+        if (!field.options.includes(v)) {
+          throw new Error(`${field.name}: "${v}" is not one of ${field.options.join(", ")}`);
+        }
+      }
+    }
+    return arr;
+  }
   if (raw === null || raw === undefined || raw === "") return null;
   if (field.type === "boolean") {
     if (typeof raw === "boolean") return raw;
@@ -116,9 +142,9 @@ function coerceValue(field, raw) {
   return s;
 }
 
-async function fetchOneConfig(usecase, projectCode) {
-  const { schema, table } = SCHEMAS[usecase];
-  const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&project_code=eq.${encodeURIComponent(projectCode)}`;
+async function fetchOneConfig(usecase, rowId) {
+  const { schema, table, idColumn } = SCHEMAS[usecase];
+  const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&${idColumn}=eq.${encodeURIComponent(rowId)}`;
   const res = await fetch(url, {
     headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}`, "Accept-Profile": schema },
   });
@@ -127,9 +153,9 @@ async function fetchOneConfig(usecase, projectCode) {
   return rows[0] || null;
 }
 
-async function patchConfig(usecase, projectCode, patch, baseUpdatedAt) {
-  const { schema, table } = SCHEMAS[usecase];
-  const params = [`project_code=eq.${encodeURIComponent(projectCode)}`];
+async function patchConfig(usecase, rowId, patch, baseUpdatedAt) {
+  const { schema, table, idColumn } = SCHEMAS[usecase];
+  const params = [`${idColumn}=eq.${encodeURIComponent(rowId)}`];
   // Optimistic concurrency: only write if the row still looks like what the
   // editor loaded. A 0-row result means somebody (or something) changed it
   // in between — surfaced to the user rather than silently overwritten.
@@ -223,25 +249,25 @@ const server = http.createServer(async (req, res) => {
   try {
     // GET /api/projects — live read of both schemas + merged manual links
     if (req.method === "GET" && u.pathname === "/api/projects") {
-      const [wbgtRes, noiseRes] = await Promise.allSettled([fetchConfigs("wbgt"), fetchConfigs("noise")]);
+      const settled = await Promise.allSettled(USECASES.map((u) => fetchConfigs(u)));
       const store = readStore();
-      const attach = (usecase, rows) =>
-        rows.map((row) => ({ ...row, _links: store[`${usecase}:${row.project_code}`] || [] }));
-      return json(res, 200, {
-        fetchedAt: new Date().toISOString(),
-        wbgt: wbgtRes.status === "fulfilled" ? attach("wbgt", wbgtRes.value) : { error: String(wbgtRes.reason) },
-        noise: noiseRes.status === "fulfilled" ? attach("noise", noiseRes.value) : { error: String(noiseRes.reason) },
-        headerLinks: {
-          wbgt: { ...defaultHeaderLinks("wbgt"), ...(store["header:wbgt"] || {}) },
-          noise: { ...defaultHeaderLinks("noise"), ...(store["header:noise"] || {}) },
-        },
+      const payload = { fetchedAt: new Date().toISOString(), meta: {}, headerLinks: {} };
+      USECASES.forEach((usecase, i) => {
+        const { idColumn, label } = SCHEMAS[usecase];
+        payload.meta[usecase] = { label, idColumn };
+        payload.headerLinks[usecase] = { ...defaultHeaderLinks(usecase), ...(store[`header:${usecase}`] || {}) };
+        const r = settled[i];
+        payload[usecase] = r.status === "fulfilled"
+          ? r.value.map((row) => ({ ...row, _links: store[`${usecase}:${row[idColumn]}`] || [] }))
+          : { error: String(r.reason) };
       });
+      return json(res, 200, payload);
     }
 
     // GET /api/schema — field spec for both use-cases (types, enums, groups)
     if (req.method === "GET" && u.pathname === "/api/schema") {
-      const [w, n] = await Promise.all([fetchFieldSpec("wbgt"), fetchFieldSpec("noise")]);
-      return json(res, 200, { wbgt: w, noise: n });
+      const specs = await Promise.all(USECASES.map((u) => fetchFieldSpec(u)));
+      return json(res, 200, Object.fromEntries(USECASES.map((u, i) => [u, specs[i]])));
     }
 
     // GET /api/audit?usecase=&project=&limit= — recent config changes
@@ -256,7 +282,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // PATCH /api/config/:usecase/:project — apply validated config changes
-    const cfgPatch = u.pathname.match(/^\/api\/config\/(wbgt|noise)\/(.+)$/);
+    const cfgPatch = u.pathname.match(new RegExp(`^/api/config/(${USECASE_RE})/(.+)$`));
     if (req.method === "PATCH" && cfgPatch) {
       const usecase = cfgPatch[1];
       const projectCode = decodeURIComponent(cfgPatch[2]);
@@ -324,7 +350,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // PUT /api/header/:usecase — set/clear one header quick-link URL
-    const headerSet = u.pathname.match(/^\/api\/header\/(wbgt|noise)$/);
+    const headerSet = u.pathname.match(new RegExp(`^/api/header/(${USECASE_RE})$`));
     if (req.method === "PUT" && headerSet) {
       const { key, url: href } = JSON.parse((await readBody(req)) || "{}");
       if (!key || !/^[a-z_]+$/.test(key)) return json(res, 400, { error: "bad key" });
@@ -340,7 +366,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // POST /api/links/:usecase/:project — add a manual link or note
-    const linkAdd = u.pathname.match(/^\/api\/links\/(wbgt|noise)\/([^/]+)$/);
+    const linkAdd = u.pathname.match(new RegExp(`^/api/links/(${USECASE_RE})/([^/]+)$`));
     if (req.method === "POST" && linkAdd) {
       const { label, url: href, note } = JSON.parse((await readBody(req)) || "{}");
       if (!label || (!href && !note)) return json(res, 400, { error: "need label plus url or note" });
@@ -355,7 +381,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // DELETE /api/links/:usecase/:project/:id — remove a manual link
-    const linkDel = u.pathname.match(/^\/api\/links\/(wbgt|noise)\/([^/]+)\/([^/]+)$/);
+    const linkDel = u.pathname.match(new RegExp(`^/api/links/(${USECASE_RE})/([^/]+)/([^/]+)$`));
     if (req.method === "DELETE" && linkDel) {
       const key = `${linkDel[1]}:${decodeURIComponent(linkDel[2])}`;
       const store = readStore();

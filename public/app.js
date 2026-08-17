@@ -1,7 +1,8 @@
 "use strict";
 
 // ---------- state ----------
-let DATA = { wbgt: [], noise: [], headerLinks: { wbgt: {}, noise: {} } };
+let DATA = { headerLinks: {}, meta: {} };
+let USECASES = ["wbgt", "noise"]; // replaced by server meta on first load
 let TAB = "wbgt";
 let QUERY = "";
 
@@ -97,10 +98,11 @@ function linkBtn(label, href, cls = "") {
 
 function autoLinks(usecase, c) {
   const out = [];
-  if (usecase === "wbgt") {
-    if (c.monthly_sheet_id) out.push(linkBtn("📗 Monthly sheet", sheetUrl(c.monthly_sheet_id)));
-  } else {
-    if (c.google_sheet_id) out.push(linkBtn("📗 Analysis sheet", sheetUrl(c.google_sheet_id)));
+  if (c.monthly_sheet_id) out.push(linkBtn("📗 Monthly sheet", sheetUrl(c.monthly_sheet_id)));
+  if (c.google_sheet_id) out.push(linkBtn("📗 Analysis sheet", sheetUrl(c.google_sheet_id)));
+  if (c.spreadsheet_id) out.push(linkBtn("📗 Safety sheet", sheetUrl(c.spreadsheet_id)));
+  if (c.latitude && c.longitude) {
+    out.push(linkBtn("📍 Map", `https://www.google.com/maps?q=${encodeURIComponent(c.latitude + "," + c.longitude)}`));
   }
   return out;
 }
@@ -114,6 +116,12 @@ function manualLinks(usecase, c) {
 
 function whatsappChips(c) {
   const groups = splitGroups(c.whatsapp_group_id);
+  if (!groups.length) return `<span class="chip"><span class="chip-k">no group configured</span></span>`;
+  return groups.map((g) => `<span class="chip" title="WhatsApp group">💬 ${esc(g)}</span>`).join("");
+}
+
+function groupChips(raw) {
+  const groups = splitGroups(raw);
   if (!groups.length) return `<span class="chip"><span class="chip-k">no group configured</span></span>`;
   return groups.map((g) => `<span class="chip" title="WhatsApp group">💬 ${esc(g)}</span>`).join("");
 }
@@ -221,7 +229,117 @@ function cardNoise(c) {
   `;
 }
 
+
+function rowId(usecase, c) {
+  const idCol = DATA.meta?.[usecase]?.idColumn || "project_code";
+  return c[idCol];
+}
+
+function usecaseLabel(usecase) {
+  return (DATA.meta?.[usecase]?.label || usecase).toUpperCase();
+}
+
+function hoursLine(c, startKey = "working_hours_start_hhmm", endKey = "working_hours_end_hhmm") {
+  const a = c[startKey];
+  const b = c[endKey];
+  if (!a && !b) return "all day";
+  return `${fmtHHMM(a)}–${fmtHHMM(b)}`;
+}
+
+function mutesSuffix(c) {
+  const m = [];
+  if (c.remove_sunday_notifications) m.push("Sundays");
+  if (c.remove_ph_notifications) m.push("PH");
+  return m.length ? ` — muted ${m.join(" + ")}` : "";
+}
+
+function cardHaze(c) {
+  return `
+    <div class="pills">
+      ${pill("mute Sundays", c.remove_sunday_notifications)}
+      ${pill("mute PH", c.remove_ph_notifications)}
+    </div>
+    <div>
+      <div class="section-label">Fires at</div>
+      <div class="fires"><b>hourly</b> advisory during <b>${hoursLine(c)}</b>${mutesSuffix(c)}</div>
+    </div>
+    <div>
+      <div class="section-label">NEA source</div>
+      <div class="chips">
+        ${chip("region", c.nea_region || "—")}
+        ${c.latitude && c.longitude ? chip("lat/lng", `${c.latitude}, ${c.longitude}`) : ""}
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Delivery</div>
+      <div class="chips">${groupChips(c.wa_group_ids)}</div>
+    </div>
+    ${c.site_address ? `<div class="fires">${esc(c.site_address)}</div>` : ""}
+  `;
+}
+
+function cardLightning(c) {
+  const types = (v) => (Array.isArray(v) ? v.join("+") : String(v || "—"));
+  return `
+    <div class="pills">
+      ${pill(`red ${c.red_radius_m ?? "?"}m`, c.red_radius_m)}
+      ${pill(`amber ${c.amber_radius_m ?? "?"}m`, c.amber_radius_m)}
+      ${pill(`v${c.config_version ?? 1}`, true)}
+    </div>
+    <div>
+      <div class="section-label">Thresholds</div>
+      <div class="chips">
+        ${chip("🔴", `${c.red_radius_m ?? "—"}m · ${types(c.red_detection_types)} · dwell ${c.red_dwell_seconds ?? "—"}s`)}
+        ${chip("🟠", `${c.amber_radius_m ?? "—"}m · ${types(c.amber_detection_types)} · dwell ${c.amber_dwell_seconds ?? "—"}s`)}
+        ${c.site_extent_radius_m ? chip("site extent", `${c.site_extent_radius_m}m`) : ""}
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Fires at</div>
+      <div class="fires">every tick while a qualifying strike is in range — working hours <b>${hoursLine(c)}</b></div>
+    </div>
+    <div>
+      <div class="section-label">Delivery</div>
+      <div class="chips">${groupChips(c.whatsapp_group_id)}</div>
+    </div>
+    ${c.policy_note ? `<div class="fires">📝 ${esc(c.policy_note)}</div>` : ""}
+  `;
+}
+
+function cardAilytics(c) {
+  return `
+    <div class="pills">
+      ${pill("telegram source", c.telegram_chat_id)}
+      ${pill("sheet", c.spreadsheet_id)}
+      ${pill("whatsapp relay", c.whatsapp_group_ids)}
+    </div>
+    <div>
+      <div class="section-label">Telegram source</div>
+      <div class="chips">
+        ${chip("chat", c.telegram_chat_id || "—")}
+        ${c.upstream_bot_username ? chip("bot", c.upstream_bot_username) : ""}
+        ${c.expected_chat_title ? chip("title", c.expected_chat_title) : ""}
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Sheet tabs</div>
+      <div class="chips">
+        ${chip("safety", c.safety_sheet_tab || "—")}
+        ${chip("history", c.activity_history_tab || "—")}
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Delivery</div>
+      <div class="chips">${groupChips(c.whatsapp_group_ids)}</div>
+    </div>
+    <div class="fires">Event-driven — fires when the CCTV bot posts.</div>
+  `;
+}
+
+const CARD_RENDERERS = { wbgt: cardWBGT, noise: cardNoise, haze: cardHaze, lightning: cardLightning, ailytics: cardAilytics };
+
 function hasCadence(usecase, c) {
+  if (usecase !== "wbgt" && usecase !== "noise") return c.enabled !== false;
   return usecase === "wbgt"
     ? Boolean(c.enable_hourly || c.enable_intermittent_reports || c.enable_5min_alerts)
     : Boolean(
@@ -235,14 +353,14 @@ function renderCard(usecase, c) {
   const links = [...autoLinks(usecase, c), ...manualLinks(usecase, c)];
   const cls = [c.enabled ? "" : "disabled", hasCadence(usecase, c) ? "" : "nocad"].join(" ");
   return `
-  <article class="card ${cls}" data-usecase="${usecase}" data-project="${esc(c.project_code)}">
+  <article class="card ${cls}" data-usecase="${usecase}" data-project="${esc(rowId(usecase, c))}">
     <h2>
-      <span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span>
+      <span class="usecase-tag ${usecase}">${esc(usecaseLabel(usecase))}</span>
       ${esc(c.project_code)}
       <span class="enabled-badge ${c.enabled ? "on" : "off"}">${c.enabled ? "● ENABLED" : "○ DISABLED"}</span>
       <button class="edit-btn" title="Edit this project's Supabase config">⚙︎ Edit</button>
     </h2>
-    ${usecase === "wbgt" ? cardWBGT(c) : cardNoise(c)}
+    ${(CARD_RENDERERS[usecase] || (() => ""))(c)}
     <div>
       <div class="section-label">Links <span style="font-weight:400">(right-click card to add)</span></div>
       <div class="links">${links.join("") || '<span class="chip"><span class="chip-k">none</span></span>'}</div>
@@ -264,7 +382,17 @@ function renderHeaderLinks() {
   }).join("");
 }
 
+function renderTabs() {
+  const nav = $("#tabs");
+  if (nav.dataset.built === USECASES.join(",")) return;
+  nav.dataset.built = USECASES.join(",");
+  nav.innerHTML = USECASES.map(
+    (u) => `<button data-tab="${esc(u)}"${u === TAB ? ' class="active"' : ""}>${esc(DATA.meta?.[u]?.label || u)}</button>`,
+  ).join("");
+}
+
 function render() {
+  renderTabs();
   renderHeaderLinks();
   const usecase = TAB;
   const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
@@ -290,8 +418,11 @@ async function refresh() {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || res.status);
     DATA = body;
+    if (body.meta && Object.keys(body.meta).length) USECASES = Object.keys(body.meta);
+    if (!USECASES.includes(TAB)) TAB = USECASES[0];
     const count = (u) => (Array.isArray(body[u]) ? body[u].length : 0);
-    statusEl.textContent = `${count("wbgt")} WBGT · ${count("noise")} Noise · fetched ${fmtDate(body.fetchedAt)}`;
+    statusEl.textContent =
+      USECASES.map((u) => `${count(u)} ${body.meta?.[u]?.label || u}`).join(" · ") + ` · fetched ${fmtDate(body.fetchedAt)}`;
     render();
   } catch (err) {
     statusEl.textContent = `⚠️ ${err.message}`;
@@ -472,6 +603,12 @@ function fieldControl(field, value) {
   if (field.widget === "number") {
     return `<input type="number" id="${id}" data-field="${esc(field.name)}" value="${esc(value ?? "")}"${dis}>`;
   }
+  if (field.widget === "multi" || field.type === "array") {
+    const selected = Array.isArray(value) ? value : splitGroups(value);
+    return `<div class="multi" data-field="${esc(field.name)}" data-multi="1">${(field.options || [])
+      .map((o) => `<label class="multi-opt"><input type="checkbox" value="${esc(o)}"${selected.includes(o) ? " checked" : ""}${dis}> ${esc(o)}</label>`)
+      .join("")}</div>`;
+  }
   if (field.widget === "csv") {
     return `<textarea id="${id}" data-field="${esc(field.name)}" spellcheck="false" placeholder="comma-separated"${dis}>${esc(value ?? "")}</textarea>`;
   }
@@ -485,7 +622,7 @@ function renderEditor() {
   const { usecase, row } = EDIT;
   const spec = SCHEMA[usecase];
   $("#editor-title").innerHTML =
-    `<span class="usecase-tag ${usecase}">${usecase === "wbgt" ? "WBGT" : "NOISE"}</span> ${esc(row.project_code)}`;
+    `<span class="usecase-tag ${usecase}">${esc(usecaseLabel(usecase))}</span> ${esc(row.project_code || rowId(usecase, row))}`;
   $("#editor-sub").textContent = `Editing live Supabase config · last updated ${fmtDate(row.updated_at)}`;
 
   $("#editor-body").innerHTML = spec.groups
@@ -561,6 +698,10 @@ function applyConditionalVisibility() {
 }
 
 function readControl(field, el) {
+  if (field.widget === "multi" || field.type === "array") {
+    const box = el.closest("[data-multi]") || el;
+    return [...box.querySelectorAll("input[type=checkbox]")].filter((b) => b.checked).map((b) => b.value);
+  }
   if (field.widget === "toggle") return el.checked;
   const v = el.value.trim();
   if (v === "") return null;
@@ -596,6 +737,7 @@ $("#editor-body").addEventListener("input", (e) => {
   const el = e.target.closest("[data-field]");
   if (!el || !EDIT) return;
   const name = el.dataset.field;
+  if (!SCHEMA[EDIT.usecase].fields[name]) return;
   const field = SCHEMA[EDIT.usecase].fields[name];
   EDIT.draft[name] = readControl(field, el);
   if (field.widget === "toggle") {
@@ -613,7 +755,7 @@ async function openEditor(usecase, projectCode) {
     return toast("Could not load schema: " + err.message, "err");
   }
   const list = Array.isArray(DATA[usecase]) ? DATA[usecase] : [];
-  const row = list.find((r) => r.project_code === projectCode);
+  const row = list.find((r) => String(rowId(usecase, r)) === String(projectCode));
   if (!row) return toast(`${projectCode} not found — try Refresh`, "err");
   EDIT = { usecase, projectCode, row, draft: {} };
   editorEl.hidden = false;

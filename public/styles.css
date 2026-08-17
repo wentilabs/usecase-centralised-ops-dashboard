@@ -443,3 +443,13 @@ button.primary:disabled, button.ghost:disabled { opacity: .45; cursor: not-allow
   .field { grid-template-columns: 1fr; }
   .field-help { grid-column: 1; }
 }
+
+/* multi-select (array columns, e.g. lightning strike types) */
+.multi { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 6px; }
+.multi-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.multi-opt input { accent-color: var(--accent); }
+
+/* per-usecase tag colours */
+.usecase-tag.haze { background: color-mix(in srgb, #a16207 18%, transparent); color: #d97706; }
+.usecase-tag.lightning { background: color-mix(in srgb, #7c3aed 18%, transparent); color: #8b5cf6; }
+.usecase-tag.ailytics { background: color-mix(in srgb, #0891b2 18%, transparent); color: #06b6d4; }

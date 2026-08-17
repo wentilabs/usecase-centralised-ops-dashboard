@@ -1,4 +1,4 @@
-# WohHup Ops Dashboard
+# Centralised Services Dashboard
 
 Local, read-only floating-cards view of both alert systems' `*_project_configs`
 tables (WBGT `wbgts` schema + Noise `noise-meters` schema — same Supabase project).

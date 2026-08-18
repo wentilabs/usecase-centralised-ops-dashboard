@@ -5,7 +5,12 @@ frontend:
       commands:
         - npm ci
     build:
+      # Amplify exposes console environment variables to the build shell, but
+      # they are not reliably injected into the Next server or inlined into the
+      # Edge middleware bundle. Writing them to .env.production means Next loads
+      # them the same way in every runtime.
       commands:
+        - env | grep -E '^(SUPABASE_URL|SUPABASE_SECRET_KEY|WHITELIST_EMAILS|WHITELIST_DOMAINS|EDITOR_EMAILS|NEXT_PUBLIC_)' >> .env.production || true
         - npm run build
   artifacts:
     baseDirectory: .next

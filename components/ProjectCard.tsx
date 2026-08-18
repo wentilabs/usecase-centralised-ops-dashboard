@@ -4,11 +4,11 @@ import { autoLinks, firesAt, formatSgt, hasCadence, pillsFor, splitList } from "
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 const TAG_TONE: Record<ServiceKey, string> = {
-  wbgt: "bg-amber-100 text-amber-800",
-  noise: "bg-sky-100 text-sky-800",
-  haze: "bg-orange-100 text-orange-800",
-  lightning: "bg-violet-100 text-violet-800",
-  ailytics: "bg-cyan-100 text-cyan-800",
+  wbgt: "bg-amber-400/15 text-amber-300",
+  noise: "bg-sky-400/15 text-sky-300",
+  haze: "bg-orange-400/15 text-orange-300",
+  lightning: "bg-violet-400/15 text-violet-300",
+  ailytics: "bg-cyan-400/15 text-cyan-300",
 };
 
 function Chip({ label, value, title }: { label: string; value: string; title?: string }) {
@@ -46,7 +46,7 @@ export function ProjectCard({
       className={[
         "relative flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft",
         enabled ? "" : "opacity-60",
-        scheduled ? "" : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-slate-400/20",
+        scheduled ? "" : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/45",
       ].join(" ")}
     >
       <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -72,7 +72,7 @@ export function ProjectCard({
             key={pill.label}
             className={
               pill.on
-                ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-on ring-1 ring-emerald-200"
+                ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
                 : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through"
             }
           >

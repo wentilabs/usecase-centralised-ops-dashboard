@@ -55,10 +55,10 @@ function Control({
         className="flex items-center gap-2.5"
       >
         <span
-          className={`relative h-6 w-11 rounded-full transition ${on ? "bg-emerald-500" : "bg-slate-300"}`}
+          className={`relative h-6 w-11 rounded-full transition ${on ? "bg-on" : "bg-muted ring-1 ring-border"}`}
         >
           <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "left-[22px]" : "left-0.5"}`}
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`}
           />
         </span>
         <span className="text-xs text-muted-foreground">{on ? "on" : "off"}</span>
@@ -246,7 +246,7 @@ export function ConfigEditor({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-slate-900/45" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
       <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(760px,100vw)] flex-col border-l border-border bg-background shadow-2xl">
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
@@ -328,7 +328,7 @@ export function ConfigEditor({
                       <div
                         key={name}
                         className={`grid grid-cols-[240px_1fr] items-start gap-4 rounded-lg px-2 py-2 ${
-                          changed ? "bg-primary/10" : ""
+                          changed ? "bg-primary/15" : ""
                         }`}
                       >
                         <div className="pt-1.5">
@@ -382,7 +382,7 @@ export function ConfigEditor({
       </aside>
 
       {confirming ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
           <div className="max-h-[80vh] w-[min(560px,92vw)] overflow-y-auto rounded-2xl border border-border bg-background p-5 shadow-soft">
             <h3 className="mb-3 text-base font-semibold">Apply to Supabase?</h3>
             <div className="mb-4 text-sm">

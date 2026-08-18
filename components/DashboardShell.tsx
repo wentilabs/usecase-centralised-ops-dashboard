@@ -99,7 +99,7 @@ export function DashboardShell({
             <span className="flex items-center gap-2">
               {session.email}
               {session.canEdit ? null : (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warn">
+                <span className="rounded-full bg-warn/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warn">
                   read-only
                 </span>
               )}
@@ -110,7 +110,7 @@ export function DashboardShell({
 
       <main className="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3.5 px-5 py-4">
         {active.error ? (
-          <p className="col-span-full rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger">
+          <p className="col-span-full rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
             {active.label}: {active.error}
           </p>
         ) : null}

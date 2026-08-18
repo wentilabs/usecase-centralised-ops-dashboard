@@ -41,12 +41,11 @@ export function AuthForm({ configured }: { configured: boolean }) {
 
   const redirectTo = useMemo(() => getSafeRedirect(searchParams.get("redirect")), [searchParams]);
 
-  const [message, setMessage] = useState<string | null>(() => {
-    const reason = searchParams.get("reason");
-    if (reason === "session_expired") return "Your session expired — sign in again.";
-    if (reason === "unauthorized") return "That address is not approved for this dashboard.";
-    return null;
-  });
+  const [notice, setNotice] = useState<string | null>(null);
+  const reasonMessage =
+    searchParams.get("reason") === "session_expired" ? "Your session expired — sign in again." : null;
+  const message = notice ?? reasonMessage;
+  const setMessage = setNotice;
 
   const resetCaptcha = () => {
     setCaptchaToken(undefined);

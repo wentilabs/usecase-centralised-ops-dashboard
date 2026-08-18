@@ -81,8 +81,15 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic) return auth.response;
 
-  // Signed in but not approved: say so rather than looping the login form.
-  if (auth.email) return loginRedirect(request, auth.response, "unauthorized");
+  // Signed in but not on the allow-list. API callers get a 401; browsers get a
+  // page that names the address and offers sign-out, rather than a login form
+  // that silently rejects them.
+  if (auth.email) {
+    if (pathname.startsWith("/api/")) {
+      return copyAuthState(auth.response, NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    }
+    return copyAuthState(auth.response, NextResponse.redirect(new URL("/unauthorized", request.url)));
+  }
 
   return loginRedirect(request, auth.response, auth.configured && auth.error ? "session_expired" : undefined);
 }

@@ -49,6 +49,18 @@ function loginRedirect(
   return reason ? clearSupabaseCookies(request, response) : response;
 }
 
+/**
+ * Middleware runs in the Edge runtime, where process.env only holds values that
+ * were inlined at build time. An allow-list added to the host's environment
+ * after the last build is therefore invisible here — so middleware enforces it
+ * only when it can actually see it, and otherwise defers to the Node runtime
+ * (app/page.tsx and every route handler), which reads the live environment and
+ * still fails closed.
+ */
+function allowlistVisibleToEdge() {
+  return Boolean(process.env.WHITELIST_EMAILS || process.env.WHITELIST_DOMAINS);
+}
+
 export async function middleware(request: NextRequest) {
   const { hostname, pathname } = request.nextUrl;
 
@@ -72,24 +84,28 @@ export async function middleware(request: NextRequest) {
   const auth = await updateSupabaseSession(request);
   const isPublic = isPublicPath(pathname);
 
-  if (auth.email && isEmailWhitelisted(auth.email)) {
-    if (pathname === "/login") {
-      return copyAuthState(auth.response, NextResponse.redirect(new URL("/", request.url)));
-    }
-    return auth.response;
-  }
-
-  if (isPublic) return auth.response;
-
-  // Signed in but not on the allow-list. API callers get a 401; browsers get a
-  // page that names the address and offers sign-out, rather than a login form
-  // that silently rejects them.
   if (auth.email) {
+    // null = "can't tell from here", so let the Node runtime decide.
+    const approved = allowlistVisibleToEdge() ? isEmailWhitelisted(auth.email) : null;
+
+    if (approved !== false) {
+      if (pathname === "/login") {
+        return copyAuthState(auth.response, NextResponse.redirect(new URL("/", request.url)));
+      }
+      const response = auth.response;
+      response.headers.set("x-edge-allowlist", allowlistVisibleToEdge() ? "visible" : "deferred");
+      return response;
+    }
+
+    // Signed in and definitively not approved. API callers get a 401; browsers
+    // get a page that names the address and offers sign-out.
     if (pathname.startsWith("/api/")) {
       return copyAuthState(auth.response, NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
     }
     return copyAuthState(auth.response, NextResponse.redirect(new URL("/unauthorized", request.url)));
   }
+
+  if (isPublic) return auth.response;
 
   return loginRedirect(request, auth.response, auth.configured && auth.error ? "session_expired" : undefined);
 }

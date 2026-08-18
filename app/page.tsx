@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { DashboardShell, type ServiceData } from "@/components/DashboardShell";
 import { getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { SERVICES, SERVICE_KEYS } from "@/lib/services";
@@ -7,6 +9,10 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await getDashboardSession();
+
+  // The real authorization gate: this runs in the Node runtime, where the
+  // allow-list env vars are always readable, and it fails closed.
+  if (!session.allowed) redirect("/unauthorized");
 
   // One failing service must not blank the whole dashboard.
   const [rows, specs] = await Promise.all([

@@ -5,9 +5,10 @@ alert services — **WBGT, Noise, Haze, Lightning and Ailytics** — in one plac
 It reads them live from Supabase and writes edits back, validated against the
 live schema, with a shared change history.
 
-Built to the same conventions as `wenti-penta-ocean-safety-fe` and
-`wenti-wohhup-fe`: Next 15 App Router, Supabase Auth with a server-side
-allow-list in `middleware.ts`, pure unit-tested policy modules, Amplify build.
+Built to the same conventions as `wenti-penta-ocean-safety-fe`: Next 16 App
+Router, Supabase Auth with a server-side allow-list in `middleware.ts`, pure
+unit-tested policy modules, and an Amplify build guarded by a deployment
+contract test. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Run locally
 

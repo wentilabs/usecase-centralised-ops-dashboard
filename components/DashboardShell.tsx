@@ -59,7 +59,7 @@ export function DashboardShell({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 px-5 py-2.5 backdrop-blur">
-        <h1 className="mr-1 whitespace-nowrap text-base font-semibold">🗂️ Centralised Services</h1>
+        <h1 className="mr-1 whitespace-nowrap text-base font-semibold">🗂️ HALO Centralised Services</h1>
 
         <nav className="flex gap-1">
           {services.map((service) => (

@@ -3,13 +3,20 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
+const faviconUrl = "/logos/wentilabs-favicon.png";
+
 export const metadata: Metadata = {
   title: {
-    default: "Centralised Services",
-    template: "%s | Centralised Services",
+    default: "HALO Centralised Services",
+    template: "%s | HALO Centralised Services",
   },
   description:
     "Project configuration control surface for the WBGT, Noise, Haze, Lightning and Ailytics alert services.",
+  icons: {
+    icon: [{ url: faviconUrl }],
+    shortcut: [{ url: faviconUrl }],
+    apple: [{ url: faviconUrl }],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

@@ -93,9 +93,16 @@ export function AuthForm({ configured }: { configured: boolean }) {
 
     try {
       const supabase = getSupabaseBrowserClient();
+      // Mail clients love to add spaces, and people sometimes paste the whole
+      // line from the email — keep only the digits.
+      const token = otpCode.replace(/\D/g, "");
+      if (token.length < 6) {
+        throw new Error("Enter the 6-digit code from the email.");
+      }
+
       const { error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim(),
-        token: otpCode.trim(),
+        token,
         type: "email",
       });
       if (verifyError) throw verifyError;
@@ -189,18 +196,42 @@ export function AuthForm({ configured }: { configured: boolean }) {
           <button className={buttonClass} type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Verifying…" : "Sign in"}
           </button>
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-primary"
-            onClick={() => {
-              setStep("email");
-              setOtpCode("");
-              setError(null);
-              resetCaptcha();
-            }}
-          >
-            ← Use a different email
-          </button>
+
+          {error ? (
+            <p className="text-[11px] text-muted-foreground">
+              Codes are single-use and expire. If you opened the link in the email, that already
+              consumed the code — request a fresh one.
+            </p>
+          ) : null}
+
+          <div className="flex justify-between gap-3 text-xs">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-primary"
+              onClick={() => {
+                setStep("email");
+                setOtpCode("");
+                setError(null);
+                setMessage(null);
+                resetCaptcha();
+              }}
+            >
+              ← Use a different email
+            </button>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-primary"
+              onClick={() => {
+                setStep("email");
+                setOtpCode("");
+                setError(null);
+                setMessage("Request a new code below.");
+                resetCaptcha();
+              }}
+            >
+              Send a new code
+            </button>
+          </div>
         </form>
       )}
 

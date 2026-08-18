@@ -1,4 +1,34 @@
-"use strict";
+import type { ServiceKey } from "./services";
+
+export type FieldWidget = "toggle" | "select" | "number" | "text" | "hhmm" | "csv" | "sheet" | "multi";
+
+export type FieldSpec = {
+  name: string;
+  label: string;
+  help: string;
+  type?: string;
+  widget: FieldWidget;
+  options: string[] | null;
+  default: unknown;
+  readonly: boolean;
+  hidden: boolean;
+  showIf: { field: string; equals: unknown } | null;
+  row: string | null;
+};
+
+export type FieldGroup = { title: string; fields: string[] };
+
+export type ServiceFieldSpec = {
+  fields: Record<string, FieldSpec>;
+  groups: FieldGroup[];
+};
+
+export type IntrospectedColumn = {
+  type?: string;
+  format?: string;
+  enum?: string[] | null;
+  default?: unknown;
+};
 
 /**
  * Curated overlay on top of the live PostgREST schema introspection.
@@ -15,7 +45,7 @@
 
 // Columns the dashboard must never write: identity, audit stamps, and
 // runtime state owned by the alert jobs.
-const READONLY = {
+const READONLY: Record<string, string[]> = {
   wbgt: [
     "project_code",
     "created_at",
@@ -35,7 +65,7 @@ const READONLY = {
 // Allowed values for CHECK-constrained (non-enum) columns. Keep in sync with
 // the alert repos' setup.sql — a wrong value here is rejected by Postgres
 // anyway, so the worst case is a failed save, not bad data.
-const CHECK_ENUMS = {
+const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
   wbgt: {
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
@@ -63,7 +93,7 @@ const CHECK_ENUMS = {
 //   showIf  — { field, equals }: only render while another field has a value,
 //             re-evaluated live as you toggle
 //   row     — fields sharing a row key render side by side on one compact row
-const FIELDS = {
+const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   wbgt: {
     enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
     source_type: { label: "Login profile", help: "Which CloudLynx credentials + Browserbase context to scrape with." },
@@ -307,7 +337,7 @@ const FIELDS = {
 };
 
 // Ordered groups. Any column not named here lands in "Other".
-const GROUPS = {
+const GROUPS: Record<string, FieldGroup[]> = {
   wbgt: [
     { title: "Status", fields: ["enabled", "source_type", "timezone"] },
     {
@@ -413,17 +443,20 @@ const GROUPS = {
 };
 
 // Merge introspected columns with the curated overlay into a render-ready spec.
-function buildFieldSpec(usecase, introspected) {
+export function buildFieldSpec(
+  usecase: ServiceKey | string,
+  introspected: Record<string, IntrospectedColumn>,
+): ServiceFieldSpec {
   const readonly = new Set(READONLY[usecase] || []);
   const checkEnums = CHECK_ENUMS[usecase] || {};
   const hints = FIELDS[usecase] || {};
   const groups = GROUPS[usecase] || [];
 
-  const fields = {};
+  const fields: Record<string, FieldSpec> = {};
   for (const [name, col] of Object.entries(introspected)) {
     const hint = hints[name] || {};
     const options = col.enum || checkEnums[name] || null;
-    let widget = hint.widget;
+    let widget: FieldWidget | undefined = hint.widget;
     if (!widget) {
       if (col.type === "boolean") widget = "toggle";
       else if (options) widget = "select";
@@ -447,12 +480,12 @@ function buildFieldSpec(usecase, introspected) {
 
   // Group in curated order; sweep anything left into "Other". Hidden fields
   // are dropped from every group so they never reach the editor.
-  const visible = (f) => fields[f] && !fields[f].hidden;
-  const claimed = new Set();
-  const rendered = [];
+  const visible = (f: string) => fields[f] && !fields[f].hidden;
+  const claimed = new Set<string>();
+  const rendered: FieldGroup[] = [];
   for (const g of groups) {
     const present = g.fields.filter(visible);
-    g.fields.forEach((f) => claimed.add(f));
+    g.fields.forEach((f: string) => claimed.add(f));
     if (present.length) rendered.push({ title: g.title, fields: present });
   }
   const leftovers = Object.keys(fields).filter((f) => !claimed.has(f) && visible(f)).sort();
@@ -460,5 +493,3 @@ function buildFieldSpec(usecase, introspected) {
 
   return { fields, groups: rendered };
 }
-
-module.exports = { buildFieldSpec, READONLY, CHECK_ENUMS };

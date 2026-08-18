@@ -1,0 +1,184 @@
+import "server-only";
+
+import { buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
+import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
+
+/**
+ * Typed data access for the five config tables, plus the shared audit trail.
+ * Server-only: it holds the Supabase secret key, which never reaches a browser.
+ */
+
+const REQUEST_TIMEOUT_MS = 8000;
+
+function config() {
+  const url = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
+  const key = process.env.SUPABASE_SECRET_KEY ?? "";
+  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY are required");
+  return { url, key };
+}
+
+async function request(path: string, init: RequestInit & { schema: string }) {
+  const { url, key } = config();
+  const { schema, ...rest } = init;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${url}/rest/v1/${path}`, {
+      ...rest,
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Accept-Profile": schema,
+        "Content-Profile": schema,
+        "Content-Type": "application/json",
+        ...(rest.headers ?? {}),
+      },
+    });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow[]> {
+  const { table, schema } = SERVICES[service];
+  const res = await request(`${table}?select=*&order=project_code.asc`, { schema });
+  if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
+  return res.body as ProjectConfigRow[];
+}
+
+export async function getConfig(service: ServiceKey, rowId: string): Promise<ProjectConfigRow | null> {
+  const { table, schema, idColumn } = SERVICES[service];
+  const res = await request(`${table}?select=*&${idColumn}=eq.${encodeURIComponent(rowId)}`, { schema });
+  if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
+  return (res.body as ProjectConfigRow[])[0] ?? null;
+}
+
+/**
+ * Optimistic concurrency: the write only lands if the row still carries the
+ * updated_at the editor loaded. Zero rows back means somebody changed it in
+ * between — reported rather than silently overwritten.
+ */
+export async function updateConfig(
+  service: ServiceKey,
+  rowId: string,
+  patch: Record<string, unknown>,
+  baseUpdatedAt: string | null,
+): Promise<ProjectConfigRow[]> {
+  const { table, schema, idColumn } = SERVICES[service];
+  const params = [`${idColumn}=eq.${encodeURIComponent(rowId)}`];
+  if (baseUpdatedAt) params.push(`updated_at=eq.${encodeURIComponent(baseUpdatedAt)}`);
+
+  const res = await request(`${table}?${params.join("&")}`, {
+    schema,
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  return res.body as ProjectConfigRow[];
+}
+
+/**
+ * PostgREST publishes an OpenAPI doc describing every column: type, default and
+ * pg-enum values. Cached per process; POST /api/schema/reload clears it so a
+ * column added to Supabase shows up without a redeploy.
+ */
+const specCache = new Map<ServiceKey, ServiceFieldSpec>();
+
+export function clearFieldSpecCache() {
+  specCache.clear();
+}
+
+export async function getFieldSpec(service: ServiceKey): Promise<ServiceFieldSpec> {
+  const cached = specCache.get(service);
+  if (cached) return cached;
+
+  const { schema, table } = SERVICES[service];
+  const res = await request("", { schema });
+  if (!res.ok) throw new Error(`${service} schema: ${res.status}`);
+
+  const definitions = (res.body as { definitions?: Record<string, { properties?: Record<string, IntrospectedColumn> }> })
+    ?.definitions;
+  const properties = definitions?.[table]?.properties ?? {};
+  const introspected: Record<string, IntrospectedColumn> = {};
+  for (const [name, p] of Object.entries(properties)) {
+    introspected[name] = { type: p.type, format: p.format, enum: p.enum ?? null, default: p.default };
+  }
+
+  const spec = buildFieldSpec(service, introspected);
+  specCache.set(service, spec);
+  return spec;
+}
+
+// ---------------------------------------------------------------------------
+// ops.config_audit — the Postgres trigger writes every row (including changes
+// made directly in Supabase); the dashboard annotates the one its write caused.
+// ---------------------------------------------------------------------------
+export type AuditEntry = {
+  id: string;
+  at: string;
+  table_name: string;
+  row_id: string;
+  project_code: string | null;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  actor_email: string | null;
+  note: string | null;
+  source: string;
+  external: boolean;
+};
+
+function auditSetupHint(status: number) {
+  return status === 404 || status === 406
+    ? "ops.config_audit not reachable — run supabase/config_audit_setup.sql, then add `ops` to Supabase → Settings → API → Exposed schemas."
+    : `status ${status}`;
+}
+
+export async function listAudit(options: { table?: string; rowId?: string; limit?: number } = {}) {
+  const params = ["select=*", "order=at.desc", `limit=${Math.min(options.limit ?? 200, 1000)}`];
+  if (options.table) params.push(`table_name=eq.${encodeURIComponent(options.table)}`);
+  if (options.rowId) params.push(`row_id=eq.${encodeURIComponent(options.rowId)}`);
+
+  const res = await request(`config_audit?${params.join("&")}`, { schema: "ops" });
+  if (!res.ok) throw new Error(auditSetupHint(res.status));
+
+  return (res.body as Omit<AuditEntry, "external">[]).map((row) => ({
+    ...row,
+    external: !row.actor_email,
+  }));
+}
+
+export async function annotateAudit(input: {
+  table: string;
+  rowId: string;
+  newUpdatedAt?: string;
+  actorEmail: string;
+  note: string;
+}): Promise<{ annotated: boolean; reason?: string }> {
+  if (!input.newUpdatedAt) return { annotated: false, reason: "no_updated_at" };
+
+  const query =
+    `config_audit?table_name=eq.${encodeURIComponent(input.table)}` +
+    `&row_id=eq.${encodeURIComponent(input.rowId)}` +
+    `&new_updated_at=eq.${encodeURIComponent(input.newUpdatedAt)}`;
+
+  try {
+    const res = await request(query, {
+      schema: "ops",
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        actor_email: input.actorEmail,
+        note: input.note || null,
+        source: "dashboard",
+      }),
+    });
+    if (!res.ok) return { annotated: false, reason: auditSetupHint(res.status) };
+    return { annotated: Array.isArray(res.body) && res.body.length > 0 };
+  } catch (error) {
+    return { annotated: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}

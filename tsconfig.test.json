@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": false,
+    "types": ["node"],
+    "paths": { "@/*": ["./*"] },
+    "baseUrl": "."
+  },
+  "include": [
+    "lib/auth-policy.ts",
+    "lib/route-policy.ts",
+    "lib/services.ts",
+    "lib/field-spec.ts",
+    "lib/config-values.ts",
+    "tests/**/*.ts"
+  ]
+}

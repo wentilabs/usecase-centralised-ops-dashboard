@@ -1,62 +1,62 @@
 # Centralised Services Dashboard
 
-Local, read-only floating-cards view of both alert systems' `*_project_configs`
-tables (WBGT `wbgts` schema + Noise `noise-meters` schema — same Supabase project).
+Next.js control surface for the project configs behind all five centralised
+alert services — **WBGT, Noise, Haze, Lightning and Ailytics** — in one place.
+It reads them live from Supabase and writes edits back, validated against the
+live schema, with a shared change history.
 
-Zero npm dependencies. One tiny Node process. Nothing runs in the background —
-data is fetched only on page load or when you press ⟳ Refresh.
+Built to the same conventions as `wenti-penta-ocean-safety-fe` and
+`wenti-wohhup-fe`: Next 15 App Router, Supabase Auth with a server-side
+allow-list in `middleware.ts`, pure unit-tested policy modules, Amplify build.
 
-## Setup (once)
-
-```bash
-cp .env.example .env
-# paste SUPABASE_URL and SUPABASE_SECRET_KEY (same values as the alerts repos' .env)
-```
-
-The service-role key is required so RLS doesn't hide disabled projects.
-It never leaves this machine — the browser only talks to localhost.
-
-## Run
+## Run locally
 
 ```bash
-npm start        # → http://localhost:5178
+cp .env.example .env.local   # SUPABASE_URL + SUPABASE_SECRET_KEY are enough locally
+npm install
+npm run dev                  # http://localhost:5178
 ```
 
-Leave it running while you work; it idles at ~0 CPU.
+On a loopback hostname auth is bypassed, so no sign-in is needed for local work.
+Set `LOCAL_AUTH_BYPASS=false` to exercise the real login flow.
 
-## Using it
+## Scripts
 
-- **Tabs** All / WBGT / Noise, **search** by project code, **⟳ Refresh** to re-sync from Supabase.
-- Each card shows: enabled state, cadence toggle pills, message formatters (noise),
-  computed "fires at" timings, WhatsApp group/client chips, and hyperlinks
-  (Google Sheets, lambda proxy).
-- **Right-click a card** → *Add link…* / *Add note…* (e.g. AWS console URLs, EventBridge rules).
-- **Right-click a manual link/note** → *Delete this item*.
-- Manual links/notes persist to `links.store.json` (gitignored, local only).
+| | |
+|---|---|
+| `npm run dev` | local dashboard |
+| `npm run build` / `npm start` | production build (auth enforced) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | policy, validation and summary unit tests |
+
+## How it works
+
+- **Schema is introspected**, not hardcoded: PostgREST's OpenAPI doc supplies
+  column types, defaults and enum values, and `lib/field-spec.ts` adds labels,
+  grouping, conditional visibility and the values of CHECK-constrained columns.
+  A column added to Supabase becomes editable immediately — it appears under
+  "Other" until it is given a label.
+- **Writes are guarded**: unknown/read-only columns refused, values coerced and
+  validated, no-ops dropped, and an `updated_at` check means an edit made
+  elsewhere is reported rather than silently overwritten.
+- **History is shared**: a Postgres trigger records every change to
+  `ops.config_audit`, including edits made directly in the Supabase table
+  editor. Dashboard writes are stamped with the operator's email and note;
+  unstamped rows show as *changed outside the dashboard*.
 
 ## Auth
 
-Locally, on a loopback hostname, auth is bypassed and everything works as
-before. Deployed (`NODE_ENV=production`) the dashboard requires a Supabase Auth
-email OTP sign-in and an allow-listed address, and **fails closed** when auth is
-unconfigured or unreachable. `EDITOR_EMAILS` makes everyone else read-only —
-their Edit buttons disappear and writes are refused server-side.
+| Env | Effect |
+|---|---|
+| `NEXT_PUBLIC_AUTH_SUPABASE_URL` / `..._PUBLISHABLE_KEY` | the Supabase Auth project used for email OTP sign-in |
+| `WHITELIST_EMAILS` / `WHITELIST_DOMAINS` | who may sign in — **fails closed** if unset or if Supabase is unreachable |
+| `EDITOR_EMAILS` | who may change anything; everyone else is read-only |
+| `LOCAL_AUTH_BYPASS` | loopback-only dev convenience, ignored in production |
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for the EC2 + Cloudflare Access runbook.
+## Deploy
 
-## Change history
-
-Every config change is recorded in `ops.config_audit` by a Postgres trigger, so
-edits made directly in the Supabase table editor are captured too. Dashboard
-writes are stamped with the operator's email and their note; unstamped rows show
-as **changed outside the dashboard** in the editor's 🕘 History. Run
-[`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) once, and
-expose the `ops` schema in Supabase's API settings.
-
-## Guarantees
-
-- Writes are confined to the five `*_project_configs` tables, `ops.config_audit`
-  and the local links store; validated against the live schema, guarded by an
-  `updated_at` concurrency check, and refused for read-only accounts.
-- Read-only/derived columns (job state, audit stamps, identity) can never be written.
-- Binds to `127.0.0.1` unless `HOST` says otherwise.
+AWS Amplify, via `amplify.yml`. Set every variable above in the Amplify
+environment (`SUPABASE_SECRET_KEY` is server-only and must never be prefixed
+with `NEXT_PUBLIC_`). Run
+[`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) once and
+expose the `ops` schema in Supabase → Settings → API.

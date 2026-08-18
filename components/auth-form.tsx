@@ -64,8 +64,11 @@ export function AuthForm({ configured }: { configured: boolean }) {
       const { error: sendError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          // An unapproved address must not be able to create an auth user.
-          shouldCreateUser: false,
+          // Self-service, as in the sibling portals: a first-time colleague can
+          // request a code without being provisioned by hand. Creating an auth
+          // user grants nothing on its own — the allow-list still decides who
+          // reaches the dashboard, and every config change is audited.
+          shouldCreateUser: true,
           ...(needsCaptcha && captchaToken ? { captchaToken } : {}),
         },
       });

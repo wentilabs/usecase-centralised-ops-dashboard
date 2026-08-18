@@ -61,6 +61,19 @@ Then in a browser: sign in with an allow-listed address, open one project, make
 a harmless change on a **disabled** project, and confirm it appears in 🕘
 History with your email against it.
 
+## Access model
+
+Sign-in is self-service: any address can request a code (behind CAPTCHA) and an
+auth user is created on first use, matching the sibling portals. That grants
+nothing by itself —
+
+- `WHITELIST_EMAILS` / `WHITELIST_DOMAINS` decide who reaches the dashboard;
+  everyone else lands on `/unauthorized`.
+- `EDITOR_EMAILS` decides who may change anything; everyone else is read-only in
+  both the UI and the API.
+- Every applied change is recorded in `ops.config_audit` with the operator's
+  email, so access is traceable rather than merely restricted.
+
 ## Operating notes
 
 - **New Supabase columns** appear without a redeploy — `POST /api/schema/reload`

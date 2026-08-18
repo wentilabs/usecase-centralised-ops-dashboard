@@ -297,6 +297,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "🟠 Amber dwell (s)",
       widget: "number",
       row: "amber",
+      help: "How long amber persists after the last qualifying strike, and how long notifications are debounced.",
       showIf: { field: "amber_enabled", equals: true },
     },
     amber_detection_types: {

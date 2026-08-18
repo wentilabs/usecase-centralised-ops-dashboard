@@ -86,7 +86,10 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       config.working_hours_start_hhmm || config.working_hours_end_hhmm
         ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
         : "all day";
-    return `hourly advisory during ${hours}${mutesSuffix(config)}`;
+    const gate = config.alert_only_when_at_least
+      ? ` — only when PSI ≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
+      : "";
+    return `hourly advisory during ${hours}${gate}${mutesSuffix(config)}`;
   }
 
   if (service === "lightning") {
@@ -94,7 +97,8 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       config.working_hours_start_hhmm || config.working_hours_end_hhmm
         ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
         : "all day";
-    return `every tick while a qualifying strike is in range — working hours ${hours}${mutesSuffix(config)}`;
+    const scope = config.amber_enabled === false ? "red-only" : "red + amber";
+    return `${scope} — every tick while a qualifying strike is in range, working hours ${hours}${mutesSuffix(config)}`;
   }
 
   return "Event-driven — fires when the CCTV bot posts.";
@@ -133,13 +137,22 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "haze":
       return [
         { label: String(config.nea_region ?? "no region"), on: on(config.nea_region) },
+        {
+          label: config.alert_only_when_at_least
+            ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
+            : "every hour",
+          on: on(config.alert_only_when_at_least),
+        },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
       ];
     case "lightning":
       return [
         { label: `red ${config.red_radius_m ?? "?"}m`, on: on(config.red_radius_m) },
-        { label: `amber ${config.amber_radius_m ?? "?"}m`, on: on(config.amber_radius_m) },
+        {
+          label: config.amber_enabled === false ? "amber off" : `amber ${config.amber_radius_m ?? "?"}m`,
+          on: config.amber_enabled !== false && on(config.amber_radius_m),
+        },
         { label: `v${config.config_version ?? 1}`, on: true },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },

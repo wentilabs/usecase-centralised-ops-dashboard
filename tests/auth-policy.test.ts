@@ -126,3 +126,18 @@ test("cadence detection sinks unscheduled projects", () => {
   assert.equal(hasCadence("noise", { enable_three_hour_summary: true }), true);
   assert.equal(hasCadence("haze", { enabled: true }), true);
 });
+
+test("haze fires-at reflects the PSI alert gate", () => {
+  assert.match(firesAt("haze", { working_hours_start_hhmm: "0800", working_hours_end_hhmm: "1900" }), /08:00–19:00/);
+  assert.match(
+    firesAt("haze", { alert_only_when_at_least: "unhealthy" }),
+    /only when PSI ≥ unhealthy/,
+  );
+  assert.doesNotMatch(firesAt("haze", {}), /only when PSI/);
+});
+
+test("lightning fires-at distinguishes red-only sites", () => {
+  assert.match(firesAt("lightning", { amber_enabled: false }), /^red-only/);
+  assert.match(firesAt("lightning", { amber_enabled: true }), /^red \+ amber/);
+  assert.match(firesAt("lightning", {}), /^red \+ amber/, "default is both");
+});

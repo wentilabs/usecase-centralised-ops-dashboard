@@ -242,6 +242,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   haze: {
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
+    alert_only_when_at_least: {
+      label: "Alert only when at least",
+      help: "Suppress the advisory unless the 24-hour PSI band reaches this level. Unset = send every hour.",
+    },
     timezone: { label: "Timezone" },
 
     site_address: { label: "Site address" },
@@ -282,12 +286,24 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "G = cloud-to-ground, C = intra-cloud.",
     },
 
-    amber_radius_m: { label: "🟠 Amber radius (m)", widget: "number", row: "amber" },
-    amber_dwell_seconds: { label: "🟠 Amber dwell (s)", widget: "number", row: "amber" },
+    amber_enabled: { label: "Amber alerts enabled", help: "Off = red-only site; amber thresholds are ignored." },
+    amber_radius_m: {
+      label: "🟠 Amber radius (m)",
+      widget: "number",
+      row: "amber",
+      showIf: { field: "amber_enabled", equals: true },
+    },
+    amber_dwell_seconds: {
+      label: "🟠 Amber dwell (s)",
+      widget: "number",
+      row: "amber",
+      showIf: { field: "amber_enabled", equals: true },
+    },
     amber_detection_types: {
       label: "🟠 Amber strike types",
       widget: "multi",
       help: "G = cloud-to-ground, C = intra-cloud.",
+      showIf: { field: "amber_enabled", equals: true },
     },
 
     ground_uncertainty_m: { label: "Ground strike uncertainty (m)", widget: "number", row: "uncert" },
@@ -410,7 +426,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   haze: [
-    { title: "Status", fields: ["enabled", "nea_region", "timezone"] },
+    { title: "Status", fields: ["enabled", "nea_region", "alert_only_when_at_least", "timezone"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },
@@ -420,7 +436,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
     { title: "Status", fields: ["enabled", "timezone", "config_version", "policy_note"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude", "site_extent_radius_m"] },
     { title: "🔴 Red threshold", fields: ["red_radius_m", "red_dwell_seconds", "red_detection_types"] },
-    { title: "🟠 Amber threshold", fields: ["amber_radius_m", "amber_dwell_seconds", "amber_detection_types"] },
+    {
+      title: "🟠 Amber threshold",
+      fields: ["amber_enabled", "amber_radius_m", "amber_dwell_seconds", "amber_detection_types"],
+    },
     { title: "Detection tuning", fields: ["ground_uncertainty_m", "cloud_uncertainty_m", "feed_stale_after_seconds", "max_consecutive_fetch_failures"] },
     {
       title: "Working hours & mutes",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import { useMemo, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { getSafeRedirect } from "@/lib/auth-policy";
@@ -8,66 +9,109 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Step = "email" | "code";
 
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const subscribeToHydration = () => () => undefined;
+
 export function AuthForm({ configured }: { configured: boolean }) {
   const router = useRouter();
-  const params = useSearchParams();
-  const redirectTo = getSafeRedirect(params.get("redirect"));
+  const searchParams = useSearchParams();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [message, setMessage] = useState<{ text: string; tone: "info" | "error" } | null>(() => {
-    const reason = params.get("reason");
-    if (reason === "session_expired") return { text: "Your session expired — sign in again.", tone: "error" };
-    if (reason === "unauthorized") return { text: "That address is not approved for this dashboard.", tone: "error" };
+  const [otpCode, setOtpCode] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string>();
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The Turnstile widget can only render in the browser, and the auth project
+  // exempts loopback origins from CAPTCHA — so decide after hydration.
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
+  const isLoopback = isHydrated
+    ? LOOPBACK_HOSTNAMES.has(window.location.hostname.toLowerCase())
+    : null;
+
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const needsCaptcha = Boolean(siteKey) && isLoopback !== true;
+  const captchaMisconfigured = isLoopback === false && !siteKey;
+
+  const redirectTo = useMemo(() => getSafeRedirect(searchParams.get("redirect")), [searchParams]);
+
+  const [message, setMessage] = useState<string | null>(() => {
+    const reason = searchParams.get("reason");
+    if (reason === "session_expired") return "Your session expired — sign in again.";
+    if (reason === "unauthorized") return "That address is not approved for this dashboard.";
     return null;
   });
-  const [busy, setBusy] = useState(false);
 
-  async function sendCode(event: React.FormEvent) {
+  const resetCaptcha = () => {
+    setCaptchaToken(undefined);
+    setTurnstileKey((current) => current + 1);
+  };
+
+  async function sendOtp(event: FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    if (captchaMisconfigured) return;
+    setIsSubmitting(true);
+    setError(null);
+
     try {
-      // shouldCreateUser: false — an unapproved address must not be able to
-      // create an auth user just by submitting this form.
-      const { error } = await getSupabaseBrowserClient().auth.signInWithOtp({
+      const supabase = getSupabaseBrowserClient();
+      const { error: sendError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { shouldCreateUser: false },
+        options: {
+          // An unapproved address must not be able to create an auth user.
+          shouldCreateUser: false,
+          ...(needsCaptcha && captchaToken ? { captchaToken } : {}),
+        },
       });
-      if (error) throw error;
+
+      // Turnstile tokens are single-use; clear it whatever the outcome.
+      resetCaptcha();
+      if (sendError) throw sendError;
+
       setStep("code");
-      setMessage({ text: "If that address is approved, a code is on its way.", tone: "info" });
-    } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "Could not send the code.", tone: "error" });
+      setMessage("If that address is approved, a code is on its way.");
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Could not send the code.");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
-  async function verifyCode(event: React.FormEvent) {
+  async function verifyOtp(event: FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
+    setError(null);
+
     try {
-      const { error } = await getSupabaseBrowserClient().auth.verifyOtp({
+      const supabase = getSupabaseBrowserClient();
+      const { error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim(),
-        token: code.trim(),
+        token: otpCode.trim(),
         type: "email",
       });
-      if (error) throw error;
+      if (verifyError) throw verifyError;
+
       router.replace(redirectTo);
       router.refresh();
-    } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "That code was not accepted.", tone: "error" });
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "That code was not accepted.");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
   if (!configured) {
     return (
       <p className="text-sm text-muted-foreground">
-        Authentication is not configured. Set <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_URL</code>{" "}
-        and <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY</code>.
+        Authentication is not configured. Set{" "}
+        <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_URL</code> and{" "}
+        <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY</code>.
       </p>
     );
   }
@@ -79,8 +123,16 @@ export function AuthForm({ configured }: { configured: boolean }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {captchaMisconfigured ? (
+        <p className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
+          This auth project requires CAPTCHA, but{" "}
+          <code className="rounded bg-muted px-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> is not set —
+          sign-in will be rejected until it is.
+        </p>
+      ) : null}
+
       {step === "email" ? (
-        <form className="flex flex-col gap-3" onSubmit={sendCode}>
+        <form className="flex flex-col gap-3" onSubmit={sendOtp}>
           <label className="text-xs text-muted-foreground" htmlFor="email">
             Work email
           </label>
@@ -94,12 +146,29 @@ export function AuthForm({ configured }: { configured: boolean }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <button className={buttonClass} type="submit" disabled={busy}>
-            {busy ? "Sending…" : "Email me a sign-in code"}
+
+          {siteKey && isLoopback === false ? (
+            <Turnstile
+              key={turnstileKey}
+              id="sign-in-otp"
+              siteKey={siteKey}
+              onSuccess={setCaptchaToken}
+              onExpire={() => setCaptchaToken(undefined)}
+              onError={() => setCaptchaToken(undefined)}
+              options={{ theme: "dark", size: "flexible" }}
+            />
+          ) : null}
+
+          <button
+            className={buttonClass}
+            type="submit"
+            disabled={isSubmitting || captchaMisconfigured || (needsCaptcha && !captchaToken)}
+          >
+            {isSubmitting ? "Sending…" : "Email me a sign-in code"}
           </button>
         </form>
       ) : (
-        <form className="flex flex-col gap-3" onSubmit={verifyCode}>
+        <form className="flex flex-col gap-3" onSubmit={verifyOtp}>
           <label className="text-xs text-muted-foreground" htmlFor="code">
             6-digit code sent to {email}
           </label>
@@ -111,20 +180,29 @@ export function AuthForm({ configured }: { configured: boolean }) {
             required
             className={inputClass}
             placeholder="123456"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
+            value={otpCode}
+            onChange={(e) => setOtpCode(e.target.value)}
           />
-          <button className={buttonClass} type="submit" disabled={busy}>
-            {busy ? "Verifying…" : "Sign in"}
+          <button className={buttonClass} type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Verifying…" : "Sign in"}
+          </button>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-primary"
+            onClick={() => {
+              setStep("email");
+              setOtpCode("");
+              setError(null);
+              resetCaptcha();
+            }}
+          >
+            ← Use a different email
           </button>
         </form>
       )}
 
-      {message ? (
-        <p className={message.tone === "error" ? "text-sm text-danger" : "text-sm text-muted-foreground"}>
-          {message.text}
-        </p>
-      ) : null}
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {!error && message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
     </div>
   );
 }

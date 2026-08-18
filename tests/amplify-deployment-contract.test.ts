@@ -35,6 +35,8 @@ test("deployment tracks the Next 16 version proven on the sibling Amplify apps",
   assert.match(packageJson.dependencies?.react ?? "", /^19\./);
   assert.match(packageJson.dependencies?.["react-dom"] ?? "", /^19\./);
   assert.match(packageJson.dependencies?.["@supabase/ssr"] ?? "", /^0\.12\./);
+  // The shared auth project enforces CAPTCHA on sign-in.
+  assert.match(packageJson.dependencies?.["@marsidev/react-turnstile"] ?? "", /^1\./);
 
   // Next 16 renames middleware to proxy; the working apps keep middleware.ts
   // and must not carry a root proxy.ts alongside it.
@@ -70,6 +72,7 @@ test("the privileged Supabase key is never exposed to the browser", async () => 
   // Auth keys are publishable by design and must carry the prefix.
   assert.match(example, /NEXT_PUBLIC_AUTH_SUPABASE_URL/);
   assert.match(example, /NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY/);
+  assert.match(example, /NEXT_PUBLIC_TURNSTILE_SITE_KEY/, "CAPTCHA site key is required in deployments");
 
   const repository = await source("lib/config-repository.ts");
   assert.match(repository, /^import "server-only";/m, "config reads/writes stay server-side");

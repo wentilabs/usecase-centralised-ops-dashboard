@@ -39,6 +39,7 @@ dependency bump could silently break — run `npm test` before every deploy.
    | `SUPABASE_SECRET_KEY` | **server-only** — never prefix with `NEXT_PUBLIC_` |
    | `NEXT_PUBLIC_AUTH_SUPABASE_URL` | dedicated Supabase Auth project |
    | `NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY` | publishable by design |
+   | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | **required** — the shared auth project enforces CAPTCHA, so sign-in fails with `captcha protection: request disallowed` without it. Copy from the sibling app; loopback origins are exempt, which is why local dev needs no key |
    | `WHITELIST_DOMAINS` and/or `WHITELIST_EMAILS` | **required** — with neither set, nobody can sign in (fails closed) |
    | `EDITOR_EMAILS` | optional; set it to make everyone else read-only |
 

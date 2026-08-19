@@ -29,6 +29,7 @@ export function ProjectCard({
   rowId,
   canEdit,
   onEdit,
+  groupNames = {},
 }: {
   service: ServiceKey;
   label: string;
@@ -36,6 +37,8 @@ export function ProjectCard({
   rowId: string;
   canEdit: boolean;
   onEdit: () => void;
+  /** chat id → group name; ids absent from the map render as the raw id. */
+  groupNames?: Record<string, string>;
 }) {
   const enabled = config.enabled !== false;
   const scheduled = hasCadence(service, config);
@@ -90,7 +93,15 @@ export function ProjectCard({
         <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Delivery</div>
         <div className="flex flex-wrap gap-1">
           {groups.length ? (
-            groups.map((group) => <Chip key={group} label="💬" value={group} title="WhatsApp group" />)
+            groups.map((group) => (
+              <Chip
+                key={group}
+                label="💬"
+                value={groupNames[group] ?? group}
+                // Keep the id reachable — it is what Supabase actually stores.
+                title={groupNames[group] ? `${groupNames[group]} · ${group}` : group}
+              />
+            ))
           ) : (
             <Chip label="" value="no group configured" />
           )}

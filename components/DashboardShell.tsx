@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
@@ -38,6 +38,29 @@ export function DashboardShell({
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
   );
   const [editing, setEditing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
+
+  // Group names come from the listener project's message log, which is large
+  // and shared with live traffic — so they load after the cards render and are
+  // cached server-side rather than fetched on every request.
+  const [groupNames, setGroupNames] = useState<Record<string, string>>({});
+  const [namesState, setNamesState] = useState<"idle" | "loading" | "ready" | "off">("idle");
+
+  const loadGroupNames = useCallback(async (refresh = false) => {
+    setNamesState("loading");
+    try {
+      const res = await fetch(`/api/group-names${refresh ? "?refresh=1" : ""}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json()) as { configured: boolean; map: Record<string, string> };
+      setGroupNames(body.map ?? {});
+      setNamesState(body.configured ? "ready" : "off");
+    } catch {
+      setNamesState("idle");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGroupNames(false);
+  }, [loadGroupNames]);
 
   const active = services.find((service) => service.key === tab) ?? services[0];
 
@@ -91,6 +114,18 @@ export function DashboardShell({
             {services.map((service) => `${(rows[service.key] ?? []).length} ${service.label}`).join(" · ")} · fetched{" "}
             {formatSgt(fetchedAt)} SGT
           </span>
+          {namesState !== "off" ? (
+            <button
+              type="button"
+              onClick={() => void loadGroupNames(true)}
+              disabled={namesState === "loading"}
+              title="Re-read group names from the WhatsApp listener log"
+              className="rounded-lg border border-border bg-card px-2 py-1 text-xs hover:border-primary disabled:opacity-50"
+            >
+              {namesState === "loading" ? "Naming…" : "⟳ Names"}
+            </button>
+          ) : null}
+
           {session.isLocalBypass && !session.email ? (
             <span className="rounded-full bg-muted px-2 py-0.5" title="Local development bypass">
               local
@@ -126,6 +161,7 @@ export function DashboardShell({
               rowId={rowId}
               canEdit={session.canEdit && Boolean(active.spec)}
               onEdit={() => setEditing({ service: active, row })}
+              groupNames={groupNames}
             />
           );
         })}

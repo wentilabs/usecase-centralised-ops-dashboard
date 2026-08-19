@@ -120,6 +120,38 @@ drop policy if exists config_audit_read on ops.config_audit;
 create policy config_audit_read on ops.config_audit
   for select to anon, authenticated using (true);
 
+-- =============================================================================
+-- ops.whatsapp_group_names — chat id → human group name.
+--
+-- The names live in the listener project's whatsapp_listener table (~1.9M rows,
+-- shared with live WhatsApp traffic), where "latest row per group" is an
+-- expensive query. The dashboard resolves them on demand and stores the result
+-- here, so every user reads one small shared table instead of each serverless
+-- instance re-querying the message log.
+-- =============================================================================
+
+create table if not exists ops.whatsapp_group_names (
+  chat_id text primary key,
+  chat_name text,
+  refreshed_at timestamptz not null default now()
+);
+
+create index if not exists whatsapp_group_names_refreshed_idx
+  on ops.whatsapp_group_names (refreshed_at desc);
+
+grant select, insert, update on ops.whatsapp_group_names to service_role;
+grant select on ops.whatsapp_group_names to anon, authenticated;
+
+alter table ops.whatsapp_group_names enable row level security;
+
+drop policy if exists whatsapp_group_names_read on ops.whatsapp_group_names;
+create policy whatsapp_group_names_read on ops.whatsapp_group_names
+  for select to anon, authenticated using (true);
+
+-- Inspect:
+--   select chat_id, chat_name, refreshed_at from ops.whatsapp_group_names
+--   order by refreshed_at desc;
+
 -- Expose the schema to PostgREST (Supabase → Settings → API → Exposed schemas),
 -- or run:
 --   alter role authenticator set pgrst.db_schemas = 'public,graphql_public,wbgts,noise-meters,haze,lightning,ailytics,ops';

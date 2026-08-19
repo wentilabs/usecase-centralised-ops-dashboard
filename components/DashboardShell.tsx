@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
@@ -23,14 +23,25 @@ export type SessionInfo = {
   isLocalBypass: boolean;
 };
 
+export type GroupNamesMeta = {
+  configured: boolean;
+  storeReady: boolean;
+  refreshedAt: string | null;
+  setupHint: string | null;
+};
+
 export function DashboardShell({
   services,
   fetchedAt,
   session,
+  initialGroupNames,
+  groupNamesMeta,
 }: {
   services: ServiceData[];
   fetchedAt: string;
   session: SessionInfo;
+  initialGroupNames: Record<string, string>;
+  groupNamesMeta: GroupNamesMeta;
 }) {
   const [tab, setTab] = useState<ServiceKey>(services[0]?.key ?? "wbgt");
   const [query, setQuery] = useState("");
@@ -39,28 +50,35 @@ export function DashboardShell({
   );
   const [editing, setEditing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
 
-  // Group names come from the listener project's message log, which is large
-  // and shared with live traffic — so they load after the cards render and are
-  // cached server-side rather than fetched on every request.
-  const [groupNames, setGroupNames] = useState<Record<string, string>>({});
-  const [namesState, setNamesState] = useState<"idle" | "loading" | "ready" | "off">("idle");
+  // Names arrive with the page from ops.whatsapp_group_names; refreshing
+  // re-reads the listener log and updates that shared table for everyone.
+  const [groupNames, setGroupNames] = useState(initialGroupNames);
+  const [namesMeta, setNamesMeta] = useState(groupNamesMeta);
+  const [refreshingNames, setRefreshingNames] = useState(false);
 
-  const loadGroupNames = useCallback(async (refresh = false) => {
-    setNamesState("loading");
+  const refreshGroupNames = useCallback(async () => {
+    setRefreshingNames(true);
     try {
-      const res = await fetch(`/api/group-names${refresh ? "?refresh=1" : ""}`);
-      if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json()) as { configured: boolean; map: Record<string, string> };
+      const res = await fetch("/api/group-names?refresh=1");
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        map: Record<string, string>;
+        configured: boolean;
+        storeReady: boolean;
+        refreshedAt: string | null;
+        setupHint?: string;
+      };
       setGroupNames(body.map ?? {});
-      setNamesState(body.configured ? "ready" : "off");
-    } catch {
-      setNamesState("idle");
+      setNamesMeta({
+        configured: body.configured,
+        storeReady: body.storeReady,
+        refreshedAt: body.refreshedAt,
+        setupHint: body.setupHint ?? null,
+      });
+    } finally {
+      setRefreshingNames(false);
     }
   }, []);
-
-  useEffect(() => {
-    void loadGroupNames(false);
-  }, [loadGroupNames]);
 
   const active = services.find((service) => service.key === tab) ?? services[0];
 
@@ -114,15 +132,20 @@ export function DashboardShell({
             {services.map((service) => `${(rows[service.key] ?? []).length} ${service.label}`).join(" · ")} · fetched{" "}
             {formatSgt(fetchedAt)} SGT
           </span>
-          {namesState !== "off" ? (
+          {namesMeta.configured ? (
             <button
               type="button"
-              onClick={() => void loadGroupNames(true)}
-              disabled={namesState === "loading"}
-              title="Re-read group names from the WhatsApp listener log"
+              onClick={() => void refreshGroupNames()}
+              disabled={refreshingNames}
+              title={
+                namesMeta.setupHint ??
+                (namesMeta.refreshedAt
+                  ? `Group names last refreshed ${formatSgt(namesMeta.refreshedAt)} SGT — re-read from the WhatsApp listener log`
+                  : "Read group names from the WhatsApp listener log")
+              }
               className="rounded-lg border border-border bg-card px-2 py-1 text-xs hover:border-primary disabled:opacity-50"
             >
-              {namesState === "loading" ? "Naming…" : "⟳ Names"}
+              {refreshingNames ? "Naming…" : namesMeta.storeReady ? "⟳ Names" : "⚠ Names"}
             </button>
           ) : null}
 

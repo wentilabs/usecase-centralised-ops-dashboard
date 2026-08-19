@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
@@ -56,6 +57,25 @@ export function DashboardShell({
   const [namesMeta, setNamesMeta] = useState(groupNamesMeta);
   const [refreshingNames, setRefreshingNames] = useState(false);
 
+  const router = useRouter();
+  const [reloading, startReload] = useTransition();
+  const [reloadingData, setReloadingData] = useState(false);
+
+  /**
+   * Re-read the config rows and drop the cached schema introspection, so a
+   * column added to Supabase since this page loaded shows up. Cheap: no
+   * listener queries.
+   */
+  const refreshData = useCallback(async () => {
+    setReloadingData(true);
+    try {
+      await fetch("/api/schema/reload", { method: "POST" }).catch(() => {});
+      startReload(() => router.refresh());
+    } finally {
+      setReloadingData(false);
+    }
+  }, [router]);
+
   const refreshGroupNames = useCallback(async () => {
     setRefreshingNames(true);
     try {
@@ -75,10 +95,11 @@ export function DashboardShell({
         refreshedAt: body.refreshedAt,
         setupHint: body.setupHint ?? null,
       });
+      startReload(() => router.refresh());
     } finally {
       setRefreshingNames(false);
     }
-  }, []);
+  }, [router]);
 
   const active = services.find((service) => service.key === tab) ?? services[0];
 
@@ -132,22 +153,38 @@ export function DashboardShell({
             {services.map((service) => `${(rows[service.key] ?? []).length} ${service.label}`).join(" · ")} · fetched{" "}
             {formatSgt(fetchedAt)} SGT
           </span>
-          {namesMeta.configured ? (
+          <span className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => void refreshGroupNames()}
-              disabled={refreshingNames}
-              title={
-                namesMeta.setupHint ??
-                (namesMeta.refreshedAt
-                  ? `Group names last refreshed ${formatSgt(namesMeta.refreshedAt)} SGT — re-read from the WhatsApp listener log`
-                  : "Read group names from the WhatsApp listener log")
-              }
+              onClick={() => void refreshData()}
+              disabled={reloadingData || reloading}
+              title="Re-read project configs from Supabase and pick up any newly added columns"
               className="rounded-lg border border-border bg-card px-2 py-1 text-xs hover:border-primary disabled:opacity-50"
             >
-              {refreshingNames ? "Naming…" : namesMeta.storeReady ? "⟳ Names" : "⚠ Names"}
+              {reloadingData || reloading ? "Refreshing…" : "⟳ Refresh"}
             </button>
-          ) : null}
+
+            {namesMeta.configured ? (
+              <button
+                type="button"
+                onClick={() => void refreshGroupNames()}
+                disabled={refreshingNames}
+                title={
+                  namesMeta.setupHint ??
+                  (namesMeta.refreshedAt
+                    ? `Chat aliases last refreshed ${formatSgt(namesMeta.refreshedAt)} SGT. Re-reads every group's current name from the WhatsApp listener log — takes a few seconds.`
+                    : "Read each group's name from the WhatsApp listener log — takes a few seconds.")
+                }
+                className="rounded-lg border border-border bg-card px-2 py-1 text-xs hover:border-primary disabled:opacity-50"
+              >
+                {refreshingNames
+                  ? "Aliasing…"
+                  : namesMeta.storeReady
+                    ? "⟳ Chat aliases"
+                    : "⚠ Chat aliases"}
+              </button>
+            ) : null}
+          </span>
 
           {session.isLocalBypass && !session.email ? (
             <span className="rounded-full bg-muted px-2 py-0.5" title="Local development bypass">

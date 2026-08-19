@@ -53,6 +53,26 @@ test("amplify.yml builds the Next app and publishes .next", async () => {
   assert.match(amplify, /node_modules/, "node_modules is cached between builds");
 });
 
+test("amplify.yml carries every runtime variable into .env.production", async () => {
+  const amplify = await source("amplify.yml");
+
+  // Amplify does not reliably hand console variables to the Next server, so a
+  // variable missing from this grep is a variable the deployed app cannot read.
+  for (const key of [
+    "SUPABASE_URL",
+    "SUPABASE_SECRET_KEY",
+    "LISTENER_SUPABASE_URL",
+    "LISTENER_SUPABASE_ANON_KEY",
+    "WHITELIST_EMAILS",
+    "WHITELIST_DOMAINS",
+    "EDITOR_EMAILS",
+    "NEXT_PUBLIC_",
+  ]) {
+    assert.ok(amplify.includes(key), `amplify.yml must capture ${key}`);
+  }
+  assert.match(amplify, /\.env\.production/);
+});
+
 test("the lockfile is committed so npm ci can run", async () => {
   assert.equal(await fileExists("package-lock.json"), true);
 });

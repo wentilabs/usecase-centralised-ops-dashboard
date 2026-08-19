@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cachedFieldSpecCount } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,10 @@ export async function GET() {
       // Whether group chips link out to Viso. The value itself is not a secret,
       // so report it — a wrong host is as diagnosable as a missing one.
       visoUrl: process.env.VISO_URL?.replace(/\/+$/, "") || null,
+      // Non-zero after the dashboard has rendered once, which proves this route
+      // and the page share one schema cache — i.e. that ⟳ Refresh really does
+      // make a new Supabase column appear without a redeploy.
+      cachedSpecs: cachedFieldSpecCount(),
       // Which build is actually serving — Amplify sets these during the build.
       build: {
         branch: process.env.AWS_BRANCH ?? null,

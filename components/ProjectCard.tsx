@@ -1,6 +1,6 @@
 "use client";
 
-import { autoLinks, firesAt, formatSgt, hasCadence, pillsFor, splitList } from "@/lib/card-summary";
+import { autoLinks, deliveryGroups, firesAt, formatSgt, hasCadence, pillsFor } from "@/lib/card-summary";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 const TAG_TONE: Record<ServiceKey, string> = {
@@ -9,6 +9,16 @@ const TAG_TONE: Record<ServiceKey, string> = {
   haze: "bg-orange-400/15 text-orange-300",
   lightning: "bg-violet-400/15 text-violet-300",
   ailytics: "bg-cyan-400/15 text-cyan-300",
+  subcon: "bg-emerald-400/15 text-emerald-300",
+};
+
+/**
+ * `enabled` is a master switch everywhere except subcon, where it gates only
+ * outbound WhatsApp — the intake, classification and Sheet writes continue. The
+ * card must not call that "DISABLED".
+ */
+const STATUS_WORDING: Partial<Record<ServiceKey, { on: string; off: string }>> = {
+  subcon: { on: "● OUTBOUND ON", off: "○ INTAKE ONLY" },
 };
 
 /**
@@ -79,8 +89,9 @@ export function ProjectCard({
 }) {
   const enabled = config.enabled !== false;
   const scheduled = hasCadence(service, config);
-  const groups = splitList(config.whatsapp_group_id ?? config.wa_group_ids ?? config.whatsapp_group_ids);
-  const links = autoLinks(config);
+  const groups = deliveryGroups(service, config);
+  const links = autoLinks(service, config);
+  const wording = STATUS_WORDING[service] ?? { on: "● ENABLED", off: "○ DISABLED" };
 
   // Mobile keeps only the switches that are actually on, capped. Chosen by
   // index so services with repeated labels can't collide.
@@ -114,7 +125,7 @@ export function ProjectCard({
         {String(config.project_code ?? rowId)}
         <span className={`ml-auto text-[11px] font-semibold ${enabled ? "text-on" : "text-muted-foreground"}`}>
           <span className="md:hidden">{enabled ? "●" : "○"}</span>
-          <span className="hidden md:inline">{enabled ? "● ENABLED" : "○ DISABLED"}</span>
+          <span className="hidden md:inline">{enabled ? wording.on : wording.off}</span>
         </span>
         {canEdit ? (
           <button
@@ -166,7 +177,7 @@ export function ProjectCard({
       {/* Delivery: one truncated line on mobile, the full chip list on desktop. */}
       <p className="truncate text-xs text-muted-foreground md:hidden">
         {groups.length
-          ? `💬 ${groupNames[groups[0]] ?? groups[0]}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
+          ? `💬 ${groupNames[groups[0].chatId] ?? groups[0].chatId}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
           : "💬 no group configured"}
       </p>
 
@@ -174,17 +185,18 @@ export function ProjectCard({
         <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Delivery</div>
         <div className="flex flex-wrap gap-1">
           {groups.length ? (
-            groups.map((group) => (
+            groups.map(({ chatId, role }) => (
               <Chip
-                key={group}
+                key={chatId}
                 label="💬"
-                value={groupNames[group] ?? group}
+                value={groupNames[chatId] ?? chatId}
                 // Keep the id reachable — it is what Supabase actually stores.
                 title={
-                  (groupNames[group] ? `${groupNames[group]} · ${group}` : group) +
-                  (visoUrl ? " · open the mirrored thread in Viso" : "")
+                  [role, groupNames[chatId] ? `${groupNames[chatId]} · ${chatId}` : chatId]
+                    .filter(Boolean)
+                    .join(" — ") + (visoUrl ? " · open the mirrored thread in Viso" : "")
                 }
-                href={visoUrl ? `${visoUrl}/go/${encodeURIComponent(group)}` : undefined}
+                href={visoUrl ? `${visoUrl}/go/${encodeURIComponent(chatId)}` : undefined}
               />
             ))
           ) : (

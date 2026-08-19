@@ -4,7 +4,7 @@ import { buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
- * Typed data access for the five config tables, plus the shared audit trail.
+ * Typed data access for the six config tables, plus the shared audit trail.
  * Server-only: it holds the Supabase secret key, which never reaches a browser.
  */
 
@@ -86,11 +86,33 @@ export async function updateConfig(
  * PostgREST publishes an OpenAPI doc describing every column: type, default and
  * pg-enum values. Cached per process; POST /api/schema/reload clears it so a
  * column added to Supabase shows up without a redeploy.
+ *
+ * The cache hangs off globalThis rather than the module scope on purpose. Next
+ * bundles route handlers separately from server components, so a module-scoped
+ * Map gives the /api/schema/reload handler a DIFFERENT instance from the one
+ * app/page.tsx reads — clearing it would appear to work (the API returns fresh
+ * columns) while the dashboard kept serving the stale spec until a restart.
+ * That is exactly what happened when haze and lightning gained their POC
+ * columns.
  */
-const specCache = new Map<ServiceKey, ServiceFieldSpec>();
+const globalSpecCache = globalThis as typeof globalThis & {
+  __haloSpecCache?: Map<ServiceKey, ServiceFieldSpec>;
+};
+const specCache: Map<ServiceKey, ServiceFieldSpec> = (globalSpecCache.__haloSpecCache ??= new Map());
 
 export function clearFieldSpecCache() {
   specCache.clear();
+}
+
+/**
+ * How many service specs are currently cached, reported by /api/session.
+ *
+ * This is the diagnostic that distinguishes "the reload button worked" from
+ * "the reload button cleared a different copy of the cache": render the
+ * dashboard, and this must be non-zero when read from an API route.
+ */
+export function cachedFieldSpecCount() {
+  return specCache.size;
 }
 
 export async function getFieldSpec(service: ServiceKey): Promise<ServiceFieldSpec> {

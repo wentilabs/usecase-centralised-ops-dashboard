@@ -1,6 +1,6 @@
 -- =============================================================================
 -- ops.config_audit — one shared history of every project-config change across
--- all five centralised services.
+-- all six centralised services.
 --
 -- Design: the TRIGGER is the only writer of audit rows, so a change made
 -- directly in the Supabase table editor is captured just as faithfully as one
@@ -106,6 +106,11 @@ drop trigger if exists config_audit_trg on "ailytics".project_configs;
 create trigger config_audit_trg after update on "ailytics".project_configs
   for each row execute function ops.record_config_change('id');
 
+-- Subcon Activities (schema still named after the repo's original scope).
+drop trigger if exists config_audit_trg on "manpower_activity".project_configs;
+create trigger config_audit_trg after update on "manpower_activity".project_configs
+  for each row execute function ops.record_config_change('id');
+
 -- -----------------------------------------------------------------------------
 -- Access. The dashboard reads the history and annotates its own rows; nobody
 -- may insert or delete through the API (the trigger owns inserts).
@@ -154,7 +159,7 @@ create policy whatsapp_group_names_read on ops.whatsapp_group_names
 
 -- Expose the schema to PostgREST (Supabase → Settings → API → Exposed schemas),
 -- or run:
---   alter role authenticator set pgrst.db_schemas = 'public,graphql_public,wbgts,noise-meters,haze,lightning,ailytics,ops';
+--   alter role authenticator set pgrst.db_schemas = 'public,graphql_public,wbgts,noise-meters,haze,lightning,ailytics,manpower_activity,ops';
 --   notify pgrst, 'reload config';
 
 -- Sanity check:

@@ -10,8 +10,9 @@ import {
 } from "../lib/auth-policy";
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
-import type { FieldSpec } from "../lib/field-spec";
-import { firesAt, hasCadence } from "../lib/card-summary";
+import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { SERVICE_KEYS, SERVICES } from "../lib/services";
+import { autoLinks, deliveryGroups, firesAt, hasCadence, pillsFor } from "../lib/card-summary";
 
 const field = (over: Partial<FieldSpec>): FieldSpec => ({
   name: "f",
@@ -140,4 +141,147 @@ test("lightning fires-at distinguishes red-only sites", () => {
   assert.match(firesAt("lightning", { amber_enabled: false }), /^red-only/);
   assert.match(firesAt("lightning", { amber_enabled: true }), /^red \+ amber/);
   assert.match(firesAt("lightning", {}), /^red \+ amber/, "default is both");
+});
+
+// ---------------------------------------------------------------------------
+// Subcon Activities — the one service whose `enabled` flag is not a master
+// switch, and the first with several group columns that mean different things.
+// ---------------------------------------------------------------------------
+test("subcon fires-at names the jobs its toggles enable", () => {
+  const all = { enable_manpower: true, enable_housekeeping: true, enable_water_parade: true };
+  const line = firesAt("subcon", all);
+  assert.match(line, /morning activity \+ manpower summary/);
+  assert.match(line, /end-of-day housekeeping report/);
+  assert.match(line, /next two :00\/:30/);
+
+  // enable_manpower and enable_housekeeping default true in Postgres, so an
+  // empty row is NOT idle — only an explicit false turns them off.
+  assert.match(firesAt("subcon", {}), /morning activity/);
+  assert.equal(
+    firesAt("subcon", { enable_manpower: false, enable_housekeeping: false, enable_water_parade: false }),
+    "No usecases enabled",
+  );
+});
+
+test("subcon says outbound is muted rather than implying nothing runs", () => {
+  const muted = firesAt("subcon", { enabled: false, enable_manpower: true });
+  assert.match(muted, /outbound muted, still classifying and writing sheets/);
+  assert.doesNotMatch(firesAt("subcon", { enabled: true, enable_manpower: true }), /muted/);
+
+  // Cadence drives the grey scrim and the sort; a muted project is still busy.
+  assert.equal(hasCadence("subcon", { enabled: false, enable_water_parade: true }), true);
+  assert.equal(
+    hasCadence("subcon", { enable_manpower: false, enable_housekeeping: false, enable_water_parade: false }),
+    false,
+  );
+});
+
+test("delivery groups keep each service's columns and label subcon's roles", () => {
+  assert.deepEqual(deliveryGroups("wbgt", { whatsapp_group_id: "a@g.us, b@g.us" }), [
+    { chatId: "a@g.us", role: undefined },
+    { chatId: "b@g.us", role: undefined },
+  ]);
+  assert.deepEqual(deliveryGroups("haze", { wa_group_ids: "h@g.us" }), [{ chatId: "h@g.us", role: undefined }]);
+  assert.deepEqual(deliveryGroups("ailytics", { whatsapp_group_ids: "x@g.us" }), [
+    { chatId: "x@g.us", role: undefined },
+  ]);
+
+  // One chat serving two roles must collapse to a single entry — repeating it
+  // would also duplicate the React key on the card.
+  assert.deepEqual(
+    deliveryGroups("subcon", {
+      manpower_activity_outbound_group_id: "same@g.us",
+      housekeeping_outbound_group_id: "same@g.us",
+      source_group_ids: "in@g.us",
+    }),
+    [
+      { chatId: "same@g.us", role: "manpower + housekeeping" },
+      { chatId: "in@g.us", role: "inbound" },
+    ],
+  );
+  assert.deepEqual(deliveryGroups("subcon", {}), []);
+});
+
+test("the same spreadsheet_id column is labelled per service", () => {
+  const subcon = autoLinks("subcon", { spreadsheet_id: "S1", wbgt_google_sheet_id: "W1" });
+  assert.deepEqual(
+    subcon.map((l) => l.label),
+    ["📗 Manpower sheet", "📗 WBGT sheet (Water Parade)"],
+  );
+  assert.match(subcon[0].href, /spreadsheets\/d\/S1\/edit$/);
+
+  assert.deepEqual(
+    autoLinks("ailytics", { spreadsheet_id: "S1" }).map((l) => l.label),
+    ["📗 Safety sheet"],
+  );
+  // Unchanged for the alert services.
+  assert.deepEqual(
+    autoLinks("wbgt", { monthly_sheet_id: "M1", latitude: 1.3, longitude: 103.8 }).map((l) => l.label),
+    ["📗 Monthly sheet", "📍 Map"],
+  );
+});
+
+test("the POC switches haze and lightning gained are surfaced as pills", () => {
+  const hazePills = pillsFor("haze", { enable_poc_mentions: true, advisory_format: "wohhup" });
+  assert.ok(hazePills.some((p) => p.label === "POC mentions" && p.on));
+  assert.ok(hazePills.some((p) => p.label === "wohhup format" && p.on));
+  // `default` is a real value, not an absence — shown, but not lit up.
+  assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
+
+  const ltg = pillsFor("lightning", { enable_red_band_poc_mentions: true });
+  assert.ok(ltg.some((p) => p.label === "🔴 POC mentions" && p.on));
+
+  const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
+  assert.ok(subconPills.some((p) => p.label === "outbound WhatsApp" && !p.on));
+  assert.ok(subconPills.some((p) => p.label === "Water Parade" && p.on));
+  assert.ok(subconPills.some((p) => p.label === "manpower & activity" && p.on), "defaults to on");
+});
+
+// ---------------------------------------------------------------------------
+// Registry: adding a service means touching several maps. A half-wired one
+// still renders, so these assertions are the only thing that notices.
+// ---------------------------------------------------------------------------
+test("every registered service is fully wired", () => {
+  const identity = { type: "string" as const, format: "text", enum: null, default: null };
+  const columns = {
+    project_code: identity,
+    created_at: { ...identity, type: "string" as const },
+    updated_at: { ...identity, type: "string" as const },
+    enabled: { type: "boolean" as const, format: "boolean", enum: null, default: null },
+  };
+
+  for (const key of SERVICE_KEYS) {
+    const spec = buildFieldSpec(key, { ...columns, ...(SERVICES[key].idColumn === "id" ? { id: identity } : {}) });
+
+    // A missing READONLY entry would silently make the business key writable.
+    for (const locked of ["project_code", "created_at", "updated_at"]) {
+      assert.equal(spec.fields[locked]?.readonly, true, `${key}.${locked} must be read-only`);
+    }
+    assert.equal(spec.fields[SERVICES[key].idColumn]?.readonly, true, `${key} identity must be read-only`);
+
+    // Audit stamps and the identity never belong in the editor.
+    assert.equal(spec.fields.created_at?.hidden, true, `${key}.created_at must be hidden`);
+    assert.equal(spec.fields.updated_at?.hidden, true, `${key}.updated_at must be hidden`);
+
+    // `enabled` is meaningful for every service, so it must be labelled and
+    // placed — never swept into "Other".
+    assert.notEqual(spec.fields.enabled?.label, "enabled", `${key}.enabled needs a label`);
+    const titles = spec.groups.map((g) => g.title);
+    assert.ok(titles.length > 0, `${key} has no groups`);
+    assert.ok(!titles.includes("Other"), `${key} put a known column in Other: ${JSON.stringify(spec.groups)}`);
+  }
+});
+
+test("every service resolves its WhatsApp group column", () => {
+  // A service missing from GROUP_COLUMNS would silently show "no group
+  // configured" on every card.
+  const row = {
+    whatsapp_group_id: "a@g.us",
+    wa_group_ids: "a@g.us",
+    whatsapp_group_ids: "a@g.us",
+    manpower_activity_outbound_group_id: "a@g.us",
+  };
+  for (const key of SERVICE_KEYS) {
+    assert.ok(deliveryGroups(key, row).length > 0, `${key} resolves no delivery group`);
+  }
 });

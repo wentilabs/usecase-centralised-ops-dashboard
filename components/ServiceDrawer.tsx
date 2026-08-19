@@ -14,7 +14,7 @@ export type DrawerService = {
 /**
  * Mobile-only navigation drawer.
  *
- * The desktop header lays five service tabs, the counts, the fetch time, two
+ * The desktop header lays six service tabs, the counts, the fetch time, two
  * refresh buttons and the operator's identity across one row. None of that fits
  * a phone, so on mobile it all moves in here and the top bar keeps only what an
  * operator needs constantly: which service they are in, and the search box.

@@ -60,6 +60,9 @@ const READONLY: Record<string, string[]> = {
   // ailytics identity is a uuid; project_code is a human label but still the
   // row's business key, so it stays read-only here too.
   ailytics: ["id", "project_code", "created_at", "updated_at"],
+  // Same shape as ailytics: uuid identity, project_code is how the intake
+  // resolves a forwarded message to this row.
+  subcon: ["id", "project_code", "created_at", "updated_at"],
 };
 
 // Allowed values for CHECK-constrained (non-enum) columns. Keep in sync with
@@ -76,6 +79,9 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
   },
   haze: {
     nea_region: ["north", "south", "east", "west", "central"],
+    // Same five PSI bands as alert_only_when_at_least, but this one is a CHECK
+    // rather than a pg enum, so introspection cannot see the values.
+    poc_mentions_at_least: ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
   },
   lightning: {
     // text[] columns constrained to <@ array['G','C']
@@ -83,6 +89,7 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
     amber_detection_types: ["G", "C"],
   },
   ailytics: {},
+  subcon: {},
 };
 
 // Field-level hints:
@@ -261,6 +268,32 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
+    advisory_format: {
+      label: "Advisory format",
+      help: "Message template. `wohhup` is the Woh Hup house wording; `default` is the generic advisory.",
+    },
+
+    enable_poc_mentions: {
+      label: "POC mentions",
+      help: "Tag the people below in the advisory once the PSI band is high enough.",
+    },
+    poc_mentions_at_least: {
+      label: "Mention from band",
+      help: "Lowest PSI band that triggers a mention. Unset = mention on every advisory that is sent.",
+      showIf: { field: "enable_poc_mentions", equals: true },
+    },
+    poc_phone_numbers: {
+      label: "POC phone numbers",
+      widget: "csv",
+      help: "Comma-separated international numbers, e.g. 6591234567. These are mentioned, not messaged directly.",
+      showIf: { field: "enable_poc_mentions", equals: true },
+    },
+    poc_alert_wa_groups: {
+      label: "POC mention groups",
+      widget: "csv",
+      help: "Which of the groups above may carry mentions. Comma-separated.",
+      showIf: { field: "enable_poc_mentions", equals: true },
+    },
 
     project_code: { hidden: true },
     created_at: { hidden: true },
@@ -322,6 +355,25 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
 
+    enable_red_band_poc_mentions: {
+      label: "🔴 Red POC mentions",
+      // Postgres rejects the save outright if either list is blank, so say so
+      // rather than letting the editor surface a raw constraint error.
+      help: "RED alerts only. Postgres requires BOTH lists below to be non-empty before this can be turned on — fill them in the same save.",
+    },
+    poc_phone_numbers: {
+      label: "POC phone numbers",
+      widget: "csv",
+      help: "Comma-separated international numbers, e.g. 6591234567. Required when red mentions are on.",
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
+    },
+    poc_alert_wa_groups: {
+      label: "POC mention groups",
+      widget: "csv",
+      help: "Which of the groups above may carry RED mentions. Required when red mentions are on.",
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
+    },
+
     project_code: { hidden: true },
     created_at: { hidden: true },
     updated_at: { hidden: true },
@@ -345,6 +397,74 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     lambda_url: { label: "Send-message proxy URL" },
     reply_lambda_url: { label: "Reply proxy URL" },
     lambda_url_image: { label: "Image proxy URL" },
+
+    id: { hidden: true },
+    project_code: { hidden: true },
+    created_at: { hidden: true },
+    updated_at: { hidden: true },
+  },
+
+  subcon: {
+    // `enabled` means something narrower here than in the alert services: the
+    // intake, classification, Supabase writes and Sheet writes all still run
+    // when it is off. Only outbound WhatsApp is withheld.
+    enabled: {
+      label: "Outbound WhatsApp enabled",
+      help: "Notification entitlement ONLY. Off still classifies inbound messages and writes Supabase and the Google Sheets — it just sends nothing.",
+    },
+    timezone: { label: "Timezone" },
+
+    enable_manpower: {
+      label: "Manpower & activity",
+      help: "Classify manpower, attendance and daily-activity messages into the Manpower / Machines / Daily Activity tabs.",
+    },
+    enable_housekeeping: {
+      label: "Housekeeping",
+      help: "Match housekeeping completion messages and send the end-of-day report.",
+    },
+    enable_water_parade: {
+      label: "Water Parade",
+      help: "Open a Water Parade cycle on each non-green hourly WBGT reading and chase it with two half-hourly reminders.",
+    },
+
+    source_client_identifier: {
+      label: "Inbound listener identifier",
+      help: "The listener/bot identity on forwarded messages, e.g. 6587842038. Distinct from the outbound Client ID below.",
+    },
+    source_group_ids: {
+      label: "Inbound source groups",
+      widget: "csv",
+      help: "Comma-separated groups whose messages this project accepts. Left blank, the listener identifier alone resolves the project.",
+    },
+
+    spreadsheet_id: {
+      label: "Manpower spreadsheet ID",
+      widget: "sheet",
+      help: "Holds the Manpower, Machines and Daily Activity tabs. A spreadsheet id forwarded by the project Lambda overrides this fallback.",
+    },
+    wbgt_google_sheet_id: {
+      label: "WBGT spreadsheet ID",
+      widget: "sheet",
+      help: "Where the Water Parade tab lives — that record belongs with the WBGT-triggered sheet, not the manpower one.",
+    },
+
+    manpower_activity_outbound_group_id: {
+      label: "Manpower / activity group",
+      widget: "csv",
+      help: "Receives the morning activity and manpower summary.",
+    },
+    housekeeping_outbound_group_id: {
+      label: "Housekeeping group",
+      widget: "csv",
+      help: "Receives the end-of-day housekeeping report.",
+    },
+    instance_name: { label: "WhatsApp instance", row: "wa_identity" },
+    client_id: { label: "Client ID", row: "wa_identity" },
+    outbound_lambda_url: {
+      label: "Send-message proxy URL",
+      help: "Either the listener receiver root or its full /send-message URL — the service normalises the root form.",
+    },
+    reply_lambda_url: { label: "Reply proxy URL" },
 
     id: { hidden: true },
     project_code: { hidden: true },
@@ -427,10 +547,14 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   haze: [
-    { title: "Status", fields: ["enabled", "nea_region", "alert_only_when_at_least", "timezone"] },
+    { title: "Status", fields: ["enabled", "nea_region", "alert_only_when_at_least", "advisory_format", "timezone"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },
+    {
+      title: "POC escalation",
+      fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_alert_wa_groups", "poc_phone_numbers"],
+    },
   ],
 
   lightning: [
@@ -452,6 +576,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
       ],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
+    {
+      title: "POC escalation",
+      fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"],
+    },
   ],
 
   ailytics: [
@@ -459,6 +587,24 @@ const GROUPS: Record<string, FieldGroup[]> = {
     { title: "Telegram source", fields: ["telegram_chat_id", "upstream_bot_username", "expected_chat_title"] },
     { title: "Google Sheet", fields: ["spreadsheet_id", "safety_sheet_tab", "activity_history_tab"] },
     { title: "Delivery", fields: ["whatsapp_group_ids", "instance_name", "client_id", "lambda_url", "reply_lambda_url", "lambda_url_image"] },
+  ],
+
+  subcon: [
+    { title: "Status", fields: ["enabled", "timezone"] },
+    { title: "Usecases", fields: ["enable_manpower", "enable_housekeeping", "enable_water_parade"] },
+    { title: "Inbound", fields: ["source_client_identifier", "source_group_ids"] },
+    { title: "Google Sheets", fields: ["spreadsheet_id", "wbgt_google_sheet_id"] },
+    {
+      title: "Delivery",
+      fields: [
+        "manpower_activity_outbound_group_id",
+        "housekeeping_outbound_group_id",
+        "instance_name",
+        "client_id",
+        "outbound_lambda_url",
+        "reply_lambda_url",
+      ],
+    },
   ],
 };
 

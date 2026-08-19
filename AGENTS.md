@@ -6,7 +6,7 @@ expensive to debug.
 ## What this repo is
 
 **HALO Centralised Services** — the control surface for the project
-configuration behind five alert services that share one Supabase project:
+configuration behind six centralised services that share one Supabase project:
 
 | Service | Schema | Table | Row identity |
 |---|---|---|---|
@@ -15,10 +15,16 @@ configuration behind five alert services that share one Supabase project:
 | Haze | `haze` | `haze_project_configs` | `project_code` |
 | Lightning | `lightning` | `lightning_project_configs` | `project_code` |
 | Ailytics | `ailytics` | `project_configs` | **`id` (uuid)** |
+| Subcon Activities | `manpower_activity` | `project_configs` | **`id` (uuid)** |
 
-Each service has its own alerts repo (`usecase-*-alerts`, `mdw-lambda-ailytics`)
-that reads these tables on a cron and sends WhatsApp messages. This app only
-edits configuration; it never sends anything.
+Each service has its own repo (`usecase-*-alerts`, `mdw-lambda-ailytics`,
+`usecase-wohhup-coy-housekeeping-waterparade`) that reads these tables and sends
+WhatsApp messages. This app only edits configuration; it never sends anything.
+
+Two names differ between the schema and the UI. **Subcon Activities** is the
+operator-facing name for the manpower / housekeeping / Water Parade service; its
+schema is still called `manpower_activity` after the repo's original scope. Do
+not rename the schema to match the label.
 
 Next 16 (App Router) · React 19 · TypeScript · Tailwind 3 · deployed on AWS
 Amplify. See `DEPLOYMENT.md`.
@@ -63,8 +69,9 @@ annotate the audit row. Keep that order.
 
 **History is written by a Postgres trigger, not by this app.**
 `supabase/config_audit_setup.sql` creates `ops.config_audit` and an
-`after update` trigger on all five config tables, so a change made directly in
-the Supabase table editor is recorded too. The dashboard only *annotates* the
+`after update` trigger on all six config tables, so a change made directly in
+the Supabase table editor is recorded too. **Adding a service means re-running
+that file** — the trigger is what makes its history work at all. The dashboard only *annotates* the
 row its own write produced (matched on the returned `updated_at`) with the
 operator's email and note. Rows without an actor render as "changed outside the
 dashboard". Do not make the app the primary writer of audit rows — coverage
@@ -98,6 +105,26 @@ would drop to dashboard-only edits.
   `tests/mobile-contract.test.ts` guards all of it.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
+
+## Adding a service
+
+`SERVICES` in `lib/services.ts` is the entry point, but a service is only half
+wired at that point. The rest, in order:
+
+1. `lib/field-spec.ts` — `READONLY` (identity + audit stamps), `CHECK_ENUMS`
+   (values behind a CHECK rather than a pg enum), `FIELDS` (labels, widgets,
+   `showIf`), `GROUPS` (order). Anything unlisted lands under "Other".
+2. `lib/card-summary.ts` — `GROUP_COLUMNS` (which columns hold chat ids, and
+   what each is for), `pillsFor`, `firesAt`, `hasCadence`, and `autoLinks` if it
+   derives sheet links.
+3. `app/page.tsx` — add any new group-id column to the chat-name resolver list,
+   or the cards show raw ids.
+4. `supabase/config_audit_setup.sql` — attach the audit trigger to the new
+   table, naming its identity column, then re-run the file.
+5. Expose the schema to PostgREST (Supabase → Settings → API → Exposed schemas).
+
+`tests/auth-policy.test.ts` asserts steps 1 and 2 for every registered service,
+and the typechecker catches a missing `GROUP_COLUMNS` or `TAG_TONE` entry.
 
 ## Editing the field spec
 
@@ -162,3 +189,17 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    made the editor jump on every tap. Fixed once, globally, by raising
    `input, select, textarea` to 16px under `max-width: 767px` — do not undo it
    by styling a control's font size inline.
+8. The introspected-schema cache lives on `globalThis`, not in module scope.
+   Next bundles route handlers separately from server components, so a
+   module-scoped `Map` gave `/api/schema/reload` a *different* cache from the one
+   `app/page.tsx` reads: the API returned the new columns while the dashboard
+   served the stale spec until the server restarted. `/api/session` reports
+   `cachedSpecs` so this is checkable — render the dashboard, then read it; a
+   non-zero value means the two paths share one cache.
+9. `enabled` is a master switch in five services but **not** in Subcon
+   Activities, where it gates outbound WhatsApp only — the intake, the
+   classification, the Supabase writes and the Google Sheet writes all continue
+   when it is off. The card says `INTAKE ONLY` rather than `DISABLED` for that
+   reason (`STATUS_WORDING` in `ProjectCard`), and `hasCadence` ignores it.
+   Lightning also has a CHECK that rejects `enable_red_band_poc_mentions` unless
+   both POC lists are non-empty, so those three fields must be saved together.

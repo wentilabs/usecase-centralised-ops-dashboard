@@ -10,6 +10,50 @@ export function splitList(value: unknown): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Which column(s) hold a service's WhatsApp group ids, and what each one is for.
+ *
+ * Every alert service keeps its groups in exactly one column, so a single entry
+ * is equivalent to the old `?? ` fallback chain. Subcon is the first service
+ * with several group columns that mean different things — showing them as one
+ * undifferentiated list would lose that, hence the roles.
+ */
+const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
+  wbgt: [{ column: "whatsapp_group_id" }],
+  noise: [{ column: "whatsapp_group_id" }],
+  haze: [{ column: "wa_group_ids" }],
+  lightning: [{ column: "whatsapp_group_id" }],
+  ailytics: [{ column: "whatsapp_group_ids" }],
+  subcon: [
+    { column: "manpower_activity_outbound_group_id", role: "manpower" },
+    { column: "housekeeping_outbound_group_id", role: "housekeeping" },
+    { column: "source_group_ids", role: "inbound" },
+  ],
+};
+
+export type DeliveryGroup = { chatId: string; role?: string };
+
+/**
+ * The groups a project talks to, de-duplicated. One group commonly serves two
+ * roles (the TEST project uses one chat for both reports), so roles are merged
+ * onto a single entry rather than repeating the chat id — which would also
+ * collide as a React key.
+ */
+export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): DeliveryGroup[] {
+  const roles = new Map<string, string[]>();
+  for (const { column, role } of GROUP_COLUMNS[service] ?? []) {
+    for (const chatId of splitList(config[column])) {
+      const existing = roles.get(chatId) ?? [];
+      if (role && !existing.includes(role)) existing.push(role);
+      roles.set(chatId, existing);
+    }
+  }
+  return [...roles].map(([chatId, list]) => ({
+    chatId,
+    role: list.length ? list.join(" + ") : undefined,
+  }));
+}
+
 export function formatHhmm(value: unknown): string {
   const raw = String(value ?? "");
   const padded = raw.padStart(4, "0");
@@ -101,6 +145,23 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     return `${scope} — every tick while a qualifying strike is in range, working hours ${hours}${mutesSuffix(config)}`;
   }
 
+  if (service === "subcon") {
+    const parts: string[] = [];
+    // enable_manpower and enable_housekeeping default to true in Postgres, so
+    // only an explicit false turns them off.
+    if (config.enable_manpower !== false) parts.push("morning activity + manpower summary");
+    if (config.enable_housekeeping !== false) parts.push("end-of-day housekeeping report");
+    if (config.enable_water_parade) {
+      parts.push("Water Parade reminders at the next two :00/:30 after a non-green hourly WBGT reading");
+    }
+    if (!parts.length) return "No usecases enabled";
+    let line = `Event-driven on forwarded WhatsApp — ${parts.join(" · ")}`;
+    // The distinction the service is emphatic about: `enabled` gates outbound
+    // only, so a muted project is still classifying and writing sheets.
+    if (config.enabled === false) line += " — outbound muted, still classifying and writing sheets";
+    return line;
+  }
+
   return "Event-driven — fires when the CCTV bot posts.";
 }
 
@@ -145,6 +206,8 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
+        { label: "POC mentions", on: on(config.enable_poc_mentions) },
+        { label: `${String(config.advisory_format ?? "default")} format`, on: config.advisory_format === "wohhup" },
       ];
     case "lightning":
       return [
@@ -156,6 +219,15 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: `v${config.config_version ?? 1}`, on: true },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
+        { label: "🔴 POC mentions", on: on(config.enable_red_band_poc_mentions) },
+      ];
+    case "subcon":
+      return [
+        { label: "manpower & activity", on: config.enable_manpower !== false },
+        { label: "housekeeping", on: config.enable_housekeeping !== false },
+        { label: "Water Parade", on: on(config.enable_water_parade) },
+        { label: "outbound WhatsApp", on: config.enabled !== false },
+        { label: "WBGT sheet", on: on(config.wbgt_google_sheet_id) },
       ];
     default:
       return [
@@ -167,12 +239,22 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
 }
 
 /** Links derivable from the row itself. */
-export function autoLinks(config: ProjectConfigRow): { label: string; href: string }[] {
+export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { label: string; href: string }[] {
   const sheet = (id: unknown) => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(id))}/edit`;
   const links: { label: string; href: string }[] = [];
   if (config.monthly_sheet_id) links.push({ label: "📗 Monthly sheet", href: sheet(config.monthly_sheet_id) });
   if (config.google_sheet_id) links.push({ label: "📗 Analysis sheet", href: sheet(config.google_sheet_id) });
-  if (config.spreadsheet_id) links.push({ label: "📗 Safety sheet", href: sheet(config.spreadsheet_id) });
+  if (config.spreadsheet_id) {
+    // Same column, different documents: ailytics keeps its safety log there,
+    // subcon its manpower workbook.
+    links.push({
+      label: service === "subcon" ? "📗 Manpower sheet" : "📗 Safety sheet",
+      href: sheet(config.spreadsheet_id),
+    });
+  }
+  if (config.wbgt_google_sheet_id) {
+    links.push({ label: "📗 WBGT sheet (Water Parade)", href: sheet(config.wbgt_google_sheet_id) });
+  }
   if (config.latitude && config.longitude) {
     links.push({
       label: "📍 Map",
@@ -196,6 +278,13 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
         config.enable_morning_summary ||
         config.enable_sunday_leq12h_hourly ||
         config.enable_7am_7pm_leq12hr_table,
+    );
+  }
+  if (service === "subcon") {
+    // Not gated on `enabled`: outbound can be muted while the intake, the
+    // classification and the Sheet writes all keep running.
+    return Boolean(
+      config.enable_manpower !== false || config.enable_housekeeping !== false || config.enable_water_parade,
     );
   }
   return config.enabled !== false;

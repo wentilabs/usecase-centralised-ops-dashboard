@@ -32,6 +32,10 @@ export default async function DashboardPage() {
         "alert_whatsapp_gid",
         "poc_alert_wa_groups",
         "whatsapp_wbgt_source_chat_ids",
+        // Subcon Activities keeps its groups in three role-specific columns.
+        "manpower_activity_outbound_group_id",
+        "housekeeping_outbound_group_id",
+        "source_group_ids",
       ]) {
         String(row[column] ?? "")
           .split(",")

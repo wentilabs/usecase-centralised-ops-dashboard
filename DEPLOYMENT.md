@@ -21,10 +21,13 @@ dependency bump could silently break — run `npm test` before every deploy.
 
 1. Run [`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) in
    the SQL editor. It creates `ops.config_audit` and attaches an `after update`
-   trigger to all five config tables, so every change is recorded — including
-   ones made directly in the Supabase table editor.
-2. Add `ops` to **Supabase → Settings → API → Exposed schemas**. Without it the
-   history panel reports a setup hint instead of rows.
+   trigger to all six config tables, so every change is recorded — including
+   ones made directly in the Supabase table editor. Re-run it whenever a service
+   is added; it is idempotent.
+2. Add `ops` to **Supabase → Settings → API → Exposed schemas**, alongside every
+   service schema (`wbgts`, `noise-meters`, `haze`, `lightning`, `ailytics`,
+   `manpower_activity`). Without `ops` the history panel reports a setup hint
+   instead of rows; without a service schema that service's tab shows an error.
 
 ## Amplify app setup
 

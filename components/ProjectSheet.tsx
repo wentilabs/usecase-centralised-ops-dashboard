@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { autoLinks, firesAt, formatSgt, pillsFor, splitList } from "@/lib/card-summary";
+import { autoLinks, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 import { useBodyScrollLock, useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -39,8 +39,8 @@ export function ProjectSheet({
   useEscapeKey(true, onClose);
 
   const enabled = config.enabled !== false;
-  const groups = splitList(config.whatsapp_group_id ?? config.wa_group_ids ?? config.whatsapp_group_ids);
-  const links = autoLinks(config);
+  const groups = deliveryGroups(service, config);
+  const links = autoLinks(service, config);
   const pills = pillsFor(service, config);
   const projectCode = String(config.project_code ?? rowId);
 
@@ -104,20 +104,25 @@ export function ProjectSheet({
           <Section title={`Delivery${groups.length > 1 ? ` · ${groups.length} groups` : ""}`}>
             {groups.length ? (
               <ul className="flex flex-col gap-1.5">
-                {groups.map((group) => {
-                  const name = groupNames[group];
-                  const href = visoUrl ? `${visoUrl}/go/${encodeURIComponent(group)}` : undefined;
+                {groups.map(({ chatId, role }) => {
+                  const name = groupNames[chatId];
+                  const href = visoUrl ? `${visoUrl}/go/${encodeURIComponent(chatId)}` : undefined;
                   const body = (
                     <>
-                      <span className="block truncate text-sm">💬 {name ?? group}</span>
+                      <span className="block truncate text-sm">💬 {name ?? chatId}</span>
                       {/* The id is what Supabase actually stores — keep it visible. */}
                       <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">
-                        {group}
+                        {chatId}
                       </span>
+                      {role ? (
+                        <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {role}
+                        </span>
+                      ) : null}
                     </>
                   );
                   return (
-                    <li key={group}>
+                    <li key={chatId}>
                       {href ? (
                         <a
                           href={href}

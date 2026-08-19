@@ -6,8 +6,8 @@ file only adds notes specific to working here interactively.
 
 ## Before you touch anything
 
-- **Writes hit production.** This app edits the live configuration that five
-  alert services read on a cron. If you need to test a write, pick a project
+- **Writes hit production.** This app edits the live configuration that six
+  centralised services read on a cron. If you need to test a write, pick a project
   with `enabled = false`, change one field, verify, and revert it in the same
   session. Say plainly which project you touched.
 - **Check the branch.** `main` may still hold the older zero-dependency Node

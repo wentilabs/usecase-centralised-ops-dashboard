@@ -11,12 +11,35 @@ const TAG_TONE: Record<ServiceKey, string> = {
   ailytics: "bg-cyan-400/15 text-cyan-300",
 };
 
-function Chip({ label, value, title }: { label: string; value: string; title?: string }) {
+function Chip({
+  label,
+  value,
+  title,
+  href,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+  href?: string;
+}) {
+  const className = "rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[11px]";
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener"
+        title={title}
+        className={`${className} relative z-10 hover:border-primary hover:text-primary`}
+      >
+        <span className="text-muted-foreground">{label}</span> {value}
+      </a>
+    );
+  }
+
   return (
-    <span
-      title={title}
-      className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[11px]"
-    >
+    <span title={title} className={className}>
       <span className="text-muted-foreground">{label}</span> {value}
     </span>
   );
@@ -30,6 +53,7 @@ export function ProjectCard({
   canEdit,
   onEdit,
   groupNames = {},
+  visoUrl = null,
 }: {
   service: ServiceKey;
   label: string;
@@ -39,6 +63,8 @@ export function ProjectCard({
   onEdit: () => void;
   /** chat id → group name; ids absent from the map render as the raw id. */
   groupNames?: Record<string, string>;
+  /** Base URL of Viso; when set, chips link to the mirrored thread. */
+  visoUrl?: string | null;
 }) {
   const enabled = config.enabled !== false;
   const scheduled = hasCadence(service, config);
@@ -99,7 +125,11 @@ export function ProjectCard({
                 label="💬"
                 value={groupNames[group] ?? group}
                 // Keep the id reachable — it is what Supabase actually stores.
-                title={groupNames[group] ? `${groupNames[group]} · ${group}` : group}
+                title={
+                  (groupNames[group] ? `${groupNames[group]} · ${group}` : group) +
+                  (visoUrl ? " · open the mirrored thread in Viso" : "")
+                }
+                href={visoUrl ? `${visoUrl}/go/${encodeURIComponent(group)}` : undefined}
               />
             ))
           ) : (

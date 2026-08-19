@@ -44,6 +44,10 @@ export default async function DashboardPage() {
   // One small shared table — cheap enough to render with the cards.
   const groupNames = await getGroupNames([...chatIds]);
 
+  // Viso (wa-mirror) exposes /go/<chatId>, which resolves a chat to its company
+  // and redirects, so HALO can link to a thread knowing only the group id.
+  const visoUrl = (process.env.VISO_URL ?? "").replace(/\/+$/, "") || null;
+
   const services: ServiceData[] = SERVICE_KEYS.map((key, index) => {
     const rowsResult = rows[index];
     const specResult = specs[index];
@@ -67,6 +71,7 @@ export default async function DashboardPage() {
       services={services}
       fetchedAt={new Date().toISOString()}
       initialGroupNames={groupNames.map}
+      visoUrl={visoUrl}
       groupNamesMeta={{
         configured: groupNames.configured,
         storeReady: groupNames.storeReady,

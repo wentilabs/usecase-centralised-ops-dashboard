@@ -37,12 +37,15 @@ export function DashboardShell({
   session,
   initialGroupNames,
   groupNamesMeta,
+  visoUrl,
 }: {
   services: ServiceData[];
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
   groupNamesMeta: GroupNamesMeta;
+  /** Base URL of Viso (wa-mirror); null hides the chat links. */
+  visoUrl: string | null;
 }) {
   const [tab, setTab] = useState<ServiceKey>(services[0]?.key ?? "wbgt");
   const [query, setQuery] = useState("");
@@ -222,6 +225,7 @@ export function DashboardShell({
               canEdit={session.canEdit && Boolean(active.spec)}
               onEdit={() => setEditing({ service: active, row })}
               groupNames={groupNames}
+              visoUrl={visoUrl}
             />
           );
         })}

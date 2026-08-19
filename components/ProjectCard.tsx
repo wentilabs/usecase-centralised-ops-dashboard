@@ -11,6 +11,14 @@ const TAG_TONE: Record<ServiceKey, string> = {
   ailytics: "bg-cyan-400/15 text-cyan-300",
 };
 
+/**
+ * How many switches a phone-width card shows before deferring the rest to the
+ * detail sheet. Four fits two lines at 360px without pushing the fires-at line
+ * off the fold.
+ */
+const MOBILE_PILL_LIMIT = 4;
+
+/** Only rendered on md+, so nothing here needs a mobile variant. */
 function Chip({
   label,
   value,
@@ -52,6 +60,7 @@ export function ProjectCard({
   rowId,
   canEdit,
   onEdit,
+  onOpen,
   groupNames = {},
   visoUrl = null,
 }: {
@@ -61,6 +70,8 @@ export function ProjectCard({
   rowId: string;
   canEdit: boolean;
   onEdit: () => void;
+  /** Tapping the card on mobile opens the full-detail sheet. */
+  onOpen: () => void;
   /** chat id → group name; ids absent from the map render as the raw id. */
   groupNames?: Record<string, string>;
   /** Base URL of Viso; when set, chips link to the mirrored thread. */
@@ -69,53 +80,97 @@ export function ProjectCard({
   const enabled = config.enabled !== false;
   const scheduled = hasCadence(service, config);
   const groups = splitList(config.whatsapp_group_id ?? config.wa_group_ids ?? config.whatsapp_group_ids);
+  const links = autoLinks(config);
+
+  // Mobile keeps only the switches that are actually on, capped. Chosen by
+  // index so services with repeated labels can't collide.
+  const pills = pillsFor(service, config);
+  const mobilePills = new Set<number>();
+  pills.forEach((pill, index) => {
+    if (pill.on && mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
+  });
+  const hiddenPillCount = pills.length - mobilePills.size;
 
   return (
     <article
       className={[
-        "relative flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft",
+        "relative flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5 shadow-soft md:gap-3 md:p-4",
         enabled ? "" : "opacity-60",
         scheduled ? "" : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/45",
       ].join(" ")}
     >
+      {/* The whole card is one tap target on mobile; on desktop the card stays
+          inert and its individual links/buttons do the work. Sits above the
+          no-cadence scrim so a disabled project is still openable. */}
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${String(config.project_code ?? rowId)} details`}
+        className="tap-target absolute inset-0 z-20 rounded-2xl active:bg-white/5 md:hidden"
+      />
+
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>{label}</span>
         {String(config.project_code ?? rowId)}
         <span className={`ml-auto text-[11px] font-semibold ${enabled ? "text-on" : "text-muted-foreground"}`}>
-          {enabled ? "● ENABLED" : "○ DISABLED"}
+          <span className="md:hidden">{enabled ? "●" : "○"}</span>
+          <span className="hidden md:inline">{enabled ? "● ENABLED" : "○ DISABLED"}</span>
         </span>
         {canEdit ? (
           <button
             type="button"
             onClick={onEdit}
-            className="relative z-10 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+            className="relative z-10 hidden rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary md:block"
           >
             ⚙︎ Edit
           </button>
         ) : null}
+        <span aria-hidden className="text-muted-foreground md:hidden">
+          ›
+        </span>
       </h2>
 
       <div className="flex flex-wrap gap-1.5">
-        {pillsFor(service, config).map((pill) => (
+        {pills.map((pill, index) => (
           <span
             key={pill.label}
-            className={
+            className={[
               pill.on
                 ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
-                : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through"
-            }
+                : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through",
+              mobilePills.has(index) ? "" : "hidden md:block",
+            ].join(" ")}
           >
             {pill.label}
           </span>
         ))}
+        {hiddenPillCount > 0 ? (
+          <span className="rounded-full px-1 py-0.5 text-[11px] text-muted-foreground md:hidden">
+            +{hiddenPillCount}
+          </span>
+        ) : null}
       </div>
 
       <div>
-        <div className="mb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">Fires at</div>
-        <p className="text-xs text-muted-foreground">{firesAt(service, config)}</p>
+        <div className="mb-0.5 hidden text-[10px] uppercase tracking-wider text-muted-foreground md:block">
+          Fires at
+        </div>
+        <p className="line-clamp-2 text-xs text-muted-foreground md:line-clamp-none">
+          <span aria-hidden className="md:hidden">
+            🕒{" "}
+          </span>
+          {firesAt(service, config)}
+        </p>
       </div>
 
-      <div>
+      {/* Delivery: one truncated line on mobile, the full chip list on desktop. */}
+      <p className="truncate text-xs text-muted-foreground md:hidden">
+        {groups.length
+          ? `💬 ${groupNames[groups[0]] ?? groups[0]}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
+          : "💬 no group configured"}
+      </p>
+
+      <div className="hidden md:block">
         <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Delivery</div>
         <div className="flex flex-wrap gap-1">
           {groups.length ? (
@@ -138,9 +193,9 @@ export function ProjectCard({
         </div>
       </div>
 
-      {autoLinks(config).length ? (
-        <div className="flex flex-wrap gap-2">
-          {autoLinks(config).map((link) => (
+      {links.length ? (
+        <div className="hidden flex-wrap gap-2 md:flex">
+          {links.map((link) => (
             <a
               key={link.href}
               href={link.href}
@@ -154,9 +209,11 @@ export function ProjectCard({
         </div>
       ) : null}
 
-      <footer className="mt-auto flex justify-between border-t border-border pt-2 text-[11px] text-muted-foreground">
-        <span>{String(config.source_type ?? "default")} · {String(config.timezone ?? "Asia/Singapore")}</span>
-        <span>updated {formatSgt(config.updated_at)}</span>
+      <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
+        <span className="hidden md:inline">
+          {String(config.source_type ?? "default")} · {String(config.timezone ?? "Asia/Singapore")}
+        </span>
+        <span className="ml-auto">updated {formatSgt(config.updated_at)}</span>
       </footer>
     </article>
   );

@@ -52,7 +52,7 @@ function Control({
         role="switch"
         aria-checked={on}
         onClick={() => onChange(!on)}
-        className="flex items-center gap-2.5"
+        className="flex min-h-11 items-center gap-2.5 md:min-h-0"
       >
         <span
           className={`relative h-6 w-11 rounded-full transition ${on ? "bg-on" : "bg-muted ring-1 ring-border"}`}
@@ -84,7 +84,7 @@ function Control({
     return (
       <div className="flex flex-wrap gap-3 pt-1.5">
         {(field.options ?? []).map((option) => (
-          <label key={option} className="flex items-center gap-1.5 text-sm">
+          <label key={option} className="flex min-h-11 items-center gap-1.5 text-sm md:min-h-0">
             <input
               type="checkbox"
               checked={selected.includes(option)}
@@ -247,8 +247,8 @@ export function ConfigEditor({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(760px,100vw)] flex-col border-l border-border bg-background shadow-2xl">
-        <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+      <aside className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:w-[min(760px,100vw)] md:border-l md:border-border">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 pt-safe md:px-5 md:py-4">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold">
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">{serviceLabel}</span>
@@ -262,21 +262,21 @@ export function ConfigEditor({
             <button
               type="button"
               onClick={() => (history ? setHistory(null) : loadHistory())}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary"
+              className="rounded-lg border border-border px-3 py-2 text-xs hover:border-primary md:py-1.5"
             >
               🕘 {history ? "Fields" : "History"}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:border-primary"
+              className="rounded-lg border border-border px-3 py-2 text-xs hover:border-primary md:py-1.5"
             >
               ✕
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-6 md:px-5">
           {history ? (
             <section className="pt-5">
               <h3 className="mb-2 border-b border-border pb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -327,11 +327,11 @@ export function ConfigEditor({
                     return (
                       <div
                         key={name}
-                        className={`grid grid-cols-[240px_1fr] items-start gap-4 rounded-lg px-2 py-2 ${
+                        className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[240px_1fr] md:items-start md:gap-4 md:py-2 ${
                           changed ? "bg-primary/15" : ""
                         }`}
                       >
-                        <div className="pt-1.5">
+                        <div className="md:pt-1.5">
                           <div className="text-sm font-medium">{field.label}</div>
                           <div className="font-mono text-[10px] text-muted-foreground">{name}</div>
                         </div>
@@ -354,7 +354,7 @@ export function ConfigEditor({
           )}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-border bg-card px-5 py-3">
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">
           <div className={`text-xs ${dirtyCount ? "font-semibold text-primary" : "text-muted-foreground"}`}>
             {error ? <span className="text-danger">{error}</span> : dirtyCount
               ? `${dirtyCount} unsaved change${dirtyCount === 1 ? "" : "s"}`
@@ -365,7 +365,7 @@ export function ConfigEditor({
               type="button"
               disabled={!dirtyCount}
               onClick={() => setDraft({})}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs disabled:opacity-40"
+              className="rounded-lg border border-border px-3 py-2.5 text-xs disabled:opacity-40 md:py-1.5"
             >
               Discard
             </button>
@@ -373,7 +373,7 @@ export function ConfigEditor({
               type="button"
               disabled={!dirtyCount}
               onClick={() => setConfirming(true)}
-              className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+              className="rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-40 md:py-1.5"
             >
               Review &amp; save
             </button>
@@ -383,7 +383,7 @@ export function ConfigEditor({
 
       {confirming ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
-          <div className="max-h-[80vh] w-[min(560px,92vw)] overflow-y-auto rounded-2xl border border-border bg-background p-5 shadow-soft">
+          <div className="max-h-[85vh] w-[min(560px,92vw)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-background p-4 shadow-soft md:max-h-[80vh] md:p-5">
             <h3 className="mb-3 text-base font-semibold">Apply to Supabase?</h3>
             <div className="mb-4 text-sm">
               {Object.entries(changes).map(([name, change]) => (
@@ -406,7 +406,7 @@ export function ConfigEditor({
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                className="rounded-lg border border-border px-3 py-2.5 text-sm md:py-1.5"
               >
                 Cancel
               </button>
@@ -414,7 +414,7 @@ export function ConfigEditor({
                 type="button"
                 disabled={busy}
                 onClick={apply}
-                className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50 md:py-1.5"
               >
                 {busy ? "Applying…" : "Apply changes"}
               </button>

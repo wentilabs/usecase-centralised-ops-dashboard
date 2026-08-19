@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
+import { ProjectSheet } from "./ProjectSheet";
+import { ServiceDrawer } from "./ServiceDrawer";
 import { formatSgt, hasCadence } from "@/lib/card-summary";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
@@ -53,6 +55,11 @@ export function DashboardShell({
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
   );
   const [editing, setEditing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
+
+  // Mobile-only surfaces: the service/actions drawer, and the card detail sheet
+  // that carries the details the phone card leaves out.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -123,7 +130,46 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 px-5 py-2.5 backdrop-blur">
+      {/* ---------------------------------------------------------------------
+       * Mobile top bar. Deliberately one row: which service you are in, the
+       * search box (the primary way to find a project code on a phone), and a
+       * refresh. Everything else lives in the drawer.
+       * ------------------------------------------------------------------- */}
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 px-3 pb-2 backdrop-blur pt-safe md:hidden">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label={`Service: ${active.label}. Open menu`}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-[13px] font-semibold"
+        >
+          <span aria-hidden>☰</span>
+          {active.label}
+        </button>
+
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter code…"
+          aria-label="Filter by project code"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary"
+        />
+
+        <button
+          type="button"
+          onClick={() => void refreshData()}
+          disabled={reloadingData || reloading}
+          aria-label="Refresh configs"
+          className="shrink-0 rounded-lg border border-border bg-card px-2.5 py-2 text-sm disabled:opacity-50"
+        >
+          {reloadingData || reloading ? "…" : "⟳"}
+        </button>
+      </header>
+
+      {/* ---------------------------------------------------------------------
+       * Desktop header — unchanged.
+       * ------------------------------------------------------------------- */}
+      <header className="sticky top-0 z-30 hidden flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 px-5 py-2.5 backdrop-blur md:flex">
         <h1 className="mr-1 whitespace-nowrap text-base font-semibold">🗂️ HALO Centralised Services</h1>
 
         <nav className="flex gap-1">
@@ -206,7 +252,7 @@ export function DashboardShell({
         </div>
       </header>
 
-      <main className="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3.5 px-5 py-4">
+      <main className="grid grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(330px,1fr))] md:gap-3.5 md:px-5 md:py-4">
         {active.error ? (
           <p className="col-span-full rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
             {active.label}: {active.error}
@@ -224,6 +270,7 @@ export function DashboardShell({
               rowId={rowId}
               canEdit={session.canEdit && Boolean(active.spec)}
               onEdit={() => setEditing({ service: active, row })}
+              onOpen={() => setViewing({ service: active, row })}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />
@@ -234,6 +281,54 @@ export function DashboardShell({
           <p className="col-span-full py-10 text-center text-sm text-muted-foreground">No projects match.</p>
         ) : null}
       </main>
+
+      {menuOpen ? (
+        <ServiceDrawer
+          services={services.map((service) => ({
+            key: service.key,
+            label: service.label,
+            count: (rows[service.key] ?? []).length,
+            failed: Boolean(service.error),
+          }))}
+          activeKey={active.key}
+          onSelect={setTab}
+          onClose={() => setMenuOpen(false)}
+          fetchedAt={fetchedAt}
+          session={session}
+          names={{
+            configured: namesMeta.configured,
+            storeReady: namesMeta.storeReady,
+            refreshedAt: namesMeta.refreshedAt,
+            busy: refreshingNames,
+          }}
+          onRefreshData={() => void refreshData()}
+          onRefreshNames={() => void refreshGroupNames()}
+          dataBusy={reloadingData || reloading}
+        />
+      ) : null}
+
+      {/* The sheet's row comes from `rows`, so an edit saved from within it is
+          reflected the next time it is opened. */}
+      {viewing ? (
+        <ProjectSheet
+          service={viewing.service.key}
+          label={viewing.service.label}
+          config={
+            (rows[viewing.service.key] ?? []).find(
+              (row) => rowIdOf(viewing.service, row) === rowIdOf(viewing.service, viewing.row),
+            ) ?? viewing.row
+          }
+          rowId={rowIdOf(viewing.service, viewing.row)}
+          canEdit={session.canEdit && Boolean(viewing.service.spec)}
+          onEdit={() => {
+            setEditing({ service: viewing.service, row: viewing.row });
+            setViewing(null);
+          }}
+          onClose={() => setViewing(null)}
+          groupNames={groupNames}
+          visoUrl={visoUrl}
+        />
+      ) : null}
 
       {editing && editing.service.spec ? (
         <ConfigEditor

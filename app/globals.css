@@ -63,3 +63,45 @@ textarea {
 ::selection {
   background: hsl(var(--primary) / 0.3);
 }
+
+/* ---------------------------------------------------------------------------
+ * Mobile. Everything below is scoped to small screens or to touch pointers, so
+ * the desktop rendering is byte-for-byte what it was.
+ * ------------------------------------------------------------------------- */
+
+/* iOS zooms the whole page in when a focused control's text is under 16px.
+ * The dashboard's controls are 12–14px by design, so raise them on phones
+ * only — this is the difference between a usable editor and one that jumps
+ * on every tap. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* The card's full-bleed tap overlay draws its own pressed state, so the UA's
+ * grey flash across the whole card is redundant. Deliberately NOT applied to
+ * `*`: every other control relies on that flash for tap feedback, and the
+ * drawer and sheet already contain their own scrolling with `overscroll-contain`.
+ */
+@media (hover: none) {
+  .tap-target {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Respect the notch and home bar when a surface is flush to the screen edge.
+ * Scoped to phone widths on purpose: these rules are declared after Tailwind's
+ * utilities, so an unscoped version would out-rank `md:py-4` and quietly change
+ * the desktop padding. */
+@media (max-width: 767px) {
+  .pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}

@@ -119,8 +119,8 @@ export function AuthForm({ configured }: { configured: boolean }) {
     return (
       <p className="text-sm text-muted-foreground">
         Authentication is not configured. Set{" "}
-        <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_URL</code> and{" "}
-        <code className="rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY</code>.
+        <code className="break-all rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_URL</code> and{" "}
+        <code className="break-all rounded bg-muted px-1">NEXT_PUBLIC_AUTH_SUPABASE_PUBLISHABLE_KEY</code>.
       </p>
     );
   }
@@ -135,7 +135,7 @@ export function AuthForm({ configured }: { configured: boolean }) {
       {captchaMisconfigured ? (
         <p className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
           This auth project requires CAPTCHA, but{" "}
-          <code className="rounded bg-muted px-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> is not set —
+          <code className="break-all rounded bg-muted px-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> is not set —
           sign-in will be rejected until it is.
         </p>
       ) : null}

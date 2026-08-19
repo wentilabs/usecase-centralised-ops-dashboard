@@ -86,6 +86,16 @@ would drop to dashboard-only edits.
   `text-on`, `text-warn`, `text-danger`). Avoid raw Tailwind palette shades like
   `bg-amber-100` — they were all removed for contrast reasons; use translucent
   accents (`bg-amber-400/15`) if you need a tint.
+- **Responsive by one rule: unprefixed = phone, `md:` = desktop.** The desktop
+  surface is the one operators already know, so every mobile change must be
+  additive: write the phone style unprefixed and restore the existing desktop
+  value behind `md:`. Never change an existing desktop utility to make a phone
+  look right. The split shows up as two headers in `DashboardShell` (one
+  `md:hidden`, one `hidden md:flex`), a `md:hidden` tap overlay on the card, and
+  two mobile-only components — `ProjectSheet` (the details a phone card drops)
+  and `ServiceDrawer` (the tabs, counts, refreshes and identity that do not fit
+  a phone bar). Both are `md:hidden` at the root so a resize cannot surface them.
+  `tests/mobile-contract.test.ts` guards all of it.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
 
@@ -117,6 +127,16 @@ npm run dev       # http://localhost:5178 — auth is bypassed on loopback
 `npm test` compiles with `tsconfig.test.json`; a new pure module must be added
 to its `include` list to be testable.
 
+Check any UI change at **both** widths — a phone (375px) and the desktop layout
+(>= 768px). The mobile surfaces are reachable only below 768px, and a desktop
+regression is invisible on a phone.
+
+```bash
+# The responsive contract alone (npm test -- <flags> does not filter: the extra
+# args land after the file glob).
+npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.test.js
+```
+
 ## Traps that have already bitten
 
 1. `NEXT_PUBLIC_*` values are inlined at **build** time — changing one in the
@@ -134,3 +154,11 @@ to its `include` list to be testable.
 5. The shared auth project enforces CAPTCHA; sign-in fails without
    `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, and Turnstile only accepts hostnames listed
    on the widget in Cloudflare.
+6. Plain CSS appended to `app/globals.css` lands **after** Tailwind's utilities,
+   so an unscoped custom class out-ranks `md:py-4` and silently changes the
+   desktop. The `.pt-safe` / `.pb-safe` helpers are therefore wrapped in
+   `@media (max-width: 767px)`.
+7. iOS zooms the whole page when a focused control's text is under 16px, which
+   made the editor jump on every tap. Fixed once, globally, by raising
+   `input, select, textarea` to 16px under `max-width: 767px` — do not undo it
+   by styling a control's font size inline.

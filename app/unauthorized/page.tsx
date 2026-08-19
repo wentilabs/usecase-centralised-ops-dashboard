@@ -53,11 +53,11 @@ export default async function UnauthorizedPage() {
 
         <p className="mt-3 text-sm text-muted-foreground">{diagnosis.detail}</p>
 
-        <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg border border-border bg-background p-3 font-mono text-[11px]">
+        <dl className="mt-5 grid grid-cols-1 gap-x-4 gap-y-1 rounded-lg border border-border bg-background p-3 font-mono text-[11px] sm:grid-cols-[auto_1fr]">
           <dt className="text-muted-foreground">auth configured</dt>
           <dd>{String(session.configured)}</dd>
           <dt className="text-muted-foreground">session email</dt>
-          <dd>{session.email ?? "none"}</dd>
+          <dd className="break-all">{session.email ?? "none"}</dd>
           <dt className="text-muted-foreground">allow-list visible to server</dt>
           <dd>{String(allowlistConfigured)}</dd>
         </dl>

@@ -6,12 +6,6 @@ frontend:
         - npm ci
     build:
       commands:
-        # Amplify exposes console environment variables to the build shell, but
-        # does not reliably inject them into the Next server process, nor inline
-        # them into the Edge middleware bundle. Writing them to .env.production
-        # means Next loads them the same way in every runtime.
-        # AWS_BRANCH / AWS_COMMIT_ID are Amplify's own build metadata, captured
-        # so the running app can report exactly which commit is serving.
         - env | grep -E '^(SUPABASE_URL|SUPABASE_SECRET_KEY|LISTENER_SUPABASE_URL|LISTENER_SUPABASE_ANON_KEY|WHITELIST_EMAILS|WHITELIST_DOMAINS|EDITOR_EMAILS|VISO_URL|NEXT_PUBLIC_|AWS_BRANCH=|AWS_COMMIT_ID=)' >> .env.production || true
         - npm run build
   artifacts:

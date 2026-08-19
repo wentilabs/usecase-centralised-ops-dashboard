@@ -42,6 +42,8 @@ dependency bump could silently break — run `npm test` before every deploy.
    | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | **required** — the shared auth project enforces CAPTCHA, so sign-in fails with `captcha protection: request disallowed` without it. Copy from the sibling app; loopback origins are exempt, which is why local dev needs no key |
    | `WHITELIST_DOMAINS` and/or `WHITELIST_EMAILS` | **required** — with neither set, nobody can sign in (fails closed) |
    | `EDITOR_EMAILS` | optional; set it to make everyone else read-only |
+   | `LISTENER_SUPABASE_URL` / `LISTENER_SUPABASE_ANON_KEY` | optional; the listener project holding `whatsapp_listener`, used to resolve group ids to names. Without them the cards show raw ids |
+   | `VISO_URL` | optional; `https://viso.wenti.io`. Makes each group chip link to `VISO_URL/go/<chatId>`, which resolves the chat's company in Viso and redirects. Server-side by design, so it can change without a rebuild. Viso sits behind Cloudflare Access, which preserves the deep link across sign-in |
 
    Do **not** set `LOCAL_AUTH_BYPASS` in Amplify. It is ignored in production
    anyway, but leaving it out avoids any doubt.

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { GroupPicker } from "./GroupPicker";
 import { formatSgt } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
@@ -33,15 +34,29 @@ function Control({
   field,
   value,
   onChange,
+  groupNames,
 }: {
   field: FieldSpec;
   value: unknown;
   onChange: (next: unknown) => void;
+  groupNames: Record<string, string>;
 }) {
   const base = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
 
   if (field.readonly) {
     return <div className="px-3 py-2 font-mono text-xs text-muted-foreground">{display(value)}</div>;
+  }
+
+  // Chat ids are unmemorable, so they are picked by group name. Stored form is
+  // still the comma-separated id list — see GroupPicker.
+  if (field.widget === "groups") {
+    return (
+      <GroupPicker
+        value={String(value ?? "")}
+        onChange={(next) => onChange(next)}
+        groupNames={groupNames}
+      />
+    );
   }
 
   if (field.widget === "toggle") {
@@ -145,6 +160,7 @@ export function ConfigEditor({
   rowId,
   onClose,
   onSaved,
+  groupNames = {},
 }: {
   service: ServiceKey;
   serviceLabel: string;
@@ -153,6 +169,8 @@ export function ConfigEditor({
   rowId: string;
   onClose: () => void;
   onSaved: (updated: ProjectConfigRow) => void;
+  /** chat id → group name, for the "groups" widget's type-ahead. */
+  groupNames?: Record<string, string>;
 }) {
   const [current, setCurrent] = useState<ProjectConfigRow>(row);
   const [draft, setDraft] = useState<Draft>({});
@@ -340,6 +358,7 @@ export function ConfigEditor({
                             field={field}
                             value={values[name]}
                             onChange={(next) => setDraft((prev) => ({ ...prev, [name]: next }))}
+                            groupNames={groupNames}
                           />
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">{field.help}</p>

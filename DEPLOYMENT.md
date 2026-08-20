@@ -81,6 +81,10 @@ nothing by itself —
 
 ## Operating notes
 
+- **Group names** come from `ops.whatsapp_group_names`. Run
+  `npm run groups:backfill` once against a new environment to load every group
+  in the listener log; after that ⟳ Chat aliases keeps it current. Without it
+  the group picker's dropdown is empty and the cards show raw ids.
 - **New Supabase columns** appear without a redeploy — `POST /api/schema/reload`
   clears the cached introspection. They land under "Other" until given a label
   in `lib/field-spec.ts`.

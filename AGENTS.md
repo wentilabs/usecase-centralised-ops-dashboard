@@ -103,8 +103,34 @@ would drop to dashboard-only edits.
   and `ServiceDrawer` (the tabs, counts, refreshes and identity that do not fit
   a phone bar). Both are `md:hidden` at the root so a resize cannot surface them.
   `tests/mobile-contract.test.ts` guards all of it.
+- **Chat ids are chosen by name, stored as ids.** Any column holding WhatsApp
+  group ids gets `widget: "groups"` (see `lib/field-spec.ts`), which renders the
+  `GroupPicker`: type a group name, pick from the matches, get a pill. What is
+  written is unchanged — the same comma-separated id list every service already
+  parses. Names come from `ops.whatsapp_group_names`; a column using the picker
+  must also appear in `CHAT_ID_COLUMNS` or its ids never get a name, which
+  `tests/auth-policy.test.ts` asserts.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
+
+## Group names (the alias store)
+
+`ops.whatsapp_group_names` maps chat id → group name. Two paths fill it, and the
+split is deliberate:
+
+| | What it does | Cost |
+|---|---|---|
+| `npm run groups:backfill` | Every distinct `@g.us` id in the listener log, by keyset-skipping `from` (one request per group, not per message) | ~20s to enumerate 641 groups, ~2min for a cold full run |
+| ⟳ Chat aliases (`?refresh=1`) | Walks back ~12k recent messages, taking each group's newest name; also *discovers* groups no project references | a few seconds |
+
+The backfill is a script rather than an endpoint because enumerating every id
+exceeds a serverless request budget. The incremental scan is what the button
+runs, and it is what keeps the picker's dropdown current.
+
+**When resolving a name, filter `chatName=not.is.null` first.** Many rows store
+it as null, so taking the single latest row reported "unnamed" for 277 of 641
+groups whose name sat one row further back; filtering recovered 254 of them.
+23 groups genuinely have no name anywhere and correctly render as raw ids.
 
 ## Adding a service
 

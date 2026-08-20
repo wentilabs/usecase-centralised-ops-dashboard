@@ -54,6 +54,37 @@ export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): D
   }));
 }
 
+/**
+ * Every column, across every service, that stores WhatsApp chat ids: the
+ * delivery columns above, plus the ones that carry chat ids for some purpose
+ * other than delivery (mentions, expiry alerts, photo ingestion).
+ *
+ * Derived rather than hand-listed so a new service's delivery columns are
+ * picked up automatically — this list decides which ids get a name resolved,
+ * and a missing column means raw ids on the cards.
+ */
+export const CHAT_ID_COLUMNS: string[] = [
+  ...new Set([
+    ...Object.values(GROUP_COLUMNS).flatMap((entries) => entries.map((entry) => entry.column)),
+    "alert_whatsapp_gid",
+    "poc_alert_wa_groups",
+    "whatsapp_wbgt_source_chat_ids",
+  ]),
+];
+
+/** Group ids referenced by any of those columns, across the rows given. */
+export function chatIdsIn(rows: ProjectConfigRow[]): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    for (const column of CHAT_ID_COLUMNS) {
+      for (const id of splitList(row[column])) {
+        if (id.endsWith("@g.us")) ids.add(id);
+      }
+    }
+  }
+  return [...ids];
+}
+
 export function formatHhmm(value: unknown): string {
   const raw = String(value ?? "");
   const padded = raw.padStart(4, "0");

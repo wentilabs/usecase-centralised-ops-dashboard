@@ -12,7 +12,15 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
-import { autoLinks, deliveryGroups, firesAt, hasCadence, pillsFor } from "../lib/card-summary";
+import {
+  autoLinks,
+  CHAT_ID_COLUMNS,
+  chatIdsIn,
+  deliveryGroups,
+  firesAt,
+  hasCadence,
+  pillsFor,
+} from "../lib/card-summary";
 
 const field = (over: Partial<FieldSpec>): FieldSpec => ({
   name: "f",
@@ -284,4 +292,65 @@ test("every service resolves its WhatsApp group column", () => {
   for (const key of SERVICE_KEYS) {
     assert.ok(deliveryGroups(key, row).length > 0, `${key} resolves no delivery group`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Group picker: the "groups" widget is only as good as the alias coverage, so
+// every column it is attached to must also be a column we resolve names for.
+// ---------------------------------------------------------------------------
+test("every group-picker column is one we resolve names for", () => {
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const introspected = Object.fromEntries(
+    [...CHAT_ID_COLUMNS, "telegram_chat_ids", "poc_phone_numbers"].map((c) => [c, text]),
+  );
+
+  for (const key of SERVICE_KEYS) {
+    const spec = buildFieldSpec(key, introspected);
+    for (const [name, field] of Object.entries(spec.fields)) {
+      if (field.widget !== "groups") continue;
+      assert.ok(
+        CHAT_ID_COLUMNS.includes(name),
+        `${key}.${name} uses the group picker but is not in CHAT_ID_COLUMNS, so its ids never get a name`,
+      );
+    }
+    // Phone numbers and Telegram chats are not WhatsApp groups.
+    assert.notEqual(spec.fields.poc_phone_numbers?.widget, "groups", `${key}.poc_phone_numbers`);
+    assert.notEqual(spec.fields.telegram_chat_ids?.widget, "groups", `${key}.telegram_chat_ids`);
+  }
+});
+
+test("chat ids are collected across every service's columns", () => {
+  // Subcon's role-specific columns are included by derivation, not by hand.
+  for (const column of [
+    "whatsapp_group_id",
+    "wa_group_ids",
+    "whatsapp_group_ids",
+    "manpower_activity_outbound_group_id",
+    "housekeeping_outbound_group_id",
+    "source_group_ids",
+    "alert_whatsapp_gid",
+    "poc_alert_wa_groups",
+    "whatsapp_wbgt_source_chat_ids",
+  ]) {
+    assert.ok(CHAT_ID_COLUMNS.includes(column), column);
+  }
+
+  assert.deepEqual(chatIdsIn([{ whatsapp_group_id: "a@g.us, b@g.us" }, { wa_group_ids: "b@g.us" }]), [
+    "a@g.us",
+    "b@g.us",
+  ]);
+  // Direct chats and phone numbers are not groups and must not be looked up.
+  assert.deepEqual(chatIdsIn([{ whatsapp_group_id: "6591234567@c.us, 123@lid, ok@g.us" }]), ["ok@g.us"]);
+  assert.deepEqual(chatIdsIn([{}]), []);
+});
+
+test("the retired lightning policy_note stays hidden while the column exists", () => {
+  // An unlisted column falls through to "Other", so dropping it from the spec
+  // is not enough until the DROP COLUMN migration has actually run.
+  const spec = buildFieldSpec("lightning", {
+    policy_note: { type: "string", format: "text", enum: null, default: null },
+    enabled: { type: "boolean", format: "boolean", enum: null, default: null },
+  });
+  assert.equal(spec.fields.policy_note?.hidden, true);
+  assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
 });

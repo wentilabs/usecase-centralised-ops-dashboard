@@ -23,6 +23,20 @@ const REQUEST_TIMEOUT_MS = 8000;
 // Absorbs bursts within a single render without hiding a refresh from anyone.
 const MEMO_TTL_MS = 60_000;
 
+/** PostgREST caps a response at 1000 rows whatever `limit` asks for. */
+const LISTENER_PAGE_SIZE = 1000;
+/**
+ * How far back the incremental refresh looks: ~12k messages. Measured on the
+ * live log, one page already covers ~92 active groups, and the whole walk stays
+ * a few seconds — short enough for a button, and it leaves the 641-group
+ * long tail to the one-time backfill.
+ */
+const RECENT_PAGES = 12;
+/** Group chats only; the log also carries @c.us and @lid direct chats. */
+const GROUP_SUFFIX = "@g.us";
+
+type ListenerRow = { from?: string | null; chatName?: string | null; timestamp?: unknown };
+
 export type GroupNameRow = { chat_id: string; chat_name: string | null; refreshed_at: string };
 export type GroupNameMap = Record<string, string>;
 
@@ -107,12 +121,19 @@ async function writeStore(rows: { chat_id: string; chat_name: string | null }[])
   }, false);
 }
 
+/**
+ * One group's current name.
+ *
+ * `chatName=not.is.null` matters: many rows store it as null, so taking the
+ * single latest row reported "unnamed" for 277 of 641 groups whose name was one
+ * row further back. Filtering first recovered 254 of them.
+ */
 async function fetchNameFromListener(chatId: string): Promise<string | null> {
   const { url, key } = listenerConfig();
   return withTimeout(async (signal) => {
     const query =
       `whatsapp_listener?select=chatName&from=eq.${encodeURIComponent(chatId)}` +
-      `&order=timestamp.desc&limit=1`;
+      `&chatName=not.is.null&order=timestamp.desc&limit=5`;
     const res = await fetch(`${url}/rest/v1/${query}`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
       cache: "no-store",
@@ -120,9 +141,80 @@ async function fetchNameFromListener(chatId: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const rows = (await res.json()) as { chatName?: string | null }[];
-    const name = rows[0]?.chatName;
-    return typeof name === "string" && name.trim() ? name.trim() : null;
+    for (const row of rows) {
+      const name = typeof row.chatName === "string" ? row.chatName.trim() : "";
+      if (name) return name;
+    }
+    return null;
   }, null);
+}
+
+/**
+ * One page of the listener log, newest first. PostgREST caps a response at
+ * 1000 rows regardless of `limit`, so "further into the past" means more pages,
+ * walked by keyset on the indexed `timestamp` rather than by OFFSET.
+ */
+async function fetchListenerPage(before: unknown): Promise<ListenerRow[]> {
+  const { url, key } = listenerConfig();
+  return withTimeout(async (signal) => {
+    let query = `whatsapp_listener?select=from,chatName,timestamp&order=timestamp.desc&limit=${LISTENER_PAGE_SIZE}`;
+    if (before !== null && before !== undefined) {
+      query += `&timestamp=lt.${encodeURIComponent(String(before))}`;
+    }
+    const res = await fetch(`${url}/rest/v1/${query}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+      signal,
+    });
+    if (!res.ok) return [];
+    return (await res.json()) as ListenerRow[];
+  }, []);
+}
+
+/**
+ * Incremental refresh: walk back through the most recent messages and keep the
+ * first name seen for each group — rows arrive newest-first, so first seen is
+ * the current name.
+ *
+ * This is what the ⟳ Chat aliases button runs. It costs one request per 1000
+ * messages and, unlike a per-id lookup, it also *discovers* groups that no
+ * project references yet — which is what makes the group picker's dropdown
+ * useful. Groups that have been silent for longer than the window keep whatever
+ * the one-time backfill stored (see scripts/backfill-group-names.mjs).
+ */
+export async function refreshRecentGroupNames(
+  { pages = RECENT_PAGES }: { pages?: number } = {},
+): Promise<{ scanned: number; groups: number; written: boolean }> {
+  const { configured } = listenerConfig();
+  if (!configured) return { scanned: 0, groups: 0, written: false };
+
+  const latest = new Map<string, string | null>();
+  let cursor: unknown = null;
+  let scanned = 0;
+
+  for (let page = 0; page < Math.max(1, pages); page += 1) {
+    const rows = await fetchListenerPage(cursor);
+    if (!rows.length) break;
+    scanned += rows.length;
+    for (const row of rows) {
+      const chatId = typeof row.from === "string" ? row.from : "";
+      if (!chatId.endsWith(GROUP_SUFFIX) || latest.has(chatId)) continue;
+      const name = typeof row.chatName === "string" ? row.chatName.trim() : "";
+      latest.set(chatId, name || null);
+    }
+    cursor = rows[rows.length - 1]?.timestamp ?? null;
+    if (cursor === null || cursor === undefined) break;
+  }
+
+  // Only overwrite with a name we actually found: a blank chatName on a recent
+  // message must not wipe a good name the backfill already stored.
+  const rows = [...latest]
+    .filter(([, name]) => Boolean(name))
+    .map(([chat_id, chat_name]) => ({ chat_id, chat_name }));
+
+  const written = await writeStore(rows);
+  memo = null;
+  return { scanned, groups: latest.size, written };
 }
 
 function toResult(rows: GroupNameRow[], chatIds: string[], configured: boolean): GroupNamesResult {

@@ -2,13 +2,14 @@
   "name": "usecase-wohhup-ops-dashboard",
   "version": "0.2.0",
   "private": true,
-  "description": "Centralised Services \u2014 project config control surface for the WBGT, Noise, Haze, Lightning and Ailytics alert services.",
+  "description": "Centralised Services \u2014 project config control surface for the WBGT, Noise, Haze, Lightning, Ailytics and Subcon Activities services.",
   "scripts": {
     "dev": "next dev -p 5178",
     "build": "next build",
     "start": "next start -p 5178",
     "typecheck": "tsc --noEmit",
-    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js"
+    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
+    "groups:backfill": "node --env-file=.env scripts/backfill-group-names.mjs"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "1.5.4",

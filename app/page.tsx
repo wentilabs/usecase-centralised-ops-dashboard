@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DashboardShell, type ServiceData } from "@/components/DashboardShell";
+import { chatIdsIn } from "@/lib/card-summary";
 import { getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { getGroupNames } from "@/lib/group-names";
 import { SERVICES, SERVICE_KEYS } from "@/lib/services";
@@ -21,32 +22,12 @@ export default async function DashboardPage() {
     Promise.allSettled(SERVICE_KEYS.map((key) => getFieldSpec(key))),
   ]);
 
-  const chatIds = new Set<string>();
-  for (const result of rows) {
-    if (result.status !== "fulfilled") continue;
-    for (const row of result.value as Record<string, unknown>[]) {
-      for (const column of [
-        "whatsapp_group_id",
-        "wa_group_ids",
-        "whatsapp_group_ids",
-        "alert_whatsapp_gid",
-        "poc_alert_wa_groups",
-        "whatsapp_wbgt_source_chat_ids",
-        // Subcon Activities keeps its groups in three role-specific columns.
-        "manpower_activity_outbound_group_id",
-        "housekeeping_outbound_group_id",
-        "source_group_ids",
-      ]) {
-        String(row[column] ?? "")
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.endsWith("@g.us"))
-          .forEach((entry) => chatIds.add(entry));
-      }
-    }
-  }
-  // One small shared table — cheap enough to render with the cards.
-  const groupNames = await getGroupNames([...chatIds]);
+  const configured = rows.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+
+  // One small shared table — cheap enough to render with the cards. It returns
+  // EVERY stored alias, not only the ids in use, which is what lets the group
+  // picker offer chats no project references yet.
+  const groupNames = await getGroupNames(chatIdsIn(configured));
 
   // Viso (wa-mirror) exposes /go/<chatId>, which resolves a chat to its company
   // and redirects, so HALO can link to a thread knowing only the group id.

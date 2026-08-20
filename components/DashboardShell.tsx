@@ -337,6 +337,7 @@ export function DashboardShell({
           spec={editing.service.spec}
           row={editing.row}
           rowId={rowIdOf(editing.service, editing.row)}
+          groupNames={groupNames}
           onClose={() => setEditing(null)}
           onSaved={(updated) =>
             setRows((prev) => ({

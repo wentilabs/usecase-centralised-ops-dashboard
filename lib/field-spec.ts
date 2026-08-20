@@ -1,6 +1,17 @@
 import type { ServiceKey } from "./services";
 
-export type FieldWidget = "toggle" | "select" | "number" | "text" | "hhmm" | "csv" | "sheet" | "multi";
+export type FieldWidget =
+  | "toggle"
+  | "select"
+  | "number"
+  | "text"
+  | "hhmm"
+  | "csv"
+  | "sheet"
+  | "multi"
+  // Comma-separated WhatsApp chat ids, edited as searchable pills. Stored
+  // exactly like "csv" — the widget only changes how it is typed.
+  | "groups";
 
 export type FieldSpec = {
   name: string;
@@ -128,7 +139,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
-    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "csv", help: "Comma-separated; one message per group." },
+    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     lambda_url: { label: "Send-message proxy URL" },
     telegram_chat_ids: {
       label: "Telegram source chats",
@@ -144,11 +155,11 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
-      widget: "csv",
+      widget: "groups",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
 
-    whatsapp_wbgt_source_chat_ids: { label: "Photo source chats", widget: "csv", help: "Chats whose meter photos are ingested." },
+    whatsapp_wbgt_source_chat_ids: { label: "Photo source chats", widget: "groups", help: "Chats whose meter photos are ingested." },
     whatsapp_manual_sensor_label: { label: "WhatsApp manual sensor label" },
     telegram_manual_sensor_label: { label: "Telegram manual sensor label" },
     whatsapp_authoritative_client_identifier: {
@@ -222,7 +233,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
-    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "csv" },
+    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups" },
     lambda_url: { label: "Send-message proxy URL" },
 
     allow_expiry_alert: { label: "Meter expiry alerts" },
@@ -233,7 +244,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     alert_whatsapp_gid: {
       label: "Expiry alert group",
-      widget: "csv",
+      widget: "groups",
       showIf: { field: "allow_expiry_alert", equals: true },
     },
 
@@ -264,7 +275,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },
 
-    wa_group_ids: { label: "WhatsApp group IDs", widget: "csv", help: "Comma-separated; one message per group." },
+    wa_group_ids: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -290,7 +301,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
-      widget: "csv",
+      widget: "groups",
       help: "Which of the groups above may carry mentions. Comma-separated.",
       showIf: { field: "enable_poc_mentions", equals: true },
     },
@@ -304,7 +315,6 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     enabled: { label: "Project enabled", help: "Master switch — off means no lightning alert is sent." },
     timezone: { label: "Timezone" },
     config_version: { label: "Config version", widget: "number", help: "Bump when policy changes; recorded on alerts." },
-    policy_note: { label: "Policy note", help: "Free text describing the agreed alerting policy." },
 
     site_address: { label: "Site address" },
     latitude: { label: "Latitude", widget: "number", row: "latlng" },
@@ -350,7 +360,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },
 
-    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "csv", help: "Comma-separated; one message per group." },
+    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -369,10 +379,16 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
-      widget: "csv",
+      widget: "groups",
       help: "Which of the groups above may carry RED mentions. Required when red mentions are on.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
+
+    // Retired. Kept as an explicit `hidden` entry rather than deleted, because
+    // an unlisted column falls through to the "Other" group — so it would keep
+    // showing in the editor until supabase/drop_policy_note.sql is actually run.
+    // Safe to delete this line once the column is gone.
+    policy_note: { hidden: true },
 
     project_code: { hidden: true },
     created_at: { hidden: true },
@@ -391,7 +407,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     safety_sheet_tab: { label: "Safety sheet tab", row: "tabs" },
     activity_history_tab: { label: "Activity history tab", row: "tabs" },
 
-    whatsapp_group_ids: { label: "WhatsApp group IDs", widget: "csv", help: "Comma-separated; one message per group." },
+    whatsapp_group_ids: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -433,7 +449,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     source_group_ids: {
       label: "Inbound source groups",
-      widget: "csv",
+      widget: "groups",
       help: "Comma-separated groups whose messages this project accepts. Left blank, the listener identifier alone resolves the project.",
     },
 
@@ -450,12 +466,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 
     manpower_activity_outbound_group_id: {
       label: "Manpower / activity group",
-      widget: "csv",
+      widget: "groups",
       help: "Receives the morning activity and manpower summary.",
     },
     housekeeping_outbound_group_id: {
       label: "Housekeeping group",
-      widget: "csv",
+      widget: "groups",
       help: "Receives the end-of-day housekeeping report.",
     },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
@@ -558,7 +574,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   lightning: [
-    { title: "Status", fields: ["enabled", "timezone", "config_version", "policy_note"] },
+    { title: "Status", fields: ["enabled", "timezone", "config_version"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude", "site_extent_radius_m"] },
     { title: "🔴 Red threshold", fields: ["red_radius_m", "red_dwell_seconds", "red_detection_types"] },
     {

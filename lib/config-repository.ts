@@ -50,6 +50,39 @@ export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow
   return res.body as ProjectConfigRow[];
 }
 
+/**
+ * The active noise meters for one project, as {recId, name}.
+ *
+ * Reads `noise-meters.noise_limits`, which holds one row per meter per day-type
+ * per hour window — so it de-duplicates on `full_identifier`, the key the noise
+ * service itself treats as a meter's identity. `active = true` and the ordering
+ * mirror loadAllProjectLimitRows() in the noise repo, so the list matches the
+ * meters the outbound filter is comparing against.
+ *
+ * `noise_meter_loc` is the official name deliberately: the noise service also
+ * has a per-project display-alias layer for outbound messages only, and the
+ * configuration should name what the database stores.
+ */
+export async function listNoiseMeters(projectCode: string): Promise<{ recId: string; name: string }[]> {
+  const res = await request(
+    `noise_limits?select=full_identifier,noise_meter_loc,rec_id&active=is.true` +
+      `&project_code=eq.${encodeURIComponent(projectCode)}&order=full_identifier.asc`,
+    { schema: "noise-meters" },
+  );
+  if (!res.ok) throw new Error(`noise meters for ${projectCode}: ${res.status} ${res.text.slice(0, 200)}`);
+
+  const seen = new Map<string, { recId: string; name: string }>();
+  for (const row of (res.body ?? []) as Record<string, unknown>[]) {
+    const identifier = String(row.full_identifier ?? "");
+    if (!identifier || seen.has(identifier)) continue;
+    seen.set(identifier, {
+      recId: String(row.rec_id ?? "").trim(),
+      name: String(row.noise_meter_loc ?? "").trim() || identifier,
+    });
+  }
+  return [...seen.values()];
+}
+
 export async function getConfig(service: ServiceKey, rowId: string): Promise<ProjectConfigRow | null> {
   const { table, schema, idColumn } = SERVICES[service];
   const res = await request(`${table}?select=*&${idColumn}=eq.${encodeURIComponent(rowId)}`, { schema });

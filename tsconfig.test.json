@@ -26,6 +26,7 @@
     "lib/field-spec.ts",
     "lib/card-summary.ts",
     "lib/jobs.ts",
+    "lib/meter-selection.ts",
     "lib/config-values.ts",
     "tests/**/*.ts"
   ]

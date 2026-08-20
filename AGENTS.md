@@ -120,6 +120,38 @@ would drop to dashboard-only edits.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
 
+## Outbound meter selection (noise)
+
+`noise_meters_included` decides which meters reach the **client-facing** noise
+messages. Semantics are set by `usecases/noise/outbound-meter-filter.js`:
+comma-separated NoiseLynx RecIDs, and **blank/NULL means every meter**. Scraping,
+calculations, Google Sheets and the ops fail-safes always keep every meter, so
+this is "who is told", not "which meters run" — the help text says so, because
+the natural reading is the wrong one.
+
+RecIDs are bare numbers (`6408`), so the editor renders pill toggles labelled
+with `noise_limits.noise_meter_loc` and keeps the id as a subtitle
+(`components/MeterPicker.tsx`, meters fetched per project from
+`/api/noise-meters`). Deliberately the official name, not the outbound display
+alias — configuration should name what the database stores.
+
+**Blank is not the same as listing every current RecID**, and `lib/meter-selection.ts`
+exists to keep that straight:
+
+- everything enabled serialises back to **NULL**, so the project keeps following
+  its meters; an exhaustive list would freeze today's set and a meter added later
+  would silently stop reaching the client.
+- NULL rather than `""` specifically, because the rows are NULL and writing `""`
+  over one leaves the editor permanently dirty.
+- a RecID in the column that is not an active meter is shown as an amber
+  `(unknown)` pill rather than dropped — the service logs `[ERROR]` and omits it,
+  and rewriting it away behind the operator's back would hide the mistake.
+  Completeness is therefore measured over real meters only, or a stale id left
+  switched off would block the collapse to NULL.
+- a meter with no RecID cannot be named by any allowlist, so it is a
+  non-toggleable `(no RecID)` pill. None exist today (all 114 active meters have
+  one), but if one appears, turning filtering on at all excludes it.
+
 ## Sheet jobs
 
 The action row under the header triggers endpoints that already exist on the

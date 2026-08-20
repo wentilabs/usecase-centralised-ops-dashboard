@@ -1,3 +1,4 @@
+import { describeSelection } from "./meter-selection";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /** Noise repo's quirky literal column name. */
@@ -229,6 +230,12 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "expiry alerts", on: on(config.allow_expiry_alert) },
+        // Blank means every meter, which is the norm — say so either way, since
+        // "some meters are muted for the client" is easy to forget.
+        {
+          label: describeSelection(config.noise_meters_included, null),
+          on: !String(config.noise_meters_included ?? "").trim(),
+        },
       ];
     case "haze":
       return [

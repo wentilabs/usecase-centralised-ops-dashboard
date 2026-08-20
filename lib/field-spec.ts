@@ -11,7 +11,10 @@ export type FieldWidget =
   | "multi"
   // Comma-separated WhatsApp chat ids, edited as searchable pills. Stored
   // exactly like "csv" — the widget only changes how it is typed.
-  | "groups";
+  | "groups"
+  // Comma-separated NoiseLynx RecIDs, edited as pill toggles labelled by meter
+  // name. Also stored exactly like "csv".
+  | "meters";
 
 export type FieldSpec = {
   name: string;
@@ -235,6 +238,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     client_id: { label: "Client ID", row: "wa_identity" },
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups" },
     lambda_url: { label: "Send-message proxy URL" },
+
+    noise_meters_included: {
+      label: "Meters sent to the client",
+      widget: "meters",
+      help: "Client-facing messages only — scraping, calculations, Sheets and the ops fail-safes always keep every meter. Blank means all meters, and keeps including any added later.",
+    },
 
     allow_expiry_alert: { label: "Meter expiry alerts" },
     days_left_before_alerting: {
@@ -557,6 +566,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
       ],
     },
     { title: "Mutes", fields: ["remove_sunday_notifications", "remove_ph_notifications"] },
+    { title: "Meters sent to the client", fields: ["noise_meters_included"] },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },

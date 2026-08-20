@@ -12,6 +12,14 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { JOBS, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import {
+  buildToggles,
+  describeSelection,
+  includesEveryMeter,
+  parseIncludedRecIds,
+  serializeSelection,
+  toggleMeter,
+} from "../lib/meter-selection";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
 import {
   autoLinks,
@@ -550,4 +558,100 @@ test("job targets list every project, flagging the ones that cannot run", () => 
   assert.deepEqual(targets.map((t) => t.projectCode), ["ZRA", "ZRB"]);
   assert.equal(targets[0].ready, null);
   assert.ok(targets[1].ready);
+});
+
+// ---------------------------------------------------------------------------
+// Outbound meter selection (noise_meters_included).
+//
+// Semantics mirror usecases/noise/outbound-meter-filter.js: comma-separated
+// RecIDs, and blank means EVERY meter. The asymmetry that matters is that blank
+// is not equivalent to listing every current RecID — see lib/meter-selection.ts.
+// ---------------------------------------------------------------------------
+const METERS = [
+  { recId: "6408", name: "NM01 632B Senja Road RT" },
+  { recId: "5771", name: "NM02 632A Senja Road RT" },
+  { recId: "6440", name: "NM03 West View Primary School RT" },
+];
+
+test("the RecID list parses exactly as the noise service parses it", () => {
+  // Matches parseIncludedNoiseMeterRecIds(" 1001, 1002, 1001 ") -> ["1001","1002"]
+  assert.deepEqual(parseIncludedRecIds(" 1001, 1002, 1001 "), ["1001", "1002"]);
+  assert.deepEqual(parseIncludedRecIds(",, ,"), []);
+  assert.deepEqual(parseIncludedRecIds(null), []);
+  assert.equal(includesEveryMeter(null), true);
+  assert.equal(includesEveryMeter("  "), true);
+  assert.equal(includesEveryMeter("6408"), false);
+});
+
+test("a blank column shows every meter enabled", () => {
+  for (const blank of [null, "", "   "]) {
+    const toggles = buildToggles(blank, METERS);
+    assert.equal(toggles.length, 3);
+    assert.ok(toggles.every((t) => t.enabled), JSON.stringify(blank));
+  }
+});
+
+test("a populated column enables only the meters it names", () => {
+  const toggles = buildToggles("5771,6440", METERS);
+  assert.deepEqual(
+    toggles.map((t) => [t.name.slice(0, 4), t.enabled]),
+    [["NM01", false], ["NM02", true], ["NM03", true]],
+  );
+});
+
+test("turning one meter off populates the column with the rest", () => {
+  // From "all", switching NM01 off must name the two that remain.
+  assert.equal(toggleMeter(buildToggles(null, METERS), "6408"), "5771,6440");
+  // And switching it back on collapses to blank rather than listing all three,
+  // so a meter added later is still included by default.
+  assert.equal(toggleMeter(buildToggles("5771,6440", METERS), "6408"), "");
+});
+
+test("an exhaustive selection is stored as blank, not as every RecID", () => {
+  const allOn = buildToggles("6408,5771,6440", METERS);
+  assert.ok(allOn.every((t) => t.enabled));
+  assert.equal(serializeSelection(allOn), "", "listing every id would freeze today's meter set");
+});
+
+test("a stale RecID is surfaced rather than silently dropped", () => {
+  // The service logs [ERROR] and omits an unknown id; the operator needs to see
+  // it to clean it up, and a toggle elsewhere must not rewrite it away.
+  const toggles = buildToggles("5771,9999", METERS);
+  const unknown = toggles.find((t) => t.recId === "9999");
+  assert.equal(unknown?.issue, "unknown");
+  assert.equal(unknown?.enabled, true);
+  // Enabling every real meter still keeps the stale id, so nothing is discarded
+  // behind the operator's back.
+  assert.equal(serializeSelection(toggles.map((t) => ({ ...t, enabled: true }))), "6408,5771,6440,9999");
+  // Switching the stale one off is what allows the collapse to blank.
+  assert.equal(
+    serializeSelection(toggles.map((t) => (t.recId === "9999" ? { ...t, enabled: false } : { ...t, enabled: true }))),
+    "",
+  );
+});
+
+test("a meter with no RecID is flagged, since no allowlist can name it", () => {
+  const withOrphan = [...METERS, { recId: "", name: "NM04 unregistered" }];
+  const blank = buildToggles(null, withOrphan);
+  assert.equal(blank[3].issue, "no-rec-id");
+  assert.equal(blank[3].enabled, true, "with no filter at all it is still sent");
+
+  // The moment filtering starts it cannot be included — that is the trap.
+  const filtered = buildToggles("6408", withOrphan);
+  assert.equal(filtered[3].enabled, false);
+  // It must never leak into the stored value as a blank entry.
+  assert.equal(serializeSelection(blank), "");
+  assert.equal(serializeSelection(filtered), "6408");
+});
+
+test("no meters at all means there is nothing to filter", () => {
+  assert.deepEqual(buildToggles(null, []), []);
+  assert.equal(serializeSelection([]), "");
+});
+
+test("the selection summary reads naturally on a card", () => {
+  assert.equal(describeSelection(null, 7), "all 7 meters");
+  assert.equal(describeSelection("6408,5771", 7), "2 of 7 meters");
+  assert.equal(describeSelection(null, null), "all meters");
+  assert.equal(describeSelection("6408", null), "1 meters only");
 });

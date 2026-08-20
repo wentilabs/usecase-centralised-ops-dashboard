@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { GroupPicker } from "./GroupPicker";
+import { MeterPicker } from "./MeterPicker";
 import { formatSgt } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
@@ -35,16 +36,34 @@ function Control({
   value,
   onChange,
   groupNames,
+  projectCode,
 }: {
   field: FieldSpec;
   value: unknown;
   onChange: (next: unknown) => void;
   groupNames: Record<string, string>;
+  /** Needed by the "meters" widget to resolve that project's RecIDs. */
+  projectCode: string;
 }) {
   const base = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
 
   if (field.readonly) {
     return <div className="px-3 py-2 font-mono text-xs text-muted-foreground">{display(value)}</div>;
+  }
+
+  // RecIDs are unmemorable, so meters are toggled by name. Stored form is still
+  // the comma-separated RecID list — see MeterPicker.
+  if (field.widget === "meters") {
+    return (
+      <MeterPicker
+        value={String(value ?? "")}
+        // "Everything enabled" is stored as NULL, not "": the column is nullable
+        // and the service treats both as all-meters, but writing "" over a NULL
+        // leaves the form permanently dirty and saves a pointless empty string.
+        onChange={(next) => onChange(next === "" ? null : next)}
+        projectCode={projectCode}
+      />
+    );
   }
 
   // Chat ids are unmemorable, so they are picked by group name. Stored form is
@@ -359,6 +378,7 @@ export function ConfigEditor({
                             value={values[name]}
                             onChange={(next) => setDraft((prev) => ({ ...prev, [name]: next }))}
                             groupNames={groupNames}
+                            projectCode={String(current.project_code ?? rowId)}
                           />
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">{field.help}</p>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { jobTargets, validateJobInput, type JobDefinition } from "@/lib/jobs";
+import { jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -13,9 +13,9 @@ import { useEscapeKey } from "@/lib/use-body-scroll-lock";
  * both desktop and phone without shipping a date library, and it hands back
  * exactly the YYYY-MM-DD the endpoints expect.
  *
- * A project whose sheet id is missing is listed but not selectable-through —
- * the button stays disabled and says why, since the job would otherwise report
- * success while writing nothing.
+ * A project whose precondition is unmet (no sheet id, or no upstream to scrape)
+ * is listed but not runnable — the button stays disabled and says why, since the
+ * job would otherwise report success while doing nothing.
  */
 export function JobDialog({
   job,
@@ -31,14 +31,18 @@ export function JobDialog({
   const [projectCode, setProjectCode] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEscapeKey(!busy, onClose);
 
   const selected = targets.find((target) => target.projectCode === projectCode);
-  const problems = validateJobInput({ projectCode, startDate, endDate }, { sheetId: selected?.sheetId });
-  const ready = problems.length === 0;
+  const problems = validateJobInput({ projectCode, startDate, endDate }, { job, ready: selected?.ready });
+  const canRun = problems.length === 0;
+
+  const span =
+    startDate && endDate && startDate <= endDate ? spanDays(startDate, endDate) : null;
 
   async function run() {
     setBusy(true);
@@ -47,7 +51,7 @@ export function JobDialog({
       const res = await fetch(`/api/jobs/${job.key}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectCode, startDate, endDate }),
+        body: JSON.stringify({ projectCode, startDate, endDate, flags }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -88,16 +92,16 @@ export function JobDialog({
           {targets.map((target) => (
             <option key={target.projectCode} value={target.projectCode}>
               {target.projectCode}
-              {target.sheetId ? "" : "  (no sheet id)"}
+              {target.ready ? "" : `  (${job.precondition.label.toLowerCase()} unavailable)`}
             </option>
           ))}
         </select>
 
         {projectCode ? (
-          <p className={`mt-1.5 text-[11px] ${selected?.sheetId ? "text-muted-foreground" : "text-warn"}`}>
-            {selected?.sheetId
-              ? `${job.sheetLabel}: ${selected.sheetId.slice(0, 12)}…`
-              : `${job.sheetLabel} is not configured on ${projectCode}. Set it in the project's editor first — the job would write nothing.`}
+          <p className={`mt-1.5 text-[11px] ${selected?.ready ? "text-muted-foreground" : "text-warn"}`}>
+            {selected?.ready
+              ? `${job.precondition.label}: ${selected.ready}`
+              : job.precondition.unmet(projectCode)}
           </p>
         ) : null}
 
@@ -131,6 +135,43 @@ export function JobDialog({
             />
           </div>
         </div>
+
+        {span !== null ? (
+          <p
+            className={`mt-2 text-[11px] ${
+              job.maxSpanDays && span > job.maxSpanDays ? "text-danger" : "text-muted-foreground"
+            }`}
+          >
+            {span} day{span === 1 ? "" : "s"} inclusive
+            {job.maxSpanDays ? ` · this job accepts at most ${job.maxSpanDays}` : ""}
+          </p>
+        ) : null}
+
+        {job.flags?.length ? (
+          <div className="mt-3 flex flex-col gap-2">
+            {job.flags.map((flag) => (
+              <label key={flag.key} className="flex min-h-11 items-start gap-2 text-sm md:min-h-0">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={flags[flag.key] === true}
+                  disabled={busy}
+                  onChange={(event) => setFlags((prev) => ({ ...prev, [flag.key]: event.target.checked }))}
+                />
+                <span>
+                  <span className="font-mono text-xs">{flag.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{flag.help}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+
+        {job.caution ? (
+          <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">
+            {job.caution}
+          </p>
+        ) : null}
 
         {problems.length && (projectCode || startDate || endDate) ? (
           <ul className="mt-3 list-inside list-disc text-[11px] text-warn">
@@ -167,7 +208,7 @@ export function JobDialog({
           <button
             type="button"
             onClick={() => void run()}
-            disabled={!ready || busy}
+            disabled={!canRun || busy}
             className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-40 md:py-1.5"
           >
             {busy ? "Running…" : job.label.replace(/^[^\s]+\s/, "")}

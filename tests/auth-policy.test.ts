@@ -11,7 +11,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
-import { JOBS, jobTargets, jobsForService, readSheetId, validateJobInput } from "../lib/jobs";
+import { JOBS, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
 import {
   autoLinks,
@@ -416,8 +416,8 @@ test("a manual project does not claim there are no cadences", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Sheet jobs. The two services' endpoints take DIFFERENT payload shapes, which
-// is the whole reason buildPayload exists per job rather than once.
+// Jobs. Two things vary per job and must not be unified: the payload shape the
+// endpoint expects, and the precondition that makes the job meaningful.
 // ---------------------------------------------------------------------------
 test("each job builds the payload its own endpoint expects", () => {
   const input = { projectCode: "ZRA", startDate: "2026-07-01", endDate: "2026-07-31" };
@@ -442,56 +442,112 @@ test("each job builds the payload its own endpoint expects", () => {
   });
 });
 
-test("jobs are offered on the right tab and check the right sheet column", () => {
+test("the historical scrape always sends its mandatory opt-in", () => {
+  const input = { projectCode: "MBS", startDate: "2026-08-01", endDate: "2026-08-05" };
+
+  // parseScrapeRequest() rejects from/to without historical:true, and treats a
+  // bare projectCode as a normal current-window scrape — so omitting this flag
+  // would silently scrape today instead of the range.
+  assert.deepEqual(JOBS["wbgt-scrape"].buildPayload(input), {
+    historical: true,
+    projectCode: "MBS",
+    from: "2026-08-01",
+    to: "2026-08-05",
+  });
+
+  // `force` only appears when asked for; the endpoint checks `force === true`.
+  assert.deepEqual(JOBS["wbgt-scrape"].buildPayload({ ...input, flags: { force: true } }), {
+    historical: true,
+    projectCode: "MBS",
+    from: "2026-08-01",
+    to: "2026-08-05",
+    force: true,
+  });
+  assert.equal("force" in JOBS["wbgt-scrape"].buildPayload({ ...input, flags: { force: false } }), false);
+});
+
+test("jobs are offered on the right tab", () => {
   assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
-  assert.deepEqual(jobsForService("wbgt").map((j) => j.key), ["wbgt-fill"]);
+  assert.deepEqual(jobsForService("wbgt").map((j) => j.key), ["wbgt-fill", "wbgt-scrape"]);
   for (const service of ["haze", "lightning", "ailytics", "subcon"] as const) {
     assert.deepEqual(jobsForService(service), [], service);
   }
-  // The column each service's job actually reads.
-  assert.equal(JOBS["noise-sync"].sheetColumn, "google_sheet_id");
-  assert.equal(JOBS["wbgt-fill"].sheetColumn, "monthly_sheet_id");
 });
 
 test("a sheet id is recognised, and placeholders are not", () => {
-  assert.equal(readSheetId("1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg"), "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg");
+  const real = "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg";
+  assert.equal(readSheetId(real), real);
   // A pasted URL is accepted, since that is what people copy.
-  assert.equal(
-    readSheetId("https://docs.google.com/spreadsheets/d/1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg/edit#gid=0"),
-    "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg",
-  );
-  // The alert repos treat these literals as unset, and real rows contain them.
+  assert.equal(readSheetId(`https://docs.google.com/spreadsheets/d/${real}/edit#gid=0`), real);
+  // The alert repos treat these literals as unset, and real rows contain them:
+  // WCP's google_sheet_id is "-" and TBS's monthly_sheet_id is "".
   for (const bad of ["", "   ", "null", "NULL", "undefined", "blank", "empty", "-", "n/a", "too-short"]) {
     assert.equal(readSheetId(bad), null, JSON.stringify(bad));
   }
   assert.equal(readSheetId(null), null);
 });
 
-test("a job cannot be launched without a project, a valid range and a sheet", () => {
-  const ok = { projectCode: "ZRA", startDate: "2026-07-01", endDate: "2026-07-31" };
-  assert.deepEqual(validateJobInput(ok, { sheetId: "1abcdefghijklmnopqrstuvwxyz" }), []);
+test("each job's precondition reads the thing that makes it meaningful", () => {
+  const sheeted = { project_code: "X", google_sheet_id: "x".repeat(30), monthly_sheet_id: "y".repeat(30) };
+  assert.ok(JOBS["noise-sync"].precondition.read(sheeted));
+  assert.ok(JOBS["wbgt-fill"].precondition.read(sheeted));
+  assert.equal(JOBS["noise-sync"].precondition.read({ google_sheet_id: "-" }), null);
+  assert.equal(JOBS["wbgt-fill"].precondition.read({ monthly_sheet_id: "" }), null);
 
-  assert.ok(validateJobInput(ok, { sheetId: null }).some((p) => /no sheet id/.test(p)));
-  assert.ok(validateJobInput({ ...ok, projectCode: "" }, { sheetId: "x".repeat(25) }).some((p) => /Choose a project/.test(p)));
+  // The scrape needs an upstream, not a sheet: enable_scrape defaults to on, so
+  // only an explicit false blocks it. This is exactly the MANUAL projects.
+  assert.ok(JOBS["wbgt-scrape"].precondition.read({}));
+  assert.ok(JOBS["wbgt-scrape"].precondition.read({ enable_scrape: true }));
+  assert.equal(JOBS["wbgt-scrape"].precondition.read({ enable_scrape: false }), null);
+  assert.match(JOBS["wbgt-scrape"].precondition.unmet("AST"), /manual photo ingestion/i);
+});
+
+test("a job cannot be launched without a project, a valid range and its precondition", () => {
+  const job = JOBS["noise-sync"];
+  const ok = { projectCode: "ZRA", startDate: "2026-07-01", endDate: "2026-07-31" };
+  assert.deepEqual(validateJobInput(ok, { job, ready: "sheet" }), []);
+
+  assert.ok(validateJobInput(ok, { job, ready: null }).some((p) => /not configured/.test(p)));
+  assert.ok(validateJobInput({ ...ok, projectCode: "" }, { job, ready: "sheet" }).some((p) => /Choose a project/.test(p)));
   assert.ok(
-    validateJobInput({ ...ok, startDate: "2026-08-01" }, { sheetId: "x".repeat(25) }).some((p) =>
+    validateJobInput({ ...ok, startDate: "2026-08-01" }, { job, ready: "sheet" }).some((p) =>
       /after the end date/.test(p),
     ),
   );
-  // Real dates only: 31 February is rejected even though it matches the shape.
-  assert.ok(validateJobInput({ ...ok, startDate: "2026-02-31" }, { sheetId: "x".repeat(25) }).some((p) => /YYYY-MM-DD/.test(p)));
-  assert.ok(validateJobInput({ ...ok, endDate: "01-07-2026" }, { sheetId: "x".repeat(25) }).some((p) => /YYYY-MM-DD/.test(p)));
+  // Real dates only: 31 February matches the shape but is not a date.
+  assert.ok(validateJobInput({ ...ok, startDate: "2026-02-31" }, { job, ready: "sheet" }).some((p) => /YYYY-MM-DD/.test(p)));
+  assert.ok(validateJobInput({ ...ok, endDate: "01-07-2026" }, { job, ready: "sheet" }).some((p) => /YYYY-MM-DD/.test(p)));
 });
 
-test("job targets list every project, flagging the ones without a sheet", () => {
+test("the scrape's 31-day cap is enforced before the round trip", () => {
+  const job = JOBS["wbgt-scrape"];
+  assert.equal(spanDays("2026-08-01", "2026-08-01"), 1, "inclusive");
+  assert.equal(spanDays("2026-08-01", "2026-08-31"), 31);
+
+  // 31 days is the endpoint's limit, not one less.
+  assert.deepEqual(validateJobInput({ projectCode: "MBS", startDate: "2026-08-01", endDate: "2026-08-31" }, { job, ready: "enabled" }), []);
+  const tooLong = validateJobInput(
+    { projectCode: "MBS", startDate: "2026-08-01", endDate: "2026-09-01" },
+    { job, ready: "enabled" },
+  );
+  assert.ok(tooLong.some((p) => /32 days; this job accepts at most 31/.test(p)), tooLong.join("; "));
+
+  // The sheet jobs have no cap, so a long range is fine there.
+  assert.deepEqual(
+    validateJobInput({ projectCode: "ZRA", startDate: "2026-01-01", endDate: "2026-12-31" }, { job: JOBS["noise-sync"], ready: "sheet" }),
+    [],
+  );
+});
+
+test("job targets list every project, flagging the ones that cannot run", () => {
   const rows = [
     { project_code: "ZRB", google_sheet_id: "x".repeat(30) },
     { project_code: "ZRA", google_sheet_id: null },
     { project_code: "", google_sheet_id: "y".repeat(30) },
   ];
-  // Sorted, unnamed rows dropped, and a missing sheet surfaced rather than hidden.
-  assert.deepEqual(jobTargets(JOBS["noise-sync"], rows), [
-    { projectCode: "ZRA", sheetId: null },
-    { projectCode: "ZRB", sheetId: "x".repeat(30) },
-  ]);
+  const targets = jobTargets(JOBS["noise-sync"], rows);
+  // Sorted, blank codes dropped, and an unmet precondition surfaced not hidden.
+  assert.deepEqual(targets.map((t) => t.projectCode), ["ZRA", "ZRB"]);
+  assert.equal(targets[0].ready, null);
+  assert.ok(targets[1].ready);
 });

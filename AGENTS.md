@@ -128,16 +128,29 @@ the registry; HALO proxies through `app/api/jobs/[job]` rather than calling from
 the browser, so the service URLs stay server-side and triggering a job needs the
 same editor permission as a config write.
 
-**The payload shapes differ between services and must not be unified.** Verified
-against the handlers: the noise endpoints take `project_code` / `start_date` /
-`end_date`, while `wbgt-sheet-fill` takes `projectCode` / `from` / `to` —
-`resolveDates()` there only enumerates a range when given `from` *and* `to`.
-Hence one `buildPayload` per job, with a test pinning each shape.
+**The payload shapes differ between endpoints and must not be unified.**
+Verified against the handlers: the noise endpoints take `project_code` /
+`start_date` / `end_date`; `wbgt-sheet-fill` takes `projectCode` / `from` / `to`,
+because its `resolveDates()` only enumerates a range when given `from` *and*
+`to`; and `wbgt-scrape` needs a mandatory `historical: true` on top, since
+`parseScrapeRequest()` rejects `from`/`to` without it and treats a bare
+`projectCode` as a normal current-window scrape — omitting it would silently
+scrape today. Hence one `buildPayload` per job, with a test pinning each shape.
 
-The sheet id is re-checked server-side before forwarding, because these jobs
-report success while writing nothing when it is missing. Real rows contain `"-"`
-and `""` as sheet ids, so `readSheetId()` rejects those placeholders — the same
-literals `normalizeGoogleSheetId()` treats as unset in the noise repo.
+**Each job also has a precondition**, re-checked server-side, because every one
+of them reports success while doing nothing when it is unmet:
+
+- sheet jobs need a sheet id. Real rows use placeholders — WCP's
+  `google_sheet_id` is `"-"`, TBS's `monthly_sheet_id` is `""` — so
+  `readSheetId()` rejects the same literals `normalizeGoogleSheetId()` treats as
+  unset in the noise repo.
+- `wbgt-scrape` needs an upstream: the scrape job filters on
+  `enable_scrape !== false` and skips with `project_scrape_disabled_<code>`. That
+  makes the MANUAL projects ineligible, which the dialog says in those words.
+
+`maxSpanDays` mirrors a limit the endpoint enforces itself (31 for the historical
+scrape), so the range is refused before the round trip. Declared `flags` are
+allow-listed in the route — an undeclared flag is dropped rather than forwarded.
 
 Requires `NOISE_API_URL` and `WBGT_API_URL`. Unset, the button still appears and
 names the missing variable rather than failing silently.

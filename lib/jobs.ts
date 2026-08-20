@@ -1,22 +1,45 @@
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /**
- * Sheet jobs HALO can trigger on the alert services.
+ * Jobs HALO can trigger on the alert services.
  *
  * These endpoints already exist on the deployed Lambdas; HALO only collects the
  * inputs and forwards them. It proxies rather than calling from the browser so
  * the service URLs stay server-side and HALO's own editor permission applies.
  *
- * The payload shapes are NOT consistent between the two services, and that is
- * deliberate here rather than something to tidy: the noise endpoints take
- * `project_code` / `start_date` / `end_date`, while wbgt-sheet-fill takes
- * `projectCode` / `from` / `to`. Each `buildPayload` matches the endpoint it
- * targets, verified against the handlers in the alert repos.
+ * Two things vary per job and must not be unified:
+ *
+ * 1. **Payload shape.** The noise endpoints take `project_code` / `start_date` /
+ *    `end_date`; `wbgt-sheet-fill` takes `projectCode` / `from` / `to`; and
+ *    `wbgt-scrape` takes `projectCode` / `from` / `to` *plus* a mandatory
+ *    `historical: true` opt-in. Each `buildPayload` matches the handler it
+ *    targets, verified against the alert repos.
+ * 2. **Precondition.** A sheet job is pointless without a sheet id; a historical
+ *    scrape is pointless without an upstream to scrape. Both are re-checked
+ *    server-side, because in each case the job reports success while doing
+ *    nothing when the precondition is unmet.
  */
 
-export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill";
+export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill" | "wbgt-scrape";
 
-export type JobInput = { projectCode: string; startDate: string; endDate: string };
+export type JobFlag = { key: string; label: string; help: string };
+
+export type JobInput = {
+  projectCode: string;
+  startDate: string;
+  endDate: string;
+  flags?: Record<string, boolean>;
+};
+
+/**
+ * What must already be true of a project before the job can do its work.
+ * `read` returns a short description of the satisfying value, or null if unmet.
+ */
+export type JobPrecondition = {
+  label: string;
+  read: (row: ProjectConfigRow) => string | null;
+  unmet: (projectCode: string) => string;
+};
 
 export type JobDefinition = {
   key: JobKey;
@@ -28,11 +51,45 @@ export type JobDefinition = {
   /** Env var holding the service's base URL, e.g. https://…/prod */
   baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL";
   path: string;
-  /** Config column that must hold a sheet id before the job can do anything. */
-  sheetColumn: string;
-  sheetLabel: string;
+  precondition: JobPrecondition;
+  /** Inclusive day limit the endpoint itself enforces, if any. */
+  maxSpanDays?: number;
+  /** Optional booleans the endpoint accepts. */
+  flags?: JobFlag[];
+  /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
+  caution?: string;
   buildPayload: (input: JobInput) => Record<string, unknown>;
 };
+
+const PLACEHOLDERS = new Set(["null", "undefined", "blank", "empty", "-", "n/a", "na"]);
+
+/**
+ * Whether a value is a usable Google Sheet id.
+ *
+ * Mirrors normalizeGoogleSheetId() in the noise repo, which treats literal
+ * "null"/"undefined"/"blank"/"empty" as unset — real rows contain those, plus
+ * "-" and "".
+ */
+export function readSheetId(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw || PLACEHOLDERS.has(raw.toLowerCase())) return null;
+  // Accept a pasted spreadsheet URL as well as a bare id.
+  const fromUrl = raw.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
+  const id = fromUrl ? fromUrl[1] : raw;
+  return /^[A-Za-z0-9_-]{20,}$/.test(id) ? id : null;
+}
+
+function sheetPrecondition(column: string, label: string): JobPrecondition {
+  return {
+    label,
+    read: (row) => {
+      const id = readSheetId(row[column]);
+      return id ? `${id.slice(0, 12)}…` : null;
+    },
+    unmet: (projectCode) =>
+      `${label} is not configured on ${projectCode}. Set it in the project's editor first — the job would write nothing.`,
+  };
+}
 
 export const JOBS: Record<JobKey, JobDefinition> = {
   "noise-bootstrap": {
@@ -44,8 +101,7 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       "Builds the workbook structure for a date range. Occasional, not per-day — run it when a project's sheet needs its tabs and date columns laid out.",
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-bootstrap",
-    sheetColumn: "google_sheet_id",
-    sheetLabel: "Analysis sheet ID",
+    precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
       start_date: startDate,
@@ -60,10 +116,7 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     description: "Writes each day's readings into the analysis workbook for the range given. Idempotent.",
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-sync",
-    sheetColumn: "google_sheet_id",
-    sheetLabel: "Analysis sheet ID",
-    // The job resolves a range from start_date/end_date and falls back to a
-    // single `date`; a range is what the dialog always sends.
+    precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
       start_date: startDate,
@@ -79,14 +132,52 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       "Fills each hour column from the stored readings for every day in the range. Idempotent, and ungated by site hours or cadence.",
     baseUrlEnv: "WBGT_API_URL",
     path: "/api/wbgt-sheet-fill",
-    sheetColumn: "monthly_sheet_id",
-    sheetLabel: "Monthly sheet ID",
+    precondition: sheetPrecondition("monthly_sheet_id", "Monthly sheet ID"),
     // camelCase, and `from`/`to` rather than start/end — resolveDates() in
     // sheet-fill-job.js only enumerates a range when given body.from + body.to.
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       projectCode,
       from: startDate,
       to: endDate,
+    }),
+  },
+  "wbgt-scrape": {
+    key: "wbgt-scrape",
+    service: "wbgt",
+    label: "⟲ Historical scrape",
+    title: "Replay a historical WBGT scrape",
+    description:
+      "Drives CloudLynx's own date fields, walks the result pages and upserts the recovered raw readings. Use it to backfill a gap.",
+    caution:
+      "This logs into CloudLynx and can run for a while. It recovers readings only — the monthly sheet is filled separately by Sync sheets.",
+    baseUrlEnv: "WBGT_API_URL",
+    path: "/api/wbgt-scrape",
+    // parseScrapeRequest() rejects anything longer, before starting a scrape.
+    maxSpanDays: 31,
+    precondition: {
+      label: "CloudLynx scraping",
+      // The job filters on enable_scrape !== false and skips with
+      // project_scrape_disabled_<code>; a manual project has no upstream.
+      read: (row) => (row.enable_scrape === false ? null : "enabled"),
+      unmet: (projectCode) =>
+        `${projectCode} runs on manual photo ingestion (Scrape CloudLynx is off), so there is no upstream to replay.`,
+    },
+    flags: [
+      {
+        key: "force",
+        label: "force",
+        help: "Bypass the scraper's own skip conditions. Leave off unless a normal run refused.",
+      },
+    ],
+    // `historical: true` is a mandatory opt-in: parseScrapeRequest() rejects
+    // from/to without it, and treats a bare projectCode as a normal
+    // current-window scrape.
+    buildPayload: ({ projectCode, startDate, endDate, flags }) => ({
+      historical: true,
+      projectCode,
+      from: startDate,
+      to: endDate,
+      ...(flags?.force ? { force: true } : {}),
     }),
   },
 };
@@ -102,35 +193,22 @@ export function jobsForService(service: ServiceKey): JobDefinition[] {
   return JOB_KEYS.map((key) => JOBS[key]).filter((job) => job.service === service);
 }
 
-/**
- * Whether a config row has a usable sheet id.
- *
- * Mirrors normalizeGoogleSheetId() in the noise repo, which treats the literal
- * strings "null"/"undefined"/"blank"/"empty" as unset — they occur in real rows.
- */
-const PLACEHOLDERS = new Set(["null", "undefined", "blank", "empty", "-", "n/a", "na"]);
-
-export function readSheetId(value: unknown): string | null {
-  const raw = String(value ?? "").trim();
-  if (!raw || PLACEHOLDERS.has(raw.toLowerCase())) return null;
-  // Accept a pasted spreadsheet URL as well as a bare id.
-  const fromUrl = raw.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
-  const id = fromUrl ? fromUrl[1] : raw;
-  return /^[A-Za-z0-9_-]{20,}$/.test(id) ? id : null;
-}
-
-export type JobTarget = { projectCode: string; sheetId: string | null };
+export type JobTarget = {
+  projectCode: string;
+  /** Description of the satisfied precondition, or null when unmet. */
+  ready: string | null;
+};
 
 /**
- * Every project on the job's service, with whether its sheet is configured.
- * Projects without a sheet id are still listed — the dialog shows why they
- * cannot be run rather than hiding them, which is the more diagnosable choice.
+ * Every project on the job's service, with whether its precondition holds.
+ * Projects that cannot run are still listed — the dialog says why rather than
+ * hiding them, which is the more diagnosable choice.
  */
 export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTarget[] {
   return rows
     .map((row) => ({
       projectCode: String(row.project_code ?? ""),
-      sheetId: readSheetId(row[job.sheetColumn]),
+      ready: job.precondition.read(row),
     }))
     .filter((target) => target.projectCode)
     .sort((a, b) => a.projectCode.localeCompare(b.projectCode));
@@ -142,24 +220,37 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+/** Inclusive day count, matching how the endpoints measure a range. */
+export function spanDays(startDate: string, endDate: string): number {
+  const from = Date.parse(`${startDate}T00:00:00Z`);
+  const to = Date.parse(`${endDate}T00:00:00Z`);
+  return (to - from) / 86_400_000 + 1;
+}
+
 /** Everything wrong with the form, in the order a human would fix it. */
 export function validateJobInput(
   input: Partial<JobInput>,
-  { sheetId }: { sheetId?: string | null } = {},
+  { job, ready }: { job?: JobDefinition; ready?: string | null } = {},
 ): string[] {
   const problems: string[] = [];
   if (!input.projectCode) problems.push("Choose a project.");
   if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
   if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
-  if (
-    input.startDate &&
-    input.endDate &&
-    isIsoDate(input.startDate) &&
-    isIsoDate(input.endDate) &&
-    input.startDate > input.endDate
-  ) {
-    problems.push("Start date is after the end date.");
+
+  if (input.startDate && input.endDate && isIsoDate(input.startDate) && isIsoDate(input.endDate)) {
+    if (input.startDate > input.endDate) {
+      problems.push("Start date is after the end date.");
+    } else if (job?.maxSpanDays) {
+      const span = spanDays(input.startDate, input.endDate);
+      if (span > job.maxSpanDays) {
+        // The endpoint rejects this outright, so catch it before the round trip.
+        problems.push(`Range is ${span} days; this job accepts at most ${job.maxSpanDays}.`);
+      }
+    }
   }
-  if (input.projectCode && !sheetId) problems.push("This project has no sheet id configured.");
+
+  if (input.projectCode && !ready) {
+    problems.push(job ? job.precondition.unmet(input.projectCode) : "Precondition not met.");
+  }
   return problems;
 }

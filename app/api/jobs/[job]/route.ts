@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { JOBS, isJobKey, readSheetId, validateJobInput } from "@/lib/jobs";
+import { JOBS, isJobKey, validateJobInput } from "@/lib/jobs";
 import { listConfigs } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -37,27 +37,40 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     );
   }
 
-  let body: { projectCode?: string; startDate?: string; endDate?: string };
+  let body: {
+    projectCode?: string;
+    startDate?: string;
+    endDate?: string;
+    flags?: Record<string, boolean>;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  // Re-read the sheet id server-side: the client's view could be stale, and the
-  // job silently does nothing when it is missing.
+  // Re-check the precondition server-side: the client's view could be stale,
+  // and every one of these jobs reports success while doing nothing when it is
+  // unmet (no sheet id to write to, or no upstream to scrape).
   const rows = (await listConfigs(job.service)) as ProjectConfigRow[];
   const row = rows.find((candidate) => String(candidate.project_code ?? "") === body.projectCode);
   if (!row) return NextResponse.json({ error: `No ${job.service} project ${body.projectCode}.` }, { status: 404 });
 
-  const sheetId = readSheetId(row[job.sheetColumn]);
-  const problems = validateJobInput(body, { sheetId });
+  const ready = job.precondition.read(row);
+  const problems = validateJobInput(body, { job, ready });
   if (problems.length) return NextResponse.json({ error: problems.join(" ") }, { status: 400 });
+
+  // Only flags the job actually declares are forwarded.
+  const allowed = new Set((job.flags ?? []).map((flag) => flag.key));
+  const flags = Object.fromEntries(
+    Object.entries(body.flags ?? {}).filter(([key, value]) => allowed.has(key) && value === true),
+  );
 
   const payload = job.buildPayload({
     projectCode: body.projectCode as string,
     startDate: body.startDate as string,
     endDate: body.endDate as string,
+    flags,
   });
 
   const controller = new AbortController();
@@ -81,7 +94,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
 
     console.log(
       `[halo][job] ${job.key} project=${body.projectCode} range=${body.startDate}..${body.endDate} ` +
-        `actor=${session.email ?? "local"} status=${res.status}`,
+        `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
     );
 
     return NextResponse.json(

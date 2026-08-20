@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { autoLinks, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
+import { autoLinks, deliveryGroups, firesAt, formatSgt, isManualIngestion, pillsFor } from "@/lib/card-summary";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 import { useBodyScrollLock, useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -42,6 +42,7 @@ export function ProjectSheet({
   const groups = deliveryGroups(service, config);
   const links = autoLinks(service, config);
   const pills = pillsFor(service, config);
+  const manual = isManualIngestion(service, config);
   const projectCode = String(config.project_code ?? rowId);
 
   return (
@@ -65,8 +66,15 @@ export function ProjectSheet({
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">{label}</span>
               <span className="break-all">{projectCode}</span>
             </h2>
-            <p className={`mt-1 text-[11px] font-semibold ${enabled ? "text-on" : "text-muted-foreground"}`}>
-              {enabled ? "● ENABLED" : "○ DISABLED"}
+            <p className="mt-1 flex flex-wrap items-center gap-2">
+              <span className={`text-[11px] font-semibold ${enabled ? "text-on" : "text-muted-foreground"}`}>
+                {enabled ? "● ENABLED" : "○ DISABLED"}
+              </span>
+              {manual ? (
+                <span className="rounded-md bg-warn/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-warn ring-1 ring-warn/40">
+                  Manual
+                </span>
+              ) : null}
             </p>
           </div>
           <button

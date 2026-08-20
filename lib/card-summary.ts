@@ -127,7 +127,11 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (config.enable_5min_alerts) parts.push("5-min on 32/33°C crossings");
-    if (!parts.length) return "No cadences enabled";
+    if (!parts.length) {
+      return isManualIngestion(service, config)
+        ? "Manual photo ingestion — readings arrive as photos; no scheduled message"
+        : "No cadences enabled";
+    }
     let line = `${parts.join(" · ")} — site hours ${config.site_hours_start}:00–${config.site_hours_end}:00`;
     if (config.skip_lunch_hour) line += ", skips 12:00";
     return line + mutesSuffix(config).replace(" — muted", ", muted");
@@ -293,6 +297,43 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { labe
     });
   }
   return links;
+}
+
+/**
+ * A WBGT project fed by photos rather than by the CloudLynx scraper.
+ *
+ * These have every cadence off, so the old binary "has a cadence?" test filed
+ * them with the idle projects — greyed out and sunk to the bottom — even though
+ * they are live sites whose readings arrive by hand. The three conditions are
+ * the ones that together mean "manual": the project is on, the scraper is off,
+ * and there is somewhere for photos to come from.
+ */
+export function isManualIngestion(service: ServiceKey, config: ProjectConfigRow): boolean {
+  if (service !== "wbgt") return false;
+  if (config.enabled === false) return false;
+  // Scrape defaults to on, so only an explicit false means manual.
+  if (config.enable_scrape !== false) return false;
+  return (
+    splitList(config.whatsapp_wbgt_source_chat_ids).length > 0 || splitList(config.telegram_chat_ids).length > 0
+  );
+}
+
+/**
+ * How prominent a card should be. Three states, not two: a manual project is
+ * working, so it must not look like an idle one, but it has no schedule either.
+ */
+export type CardEmphasis = "active" | "manual" | "idle";
+
+export function cardEmphasis(service: ServiceKey, config: ProjectConfigRow): CardEmphasis {
+  if (hasCadence(service, config)) return "active";
+  if (isManualIngestion(service, config)) return "manual";
+  return "idle";
+}
+
+/** Sort weight: scheduled first, then manual, then idle. */
+export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): number {
+  const order: Record<CardEmphasis, number> = { active: 2, manual: 1, idle: 0 };
+  return order[cardEmphasis(service, config)];
 }
 
 /** Cards with nothing scheduled sink to the bottom of the grid. */

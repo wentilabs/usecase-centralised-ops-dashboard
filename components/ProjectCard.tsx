@@ -1,6 +1,6 @@
 "use client";
 
-import { autoLinks, deliveryGroups, firesAt, formatSgt, hasCadence, pillsFor } from "@/lib/card-summary";
+import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 const TAG_TONE: Record<ServiceKey, string> = {
@@ -88,7 +88,10 @@ export function ProjectCard({
   visoUrl?: string | null;
 }) {
   const enabled = config.enabled !== false;
-  const scheduled = hasCadence(service, config);
+  // Three states: scheduled, running on manual photo ingestion, or idle. A
+  // manual project has no cadence but is live, so it gets a lighter scrim than
+  // an idle one and says so on the header row.
+  const emphasis = cardEmphasis(service, config);
   const groups = deliveryGroups(service, config);
   const links = autoLinks(service, config);
   const wording = STATUS_WORDING[service] ?? { on: "● ENABLED", off: "○ DISABLED" };
@@ -107,7 +110,10 @@ export function ProjectCard({
       className={[
         "relative flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5 shadow-soft md:gap-3 md:p-4",
         enabled ? "" : "opacity-60",
-        scheduled ? "" : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/45",
+        emphasis === "active"
+          ? ""
+          : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
+            (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/45"),
       ].join(" ")}
     >
       {/* The whole card is one tap target on mobile; on desktop the card stays
@@ -127,6 +133,14 @@ export function ProjectCard({
           <span className="md:hidden">{enabled ? "●" : "○"}</span>
           <span className="hidden md:inline">{enabled ? wording.on : wording.off}</span>
         </span>
+        {emphasis === "manual" ? (
+          <span
+            title="Readings arrive as photos: the CloudLynx scraper is off and photo source chats are configured."
+            className="rounded-md bg-warn/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-warn ring-1 ring-warn/40"
+          >
+            Manual
+          </span>
+        ) : null}
         {canEdit ? (
           <button
             type="button"

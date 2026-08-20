@@ -7,7 +7,7 @@ import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
-import { formatSgt, hasCadence } from "@/lib/card-summary";
+import { emphasisRank, formatSgt } from "@/lib/card-summary";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -119,8 +119,9 @@ export function DashboardShell({
       .filter((row) => !query || String(row.project_code ?? "").toLowerCase().includes(query.toLowerCase()))
       .slice()
       .sort((a, b) => {
-        const cadence = Number(hasCadence(active.key, b)) - Number(hasCadence(active.key, a));
-        return cadence || String(a.project_code ?? "").localeCompare(String(b.project_code ?? ""));
+        // Scheduled first, then manual-ingestion projects, then idle ones.
+        const rank = emphasisRank(active.key, b) - emphasisRank(active.key, a);
+        return rank || String(a.project_code ?? "").localeCompare(String(b.project_code ?? ""));
       });
   }, [rows, active, query]);
 

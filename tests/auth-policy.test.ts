@@ -14,11 +14,14 @@ import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
 import {
   autoLinks,
+  cardEmphasis,
   CHAT_ID_COLUMNS,
   chatIdsIn,
   deliveryGroups,
+  emphasisRank,
   firesAt,
   hasCadence,
+  isManualIngestion,
   pillsFor,
 } from "../lib/card-summary";
 
@@ -353,4 +356,60 @@ test("the retired lightning policy_note stays hidden while the column exists", (
   });
   assert.equal(spec.fields.policy_note?.hidden, true);
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
+});
+
+// ---------------------------------------------------------------------------
+// Manual photo ingestion: a live WBGT project with no cadence at all. Treating
+// "no cadence" as "idle" greyed these out and sank them, which is what this
+// three-way classification fixes.
+// ---------------------------------------------------------------------------
+const manualRow = {
+  enabled: true,
+  enable_scrape: false,
+  whatsapp_wbgt_source_chat_ids: "120363000000000000@g.us",
+};
+
+test("manual ingestion needs all three conditions", () => {
+  assert.equal(isManualIngestion("wbgt", manualRow), true);
+  // Telegram photo sources count too — same section of the editor.
+  assert.equal(
+    isManualIngestion("wbgt", { enabled: true, enable_scrape: false, telegram_chat_ids: "-100123" }),
+    true,
+  );
+
+  assert.equal(isManualIngestion("wbgt", { ...manualRow, enabled: false }), false, "a disabled project is not manual");
+  assert.equal(
+    isManualIngestion("wbgt", { ...manualRow, enable_scrape: true }),
+    false,
+    "the scraper still running means it is not manual",
+  );
+  // Scrape defaults to on, so an absent flag is not manual either.
+  assert.equal(isManualIngestion("wbgt", { enabled: true, whatsapp_wbgt_source_chat_ids: "x@g.us" }), false);
+  assert.equal(
+    isManualIngestion("wbgt", { enabled: true, enable_scrape: false }),
+    false,
+    "no photo source means nothing arrives",
+  );
+  // Only WBGT ingests photos.
+  assert.equal(isManualIngestion("noise", manualRow), false);
+});
+
+test("emphasis separates scheduled, manual and idle", () => {
+  assert.equal(cardEmphasis("wbgt", { enable_hourly: true }), "active");
+  assert.equal(cardEmphasis("wbgt", manualRow), "manual");
+  // Scrape on but nothing sent: genuinely idle, keeps the full scrim.
+  assert.equal(cardEmphasis("wbgt", { enabled: true, enable_scrape: true }), "idle");
+
+  // A manual project outranks an idle one but not a scheduled one.
+  assert.ok(emphasisRank("wbgt", manualRow) > emphasisRank("wbgt", { enabled: true }));
+  assert.ok(emphasisRank("wbgt", { enable_hourly: true }) > emphasisRank("wbgt", manualRow));
+});
+
+test("a manual project does not claim there are no cadences", () => {
+  assert.match(firesAt("wbgt", manualRow), /Manual photo ingestion/);
+  assert.equal(firesAt("wbgt", { enabled: true }), "No cadences enabled");
+  // A manual project that also messages hourly still describes the cadence.
+  assert.match(firesAt("wbgt", { ...manualRow, enable_hourly: true }), /:00 hourly/);
+  // hasCadence stays a pure "is anything scheduled" test.
+  assert.equal(hasCadence("wbgt", manualRow), false);
 });

@@ -103,6 +103,13 @@ would drop to dashboard-only edits.
   and `ServiceDrawer` (the tabs, counts, refreshes and identity that do not fit
   a phone bar). Both are `md:hidden` at the root so a resize cannot surface them.
   `tests/mobile-contract.test.ts` guards all of it.
+- **A card has three states, not two.** `cardEmphasis()` returns `active`
+  (something is scheduled), `manual` (a WBGT project whose readings arrive as
+  photos: enabled, `enable_scrape = false`, and photo source chats configured)
+  or `idle`. Manual projects have no cadence at all, so the old binary test
+  greyed them out and sank them as if they were dead — they now get a lighter
+  scrim, a MANUAL badge and a middle sort rank. `hasCadence()` stays a pure "is
+  anything scheduled" test; use `emphasisRank()` for ordering.
 - **Chat ids are chosen by name, stored as ids.** Any column holding WhatsApp
   group ids gets `widget: "groups"` (see `lib/field-spec.ts`), which renders the
   `GroupPicker`: type a group name, pick from the matches, get a pill. What is

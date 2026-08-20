@@ -100,6 +100,11 @@ export function ProjectCard({
   // index so services with repeated labels can't collide.
   const pills = pillsFor(service, config);
   const mobilePills = new Set<number>();
+  // Cautions first: they are the reason to look at the card at all, and would
+  // otherwise be hidden behind the "+N" on a phone.
+  pills.forEach((pill, index) => {
+    if (pill.tone === "warn" && mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
+  });
   pills.forEach((pill, index) => {
     if (pill.on && mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
   });
@@ -160,9 +165,11 @@ export function ProjectCard({
           <span
             key={pill.label}
             className={[
-              pill.on
-                ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
-                : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through",
+              pill.tone === "warn"
+                ? "rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-semibold text-warn ring-1 ring-warn/40"
+                : pill.on
+                  ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
+                  : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through",
               mobilePills.has(index) ? "" : "hidden md:block",
             ].join(" ")}
           >

@@ -1,4 +1,4 @@
-import { describeSelection } from "./meter-selection";
+import { describeSelection, includesEveryMeter } from "./meter-selection";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /** Noise repo's quirky literal column name. */
@@ -201,7 +201,12 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   return "Event-driven — fires when the CCTV bot posts.";
 }
 
-export type Pill = { label: string; on: boolean };
+/**
+ * `on` means the switch is on; an off pill renders struck through. `tone: "warn"`
+ * is for a state that is neither — active, but worth noticing rather than
+ * celebrating, so it must not be drawn as a green tick or as a dead switch.
+ */
+export type Pill = { label: string; on: boolean; tone?: "warn" };
 
 /** The at-a-glance switches for a project, per service. */
 export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] {
@@ -230,12 +235,18 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "expiry alerts", on: on(config.allow_expiry_alert) },
-        // Blank means every meter, which is the norm — say so either way, since
-        // "some meters are muted for the client" is easy to forget.
-        {
-          label: describeSelection(config.noise_meters_included, null),
-          on: !String(config.noise_meters_included ?? "").trim(),
-        },
+        // Only when a filter is actually set. Blank is the norm on every
+        // project, so a pill saying so would be noise on 30 cards; a filter is
+        // the notable state, and it is a caution rather than a feature being on.
+        ...(includesEveryMeter(config.noise_meters_included)
+          ? []
+          : [
+              {
+                label: describeSelection(config.noise_meters_included, null),
+                on: true,
+                tone: "warn" as const,
+              },
+            ]),
       ];
     case "haze":
       return [

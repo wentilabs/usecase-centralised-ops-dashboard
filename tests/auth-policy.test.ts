@@ -655,3 +655,20 @@ test("the selection summary reads naturally on a card", () => {
   assert.equal(describeSelection(null, null), "all meters");
   assert.equal(describeSelection("6408", null), "1 meters only");
 });
+
+test("a meter filter reads as a caution, not as a switched-off feature", () => {
+  // Blank is the norm on every project, so it earns no pill at all.
+  assert.equal(
+    pillsFor("noise", { noise_meters_included: null }).some((p) => /meter/.test(p.label)),
+    false,
+  );
+
+  // A filter is ACTIVE, so `on` must be true — an off pill renders struck
+  // through, which would read as "the filter is disabled", the opposite of true.
+  const filtered = pillsFor("noise", { noise_meters_included: "6408,5771,6440,6439" });
+  const pill = filtered.find((p) => /meter/.test(p.label));
+  assert.equal(pill?.label, "4 meters only");
+  assert.equal(pill?.on, true);
+  // And it is a caution rather than a feature being on, so it is toned.
+  assert.equal(pill?.tone, "warn");
+});

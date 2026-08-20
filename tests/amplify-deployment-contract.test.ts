@@ -67,6 +67,8 @@ test("amplify.yml carries every runtime variable into .env.production", async ()
     "WHITELIST_DOMAINS",
     "EDITOR_EMAILS",
     "VISO_URL",
+    "NOISE_API_URL",
+    "WBGT_API_URL",
     "NEXT_PUBLIC_",
   ]) {
     assert.ok(amplify.includes(key), `amplify.yml must capture ${key}`);

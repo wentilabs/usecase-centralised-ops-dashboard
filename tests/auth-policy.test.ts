@@ -11,6 +11,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { JOBS, jobTargets, jobsForService, readSheetId, validateJobInput } from "../lib/jobs";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
 import {
   autoLinks,
@@ -412,4 +413,85 @@ test("a manual project does not claim there are no cadences", () => {
   assert.match(firesAt("wbgt", { ...manualRow, enable_hourly: true }), /:00 hourly/);
   // hasCadence stays a pure "is anything scheduled" test.
   assert.equal(hasCadence("wbgt", manualRow), false);
+});
+
+// ---------------------------------------------------------------------------
+// Sheet jobs. The two services' endpoints take DIFFERENT payload shapes, which
+// is the whole reason buildPayload exists per job rather than once.
+// ---------------------------------------------------------------------------
+test("each job builds the payload its own endpoint expects", () => {
+  const input = { projectCode: "ZRA", startDate: "2026-07-01", endDate: "2026-07-31" };
+
+  // noise-sheet-bootstrap / noise-sheet-sync: snake_case, start_date/end_date.
+  assert.deepEqual(JOBS["noise-bootstrap"].buildPayload(input), {
+    project_code: "ZRA",
+    start_date: "2026-07-01",
+    end_date: "2026-07-31",
+  });
+  assert.deepEqual(JOBS["noise-sync"].buildPayload(input), {
+    project_code: "ZRA",
+    start_date: "2026-07-01",
+    end_date: "2026-07-31",
+  });
+  // wbgt-sheet-fill: camelCase, and resolveDates() only enumerates a range when
+  // given from + to.
+  assert.deepEqual(JOBS["wbgt-fill"].buildPayload(input), {
+    projectCode: "ZRA",
+    from: "2026-07-01",
+    to: "2026-07-31",
+  });
+});
+
+test("jobs are offered on the right tab and check the right sheet column", () => {
+  assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
+  assert.deepEqual(jobsForService("wbgt").map((j) => j.key), ["wbgt-fill"]);
+  for (const service of ["haze", "lightning", "ailytics", "subcon"] as const) {
+    assert.deepEqual(jobsForService(service), [], service);
+  }
+  // The column each service's job actually reads.
+  assert.equal(JOBS["noise-sync"].sheetColumn, "google_sheet_id");
+  assert.equal(JOBS["wbgt-fill"].sheetColumn, "monthly_sheet_id");
+});
+
+test("a sheet id is recognised, and placeholders are not", () => {
+  assert.equal(readSheetId("1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg"), "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg");
+  // A pasted URL is accepted, since that is what people copy.
+  assert.equal(
+    readSheetId("https://docs.google.com/spreadsheets/d/1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg/edit#gid=0"),
+    "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg",
+  );
+  // The alert repos treat these literals as unset, and real rows contain them.
+  for (const bad of ["", "   ", "null", "NULL", "undefined", "blank", "empty", "-", "n/a", "too-short"]) {
+    assert.equal(readSheetId(bad), null, JSON.stringify(bad));
+  }
+  assert.equal(readSheetId(null), null);
+});
+
+test("a job cannot be launched without a project, a valid range and a sheet", () => {
+  const ok = { projectCode: "ZRA", startDate: "2026-07-01", endDate: "2026-07-31" };
+  assert.deepEqual(validateJobInput(ok, { sheetId: "1abcdefghijklmnopqrstuvwxyz" }), []);
+
+  assert.ok(validateJobInput(ok, { sheetId: null }).some((p) => /no sheet id/.test(p)));
+  assert.ok(validateJobInput({ ...ok, projectCode: "" }, { sheetId: "x".repeat(25) }).some((p) => /Choose a project/.test(p)));
+  assert.ok(
+    validateJobInput({ ...ok, startDate: "2026-08-01" }, { sheetId: "x".repeat(25) }).some((p) =>
+      /after the end date/.test(p),
+    ),
+  );
+  // Real dates only: 31 February is rejected even though it matches the shape.
+  assert.ok(validateJobInput({ ...ok, startDate: "2026-02-31" }, { sheetId: "x".repeat(25) }).some((p) => /YYYY-MM-DD/.test(p)));
+  assert.ok(validateJobInput({ ...ok, endDate: "01-07-2026" }, { sheetId: "x".repeat(25) }).some((p) => /YYYY-MM-DD/.test(p)));
+});
+
+test("job targets list every project, flagging the ones without a sheet", () => {
+  const rows = [
+    { project_code: "ZRB", google_sheet_id: "x".repeat(30) },
+    { project_code: "ZRA", google_sheet_id: null },
+    { project_code: "", google_sheet_id: "y".repeat(30) },
+  ];
+  // Sorted, unnamed rows dropped, and a missing sheet surfaced rather than hidden.
+  assert.deepEqual(jobTargets(JOBS["noise-sync"], rows), [
+    { projectCode: "ZRA", sheetId: null },
+    { projectCode: "ZRB", sheetId: "x".repeat(30) },
+  ]);
 });

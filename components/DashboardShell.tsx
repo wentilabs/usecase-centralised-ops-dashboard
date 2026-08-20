@@ -4,10 +4,12 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
+import { JobDialog } from "./JobDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { emphasisRank, formatSgt } from "@/lib/card-summary";
+import { jobsForService, type JobDefinition } from "@/lib/jobs";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -60,6 +62,7 @@ export function DashboardShell({
   // that carries the details the phone card leaves out.
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
+  const [job, setJob] = useState<JobDefinition | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -253,6 +256,25 @@ export function DashboardShell({
         </div>
       </header>
 
+      {session.canEdit && jobsForService(active.key).length ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-5">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            {active.label} sheet jobs
+          </span>
+          {jobsForService(active.key).map((definition) => (
+            <button
+              key={definition.key}
+              type="button"
+              onClick={() => setJob(definition)}
+              title={definition.description}
+              className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
+            >
+              {definition.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <main className="grid grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(330px,1fr))] md:gap-3.5 md:px-5 md:py-4">
         {active.error ? (
           <p className="col-span-full rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
@@ -329,6 +351,10 @@ export function DashboardShell({
           groupNames={groupNames}
           visoUrl={visoUrl}
         />
+      ) : null}
+
+      {job ? (
+        <JobDialog job={job} rows={rows[job.service] ?? []} onClose={() => setJob(null)} />
       ) : null}
 
       {editing && editing.service.spec ? (

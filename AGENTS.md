@@ -120,6 +120,28 @@ would drop to dashboard-only edits.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
 
+## Sheet jobs
+
+The action row under the header triggers endpoints that already exist on the
+alert-service Lambdas: noise bootstrap, noise sync, WBGT fill. `lib/jobs.ts` is
+the registry; HALO proxies through `app/api/jobs/[job]` rather than calling from
+the browser, so the service URLs stay server-side and triggering a job needs the
+same editor permission as a config write.
+
+**The payload shapes differ between services and must not be unified.** Verified
+against the handlers: the noise endpoints take `project_code` / `start_date` /
+`end_date`, while `wbgt-sheet-fill` takes `projectCode` / `from` / `to` —
+`resolveDates()` there only enumerates a range when given `from` *and* `to`.
+Hence one `buildPayload` per job, with a test pinning each shape.
+
+The sheet id is re-checked server-side before forwarding, because these jobs
+report success while writing nothing when it is missing. Real rows contain `"-"`
+and `""` as sheet ids, so `readSheetId()` rejects those placeholders — the same
+literals `normalizeGoogleSheetId()` treats as unset in the noise repo.
+
+Requires `NOISE_API_URL` and `WBGT_API_URL`. Unset, the button still appears and
+names the missing variable rather than failing silently.
+
 ## Group names (the alias store)
 
 `ops.whatsapp_group_names` maps chat id → group name. Two paths fill it, and the

@@ -46,6 +46,7 @@ dependency bump could silently break — run `npm test` before every deploy.
    | `WHITELIST_DOMAINS` and/or `WHITELIST_EMAILS` | **required** — with neither set, nobody can sign in (fails closed) |
    | `EDITOR_EMAILS` | optional; set it to make everyone else read-only |
    | `LISTENER_SUPABASE_URL` / `LISTENER_SUPABASE_ANON_KEY` | optional; the listener project holding `whatsapp_listener`, used to resolve group ids to names. Without them the cards show raw ids |
+   | `NOISE_API_URL` / `WBGT_API_URL` | optional; base URL of each deployed alert-service Lambda. Powers the sheet-job buttons (noise bootstrap, noise sync, WBGT fill). Without them the buttons still appear and report which variable is missing |
    | `VISO_URL` | optional; `https://viso.wenti.io`. Makes each group chip link to `VISO_URL/go/<chatId>`, which resolves the chat's company in Viso and redirects. Server-side by design, so it can change without a rebuild. Viso sits behind Cloudflare Access, which preserves the deep link across sign-in |
 
    Do **not** set `LOCAL_AUTH_BYPASS` in Amplify. It is ignored in production

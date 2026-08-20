@@ -4,12 +4,13 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
+import { ExportDialog } from "./ExportDialog";
 import { JobDialog } from "./JobDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { emphasisRank, formatSgt } from "@/lib/card-summary";
-import { jobsForService, type JobDefinition } from "@/lib/jobs";
+import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -63,6 +64,7 @@ export function DashboardShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
   const [job, setJob] = useState<JobDefinition | null>(null);
+  const [exporter, setExporter] = useState<ExportDefinition | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -256,18 +258,33 @@ export function DashboardShell({
         </div>
       </header>
 
-      {session.canEdit && jobsForService(active.key).length ? (
+      {jobsForService(active.key).length || exportsForService(active.key).length ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-5">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {active.label} sheet jobs
           </span>
-          {jobsForService(active.key).map((definition) => (
+          {/* Jobs change production, so they need edit rights. An export only
+              reads, so a read-only account may still take a copy. */}
+          {session.canEdit
+            ? jobsForService(active.key).map((definition) => (
+                <button
+                  key={definition.key}
+                  type="button"
+                  onClick={() => setJob(definition)}
+                  title={definition.description}
+                  className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
+                >
+                  {definition.label}
+                </button>
+              ))
+            : null}
+          {exportsForService(active.key).map((definition) => (
             <button
               key={definition.key}
               type="button"
-              onClick={() => setJob(definition)}
+              onClick={() => setExporter(definition)}
               title={definition.description}
-              className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:border-primary hover:text-primary"
             >
               {definition.label}
             </button>
@@ -355,6 +372,14 @@ export function DashboardShell({
 
       {job ? (
         <JobDialog job={job} rows={rows[job.service] ?? []} onClose={() => setJob(null)} />
+      ) : null}
+
+      {exporter ? (
+        <ExportDialog
+          definition={exporter}
+          rows={rows[exporter.service] ?? []}
+          onClose={() => setExporter(null)}
+        />
       ) : null}
 
       {editing && editing.service.spec ? (

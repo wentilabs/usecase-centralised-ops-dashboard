@@ -182,6 +182,75 @@ export const JOBS: Record<JobKey, JobDefinition> = {
   },
 };
 
+/**
+ * Exports are a different shape from the other jobs: they return a file rather
+ * than a report, and each needs a read-only preflight first because the Drive
+ * scope they depend on may not be granted yet. They are declared here so the
+ * action row and the permission model stay in one place, and carried by their
+ * own dialog rather than JobDialog.
+ */
+export const EXPORTS: Record<"wbgt-export" | "noise-export", ExportDefinition> = {
+  "wbgt-export": {
+    key: "wbgt-export",
+    service: "wbgt",
+    label: "⤓ Export xlsx",
+    title: "Export a monthly record as xlsx",
+    description:
+      "Exports one month's monitoring record exactly as the Google Sheet renders it — conditional formatting, merges and legend included.",
+    baseUrlEnv: "WBGT_API_URL",
+    path: "/api/wbgt-sheet-export",
+    choose: "tab",
+  },
+  "noise-export": {
+    key: "noise-export",
+    service: "noise",
+    label: "⤓ Export xlsx",
+    title: "Export the analysis workbook as xlsx",
+    description:
+      "Exports the analysis workbook trimmed to a date window. Date columns outside the window are removed from a temporary copy; the original is untouched.",
+    baseUrlEnv: "NOISE_API_URL",
+    path: "/api/noise-sheet-export",
+    choose: "range",
+  },
+};
+
+export type ExportKey = keyof typeof EXPORTS;
+
+export type ExportDefinition = {
+  key: ExportKey;
+  service: ServiceKey;
+  label: string;
+  title: string;
+  description: string;
+  baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL";
+  path: string;
+  /** Whether the operator picks a workbook tab or a date range. */
+  choose: "tab" | "range";
+};
+
+export function isExportKey(value: string): value is ExportKey {
+  return Object.prototype.hasOwnProperty.call(EXPORTS, value);
+}
+
+export function exportsForService(service: ServiceKey): ExportDefinition[] {
+  return (Object.keys(EXPORTS) as ExportKey[]).map((key) => EXPORTS[key]).filter((entry) => entry.service === service);
+}
+
+/** One blocker as the alert services report it. */
+export type ExportBlocker = { code: string; summary: string; remedy: string; detail?: string };
+
+export type ExportPreflight = {
+  ready: boolean;
+  blockers: ExportBlocker[];
+  workbook_name?: string | null;
+  spreadsheet_id?: string | null;
+  tabs?: string[];
+  available_dates?: string[];
+  earliest_date?: string | null;
+  latest_date?: string | null;
+  tabs_error?: string;
+};
+
 export const JOB_KEYS = Object.keys(JOBS) as JobKey[];
 
 export function isJobKey(value: string): value is JobKey {

@@ -38,10 +38,13 @@ export function ExportDialog({
   const [tab, setTab] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [format, setFormat] = useState<ExportFormat>("xlsx");
+  const [format, setFormat] = useState<ExportFormat>("pdf");
   const [checking, setChecking] = useState(false);
   const [preflight, setPreflight] = useState<ExportPreflight | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Blockers from a failed EXPORT, kept apart from the preflight so a failure
+   *  cannot wipe the tab list the preflight supplied. */
+  const [refusal, setRefusal] = useState<ExportPreflight | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -51,6 +54,7 @@ export function ExportDialog({
     async (code: string) => {
       setChecking(true);
       setPreflight(null);
+      setRefusal(null);
       setError(null);
       setDone(null);
       try {
@@ -130,8 +134,8 @@ export function ExportDialog({
       if (!res.ok || type.includes("application/json")) {
         const body = await res.json().catch(() => ({}));
         if (Array.isArray(body.blockers) && body.blockers.length) {
-          setPreflight(body as ExportPreflight);
-          setError("The service refused the export — see the blockers above.");
+          setRefusal(body as ExportPreflight);
+          setError("The service refused the export — see the reasons below.");
         } else {
           setError(body.error ?? `HTTP ${res.status}`);
         }
@@ -339,6 +343,23 @@ export function ExportDialog({
               <li key={problem}>{problem}</li>
             ))}
           </ul>
+        ) : null}
+
+        {refusal?.blockers?.length ? (
+          <div className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-3">
+            <div className="text-xs font-semibold text-warn">The export could not run</div>
+            <ul className="mt-1.5 flex flex-col gap-2">
+              {refusal.blockers.map((blocker) => (
+                <li key={blocker.code} className="text-[11px]">
+                  <div className="font-semibold text-warn">{blocker.summary}</div>
+                  <div className="mt-0.5 text-muted-foreground">{blocker.remedy}</div>
+                  {blocker.detail ? (
+                    <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{blocker.detail}</div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         {error ? (

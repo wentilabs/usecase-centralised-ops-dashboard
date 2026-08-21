@@ -241,8 +241,8 @@ export type ExportBlocker = { code: string; summary: string; remedy: string; det
 
 /** Formats that preserve the sheet's appearance. */
 export const EXPORT_FORMATS = [
-  { key: "xlsx", label: "Excel (.xlsx)", help: "Editable. Excel re-renders it, so very complex formatting can shift slightly." },
   { key: "pdf", label: "PDF (.pdf)", help: "Google renders the page itself, so this is the most faithful to the sheet." },
+  { key: "xlsx", label: "Excel (.xlsx)", help: "Editable, and verified to keep the conditional formatting." },
 ] as const;
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number]["key"];

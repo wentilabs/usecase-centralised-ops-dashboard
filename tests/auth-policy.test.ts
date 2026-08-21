@@ -690,7 +690,8 @@ test("exports are offered on the right tab and target the right endpoint", () =>
 });
 
 test("every offered format preserves the sheet's appearance", () => {
-  assert.deepEqual(EXPORT_FORMATS.map((entry) => entry.key), ["xlsx", "pdf"]);
+  // PDF first: Google renders the page itself, so it is the most faithful.
+  assert.deepEqual(EXPORT_FORMATS.map((entry) => entry.key), ["pdf", "xlsx"]);
   // Each carries the trade-off, since "any format that keeps the formatting"
   // is exactly the choice being made here.
   assert.ok(EXPORT_FORMATS.every((entry) => entry.label && entry.help));

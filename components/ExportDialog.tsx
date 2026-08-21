@@ -36,8 +36,6 @@ export function ExportDialog({
 
   const [projectCode, setProjectCode] = useState("");
   const [tab, setTab] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [checking, setChecking] = useState(false);
   const [preflight, setPreflight] = useState<ExportPreflight | null>(null);
@@ -79,21 +77,11 @@ export function ExportDialog({
     if (projectCode) void check(projectCode);
   }, [projectCode, check]);
 
-  // Default the window to whatever the workbook actually covers.
-  useEffect(() => {
-    if (definition.choose !== "range" || !preflight) return;
-    if (preflight.earliest_date && !from) setFrom(preflight.earliest_date);
-    if (preflight.latest_date && !to) setTo(preflight.latest_date);
-  }, [definition.choose, preflight, from, to]);
+  const wantsTab = definition.choose === "tab";
 
   const problems: string[] = [];
   if (!projectCode) problems.push("Choose a project.");
-  if (definition.choose === "tab" && projectCode && !tab) problems.push("Choose which sheet to export.");
-  if (definition.choose === "range") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) problems.push("From date must be YYYY-MM-DD.");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) problems.push("To date must be YYYY-MM-DD.");
-    if (from && to && from > to) problems.push("From is after To.");
-  }
+  if (wantsTab && projectCode && !tab) problems.push("Choose which sheet to export.");
   const answered = typeof preflight?.ready === "boolean";
   const blocked = answered && preflight?.ready === false;
   // An unanswered preflight is its own state. Previously it disabled the button
@@ -123,9 +111,7 @@ export function ExportDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          definition.choose === "tab"
-            ? { projectCode, tab, format }
-            : { projectCode, from, to, format },
+          wantsTab ? { projectCode, tab, format } : { projectCode, scope: "workbook", format },
         ),
       });
 
@@ -180,8 +166,6 @@ export function ExportDialog({
           onChange={(event) => {
             setProjectCode(event.target.value);
             setTab("");
-            setFrom("");
-            setTo("");
           }}
         >
           <option value="">— choose a project —</option>
@@ -242,14 +226,14 @@ export function ExportDialog({
           </div>
         ) : null}
 
-        {definition.choose === "tab" && answered && !preflight?.tabs?.length ? (
+        {wantsTab && answered && !preflight?.tabs?.length ? (
           <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">
             No sheets could be listed for this workbook, so there is nothing to choose.{" "}
             {preflight?.tabs_error ?? "Check that the workbook is shared with the service account above."}
           </p>
         ) : null}
 
-        {definition.choose === "tab" && preflight?.tabs?.length ? (
+        {wantsTab && preflight?.tabs?.length ? (
           <>
             <label className="mt-4 block text-xs text-muted-foreground" htmlFor="export-tab">
               Sheet
@@ -268,48 +252,6 @@ export function ExportDialog({
                 </option>
               ))}
             </select>
-          </>
-        ) : null}
-
-        {definition.choose === "range" ? (
-          <>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-muted-foreground" htmlFor="export-from">
-                  From
-                </label>
-                <input
-                  id="export-from"
-                  type="date"
-                  className={field}
-                  value={from}
-                  max={to || undefined}
-                  disabled={busy}
-                  onChange={(event) => setFrom(event.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground" htmlFor="export-to">
-                  To
-                </label>
-                <input
-                  id="export-to"
-                  type="date"
-                  className={field}
-                  value={to}
-                  min={from || undefined}
-                  disabled={busy}
-                  onChange={(event) => setTo(event.target.value)}
-                />
-              </div>
-            </div>
-            {preflight?.available_dates?.length ? (
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                Workbook covers {preflight.earliest_date} → {preflight.latest_date} (
-                {preflight.available_dates.length} day columns). Columns outside your window are removed from a
-                temporary copy; the original is untouched.
-              </p>
-            ) : null}
           </>
         ) : null}
 

@@ -684,7 +684,8 @@ test("exports are offered on the right tab and target the right endpoint", () =>
     assert.deepEqual(exportsForService(service), [], service);
   }
   assert.equal(EXPORTS["wbgt-export"].choose, "tab");
-  assert.equal(EXPORTS["noise-export"].choose, "range");
+  // Noise exports the whole workbook: a pure read, so it needs no scratch copy.
+  assert.equal(EXPORTS["noise-export"].choose, "workbook");
   assert.equal(EXPORTS["wbgt-export"].path, "/api/wbgt-sheet-export");
   assert.equal(EXPORTS["noise-export"].path, "/api/noise-sheet-sync".replace("sync", "export"));
 });

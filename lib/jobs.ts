@@ -193,8 +193,8 @@ export const EXPORTS: Record<"wbgt-export" | "noise-export", ExportDefinition> =
   "wbgt-export": {
     key: "wbgt-export",
     service: "wbgt",
-    label: "⤓ Export xlsx",
-    title: "Export a monthly record as xlsx",
+    label: "⤓ Export",
+    title: "Export a monthly record",
     description:
       "Exports one month's monitoring record exactly as the Google Sheet renders it — conditional formatting, merges and legend included.",
     baseUrlEnv: "WBGT_API_URL",
@@ -204,13 +204,13 @@ export const EXPORTS: Record<"wbgt-export" | "noise-export", ExportDefinition> =
   "noise-export": {
     key: "noise-export",
     service: "noise",
-    label: "⤓ Export xlsx",
-    title: "Export the analysis workbook as xlsx",
+    label: "⤓ Export",
+    title: "Export the analysis workbook",
     description:
-      "Exports the analysis workbook trimmed to a date window. Date columns outside the window are removed from a temporary copy; the original is untouched.",
+      "Exports the whole analysis workbook as Google renders it. A straight read — nothing is copied or modified.",
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-export",
-    choose: "range",
+    choose: "workbook",
   },
 };
 
@@ -224,8 +224,15 @@ export type ExportDefinition = {
   description: string;
   baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL";
   path: string;
-  /** Whether the operator picks a workbook tab or a date range. */
-  choose: "tab" | "range";
+  /**
+   * What the operator picks. `tab` is a single sheet, selected by `gid` on the
+   * export URL. `workbook` needs no choice at all.
+   *
+   * Both are pure reads. The service also supports a date-window scope, but it
+   * needs a writable scratch folder for the copy, so it is deliberately not
+   * offered here — see the noise repo's sheet-export-job.js.
+   */
+  choose: "tab" | "workbook";
 };
 
 export function isExportKey(value: string): value is ExportKey {
@@ -256,6 +263,9 @@ export type ExportPreflight = {
   ready?: boolean;
   blockers?: ExportBlocker[];
   service_account_email?: string | null;
+  /** Whether the date-window scope is available (it needs a scratch folder). */
+  can_trim?: boolean;
+  trim_blocker?: ExportBlocker | null;
   workbook_name?: string | null;
   spreadsheet_id?: string | null;
   tabs?: string[];

@@ -239,9 +239,23 @@ export function exportsForService(service: ServiceKey): ExportDefinition[] {
 /** One blocker as the alert services report it. */
 export type ExportBlocker = { code: string; summary: string; remedy: string; detail?: string };
 
+/** Formats that preserve the sheet's appearance. */
+export const EXPORT_FORMATS = [
+  { key: "xlsx", label: "Excel (.xlsx)", help: "Editable. Excel re-renders it, so very complex formatting can shift slightly." },
+  { key: "pdf", label: "PDF (.pdf)", help: "Google renders the page itself, so this is the most faithful to the sheet." },
+] as const;
+
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]["key"];
+
 export type ExportPreflight = {
-  ready: boolean;
-  blockers: ExportBlocker[];
+  /**
+   * A boolean means the service answered. Anything else — undefined, absent —
+   * means we never got a readiness report, which is NOT the same as "not ready"
+   * and must be surfaced rather than silently disabling the button.
+   */
+  ready?: boolean;
+  blockers?: ExportBlocker[];
+  service_account_email?: string | null;
   workbook_name?: string | null;
   spreadsheet_id?: string | null;
   tabs?: string[];

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { ExportDefinition, ExportPreflight } from "@/lib/jobs";
+import { EXPORT_FORMATS, type ExportDefinition, type ExportFormat, type ExportPreflight } from "@/lib/jobs";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -38,6 +38,7 @@ export function ExportDialog({
   const [tab, setTab] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [format, setFormat] = useState<ExportFormat>("xlsx");
   const [checking, setChecking] = useState(false);
   const [preflight, setPreflight] = useState<ExportPreflight | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,8 +90,25 @@ export function ExportDialog({
     if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) problems.push("To date must be YYYY-MM-DD.");
     if (from && to && from > to) problems.push("From is after To.");
   }
-  const blocked = Boolean(preflight && preflight.ready === false);
-  const canRun = problems.length === 0 && !blocked && !checking && Boolean(preflight?.ready);
+  const answered = typeof preflight?.ready === "boolean";
+  const blocked = answered && preflight?.ready === false;
+  // An unanswered preflight is its own state. Previously it disabled the button
+  // while rendering nothing, which is how this dead-ended with no message.
+  const unanswered = Boolean(preflight) && !answered;
+  const canRun = problems.length === 0 && answered && preflight?.ready === true && !checking;
+
+  /** Never leave the button disabled without saying why. */
+  const disabledReason = checking
+    ? "Checking access…"
+    : !projectCode
+      ? "Choose a project."
+      : unanswered
+        ? "The service did not return a readiness report — see the message above."
+        : blocked
+          ? "Blocked — see the reasons above."
+          : problems.length
+            ? problems[0]
+            : null;
 
   async function run() {
     setBusy(true);
@@ -101,7 +119,9 @@ export function ExportDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          definition.choose === "tab" ? { projectCode, tab } : { projectCode, from, to },
+          definition.choose === "tab"
+            ? { projectCode, tab, format }
+            : { projectCode, from, to, format },
         ),
       });
 
@@ -170,6 +190,29 @@ export function ExportDialog({
 
         {checking ? <p className="mt-2 text-[11px] text-muted-foreground">Checking access…</p> : null}
 
+        {unanswered ? (
+          <div className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-3 text-[11px]">
+            <div className="font-semibold text-danger">No readiness report came back</div>
+            <div className="mt-0.5 text-muted-foreground">
+              The export endpoint may not be deployed on the {definition.service} service yet, or{" "}
+              {definition.baseUrlEnv} may be pointing somewhere without it.
+            </div>
+            <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-muted-foreground">
+              {JSON.stringify(preflight, null, 1).slice(0, 600)}
+            </pre>
+          </div>
+        ) : null}
+
+        {preflight?.service_account_email ? (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Using service account{" "}
+            <span className="break-all font-mono text-[10px] text-foreground">
+              {preflight.service_account_email}
+            </span>{" "}
+            — the workbook must be shared with this address.
+          </p>
+        ) : null}
+
         {preflight?.workbook_name ? (
           <p className="mt-2 text-[11px] text-muted-foreground">
             Workbook: <span className="text-foreground">{preflight.workbook_name}</span>
@@ -193,6 +236,13 @@ export function ExportDialog({
               ))}
             </ul>
           </div>
+        ) : null}
+
+        {definition.choose === "tab" && answered && !preflight?.tabs?.length ? (
+          <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">
+            No sheets could be listed for this workbook, so there is nothing to choose.{" "}
+            {preflight?.tabs_error ?? "Check that the workbook is shared with the service account above."}
+          </p>
         ) : null}
 
         {definition.choose === "tab" && preflight?.tabs?.length ? (
@@ -259,7 +309,31 @@ export function ExportDialog({
           </>
         ) : null}
 
-        {problems.length && projectCode && !blocked ? (
+        {answered && preflight?.ready ? (
+          <>
+            <label className="mt-4 block text-xs text-muted-foreground" htmlFor="export-format">
+              Format
+            </label>
+            <select
+              id="export-format"
+              className={field}
+              value={format}
+              disabled={busy}
+              onChange={(event) => setFormat(event.target.value as ExportFormat)}
+            >
+              {EXPORT_FORMATS.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {EXPORT_FORMATS.find((entry) => entry.key === format)?.help}
+            </p>
+          </>
+        ) : null}
+
+        {problems.length && projectCode && !blocked && !unanswered ? (
           <ul className="mt-3 list-inside list-disc text-[11px] text-warn">
             {problems.map((problem) => (
               <li key={problem}>{problem}</li>
@@ -272,6 +346,10 @@ export function ExportDialog({
         ) : null}
         {done ? (
           <p className="mt-3 rounded-lg border border-on/40 bg-on/10 p-3 text-[11px] text-on">Downloaded {done}</p>
+        ) : null}
+
+        {disabledReason && !busy ? (
+          <p className="mt-3 text-[11px] text-muted-foreground">{disabledReason}</p>
         ) : null}
 
         <div className="mt-4 flex justify-end gap-2 pb-safe">
@@ -289,7 +367,7 @@ export function ExportDialog({
             disabled={!canRun || busy}
             className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-40 md:py-1.5"
           >
-            {busy ? "Exporting…" : "Export xlsx"}
+            {busy ? "Exporting…" : `Export ${format}`}
           </button>
         </div>
       </div>

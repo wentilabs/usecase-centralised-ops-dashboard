@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ex
           },
         ],
       },
-      { status: 503 },
+      { status: 200 },
     );
   }
 
@@ -71,9 +71,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ex
     }
 
     if (!res.ok || !parsed) {
+      const detail = parsed?.error ?? text.slice(0, 500);
       return NextResponse.json(
-        { error: parsed?.error ?? `Service returned ${res.status}`, raw: parsed ? undefined : text.slice(0, 1000) },
-        { status: 502 },
+        {
+          ready: false,
+          blockers: [
+            {
+              code: "service_error",
+              summary: `The ${definition.service} service returned ${res.status}`,
+              remedy:
+                `Check that ${definition.path} is deployed on the ${definition.service} Lambda and that its Google ` +
+                `credentials are set. The service's own message is below.`,
+              detail: String(detail),
+            },
+          ],
+          error: parsed?.error ?? `Service returned ${res.status}`,
+        },
+        { status: 200 },
       );
     }
 
@@ -81,7 +95,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ex
     // so the dialog can render the blockers and their remedies verbatim.
     if (preflight || parsed.exported !== true) return NextResponse.json(parsed);
 
-    const base64 = String(parsed.xlsx_base64 ?? "");
+    const base64 = String(parsed.file_base64 ?? parsed.xlsx_base64 ?? "");
     if (!base64) return NextResponse.json({ error: "Service reported success but returned no file." }, { status: 502 });
 
     const bytes = Buffer.from(base64, "base64");
@@ -93,7 +107,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ex
     return new NextResponse(new Uint8Array(bytes), {
       status: 200,
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type":
+          String(parsed.content_type ?? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Content-Length": String(bytes.length),
         "Cache-Control": "private, no-store",

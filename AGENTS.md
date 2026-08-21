@@ -157,6 +157,26 @@ exists to keep that straight:
   non-toggleable `(no RecID)` pill. None exist today (all 114 active meters have
   one), but if one appears, turning filtering on at all excludes it.
 
+## xlsx / PDF export
+
+`⤓ Export xlsx` on the WBGT and noise tabs. The services do the work (see their
+own docs); HALO collects the inputs and proxies through `app/api/exports/[export]`.
+Two formats, both rendered by Google so the sheet's appearance survives: `xlsx`
+stays editable, `pdf` is the more faithful of the two.
+
+**A failed preflight must still look like a readiness report.** Choosing a
+project asks the service whether the export can run. The first version returned
+a bare `{ error }` when that call failed, and the dialog treated
+`ready === undefined` the same as `ready === false` — so the button was disabled
+with nothing rendered, and there was no way to tell "blocked" from "never
+answered". `ready` is now three-valued in effect: `true`, `false`, or absent
+meaning no report came back, which the dialog shows explicitly. The route
+converts service failures into a `service_error` blocker rather than a 502.
+
+The preflight also reports `service_account_email`. That is the fastest way to
+tell a changed credential set apart from a missing scope, and it is the address a
+workbook has to be shared with.
+
 ## Sheet jobs
 
 The action row under the header triggers endpoints that already exist on the

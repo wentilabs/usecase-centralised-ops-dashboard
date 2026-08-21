@@ -11,7 +11,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
-import { JOBS, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import { EXPORT_FORMATS, EXPORTS, JOBS, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
   describeSelection,
@@ -671,4 +671,38 @@ test("a meter filter reads as a caution, not as a switched-off feature", () => {
   assert.equal(pill?.on, true);
   // And it is a caution rather than a feature being on, so it is toned.
   assert.equal(pill?.tone, "warn");
+});
+
+// ---------------------------------------------------------------------------
+// Exports. The bug worth pinning: an unanswered preflight is NOT "not ready".
+// Treating them the same disabled the button while rendering nothing.
+// ---------------------------------------------------------------------------
+test("exports are offered on the right tab and target the right endpoint", () => {
+  assert.deepEqual(exportsForService("wbgt").map((e) => e.key), ["wbgt-export"]);
+  assert.deepEqual(exportsForService("noise").map((e) => e.key), ["noise-export"]);
+  for (const service of ["haze", "lightning", "ailytics", "subcon"] as const) {
+    assert.deepEqual(exportsForService(service), [], service);
+  }
+  assert.equal(EXPORTS["wbgt-export"].choose, "tab");
+  assert.equal(EXPORTS["noise-export"].choose, "range");
+  assert.equal(EXPORTS["wbgt-export"].path, "/api/wbgt-sheet-export");
+  assert.equal(EXPORTS["noise-export"].path, "/api/noise-sheet-sync".replace("sync", "export"));
+});
+
+test("every offered format preserves the sheet's appearance", () => {
+  assert.deepEqual(EXPORT_FORMATS.map((entry) => entry.key), ["xlsx", "pdf"]);
+  // Each carries the trade-off, since "any format that keeps the formatting"
+  // is exactly the choice being made here.
+  assert.ok(EXPORT_FORMATS.every((entry) => entry.label && entry.help));
+});
+
+test("readiness has three states, not two", () => {
+  // The distinction the dialog relies on: `ready` must be a boolean for the
+  // answer to count. Anything else means the service never reported, which has
+  // to surface — that was the silent dead end.
+  const answered = (ready: unknown) => typeof ready === "boolean";
+  assert.equal(answered(true), true);
+  assert.equal(answered(false), true);
+  assert.equal(answered(undefined), false, "no report is not the same as not ready");
+  assert.equal(answered(null), false);
 });

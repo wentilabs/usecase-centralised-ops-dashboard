@@ -751,11 +751,25 @@ test("the manpower workbook is offered as its own link", () => {
   assert.deepEqual(links.map((l) => l.label), ["📗 Monthly sheet", "📗 Manpower sheet"]);
 });
 
-test("the Water Parade pill only appears for services that have the column", () => {
-  assert.ok(pillsFor("wbgt", { water_parade_enabled: true }).some((p) => p.label === "Water Parade" && p.on));
-  assert.ok(pillsFor("wbgt", { water_parade_enabled: false }).some((p) => p.label === "Water Parade" && !p.on));
-  // Absent column (an older row) shows nothing rather than a misleading "off".
-  assert.equal(pillsFor("wbgt", {}).some((p) => p.label === "Water Parade"), false);
+test("Water Parade leads the pills, in its own colour, only when configured", () => {
+  const pills = pillsFor("wbgt", { water_parade_enabled: true, enable_hourly: true });
+  // FIRST, so it cannot be lost among the cadence switches — and toned rather
+  // than a green tick, since it is a capability and not a cadence.
+  assert.equal(pills[0].label, "💧 Water Parade");
+  assert.equal(pills[0].tone, "info");
+  assert.equal(pills[0].on, true);
+  // The cadence pills still follow in their usual order.
+  assert.equal(pills[1].label, "hourly");
+
+  // Not configured: absent entirely. 24 of 25 projects do not use it, so a
+  // struck-through pill on each would be noise rather than emphasis.
+  for (const row of [{ water_parade_enabled: false }, {}]) {
+    assert.equal(
+      pillsFor("wbgt", row).some((p) => /Water Parade/.test(p.label)),
+      false,
+      JSON.stringify(row),
+    );
+  }
 });
 
 test("Ailytics PENDING forwarding is shown as the outbound-only switch it is", () => {

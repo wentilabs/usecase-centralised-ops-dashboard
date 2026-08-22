@@ -206,11 +206,16 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
 }
 
 /**
- * `on` means the switch is on; an off pill renders struck through. `tone: "warn"`
- * is for a state that is neither — active, but worth noticing rather than
- * celebrating, so it must not be drawn as a green tick or as a dead switch.
+ * `on` means the switch is on; an off pill renders struck through.
+ *
+ * A `tone` marks a pill that is neither of those:
+ * - `warn` — active, but worth noticing rather than celebrating (a meter filter).
+ * - `info` — a capability the project has, called out so it is not lost among
+ *   the cadence switches.
+ *
+ * Toned pills are rendered before the rest, and survive the mobile cap.
  */
-export type Pill = { label: string; on: boolean; tone?: "warn" };
+export type Pill = { label: string; on: boolean; tone?: "warn" | "info" };
 
 /** The at-a-glance switches for a project, per service. */
 export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] {
@@ -218,6 +223,9 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
   switch (service) {
     case "wbgt":
       return [
+        ...(config.water_parade_enabled
+          ? [{ label: "💧 Water Parade", on: true, tone: "info" as const }]
+          : []),
         { label: "hourly", on: on(config.enable_hourly) },
         { label: "intermittent", on: on(config.enable_intermittent_reports) },
         { label: "5-min alerts", on: on(config.enable_5min_alerts) },
@@ -226,9 +234,6 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "POC mentions", on: on(config.enable_red_band_poc_mentions) },
-        ...(config.water_parade_enabled === undefined
-          ? []
-          : [{ label: "Water Parade", on: on(config.water_parade_enabled) }]),
       ];
     case "noise":
       return [

@@ -103,11 +103,17 @@ would drop to dashboard-only edits.
   and `ServiceDrawer` (the tabs, counts, refreshes and identity that do not fit
   a phone bar). Both are `md:hidden` at the root so a resize cannot surface them.
   `tests/mobile-contract.test.ts` guards all of it.
-- **Pill tones mean three different things.** `on` is a switch that is on; an
-  off pill renders struck through. `tone: "warn"` is for a state that is active
-  but worth noticing rather than celebrating — a meter filter, say. Do not encode
-  "this is not the default" as `on: false`: it renders as a dead switch and reads
-  as the opposite of the truth.
+- **Pill tones mean four different things.** `on` is a switch that is on; an
+  off pill renders struck through. `tone: "warn"` (amber) is a state that is
+  active but worth noticing rather than celebrating — a meter filter. `tone:
+  "info"` (blue) is a capability called out so it is not lost among the cadence
+  switches — Water Parade. Toned pills are emitted first and take priority in the
+  four-pill mobile cap, so they cannot hide behind the `+N`. Do not encode "this
+  is not the default" as `on: false`: it renders as a dead switch and reads as
+  the opposite of the truth.
+- **A called-out pill appears only when it applies.** Water Parade is on for 1 of
+  25 WBGT projects; a struck-through pill on the other 24 would be noise rather
+  than emphasis. Same reasoning as the meter filter.
 - **A card has three states, not two.** `cardEmphasis()` returns `active`
   (something is scheduled), `manual` (a WBGT project whose readings arrive as
   photos: enabled, `enable_scrape = false`, and photo source chats configured)

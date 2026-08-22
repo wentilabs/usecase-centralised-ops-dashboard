@@ -20,7 +20,10 @@ export function splitList(value: unknown): string[] {
  * undifferentiated list would lose that, hence the roles.
  */
 const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
-  wbgt: [{ column: "whatsapp_group_id" }],
+  wbgt: [
+    { column: "whatsapp_group_id" },
+    { column: "water_parade_outbound_group_id", role: "water parade" },
+  ],
   noise: [{ column: "whatsapp_group_id" }],
   haze: [{ column: "wa_group_ids" }],
   lightning: [{ column: "whatsapp_group_id" }],
@@ -128,6 +131,7 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (config.enable_5min_alerts) parts.push("5-min on 32/33°C crossings");
+    if (config.water_parade_enabled) parts.push("Water Parade reminders");
     if (!parts.length) {
       return isManualIngestion(service, config)
         ? "Manual photo ingestion — readings arrive as photos; no scheduled message"
@@ -222,6 +226,9 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "POC mentions", on: on(config.enable_red_band_poc_mentions) },
+        ...(config.water_parade_enabled === undefined
+          ? []
+          : [{ label: "Water Parade", on: on(config.water_parade_enabled) }]),
       ];
     case "noise":
       return [
@@ -287,6 +294,9 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "telegram source", on: on(config.telegram_chat_id) },
         { label: "sheet", on: on(config.spreadsheet_id) },
         { label: "whatsapp relay", on: on(config.whatsapp_group_ids) },
+        // Outbound-only switch: PENDING alerts are stored and written to history
+        // either way, so "off" does not mean nothing is happening.
+        { label: "forward PENDING", on: on(config.forward_pending_to_whatsapp) },
       ];
   }
 }
@@ -304,6 +314,9 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { labe
       label: service === "subcon" ? "📗 Manpower sheet" : "📗 Safety sheet",
       href: sheet(config.spreadsheet_id),
     });
+  }
+  if (config.manpower_spreadsheet_id) {
+    links.push({ label: "📗 Manpower sheet", href: sheet(config.manpower_spreadsheet_id) });
   }
   if (config.wbgt_google_sheet_id) {
     links.push({ label: "📗 WBGT sheet (Water Parade)", href: sheet(config.wbgt_google_sheet_id) });
@@ -357,7 +370,13 @@ export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): num
 /** Cards with nothing scheduled sink to the bottom of the grid. */
 export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boolean {
   if (service === "wbgt") {
-    return Boolean(config.enable_hourly || config.enable_intermittent_reports || config.enable_5min_alerts);
+    return Boolean(
+      config.enable_hourly ||
+        config.enable_intermittent_reports ||
+        config.enable_5min_alerts ||
+        // Water Parade sends its own reminders, so the project is not idle.
+        config.water_parade_enabled,
+    );
   }
   if (service === "noise") {
     return Boolean(

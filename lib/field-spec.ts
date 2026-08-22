@@ -170,6 +170,21 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "Only photos forwarded by this client identifier are accepted for ingestion.",
     },
 
+    water_parade_enabled: {
+      label: "Water Parade",
+      help: "Outbound only — off still records cycles, roster snapshots, inbound events, photo decisions and reminder audits. It just stops the reminders and the sheet projections.",
+    },
+    water_parade_outbound_group_id: {
+      label: "Water Parade reminder group",
+      widget: "groups",
+      help: "The dedicated reminder group. Often NOT the same as the WBGT alert groups above.",
+    },
+    manpower_spreadsheet_id: {
+      label: "Manpower spreadsheet ID",
+      widget: "sheet",
+      help: "Holds the Manpower tab and the Sender Phone values used for PIC mentions. Separate from the monthly sheet.",
+    },
+
     monthly_sheet_id: { label: "Monthly sheet ID", widget: "sheet" },
     monthly_sheet_fill_mode: { label: "Sheet fill mode", help: "window = cap + grace window. nearest = closest reading." },
 
@@ -417,6 +432,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     activity_history_tab: { label: "Activity history tab", row: "tabs" },
 
     whatsapp_group_ids: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
+    forward_pending_to_whatsapp: {
+      label: "Forward PENDING alerts",
+      help: "Outbound only — every matching alert is stored as PENDING and written to activity history either way. This decides whether it also reaches WhatsApp.",
+    },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -530,6 +549,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
       ],
     },
     { title: "Sheets", fields: ["monthly_sheet_id", "monthly_sheet_fill_mode"] },
+    {
+      title: "Water Parade",
+      fields: ["water_parade_enabled", "water_parade_outbound_group_id", "manpower_spreadsheet_id"],
+    },
   ],
   noise: [
     { title: "Status", fields: ["enabled", "source_type", "timezone"] },
@@ -612,7 +635,18 @@ const GROUPS: Record<string, FieldGroup[]> = {
     { title: "Status", fields: ["enabled", "timezone"] },
     { title: "Telegram source", fields: ["telegram_chat_id", "upstream_bot_username", "expected_chat_title"] },
     { title: "Google Sheet", fields: ["spreadsheet_id", "safety_sheet_tab", "activity_history_tab"] },
-    { title: "Delivery", fields: ["whatsapp_group_ids", "instance_name", "client_id", "lambda_url", "reply_lambda_url", "lambda_url_image"] },
+    {
+      title: "Delivery",
+      fields: [
+        "whatsapp_group_ids",
+        "forward_pending_to_whatsapp",
+        "instance_name",
+        "client_id",
+        "lambda_url",
+        "reply_lambda_url",
+        "lambda_url_image",
+      ],
+    },
   ],
 
   subcon: [

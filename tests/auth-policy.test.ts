@@ -708,3 +708,58 @@ test("readiness has three states, not two", () => {
   assert.equal(answered(undefined), false, "no report is not the same as not ready");
   assert.equal(answered(null), false);
 });
+
+// ---------------------------------------------------------------------------
+// Water Parade (WBGT) and PENDING forwarding (Ailytics). Both are
+// outbound-only switches: off does NOT mean the service is doing nothing, which
+// is the thing the card has to avoid implying.
+// ---------------------------------------------------------------------------
+test("a Water Parade project is not idle even with every WBGT cadence off", () => {
+  const wp = { enabled: true, water_parade_enabled: true };
+  // It sends its own reminders, so it must not be scrimmed and sunk.
+  assert.equal(hasCadence("wbgt", wp), true);
+  assert.match(firesAt("wbgt", wp), /Water Parade reminders/);
+  // And a project with neither is still idle.
+  assert.equal(hasCadence("wbgt", { enabled: true }), false);
+});
+
+test("the Water Parade reminder group resolves as its own destination", () => {
+  // Usually a DIFFERENT group from the WBGT alerts, so it needs its own label
+  // and must reach the chat-name resolver.
+  assert.deepEqual(
+    deliveryGroups("wbgt", {
+      whatsapp_group_id: "alerts@g.us",
+      water_parade_outbound_group_id: "parade@g.us",
+    }),
+    [
+      { chatId: "alerts@g.us", role: undefined },
+      { chatId: "parade@g.us", role: "water parade" },
+    ],
+  );
+  assert.ok(CHAT_ID_COLUMNS.includes("water_parade_outbound_group_id"));
+  // One group serving both roles still collapses to a single chip.
+  assert.deepEqual(
+    deliveryGroups("wbgt", { whatsapp_group_id: "same@g.us", water_parade_outbound_group_id: "same@g.us" }),
+    [{ chatId: "same@g.us", role: "water parade" }],
+  );
+});
+
+test("the manpower workbook is offered as its own link", () => {
+  // Separate from the monthly sheet: it holds the Manpower tab and the Sender
+  // Phone values used for PIC mentions.
+  const links = autoLinks("wbgt", { monthly_sheet_id: "M".repeat(30), manpower_spreadsheet_id: "P".repeat(30) });
+  assert.deepEqual(links.map((l) => l.label), ["📗 Monthly sheet", "📗 Manpower sheet"]);
+});
+
+test("the Water Parade pill only appears for services that have the column", () => {
+  assert.ok(pillsFor("wbgt", { water_parade_enabled: true }).some((p) => p.label === "Water Parade" && p.on));
+  assert.ok(pillsFor("wbgt", { water_parade_enabled: false }).some((p) => p.label === "Water Parade" && !p.on));
+  // Absent column (an older row) shows nothing rather than a misleading "off".
+  assert.equal(pillsFor("wbgt", {}).some((p) => p.label === "Water Parade"), false);
+});
+
+test("Ailytics PENDING forwarding is shown as the outbound-only switch it is", () => {
+  const pills = pillsFor("ailytics", { forward_pending_to_whatsapp: true });
+  assert.ok(pills.some((p) => p.label === "forward PENDING" && p.on));
+  assert.ok(pillsFor("ailytics", {}).some((p) => p.label === "forward PENDING" && !p.on));
+});

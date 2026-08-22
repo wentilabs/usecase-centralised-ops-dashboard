@@ -125,6 +125,23 @@ would drop to dashboard-only edits.
 - **Timestamps** render through `formatSgt()` — Asia/Singapore, `en-SG`.
 - **Secrets never enter the repo.** `.env` and `.env.production` are gitignored.
 
+## Outbound-only switches
+
+Four columns now read as "enabled" but gate **only** outbound delivery — the
+service keeps recording, classifying and writing either way. Labelling any of
+them "enabled" would say the opposite of what is true:
+
+| Service | Column | Off still does |
+|---|---|---|
+| Subcon | `enabled` | intake, classification, Supabase and Sheet writes |
+| WBGT | `water_parade_enabled` | cycles, roster snapshots, inbound events, photo decisions, reminder audits |
+| Ailytics | `forward_pending_to_whatsapp` | stores the PENDING activity and writes activity history |
+| Noise | `noise_meters_included` | scraping, calculations, Sheets, ops fail-safes keep every meter |
+
+Each one's `help` text says what carries on regardless. `hasCadence` counts
+`water_parade_enabled`, because a project with no WBGT cadence but Water Parade
+on is still sending reminders and must not be scrimmed as idle.
+
 ## Outbound meter selection (noise)
 
 `noise_meters_included` decides which meters reach the **client-facing** noise

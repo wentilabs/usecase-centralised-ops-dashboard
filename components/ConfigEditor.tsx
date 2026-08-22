@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { FormatterPreviewButton } from "./FormatterPreview";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { formatSgt } from "@/lib/card-summary";
@@ -369,7 +370,24 @@ export function ConfigEditor({
                         }`}
                       >
                         <div className="md:pt-1.5">
-                          <div className="text-sm font-medium">{field.label}</div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="text-sm font-medium">{field.label}</div>
+                            {/* Formatter names say nothing about the message they
+                                produce, so the `?` shows the real thing. Only a
+                                select can be set from the preview: a toggle's
+                                column is a boolean, not the string "true". */}
+                            <FormatterPreviewButton
+                              service={service}
+                              column={name}
+                              label={field.label}
+                              current={String(values[name] ?? "")}
+                              onPick={
+                                field.widget === "select"
+                                  ? (next) => setDraft((prev) => ({ ...prev, [name]: next }))
+                                  : undefined
+                              }
+                            />
+                          </div>
                           <div className="font-mono text-[10px] text-muted-foreground">{name}</div>
                         </div>
                         <div>

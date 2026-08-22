@@ -96,3 +96,13 @@ test("long unbreakable tokens cannot push a card past the viewport", async () =>
     assert.match(tag, /break-all/, `env-var names must wrap: ${tag}`);
   }
 });
+
+test("the formatter preview stays a desktop affordance", async () => {
+  const component = await source("components/FormatterPreview.tsx");
+
+  // A 900px comparison panel has nowhere to go on a phone, so the `?` is
+  // desktop-only until there is a mobile design for it. `hidden` alone would
+  // remove it everywhere; `md:inline-flex` alone would show it everywhere.
+  const button = component.slice(component.indexOf("export function FormatterPreviewButton"));
+  assert.match(button, /className="hidden [^"]*md:inline-flex/);
+});

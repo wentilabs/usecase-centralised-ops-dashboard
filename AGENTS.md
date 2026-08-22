@@ -290,6 +290,43 @@ Columns owned by the alert jobs (e.g. WBGT's `top_of_hour_band`, Lightning's
 `lightning_project_runtime` state) belong in `READONLY` or `hidden`, not in the
 editor.
 
+## Formatter previews
+
+A formatter column is a dropdown of opaque names — `date_loc_name_12h_complete_list`
+says nothing about the message it produces — so anyone but the author picked one by
+guessing. The circled `?` beside a field label opens `components/FormatterPreview.tsx`:
+the options in a left rail, the real WhatsApp message on the right, one click apart so
+two candidates can be compared.
+
+**Nothing in there is written from memory.** A wrong example is worse than no example,
+because it gets trusted:
+
+- **noise** — lifted verbatim from that repo's own `MESSAGE_SHAPES.md` by
+  `scripts/build-message-previews.mjs` into `lib/message-previews.generated.ts`.
+  Re-run it (needs the noise repo checked out; `NOISE_REPO=` overrides the path)
+  after the noise message shapes change.
+- **wbgt** and **haze** — produced by *executing* those repos' own builders
+  (`buildFiveMinAlertMessage`, `buildHazeMessage`) and pasting the output, because
+  their docs are organised by reading band rather than by formatter value.
+
+Two things to keep right when adding one:
+
+- `kind: "cadence"` for an option whose text is byte-identical to its siblings and
+  only the *timing* differs (WBGT's `intermittent_reports_formatter`). Showing a
+  bubble alone there implies a difference that is not there, so those carry a
+  quarter-hour firing table and share one body via `PREVIEW_CONTEXT`.
+- `isFallback` marks the option a **blank** column resolves to, from the service's
+  own fallback table. The panel opens on it and says so.
+
+`tests/message-previews.test.ts` asserts the inventory explicitly rather than deriving
+it. That is deliberate: a new formatter value ships in a service repo, the dropdown
+picks it up from the live schema automatically, and the panel would silently not list
+it. Cross-check the live schema too, which is how the current list was confirmed:
+
+```bash
+curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
+```
+
 ## Verifying a change
 
 ```bash

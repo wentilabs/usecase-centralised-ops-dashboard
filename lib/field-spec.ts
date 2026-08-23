@@ -122,6 +122,18 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 
     enable_scrape: { label: "Scrape CloudLynx", help: "Off = manual-only project; readings arrive via photo ingestion." },
     enable_hourly: { label: "Hourly message", help: "Baseline :00 heartbeat." },
+    // Live in Supabase as a pg enum with a default, and one project is already
+    // set to `pentaocean_full` — but the pickaxe finds this column in no commit
+    // on any branch of the WBGT repo, and in no other service repo here.
+    // Surfaced rather than hidden, because a silently inert dropdown is worse
+    // than a labelled one. The help claims only what is checkable: the deployed
+    // Lambda cannot be inspected from here, so it does not assert no-effect.
+    hourly_message_formatter: {
+      label: "Hourly wording",
+      help:
+        "Which house wording the hourly advisory uses. No code in the WBGT repo reads this column on any branch — confirm the deployed service honours it before relying on a change here.",
+      showIf: { field: "enable_hourly", equals: true },
+    },
     enable_intermittent_reports: { label: "Intermittent reports", help: "Sub-hour fires at :15/:30/:45." },
     intermittent_reports_formatter: {
       label: "Intermittent cadence",
@@ -131,6 +143,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     enable_5min_alerts: { label: "5-min exceedance alerts", help: "🟠 >32°C, 🔴 >33°C, 🟢 recovery <31°C." },
     five_min_alert_formatter: {
       label: "5-min alert format",
+      help: "short → one line per crossing. full → the whole hourly advisory instead.",
       showIf: { field: "enable_5min_alerts", equals: true },
     },
 
@@ -540,6 +553,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
       fields: [
         "enable_scrape",
         "enable_hourly",
+        "hourly_message_formatter",
         "enable_intermittent_reports",
         "intermittent_reports_formatter",
         "enable_5min_alerts",

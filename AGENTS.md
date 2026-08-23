@@ -321,7 +321,14 @@ Two things to keep right when adding one:
 `tests/message-previews.test.ts` asserts the inventory explicitly rather than deriving
 it. That is deliberate: a new formatter value ships in a service repo, the dropdown
 picks it up from the live schema automatically, and the panel would silently not list
-it. Cross-check the live schema too, which is how the current list was confirmed:
+it. A second test reads the formatter-shaped keys back out of `FIELDS` in
+`lib/field-spec.ts` and fails unless each one has a preview or an entry in that file's
+`KNOWN_WITHOUT_PREVIEW` map — so the trigger is "someone added the field", which is
+exactly when the preview should be written. Record a gap there with its reason rather
+than inventing an example; a stale entry fails too, once the preview exists.
+
+Cross-check the live schema as well, which is how `wbgt.hourly_message_formatter` was
+found sitting unlabelled in the "Other" bucket:
 
 ```bash
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'

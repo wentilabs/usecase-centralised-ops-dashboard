@@ -147,6 +147,69 @@ test("noise previews are lifted from the noise repo, not retyped", async () => {
   }
 });
 
+/**
+ * Columns that look like formatters but deliberately have no preview, and why.
+ *
+ * A gap belongs here rather than nowhere: writing an example for a formatter
+ * whose message nobody can produce would mean inventing one, which is the single
+ * thing these previews exist to avoid.
+ */
+const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
+  "wbgt:hourly_message_formatter":
+    "Live in Supabase as a pg enum (wohhup_full / pentaocean_full) but read by no code on any branch of the WBGT repo, so there is no builder to run and no documented shape to lift. Write the preview when the service implements it.",
+};
+
+test("every formatter field in the spec has a preview, or a recorded reason", async () => {
+  // The failure mode this closes: a formatter column is added to the field spec,
+  // the dropdown renders, and the `?` panel silently does not list it. Read from
+  // the spec source so the trigger is "someone added the field", which is exactly
+  // when the preview should be written.
+  const source = await readFile(resolve("lib/field-spec.ts"), "utf8");
+  const fieldsBlock = source.slice(
+    source.indexOf("const FIELDS:"),
+    source.indexOf("const GROUPS:"),
+  );
+
+  // Service blocks are the two-space-indented keys inside FIELDS.
+  const services = [...fieldsBlock.matchAll(/^ {2}([a-z]+): \{$/gm)];
+  assert.ok(services.length >= 6, "expected one FIELDS block per service");
+
+  const missing: string[] = [];
+  services.forEach((match, index) => {
+    const service = match[1] as ServiceKey;
+    const start = match.index ?? 0;
+    const end = index + 1 < services.length ? (services[index + 1].index ?? fieldsBlock.length) : fieldsBlock.length;
+    const block = fieldsBlock.slice(start, end);
+
+    for (const field of block.matchAll(/^ {4}([a-z0-9_]*(?:formatter|_format)): \{?/gm)) {
+      const column = field[1];
+      const key = `${service}:${column}`;
+      if (previewsFor(service, column).length) continue;
+      if (KNOWN_WITHOUT_PREVIEW[key]) continue;
+      missing.push(key);
+    }
+  });
+
+  assert.deepEqual(
+    missing,
+    [],
+    `formatter fields with no preview and no recorded reason: ${missing.join(", ")}`,
+  );
+});
+
+test("a recorded gap is a real gap, not a stale note", () => {
+  // If someone writes the preview but leaves the exemption behind, the list
+  // stops describing reality. Fail so the note gets removed with the fix.
+  for (const key of Object.keys(KNOWN_WITHOUT_PREVIEW)) {
+    const [service, column] = key.split(":");
+    assert.equal(
+      previewsFor(service as ServiceKey, column).length,
+      0,
+      `${key} now has a preview — drop it from KNOWN_WITHOUT_PREVIEW`,
+    );
+  }
+});
+
 test("hasPreview only claims columns that have one", () => {
   assert.equal(hasPreview("noise", "hourly_formatter"), true);
   assert.equal(hasPreview("wbgt", "hourly_formatter"), false);

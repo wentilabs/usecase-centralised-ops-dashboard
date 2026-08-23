@@ -787,6 +787,17 @@ test("the manpower workbook is offered as its own link", () => {
   // Phone values used for PIC mentions.
   const links = autoLinks("wbgt", { monthly_sheet_id: "M".repeat(30), manpower_spreadsheet_id: "P".repeat(30) });
   assert.deepEqual(links.map((l) => l.label), ["📗 Monthly sheet", "📗 Manpower sheet"]);
+  assert.match(links[1].href, /spreadsheets\/d\/P+\/edit$/);
+});
+
+test("both sheet links survive a project that points them at one workbook", () => {
+  // Plausible setup: the Manpower tab kept inside the monthly workbook. The
+  // cards used to key each link by href, so identical ids collided in React and
+  // one of the two labels was dropped — they are keyed by label now.
+  const same = autoLinks("wbgt", { monthly_sheet_id: "SAME", manpower_spreadsheet_id: "SAME" });
+  assert.deepEqual(same.map((l) => l.label), ["📗 Monthly sheet", "📗 Manpower sheet"]);
+  assert.equal(new Set(same.map((l) => l.label)).size, same.length, "labels must be unique to key by them");
+  assert.equal(new Set(same.map((l) => l.href)).size, 1, "and this is the case href keying could not render");
 });
 
 test("Water Parade leads the pills, in its own colour, only when configured", () => {

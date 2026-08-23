@@ -161,7 +161,7 @@ export function ProjectSheet({
               <div className="flex flex-col gap-1.5">
                 {links.map((link) => (
                   <a
-                    key={link.href}
+                    key={link.label}
                     href={link.href}
                     target="_blank"
                     rel="noopener"

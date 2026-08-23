@@ -232,7 +232,7 @@ export function ProjectCard({
         <div className="hidden flex-wrap gap-2 md:flex">
           {links.map((link) => (
             <a
-              key={link.href}
+              key={link.label}
               href={link.href}
               target="_blank"
               rel="noopener"

@@ -68,7 +68,88 @@ const WBGT_FULL_MODERATE = `🟠 *WBGT Reading:* 32.4°C (32°C to <33°C)
 
 _ZRB — Updated at: 22-Aug-2026 14:35_`;
 
+/**
+ * The two hourly wordings, straight out of `buildWbgtMessage`. Rendered without a
+ * `site_name` so the footer is identical and the advisory list is the only thing
+ * that differs between them — which is the whole point of the comparison.
+ */
+const WBGT_WOHHUP_HIGH = `🔴 *WBGT Reading:* 33.5°C (33°C and above)
+*Heat Stress Level:* High
+
+*Health Advisory:*
+1) Provide cool or cold drinking water supply work areas.
+2) Rehydrate at least hourly. (Recommended intake of 300ml per hour).
+3) Provide hourly rest breaks of a minimum of 15 minutes for heavy physical works activity.
+4) Ensure workers get adequate rest under shade for recovery from heat.
+5) Rest area to be near work areas, where feasible.
+6) Monitor WBGT every hourly.
+7) Reschedule outdoor physical work to cooler parts of the day.
+8) Close monitoring of workers health condition, particularly for vulnerable workers.
+9) Implement Buddy system; workers to look out for each other for sign of heat related illnesses.
+10) Longer rest periods recommended as WBGT increase.
+
+_Updated at: 24-Aug-2026 11:35_`;
+
+const WBGT_WOHHUP_LOW = `🟢 *WBGT Reading:* 28.0°C (Below 31°C)
+*Heat Stress Level:* Low
+
+*Health Advisory:*
+1) Rehydrate regularly.
+2) Provide cool or cold drinking water supply work areas.
+3) Ensure workers get adequate rest under shade for recovery from heat.
+4) Rest area to be near work areas, where feasible.
+5) Monitor WBGT every hourly.
+6) Identify workers vulnerable for heat stress.
+
+_Updated at: 24-Aug-2026 11:35_`;
+
+const WBGT_PENTA_HIGH = `🔴 *WBGT Reading:* 33.5°C (33°C and above)
+*Heat Stress Level:* High
+
+*Health Advisory:*
+1) Provide cool drinking water and rehydrate at least hourly.
+2) Stop or reschedule strenuous outdoor work and provide frequent shade/rest breaks.
+3) Closely monitor workers, especially those vulnerable to heat stress, using buddy checks.
+
+_Updated at: 24-Aug-2026 11:35_`;
+
+const WBGT_PENTA_LOW = `🟢 *WBGT Reading:* 28.0°C (Below 31°C)
+*Heat Stress Level:* Low
+
+*Health Advisory:*
+1) Provide cool drinking water.
+2) Provide shade and regular rest breaks.
+
+_Updated at: 24-Aug-2026 11:35_`;
+
 const WBGT_PREVIEWS: FormatterPreview[] = [
+  {
+    service: "wbgt",
+    column: "hourly_message_formatter",
+    value: "wohhup_full",
+    summary:
+      "The full MOM advisory for the band — every point, which runs to ten at 🔴 High and six at 🟢 Low.",
+    kind: "message",
+    isFallback: true,
+    bubbles: [
+      { caption: "🔴 High — ten points", text: WBGT_WOHHUP_HIGH },
+      { caption: "🟢 Low — six points", text: WBGT_WOHHUP_LOW },
+    ],
+    source: "wbgt lib/wbgt-thresholds.js — buildWbgtMessage (wohhup_full)",
+  },
+  {
+    service: "wbgt",
+    column: "hourly_message_formatter",
+    value: "pentaocean_full",
+    summary:
+      "Same emoji, reading header, heat-stress level and footer — the advisory is cut to one to three actionable points.",
+    kind: "message",
+    bubbles: [
+      { caption: "🔴 High — three points", text: WBGT_PENTA_HIGH },
+      { caption: "🟢 Low — two points", text: WBGT_PENTA_LOW },
+    ],
+    source: "wbgt lib/wbgt-thresholds.js — buildWbgtMessage (pentaocean_full)",
+  },
   {
     service: "wbgt",
     column: "five_min_alert_formatter",
@@ -98,12 +179,12 @@ const WBGT_PREVIEWS: FormatterPreview[] = [
     column: "five_min_alert_formatter",
     value: "full",
     summary:
-      "The same trigger sends the full hourly advisory instead — band, heat-stress level and the numbered MOM advisory list.",
+      "The same trigger sends the full hourly advisory instead. Which wording it uses is not set here — it follows the project's Hourly wording, so the two bodies below are the same crossing on the two settings.",
     kind: "message",
     bubbles: [
-      { caption: "Crossing up through 32°C", text: WBGT_FULL_MODERATE },
+      { caption: "Crossing up through 32°C — Hourly wording wohhup_full", text: WBGT_FULL_MODERATE },
       {
-        caption: "Crossing up through 33°C",
+        caption: "Crossing up through 33°C — Hourly wording wohhup_full",
         text: `🔴 *WBGT Reading:* 33.4°C (33°C and above)
 *Heat Stress Level:* High
 
@@ -121,8 +202,9 @@ const WBGT_PREVIEWS: FormatterPreview[] = [
 
 _ZRB — Updated at: 22-Aug-2026 14:35_`,
       },
+      { caption: "Crossing up through 33°C — Hourly wording pentaocean_full", text: WBGT_PENTA_HIGH },
     ],
-    source: "wbgt lib/wbgt-five-min-alerts.js — buildFiveMinAlertMessage (formatter: full)",
+    source: "wbgt lib/wbgt-five-min-alerts.js — buildFiveMinAlertMessage (formatter: full, inheriting hourlyMessageFormatter)",
   },
   {
     service: "wbgt",
@@ -235,6 +317,14 @@ const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
     intro:
       "Both options send the same message — this column only decides how often. The body below is the hourly WBGT advisory; the tables show which quarter-hours it repeats on.",
     shared: [{ caption: "The message body, identical for both options", text: WBGT_FULL_MODERATE }],
+  },
+  "wbgt:hourly_message_formatter": {
+    intro:
+      "This also governs the 5-minute alert whenever its own formatter is set to full — the short single-line alert is unaffected.",
+  },
+  "wbgt:five_min_alert_formatter": {
+    intro:
+      "full does not pick a wording of its own: it renders whichever Hourly wording the project is set to. Change that field to change what full sends.",
   },
   "noise:five_min_formatter": {
     intro:

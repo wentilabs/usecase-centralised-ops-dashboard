@@ -37,6 +37,7 @@ const EXPECTED: Record<string, string[]> = {
   "noise:three_hour_formatter": ["leq1hr_triplet_with_12hr"],
   "noise:morning_formatter": ["overnight_leq1hr_summary_with_12hr"],
   "noise:enable_7am_7pm_leq12hr_table": ["true"],
+  "wbgt:hourly_message_formatter": ["wohhup_full", "pentaocean_full"],
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
   "haze:advisory_format": ["default", "wohhup"],
@@ -49,6 +50,7 @@ const BLANK_RESOLVES_TO: Record<string, string> = {
   "noise:hourly_formatter": "date_loc_name_12h_complete_list",
   "noise:three_hour_formatter": "leq1hr_triplet_with_12hr",
   "noise:morning_formatter": "overnight_leq1hr_summary_with_12hr",
+  "wbgt:hourly_message_formatter": "wohhup_full",
   "wbgt:five_min_alert_formatter": "short",
   "wbgt:intermittent_reports_formatter": "red15",
   "haze:advisory_format": "default",
@@ -155,8 +157,10 @@ test("noise previews are lifted from the noise repo, not retyped", async () => {
  * thing these previews exist to avoid.
  */
 const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
-  "wbgt:hourly_message_formatter":
-    "Live in Supabase as a pg enum (wohhup_full / pentaocean_full) but read by no code on any branch of the WBGT repo, so there is no builder to run and no documented shape to lift. Write the preview when the service implements it.",
+  // Empty, and worth keeping that way: an entry here is a formatter whose real
+  // message nobody can produce. `wbgt:hourly_message_formatter` sat here until
+  // the service implemented it, at which point "a recorded gap is a real gap"
+  // failed until the note came out.
 };
 
 test("every formatter field in the spec has a preview, or a recorded reason", async () => {

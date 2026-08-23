@@ -327,6 +327,13 @@ it. A second test reads the formatter-shaped keys back out of `FIELDS` in
 exactly when the preview should be written. Record a gap there with its reason rather
 than inventing an example; a stale entry fails too, once the preview exists.
 
+One formatter can depend on another. WBGT's `five_min_alert_formatter = full` renders
+whichever `hourly_message_formatter` the project uses, so neither field explains itself
+alone — both carry a `PREVIEW_CONTEXT` intro naming the other, and `full` shows the same
+crossing under both wordings. Check for that kind of inheritance by *running* the
+builder with each combination rather than reading it: passing the wrong parameter name
+silently falls back to the default and makes two settings look identical.
+
 Cross-check the live schema as well, which is how `wbgt.hourly_message_formatter` was
 found sitting unlabelled in the "Other" bucket:
 

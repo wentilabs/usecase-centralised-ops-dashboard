@@ -284,9 +284,15 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   haze: {
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
+    four_hourly: {
+      label: "Four-hourly only",
+      help:
+        "Send at 08:00, 12:00, 16:00 and 20:00 SGT instead of every hour. Those four sends ignore the band gate below, and the project is left out of the once-a-day kickoff message.",
+    },
     alert_only_when_at_least: {
       label: "Alert only when at least",
-      help: "Suppress the advisory unless the 24-hour PSI band reaches this level. Unset = send every hour.",
+      help:
+        "Suppress the advisory unless the 24-hour PSI band reaches this level. Unset = send every hour. Ignored while Four-hourly only is on.",
     },
     timezone: { label: "Timezone" },
 
@@ -294,7 +300,15 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     latitude: { label: "Latitude", widget: "number", row: "latlng" },
     longitude: { label: "Longitude", widget: "number", row: "latlng" },
 
-    working_hours_start_hhmm: { label: "Working hours start", widget: "hhmm", row: "hours" },
+    // The hourly job began enforcing these; before that they were stored and
+    // ignored. Both have to be set — one on its own leaves the project
+    // unrestricted rather than half-gated.
+    working_hours_start_hhmm: {
+      label: "Working hours start",
+      widget: "hhmm",
+      row: "hours",
+      help: "Set both ends, or neither: one alone leaves the advisory running all day. A start after the end wraps past midnight.",
+    },
     working_hours_end_hhmm: { label: "Working hours end", widget: "hhmm", row: "hours" },
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },
@@ -596,7 +610,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   haze: [
-    { title: "Status", fields: ["enabled", "nea_region", "alert_only_when_at_least", "advisory_format", "timezone"] },
+    {
+      title: "Status",
+      fields: ["enabled", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
+    },
     { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },

@@ -166,10 +166,19 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "haze") {
-    const hours =
-      config.working_hours_start_hhmm || config.working_hours_end_hhmm
-        ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
-        : "all day";
+    // The service treats a half-configured window as no window at all, so one
+    // end on its own must not be reported here as a range.
+    const bothEnds = Boolean(config.working_hours_start_hhmm && config.working_hours_end_hhmm);
+    const hours = bothEnds
+      ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
+      : "all day";
+    if (config.four_hourly) {
+      // Four-hourly sends whatever the band, so quoting the gate would misread
+      // the config: the stored value is still there and simply not consulted.
+      return `advisory at 08:00, 12:00, 16:00 and 20:00 during ${hours} — every band, no daily kickoff${mutesSuffix(
+        config,
+      )}`;
+    }
     const gate = config.alert_only_when_at_least
       ? ` — only when PSI ≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
       : "";
@@ -263,12 +272,21 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "haze":
       return [
         { label: String(config.nea_region ?? "no region"), on: on(config.nea_region) },
-        {
-          label: config.alert_only_when_at_least
-            ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
-            : "every hour",
-          on: on(config.alert_only_when_at_least),
-        },
+        // Four-hourly is the majority mode — 21 of 24 projects — so it gets a
+        // plain pill rather than a toned one: emphasis on the common case would
+        // be noise, and what an operator actually wants to spot at a glance is
+        // the handful of sites still on the hourly cadence.
+        { label: config.four_hourly ? "🕓 4-hourly" : "hourly", on: true },
+        // Four-hourly sends whatever the band, so the stored gate is not
+        // consulted. Report what is in force, not what is written down.
+        config.four_hourly
+          ? { label: "every band", on: true }
+          : {
+              label: config.alert_only_when_at_least
+                ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
+                : "every hour",
+              on: on(config.alert_only_when_at_least),
+            },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "POC mentions", on: on(config.enable_poc_mentions) },

@@ -157,6 +157,44 @@ test("haze fires-at reflects the PSI alert gate", () => {
   assert.doesNotMatch(firesAt("haze", {}), /only when PSI/);
 });
 
+test("haze four-hourly reports the cadence it actually runs", () => {
+  const four = firesAt("haze", {
+    four_hourly: true,
+    working_hours_start_hhmm: "0800",
+    working_hours_end_hhmm: "1900",
+    alert_only_when_at_least: "unhealthy",
+  });
+  assert.match(four, /08:00, 12:00, 16:00 and 20:00/);
+  assert.match(four, /08:00–19:00/, "the working-hours window still applies");
+  // The gate is stored but not consulted, so quoting it would misdescribe the
+  // project. This is the assertion that would catch it coming back.
+  assert.doesNotMatch(four, /only when PSI/);
+  assert.match(four, /no daily kickoff/, "four-hourly projects are skipped by the kickoff route");
+
+  assert.match(firesAt("haze", { four_hourly: false }), /^hourly advisory/);
+});
+
+test("a half-configured haze window is not reported as a range", () => {
+  // The service treats one end alone as no window at all; the card used to
+  // render `08:00–—` and imply a restriction that was never enforced.
+  const line = firesAt("haze", { working_hours_start_hhmm: "0800" });
+  assert.match(line, /all day/);
+  assert.doesNotMatch(line, /08:00/);
+});
+
+test("the haze cadence and band pills say what is in force", () => {
+  const four = pillsFor("haze", { four_hourly: true, alert_only_when_at_least: "unhealthy" });
+  assert.ok(four.some((p) => p.label === "🕓 4-hourly" && p.on));
+  assert.ok(four.some((p) => p.label === "every band" && p.on));
+  assert.ok(!four.some((p) => p.label.startsWith("≥")), "the bypassed gate must not be shown as active");
+  // Four-hourly is the majority mode, so it must not be emphasised.
+  assert.equal(four.find((p) => p.label === "🕓 4-hourly")?.tone, undefined);
+
+  const hourly = pillsFor("haze", { alert_only_when_at_least: "unhealthy" });
+  assert.ok(hourly.some((p) => p.label === "hourly" && p.on));
+  assert.ok(hourly.some((p) => p.label === "≥ unhealthy" && p.on));
+});
+
 test("lightning fires-at distinguishes red-only sites", () => {
   assert.match(firesAt("lightning", { amber_enabled: false }), /^red-only/);
   assert.match(firesAt("lightning", { amber_enabled: true }), /^red \+ amber/);

@@ -388,3 +388,10 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    reason (`STATUS_WORDING` in `ProjectCard`), and `hasCadence` ignores it.
    Lightning also has a CHECK that rejects `enable_red_band_poc_mentions` unless
    both POC lists are non-empty, so those three fields must be saved together.
+10. A stored haze value is not always a value in force. `four_hourly` (on for 21
+    of 24 projects) sends at 08:00/12:00/16:00/20:00 SGT and **bypasses**
+    `alert_only_when_at_least`, so a card that quoted the stored gate would
+    misdescribe the project — the pill row reports `every band` instead. Haze
+    working hours have the opposite trap: the service reads one configured end
+    as *no* window at all, so the card only renders a range when both ends are
+    set. Both are asserted in `tests/auth-policy.test.ts`.

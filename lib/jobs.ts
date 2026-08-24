@@ -20,7 +20,7 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  *    nothing when the precondition is unmet.
  */
 
-export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill" | "wbgt-scrape";
+export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill" | "wbgt-scrape" | "wbgt-water-parade";
 
 export type JobFlag = { key: string; label: string; help: string };
 
@@ -39,6 +39,12 @@ export type JobPrecondition = {
   label: string;
   read: (row: ProjectConfigRow) => string | null;
   unmet: (projectCode: string) => string;
+  /**
+   * Which of several conditions is the one that failed, when `read` is null.
+   * A job gated on one sheet id does not need this; one gated on three separate
+   * things does, because "not ready" alone leaves an operator guessing which.
+   */
+  detail?: (row: ProjectConfigRow, projectCode: string) => string | null;
 };
 
 export type JobDefinition = {
@@ -77,6 +83,45 @@ export function readSheetId(value: unknown): string | null {
   const fromUrl = raw.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
   const id = fromUrl ? fromUrl[1] : raw;
   return /^[A-Za-z0-9_-]{20,}$/.test(id) ? id : null;
+}
+
+/**
+ * The Water Parade rebuild needs three separate things, each failing differently
+ * and none of them loudly:
+ *
+ *  - `enabled` — loadProjectConfigByCode() filters on it, so a disabled project
+ *    comes back as `project_not_found`.
+ *  - `water_parade_enabled` — the rebuild returns `water_parade_disabled` and
+ *    writes nothing. Only opted-in projects have a log to rebuild.
+ *  - `monthly_sheet_id` — the Water Parade Log tab lives in the *monthly*
+ *    workbook, not the manpower one. Without the id, syncCycleSheets returns
+ *    `missing_monthly_sheet_id` per cycle while the run still reports
+ *    `completed`, which is the worst of the three to debug from the outside.
+ */
+function waterParadePrecondition(): JobPrecondition {
+  const sheetId = (row: ProjectConfigRow) => readSheetId(row.monthly_sheet_id);
+  return {
+    label: "Water Parade log",
+    read: (row) => {
+      if (row.enabled === false) return null;
+      if (row.water_parade_enabled !== true) return null;
+      const id = sheetId(row);
+      return id ? `writes to ${id.slice(0, 12)}…` : null;
+    },
+    detail: (row, projectCode) => {
+      if (row.enabled === false) {
+        return `${projectCode} is disabled, and the route loads enabled projects only — it would answer project_not_found.`;
+      }
+      if (row.water_parade_enabled !== true) {
+        return `Water Parade is off on ${projectCode}. The route answers water_parade_disabled and writes nothing — turn it on in the project's editor first.`;
+      }
+      if (!sheetId(row)) {
+        return `${projectCode} has no Monthly sheet ID, and the Water Parade Log tab lives in that workbook. Every cycle would come back unwritten while the run still reported completed.`;
+      }
+      return null;
+    },
+    unmet: (projectCode) => `${projectCode} is not ready for a Water Parade rebuild.`,
+  };
 }
 
 function sheetPrecondition(column: string, label: string): JobPrecondition {
@@ -178,6 +223,34 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       from: startDate,
       to: endDate,
       ...(flags?.force ? { force: true } : {}),
+    }),
+  },
+  "wbgt-water-parade": {
+    key: "wbgt-water-parade",
+    service: "wbgt",
+    label: "⟳ Water Parade log",
+    title: "Rebuild the Water Parade log",
+    description:
+      "Reprojects the stored cycles and events for a date range into the Water Parade Log tab, refreshing each confirmed photo's URL on the way. Idempotent, and it dispatches nothing.",
+    caution:
+      "The endpoint enforces no span limit: every cycle in the range is rebuilt and written individually, so a wide range is a long run. It reprojects stored state only — company matching and vision decisions are not re-run.",
+    baseUrlEnv: "WBGT_API_URL",
+    path: "/api/water-parade-rebuild",
+    precondition: waterParadePrecondition(),
+    flags: [
+      {
+        key: "dryRun",
+        label: "dryRun",
+        help: "Preview only — reports what each cycle would write, touching neither Supabase nor the sheet.",
+      },
+    ],
+    // camelCase `fromDate`/`toDate`: rebuildDateRange() accepts `from`/`to` as
+    // aliases, but the named pair is what the docs use.
+    buildPayload: ({ projectCode, startDate, endDate, flags }) => ({
+      projectCode,
+      fromDate: startDate,
+      toDate: endDate,
+      ...(flags?.dryRun ? { dryRun: true } : {}),
     }),
   },
 };
@@ -290,6 +363,8 @@ export type JobTarget = {
   projectCode: string;
   /** Description of the satisfied precondition, or null when unmet. */
   ready: string | null;
+  /** When unmet, which condition failed — see JobPrecondition.detail. */
+  reason: string | null;
 };
 
 /**
@@ -299,10 +374,15 @@ export type JobTarget = {
  */
 export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTarget[] {
   return rows
-    .map((row) => ({
-      projectCode: String(row.project_code ?? ""),
-      ready: job.precondition.read(row),
-    }))
+    .map((row) => {
+      const projectCode = String(row.project_code ?? "");
+      const ready = job.precondition.read(row);
+      return {
+        projectCode,
+        ready,
+        reason: ready ? null : (job.precondition.detail?.(row, projectCode) ?? null),
+      };
+    })
     .filter((target) => target.projectCode)
     .sort((a, b) => a.projectCode.localeCompare(b.projectCode));
 }
@@ -323,7 +403,7 @@ export function spanDays(startDate: string, endDate: string): number {
 /** Everything wrong with the form, in the order a human would fix it. */
 export function validateJobInput(
   input: Partial<JobInput>,
-  { job, ready }: { job?: JobDefinition; ready?: string | null } = {},
+  { job, ready, reason }: { job?: JobDefinition; ready?: string | null; reason?: string | null } = {},
 ): string[] {
   const problems: string[] = [];
   if (!input.projectCode) problems.push("Choose a project.");
@@ -343,7 +423,9 @@ export function validateJobInput(
   }
 
   if (input.projectCode && !ready) {
-    problems.push(job ? job.precondition.unmet(input.projectCode) : "Precondition not met.");
+    // The specific reason when the job supplied one, so the operator is told
+    // which condition failed rather than only that something did.
+    problems.push(reason ?? (job ? job.precondition.unmet(input.projectCode) : "Precondition not met."));
   }
   return problems;
 }

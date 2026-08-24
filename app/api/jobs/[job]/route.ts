@@ -57,7 +57,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
   if (!row) return NextResponse.json({ error: `No ${job.service} project ${body.projectCode}.` }, { status: 404 });
 
   const ready = job.precondition.read(row);
-  const problems = validateJobInput(body, { job, ready });
+  const reason = ready ? null : (job.precondition.detail?.(row, body.projectCode as string) ?? null);
+  const problems = validateJobInput(body, { job, ready, reason });
   if (problems.length) return NextResponse.json({ error: problems.join(" ") }, { status: 400 });
 
   // Only flags the job actually declares are forwarded.

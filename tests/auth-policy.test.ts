@@ -514,7 +514,11 @@ test("the historical scrape always sends its mandatory opt-in", () => {
 
 test("jobs are offered on the right tab", () => {
   assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
-  assert.deepEqual(jobsForService("wbgt").map((j) => j.key), ["wbgt-fill", "wbgt-scrape"]);
+  assert.deepEqual(jobsForService("wbgt").map((j) => j.key), [
+    "wbgt-fill",
+    "wbgt-scrape",
+    "wbgt-water-parade",
+  ]);
   for (const service of ["haze", "lightning", "ailytics", "subcon"] as const) {
     assert.deepEqual(jobsForService(service), [], service);
   }
@@ -780,6 +784,98 @@ test("the Water Parade reminder group resolves as its own destination", () => {
     deliveryGroups("wbgt", { whatsapp_group_id: "same@g.us", water_parade_outbound_group_id: "same@g.us" }),
     [{ chatId: "same@g.us", role: "water parade" }],
   );
+});
+
+test("the Water Parade rebuild names which of its three gates failed", () => {
+  const job = JOBS["wbgt-water-parade"];
+  const ok = {
+    project_code: "TEST",
+    enabled: true,
+    water_parade_enabled: true,
+    monthly_sheet_id: "M".repeat(30),
+  };
+
+  assert.match(job.precondition.read(ok) ?? "", /^writes to M{12}…$/);
+  assert.equal(job.precondition.detail?.(ok, "TEST"), null);
+
+  // Each gate fails differently, and none of them loudly, so each gets its own
+  // sentence rather than a shared "not ready".
+  assert.match(
+    job.precondition.detail?.({ ...ok, enabled: false }, "TEST") ?? "",
+    /project_not_found/,
+  );
+  assert.match(
+    job.precondition.detail?.({ ...ok, water_parade_enabled: false }, "TEST") ?? "",
+    /water_parade_disabled/,
+  );
+  // The quiet one: the run reports completed while writing nothing.
+  assert.match(
+    job.precondition.detail?.({ ...ok, monthly_sheet_id: null }, "TEST") ?? "",
+    /Monthly sheet ID.*reported completed/s,
+  );
+
+  for (const broken of [
+    { ...ok, enabled: false },
+    { ...ok, water_parade_enabled: false },
+    { ...ok, monthly_sheet_id: "" },
+  ]) {
+    assert.equal(job.precondition.read(broken), null);
+  }
+});
+
+test("the Water Parade log lives in the monthly workbook, not the manpower one", () => {
+  // syncCycleSheets() reads config.monthly_sheet_id. Gating on
+  // manpower_spreadsheet_id would have passed projects that then wrote nothing.
+  const job = JOBS["wbgt-water-parade"];
+  const manpowerOnly = {
+    project_code: "TEST",
+    enabled: true,
+    water_parade_enabled: true,
+    monthly_sheet_id: null,
+    manpower_spreadsheet_id: "P".repeat(30),
+  };
+  assert.equal(job.precondition.read(manpowerOnly), null);
+});
+
+test("the Water Parade rebuild sends the date pair the route documents", () => {
+  const job = JOBS["wbgt-water-parade"];
+  assert.deepEqual(
+    job.buildPayload({ projectCode: "TEST", startDate: "2026-08-20", endDate: "2026-08-22" }),
+    { projectCode: "TEST", fromDate: "2026-08-20", toDate: "2026-08-22" },
+  );
+  // dryRun is opt-in and omitted entirely when off, matching the other jobs.
+  assert.deepEqual(
+    job.buildPayload({
+      projectCode: "TEST",
+      startDate: "2026-08-20",
+      endDate: "2026-08-22",
+      flags: { dryRun: true },
+    }),
+    { projectCode: "TEST", fromDate: "2026-08-20", toDate: "2026-08-22", dryRun: true },
+  );
+  assert.equal(job.path, "/api/water-parade-rebuild");
+  assert.equal(job.baseUrlEnv, "WBGT_API_URL");
+  // No server-side span cap exists, so HALO must not claim one.
+  assert.equal(job.maxSpanDays, undefined);
+});
+
+test("jobTargets carries the specific reason, and only when unmet", () => {
+  const job = JOBS["wbgt-water-parade"];
+  const targets = jobTargets(job, [
+    { project_code: "READY", enabled: true, water_parade_enabled: true, monthly_sheet_id: "M".repeat(30) },
+    { project_code: "OFF", enabled: true, water_parade_enabled: false, monthly_sheet_id: "M".repeat(30) },
+  ]);
+  const ready = targets.find((t) => t.projectCode === "READY");
+  const off = targets.find((t) => t.projectCode === "OFF");
+  assert.equal(ready?.reason, null, "a satisfied precondition has no reason to explain");
+  assert.match(off?.reason ?? "", /water_parade_disabled/);
+  // And validateJobInput surfaces it instead of the generic sentence.
+  const problems = validateJobInput(
+    { projectCode: "OFF", startDate: "2026-08-20", endDate: "2026-08-22" },
+    { job, ready: off?.ready, reason: off?.reason },
+  );
+  assert.ok(problems.some((p) => /water_parade_disabled/.test(p)));
+  assert.ok(!problems.some((p) => /is not ready for a Water Parade rebuild/.test(p)));
 });
 
 test("the manpower workbook is offered as its own link", () => {

@@ -38,8 +38,18 @@ export function JobDialog({
   useEscapeKey(!busy, onClose);
 
   const selected = targets.find((target) => target.projectCode === projectCode);
-  const problems = validateJobInput({ projectCode, startDate, endDate }, { job, ready: selected?.ready });
+  const problems = validateJobInput(
+    { projectCode, startDate, endDate },
+    { job, ready: selected?.ready, reason: selected?.reason },
+  );
   const canRun = problems.length === 0;
+
+  // The precondition gets its own line under the picker, so repeating it in the
+  // problems list below said the same sentence twice.
+  const preconditionMessage = projectCode
+    ? (selected?.reason ?? job.precondition.unmet(projectCode))
+    : null;
+  const listedProblems = problems.filter((problem) => problem !== preconditionMessage);
 
   const span =
     startDate && endDate && startDate <= endDate ? spanDays(startDate, endDate) : null;
@@ -99,9 +109,7 @@ export function JobDialog({
 
         {projectCode ? (
           <p className={`mt-1.5 text-[11px] ${selected?.ready ? "text-muted-foreground" : "text-warn"}`}>
-            {selected?.ready
-              ? `${job.precondition.label}: ${selected.ready}`
-              : job.precondition.unmet(projectCode)}
+            {selected?.ready ? `${job.precondition.label}: ${selected.ready}` : preconditionMessage}
           </p>
         ) : null}
 
@@ -173,9 +181,9 @@ export function JobDialog({
           </p>
         ) : null}
 
-        {problems.length && (projectCode || startDate || endDate) ? (
+        {listedProblems.length && (projectCode || startDate || endDate) ? (
           <ul className="mt-3 list-inside list-disc text-[11px] text-warn">
-            {problems.map((problem) => (
+            {listedProblems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
           </ul>

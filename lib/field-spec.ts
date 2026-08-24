@@ -210,7 +210,14 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   noise: {
-    enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
+    // Not quite a master switch any more: the scrape endpoint deliberately
+    // includes TEST even when disabled, so it can mirror ZRA's live locations
+    // as a pipeline test destination (noise repo, "Mirror ZRA scrapes into
+    // TEST"). Everything else still stops.
+    enabled: {
+      label: "Project enabled",
+      help: "Master switch for the notification cadences — off means none of them run, whatever the toggles below say. One exception: the scrape endpoint still scrapes the internal TEST project while it is disabled.",
+    },
     source_type: { label: "Login profile" },
     timezone: { label: "Timezone" },
 

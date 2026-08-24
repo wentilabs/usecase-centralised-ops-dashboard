@@ -49,6 +49,11 @@ export function OnboardDialog({
         if (cancelled) return;
         setEnvReady(body.defaultsResolved ?? {});
         setMissingEnv(body.missingEnvDefaults ?? []);
+        // Prefill rather than hint: the row is about to carry these values, so
+        // show them. Anything already typed wins.
+        if (body.prefill) {
+          setDraft((prev) => ({ ...(body.prefill as Record<string, string>), ...prev }));
+        }
       } catch {
         if (!cancelled) setEnvReady({});
       }
@@ -151,20 +156,33 @@ export function OnboardDialog({
                   <div className="md:pt-2">
                     <div className="text-sm font-medium">
                       {entry.label}
-                      {entry.required ? <span className="ml-1 text-danger">*</span> : null}
+                      {entry.required && !entry.computed ? <span className="ml-1 text-danger">*</span> : null}
                     </div>
                     <div className="font-mono text-[10px] text-muted-foreground">{entry.column}</div>
                   </div>
                   <div>
-                    <input
-                      className={field}
-                      value={draft[entry.column] ?? ""}
-                      disabled={busy}
-                      placeholder={placeholderFor(entry)}
-                      onChange={(event) =>
-                        setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }))
-                      }
-                    />
+                    {entry.computed ? (
+                      // Derived from the project code and created on demand as a
+                      // sheet tab, so an editable box would invite a mismatch.
+                      <div className="rounded-lg border border-dashed border-border bg-card/40 px-3 py-2 text-sm text-muted-foreground">
+                        {code ? (
+                          <span className="text-foreground">{resolveValue(entry, {}, code, {})}</span>
+                        ) : (
+                          "set from the project code"
+                        )}
+                        <span className="ml-2 text-[10px] uppercase tracking-wider">automatic</span>
+                      </div>
+                    ) : (
+                      <input
+                        className={field}
+                        value={draft[entry.column] ?? ""}
+                        disabled={busy}
+                        placeholder={placeholderFor(entry)}
+                        onChange={(event) =>
+                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }))
+                        }
+                      />
+                    )}
                     {entry.help ? (
                       <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
                     ) : null}

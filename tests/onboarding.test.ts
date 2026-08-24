@@ -5,6 +5,7 @@ import {
   buildInsertRow,
   missingEnvDefaults,
   onboardingFor,
+  prefillDefaults,
   resolveValue,
   validateDraft,
 } from "../lib/onboarding";
@@ -69,9 +70,8 @@ test("tab names follow the (CODE) convention, not the Postgres defaults", () => 
   const built = buildInsertRow(ailytics, { ...complete, project_code: "ZRB" }, {});
   assert.equal(built.activity_history_tab, "(ZRB) CCTV History");
   assert.equal(built.safety_sheet_tab, "(ZRB) CCTV Safety Sheet");
-  // A typed value always wins over the derived one.
-  const overridden = buildInsertRow(ailytics, { ...complete, activity_history_tab: "Custom tab" }, {});
-  assert.equal(overridden.activity_history_tab, "Custom tab");
+  // Unlike every other field, a typed value does NOT win here — the tab name is
+  // computed. See "the tab names are computed and cannot be overridden".
 });
 
 test("the three lambda URLs come from env, and typing beats the default", () => {
@@ -156,4 +156,45 @@ test("the steps HALO cannot perform are carried on the definition", () => {
   assert.equal(ailytics.outsideHalo.length, 2);
   assert.ok(ailytics.outsideHalo.some((step) => /Editor/.test(step)), "sheet sharing needs Editor");
   assert.ok(ailytics.outsideHalo.some((step) => /adapter/i.test(step)));
+});
+
+test("the three proxy URLs come last, after every project-specific field", () => {
+  // They are prefilled from env and rarely touched, so they belong at the end
+  // rather than interrupting the fields someone actually types.
+  const columns = ailytics.fields.map((f) => f.column);
+  assert.deepEqual(columns.slice(-3), ["lambda_url", "reply_lambda_url", "lambda_url_image"]);
+});
+
+test("the tab names are computed and cannot be overridden by the draft", () => {
+  // An editable box would let a row carry a tab name that the service then
+  // creates as a *different* sheet from the one anyone expects.
+  for (const column of ["activity_history_tab", "safety_sheet_tab"]) {
+    const field = ailytics.fields.find((f) => f.column === column)!;
+    assert.equal(field.computed, true, column);
+  }
+  const built = buildInsertRow(
+    ailytics,
+    { ...complete, project_code: "ZRB", activity_history_tab: "Hand typed", safety_sheet_tab: "Also typed" },
+    {},
+  );
+  assert.equal(built.activity_history_tab, "(ZRB) CCTV History");
+  assert.equal(built.safety_sheet_tab, "(ZRB) CCTV Safety Sheet");
+});
+
+test("prefill carries real values, and never a computed field", () => {
+  const env = {
+    DEFAULT_LAMBDA_URL_SEND: "https://env.example/send-message",
+    DEFAULT_LAMBDA_URL_REPLY: "https://env.example/reply-message",
+    DEFAULT_LAMBDA_URL_IMAGE: "https://env.example/send-document",
+  };
+  const prefill = prefillDefaults(ailytics, env);
+  assert.equal(prefill.lambda_url, "https://env.example/send-message");
+  assert.equal(prefill.reply_lambda_url, "https://env.example/reply-message");
+  assert.equal(prefill.lambda_url_image, "https://env.example/send-document");
+  assert.equal(prefill.timezone, "Asia/Singapore", "the literal fallback is prefilled too");
+  // Computed fields depend on the project code, so they are not prefillable.
+  assert.equal("activity_history_tab" in prefill, false);
+  assert.equal("safety_sheet_tab" in prefill, false);
+  // An unset env var contributes nothing rather than an empty string.
+  assert.equal("lambda_url" in prefillDefaults(ailytics, {}), false);
 });

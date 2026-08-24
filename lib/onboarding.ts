@@ -37,6 +37,12 @@ export type OnboardField = {
   notNull: boolean;
   /** Computed from the project code, e.g. "(ZRA) CCTV History". */
   derive?: (projectCode: string) => string;
+  /**
+   * Derived and NOT editable. The server ignores whatever the client sends for
+   * these, so a stale or hand-edited draft cannot put a mismatched tab name on a
+   * row — the tab is created on demand from this exact string.
+   */
+  computed?: boolean;
   /** Env var supplying the default, resolved server-side. */
   envDefault?: string;
   /** Literal default. */
@@ -100,6 +106,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       },
       {
         column: "activity_history_tab",
+        computed: true,
         label: "Activity history tab",
         kind: "text",
         required: true,
@@ -109,6 +116,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       },
       {
         column: "safety_sheet_tab",
+        computed: true,
         label: "Safety sheet tab",
         kind: "text",
         required: true,
@@ -140,6 +148,28 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         help: "Informational only — matching uses the chat ID and bot username.",
       },
       {
+        column: "instance_name",
+        label: "WhatsApp instance",
+        kind: "text",
+        required: false,
+        notNull: true,
+      },
+      {
+        column: "client_id",
+        label: "Client ID",
+        kind: "text",
+        required: false,
+        notNull: true,
+      },
+      {
+        column: "whatsapp_group_ids",
+        label: "WhatsApp group IDs",
+        kind: "text",
+        required: false,
+        notNull: true,
+        help: "Comma-separated.",
+      },
+      {
         column: "lambda_url",
         label: "Send-message URL",
         kind: "text",
@@ -163,28 +193,6 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: false,
         envDefault: "DEFAULT_LAMBDA_URL_IMAGE",
         help: "Left blank, the service derives /send-document from the send-message URL.",
-      },
-      {
-        column: "instance_name",
-        label: "WhatsApp instance",
-        kind: "text",
-        required: false,
-        notNull: true,
-      },
-      {
-        column: "client_id",
-        label: "Client ID",
-        kind: "text",
-        required: false,
-        notNull: true,
-      },
-      {
-        column: "whatsapp_group_ids",
-        label: "WhatsApp group IDs",
-        kind: "text",
-        required: false,
-        notNull: true,
-        help: "Comma-separated.",
       },
     ],
   },
@@ -264,6 +272,8 @@ export function resolveValue(
   projectCode: string,
   env: Record<string, string | undefined>,
 ): string {
+  // A computed field is derived from the project code, whatever the draft says.
+  if (field.computed) return field.derive && projectCode ? field.derive(projectCode) : "";
   const typed = String(draft[field.column] ?? "").trim();
   if (typed) return typed;
   if (field.envDefault && env[field.envDefault]) return String(env[field.envDefault]).trim();
@@ -291,6 +301,26 @@ export function buildInsertRow(
     row[field.column] = value ? value : field.notNull ? "" : null;
   }
   return row;
+}
+
+/**
+ * The values the dialog should prefill, resolved server-side.
+ *
+ * Real values rather than "comes from an env var": someone approving a new row
+ * should see the URL it will carry. These are already visible in the editor for
+ * every existing project, so this exposes nothing new to an authorised session.
+ */
+export function prefillDefaults(
+  definition: OnboardDefinition,
+  env: Record<string, string | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const field of definition.fields) {
+    if (field.computed) continue;
+    const value = field.envDefault ? (env[field.envDefault] ?? "") : (field.fallback ?? "");
+    if (value) out[field.column] = String(value).trim();
+  }
+  return out;
 }
 
 /** Env defaults that are declared but unset, so the dialog can say so up front. */

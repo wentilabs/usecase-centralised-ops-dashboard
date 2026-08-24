@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { insertConfig, listConfigs } from "@/lib/config-repository";
-import { buildInsertRow, missingEnvDefaults, onboardingFor, validateDraft } from "@/lib/onboarding";
+import {
+  buildInsertRow,
+  missingEnvDefaults,
+  onboardingFor,
+  prefillDefaults,
+  validateDraft,
+} from "@/lib/onboarding";
 import { getDashboardSession } from "@/lib/supabase/server";
 import { isServiceKey } from "@/lib/services";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -31,13 +37,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ser
   if (!definition) return NextResponse.json({ error: `${service} has no onboarding flow.` }, { status: 404 });
 
   const missing = missingEnvDefaults(definition, process.env);
-  // Only whether each default resolved, never the URL itself.
   const defaults = Object.fromEntries(
     definition.fields
       .filter((field) => field.envDefault)
       .map((field) => [field.column, !missing.includes(field.envDefault as string)]),
   );
-  return NextResponse.json({ ok: true, missingEnvDefaults: missing, defaultsResolved: defaults });
+  // Actual values, so the dialog prefills the URL rather than naming the env var.
+  // Every one of these is already shown in the editor for existing projects.
+  return NextResponse.json({
+    ok: true,
+    missingEnvDefaults: missing,
+    defaultsResolved: defaults,
+    prefill: prefillDefaults(definition, process.env),
+  });
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ service: string }> }) {

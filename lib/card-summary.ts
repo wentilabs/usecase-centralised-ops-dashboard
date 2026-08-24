@@ -159,6 +159,8 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
         `morning${config.morning_summary_start_hhmm ? ` @ ${formatHhmm(config.morning_summary_start_hhmm)}` : ""}`,
       );
     }
+    // Fixed 07:00–19:00 closeout, scheduled at 19:00 — no configurable start.
+    if (config.enable_evening_summary) parts.push("evening 7am–7pm closeout @ 19:00");
     if (config.enable_sunday_leq12h_hourly) parts.push("Sunday Leq12h hourly");
     if (config.enable_7am_7pm_leq12hr_table) parts.push("Leq12hr table @ 07:00/19:00");
     if (!parts.length) return "No cadences enabled";
@@ -251,6 +253,7 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "hourly", on: on(config.enable_hourly) },
         { label: "3-hr summary", on: on(config.enable_three_hour_summary) },
         { label: "morning summary", on: on(config.enable_morning_summary) },
+        { label: "evening summary", on: on(config.enable_evening_summary) },
         { label: "Sunday Leq12h", on: on(config.enable_sunday_leq12h_hourly) },
         { label: "Leq12hr table", on: on(config.enable_7am_7pm_leq12hr_table) },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
@@ -408,6 +411,7 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
         config.enable_hourly ||
         config.enable_three_hour_summary ||
         config.enable_morning_summary ||
+        config.enable_evening_summary ||
         config.enable_sunday_leq12h_hourly ||
         config.enable_7am_7pm_leq12hr_table,
     );

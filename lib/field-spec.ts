@@ -243,17 +243,34 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       showIf: { field: "enable_hourly", equals: true },
     },
 
-    // --- Unique configs
-    enable_three_hour_summary: { label: "3-hour summary" },
+    // --- Unique configs. Each of these is its own endpoint and cron family in
+    // the noise repo, opt-in per project (default false) — unlike the three
+    // cadences above, which default on.
+    enable_three_hour_summary: {
+      label: "3-hour summary",
+      help: "Rollup of the last 3 completed hourly Leq1hr values per meter, each with that meter's current 12-hour state.",
+    },
     three_hour_formatter: { label: "3-hour summary format", showIf: { field: "enable_three_hour_summary", equals: true } },
-    enable_morning_summary: { label: "Morning summary" },
+    enable_morning_summary: {
+      label: "Morning summary",
+      help: "The overnight rollup: same shape as the 3-hour summary but across the overnight range, closing with the completed overnight Leq12hr.",
+    },
     morning_formatter: { label: "Morning summary format", showIf: { field: "enable_morning_summary", equals: true } },
     morning_summary_start_hhmm: {
       label: "Morning summary start",
       widget: "hhmm",
+      help: "When the summary is sent, and which range it covers — it starts from either 00:00 or 22:00.",
       showIf: { field: "enable_morning_summary", equals: true },
     },
-    enable_sunday_leq12h_hourly: { label: "Sunday Leq12h hourly" },
+    enable_evening_summary: {
+      label: "Evening summary",
+      help: "The daytime closeout: every completed hourly Leq1hr from 07:00 through 18:00, ending with Leq12hr(7AM–7PM). Fixed 07:00–19:00, so there is no start-time setting — the job is scheduled at 19:00 SGT.",
+    },
+    evening_formatter: { label: "Evening summary format", showIf: { field: "enable_evening_summary", equals: true } },
+    enable_sunday_leq12h_hourly: {
+      label: "Sunday Leq12h hourly",
+      help: "Hourly Sunday daytime Leq12hr (07:00–19:00). Deliberately IGNORES “Mute Sundays” — that is the point of it, so a project with Sundays muted still gets these.",
+    },
     enable_7am_7pm_leq12hr_table: { label: "Leq12hr table @ 07:00/19:00" },
 
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
@@ -609,6 +626,8 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "enable_morning_summary",
         "morning_formatter",
         "morning_summary_start_hhmm",
+        "enable_evening_summary",
+        "evening_formatter",
         "enable_sunday_leq12h_hourly",
         "enable_7am_7pm_leq12hr_table",
       ],

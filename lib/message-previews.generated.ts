@@ -277,5 +277,20 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     ],
     "isFallback": true,
     "source": "noise MESSAGE_SHAPES.md §15"
+  },
+  {
+    "service": "noise",
+    "column": "evening_formatter",
+    "value": "daytime_leq1hr_summary_with_12hr",
+    "summary": "This is a once-daily daytime closeout endpoint and cron family. It uses a fixed 07:00 start, includes every completed hourly Leq1hr from 7AM through 6PM, and ends with the completed daytime `Leq12hr(7AM-7PM)` line. Schedule it at 19:00 Singapore time; there is no separate evening summary start-time setting.",
+    "kind": "message",
+    "bubbles": [
+      {
+        "caption": "Expected message shape",
+        "text": "🕐 19:04 (ZRA) (0700 to 1900)\n\n*NM01*\n-7AM Leq1hr: 64.2 (70) ✅\n-8AM Leq1hr: 63.8 (70) ✅\n...\n-6PM Leq1hr: 61.8 (70) ✅\n\nLeq12hr(7AM-7PM): 66.4 dBA (75) ✅"
+      }
+    ],
+    "isFallback": true,
+    "source": "noise MESSAGE_SHAPES.md §16"
   }
 ];

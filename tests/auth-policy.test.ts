@@ -826,3 +826,28 @@ test("Ailytics PENDING forwarding is shown as the outbound-only switch it is", (
   assert.ok(pills.some((p) => p.label === "forward PENDING" && p.on));
   assert.ok(pillsFor("ailytics", {}).some((p) => p.label === "forward PENDING" && !p.on));
 });
+
+// ---------------------------------------------------------------------------
+// Noise gained an evening summary (noise repo commit "Add evening noise
+// summary"): the fixed 07:00-19:00 daytime closeout, scheduled at 19:00.
+// ---------------------------------------------------------------------------
+test("the evening closeout appears in the noise fires-at line", () => {
+  const line = firesAt("noise", { enable_evening_summary: true });
+  assert.match(line, /evening 7am–7pm closeout @ 19:00/);
+  // It is opt-in, so an untouched project must not claim it.
+  assert.doesNotMatch(firesAt("noise", { enable_hourly: true }), /evening/);
+});
+
+test("a project running only the evening closeout is not treated as idle", () => {
+  // Without this, hasCadence returns false, the card is scrimmed and it sinks
+  // to the bottom of the grid as though nothing were scheduled.
+  assert.equal(hasCadence("noise", { enable_evening_summary: true }), true);
+  assert.equal(hasCadence("noise", {}), false);
+  assert.equal(cardEmphasis("noise", { enable_evening_summary: true }), "active");
+});
+
+test("the evening summary is surfaced as a pill", () => {
+  const pills = pillsFor("noise", { enable_evening_summary: true });
+  assert.ok(pills.some((p) => p.label === "evening summary" && p.on));
+  assert.ok(pillsFor("noise", {}).some((p) => p.label === "evening summary" && !p.on));
+});

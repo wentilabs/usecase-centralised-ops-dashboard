@@ -116,6 +116,28 @@ export async function updateConfig(
 }
 
 /**
+ * Create a project row.
+ *
+ * The only insert in the app — everything else patches. `Prefer: return=representation`
+ * so the caller gets the row Postgres actually stored, defaults and all, rather
+ * than echoing back what was sent.
+ */
+export async function insertConfig(
+  service: ServiceKey,
+  row: Record<string, unknown>,
+): Promise<ProjectConfigRow[]> {
+  const { table, schema } = SERVICES[service];
+  const res = await request(table, {
+    schema,
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  return res.body as ProjectConfigRow[];
+}
+
+/**
  * PostgREST publishes an OpenAPI doc describing every column: type, default and
  * pg-enum values. Cached per process; POST /api/schema/reload clears it so a
  * column added to Supabase shows up without a redeploy.

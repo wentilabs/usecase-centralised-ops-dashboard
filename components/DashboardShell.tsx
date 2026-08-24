@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import { ConfigEditor } from "./ConfigEditor";
 import { ExportDialog } from "./ExportDialog";
 import { JobDialog } from "./JobDialog";
+import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { emphasisRank, formatSgt } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
+import { onboardingFor } from "@/lib/onboarding";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -65,6 +67,7 @@ export function DashboardShell({
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
   const [job, setJob] = useState<JobDefinition | null>(null);
   const [exporter, setExporter] = useState<ExportDefinition | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -258,11 +261,25 @@ export function DashboardShell({
         </div>
       </header>
 
-      {jobsForService(active.key).length || exportsForService(active.key).length ? (
+      {jobsForService(active.key).length ||
+      exportsForService(active.key).length ||
+      onboardingFor(active.key) ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-5">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {active.label} sheet jobs
+            {active.label} actions
           </span>
+          {/* Creating a row is the only insert in the app, so it leads the row
+              and needs the same edit right as a config change. */}
+          {session.canEdit && onboardingFor(active.key) ? (
+            <button
+              type="button"
+              onClick={() => setOnboarding(true)}
+              title={onboardingFor(active.key)?.description}
+              className="rounded-lg border border-on/40 bg-on/10 px-3 py-1.5 text-xs font-medium text-on hover:bg-on/20"
+            >
+              {onboardingFor(active.key)?.label}
+            </button>
+          ) : null}
           {/* Jobs change production, so they need edit rights. An export only
               reads, so a read-only account may still take a copy. */}
           {session.canEdit
@@ -367,6 +384,15 @@ export function DashboardShell({
           onClose={() => setViewing(null)}
           groupNames={groupNames}
           visoUrl={visoUrl}
+        />
+      ) : null}
+
+      {onboarding && onboardingFor(active.key) ? (
+        <OnboardDialog
+          definition={onboardingFor(active.key)!}
+          rows={rows[active.key] ?? []}
+          onClose={() => setOnboarding(false)}
+          onCreated={() => void refreshData()}
         />
       ) : null}
 

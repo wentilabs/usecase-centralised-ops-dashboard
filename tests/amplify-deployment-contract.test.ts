@@ -69,6 +69,11 @@ test("amplify.yml carries every runtime variable into .env.production", async ()
     "VISO_URL",
     "NOISE_API_URL",
     "WBGT_API_URL",
+    // Onboarding defaults. Unset, the Add-project dialog says so and refuses
+    // rather than inserting a row with a blank NOT NULL lambda_url.
+    "DEFAULT_LAMBDA_URL_SEND",
+    "DEFAULT_LAMBDA_URL_REPLY",
+    "DEFAULT_LAMBDA_URL_IMAGE",
     "NEXT_PUBLIC_",
   ]) {
     assert.ok(amplify.includes(key), `amplify.yml must capture ${key}`);

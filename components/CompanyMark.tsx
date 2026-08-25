@@ -83,7 +83,9 @@ export function CompanyMark({ company }: { company: string }) {
         viewBox="0 0 100 100"
         aria-hidden="true"
         focusable="false"
-        className="pointer-events-none absolute right-2 top-1/2 h-24 w-24 -translate-y-1/2 opacity-[0.07] md:h-28 md:w-28"
+        // Centred on the card, both axes. This was pinned to the right edge,
+        // which put it under the delivery chips rather than behind the card.
+        className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 opacity-[0.09] md:h-32 md:w-32"
       >
         <title>{company}</title>
         {mark}

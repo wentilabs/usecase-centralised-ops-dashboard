@@ -135,6 +135,12 @@ test("the company watermark cannot swallow a click, and stays readable to a read
   // click on the card beneath it — including Edit and the group links.
   assert.match(mark, /pointer-events-none/, "the watermark must be inert");
   assert.match(mark, /absolute/, "and positioned out of flow");
+  // Centred on both axes. It was first pinned to the right edge, which put it
+  // under the delivery chips instead of behind the middle of the card.
+  assert.match(mark, /left-1\/2/, "centred horizontally");
+  assert.match(mark, /top-1\/2/, "centred vertically");
+  assert.match(mark, /-translate-x-1\/2/, "and actually offset back, not just positioned");
+  assert.match(mark, /-translate-y-1\/2/);
   // Subtle enough not to fight the text it sits behind.
   assert.match(mark, /opacity-\[0\.0\d\]/, "a watermark, not a background image");
 

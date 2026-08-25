@@ -37,6 +37,10 @@ export function OnboardDialog({
   /** Which env-backed defaults the server actually has. */
   const [envReady, setEnvReady] = useState<Record<string, boolean> | null>(null);
   const [missingEnv, setMissingEnv] = useState<string[]>([]);
+  /** A prerequisite database function, and whether it is installed. */
+  const [rpc, setRpc] = useState<{ fn: string; describes: string; installed: boolean | null } | null>(null);
+  const [steps, setSteps] = useState<{ step: string; detail: string }[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
 
   useEscapeKey(!busy, onClose);
 
@@ -54,6 +58,7 @@ export function OnboardDialog({
         if (body.prefill) {
           setDraft((prev) => ({ ...(body.prefill as Record<string, string>), ...prev }));
         }
+        setRpc(body.rpc ?? null);
       } catch {
         if (!cancelled) setEnvReady({});
       }
@@ -98,6 +103,8 @@ export function OnboardDialog({
         setError(body.error ?? `HTTP ${res.status}`);
         return;
       }
+      setSteps(body.steps ?? []);
+      setWarning(body.warning ?? null);
       setCreated(String(body.row?.project_code ?? code));
       onCreated(String(body.row?.project_code ?? code));
     } catch (err) {
@@ -135,7 +142,21 @@ export function OnboardDialog({
               It will not process anything until you set <code className="font-mono">enabled</code> in its editor.
               Finish the two steps below first.
             </p>
-            <ul className="mt-2 list-inside list-disc text-[11px] text-muted-foreground">
+            {steps.length ? (
+              <ul className="mt-2 flex flex-col gap-0.5 text-[11px]">
+                {steps.map((entry) => (
+                  <li key={entry.step}>
+                    <span className="text-on">✓</span> {entry.step}{" "}
+                    <span className="font-mono text-[10px] text-muted-foreground">{entry.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {warning ? (
+              <p className="mt-2 rounded border border-warn/40 bg-warn/10 p-2 text-[11px] text-warn">{warning}</p>
+            ) : null}
+            <div className="mt-2 text-[11px] font-semibold">Still to do</div>
+            <ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
               {definition.outsideHalo.map((step) => (
                 <li key={step}>{step}</li>
               ))}
@@ -143,6 +164,14 @@ export function OnboardDialog({
           </div>
         ) : (
           <>
+            {rpc && rpc.installed === false ? (
+              <p className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-2.5 text-[11px] text-danger">
+                <span className="font-mono">{rpc.fn}</span> is not installed on the database, so HALO cannot
+                create {rpc.describes}. Run <span className="font-mono">supabase/migrate_onboarding_rpc.sql</span>{" "}
+                in the service repo first.
+              </p>
+            ) : null}
+
             {missingEnv.length ? (
               <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">
                 Not set on the server: <span className="font-mono">{missingEnv.join(", ")}</span>. Those

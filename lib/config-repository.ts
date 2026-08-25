@@ -138,6 +138,58 @@ export async function insertConfig(
 }
 
 /**
+ * Call a Postgres function through PostgREST.
+ *
+ * Onboarding a WBGT project needs a table created, which is DDL and therefore
+ * out of reach for an ordinary insert. The wbgt repo installs a narrow
+ * `security definer` function for exactly this; a 404 here means the migration
+ * has not been run yet, which the dialog reports rather than failing opaquely.
+ */
+export async function callRpc(
+  schema: string,
+  fn: string,
+  args: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; body: unknown; text: string }> {
+  return request(`rpc/${fn}`, {
+    schema,
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+/** Insert rows into a companion table in the same schema, e.g. `wbgt_sensors`. */
+export async function insertRows(
+  schema: string,
+  table: string,
+  rows: Record<string, unknown>[],
+  { onConflict }: { onConflict?: string } = {},
+): Promise<ProjectConfigRow[]> {
+  const path = onConflict ? `${table}?on_conflict=${encodeURIComponent(onConflict)}` : table;
+  const res = await request(path, {
+    schema,
+    method: "POST",
+    headers: {
+      Prefer: onConflict ? "return=representation,resolution=merge-duplicates" : "return=representation",
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  return res.body as ProjectConfigRow[];
+}
+
+/**
+ * Whether a table exists and is readable, without caring what is in it.
+ *
+ * PostgREST answers a missing table with 404 / PGRST205, which is how HALO can
+ * tell that a project's readings table has not been created even though it
+ * cannot create one itself.
+ */
+export async function tableExists(schema: string, table: string): Promise<boolean> {
+  const res = await request(`${table}?select=*&limit=0`, { schema });
+  return res.ok;
+}
+
+/**
  * PostgREST publishes an OpenAPI doc describing every column: type, default and
  * pg-enum values. Cached per process; POST /api/schema/reload clears it so a
  * column added to Supabase shows up without a redeploy.

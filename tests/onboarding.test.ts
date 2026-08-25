@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildInsertRow,
+  wbgtTableForProject,
   missingEnvDefaults,
   onboardingFor,
   prefillDefaults,
@@ -33,9 +34,10 @@ const complete = {
   lambda_url: "https://listener.example/send-message",
 };
 
-test("only ailytics offers onboarding today", () => {
+test("onboarding is offered for ailytics and wbgt only", () => {
   assert.ok(onboardingFor("ailytics"));
-  for (const service of ["wbgt", "noise", "haze", "lightning", "subcon"] as const) {
+  assert.ok(onboardingFor("wbgt"));
+  for (const service of ["noise", "haze", "lightning", "subcon"] as const) {
     assert.equal(onboardingFor(service), null, service);
   }
 });
@@ -197,4 +199,72 @@ test("prefill carries real values, and never a computed field", () => {
   assert.equal("safety_sheet_tab" in prefill, false);
   // An unset env var contributes nothing rather than an empty string.
   assert.equal("lambda_url" in prefillDefaults(ailytics, {}), false);
+});
+
+// ---------------------------------------------------------------------------
+// WBGT: three objects, not one.
+// ---------------------------------------------------------------------------
+
+const wbgt = onboardingFor("wbgt")!;
+
+test("the readings table name matches lib/naming.js in the wbgt repo", () => {
+  // Three implementations of this rule now exist — JS, SQL and here. A project
+  // code that normalises differently would name a table the service cannot find.
+  assert.equal(wbgtTableForProject("ZRA"), "zra_wbgt_data_hourly");
+  assert.equal(wbgtTableForProject("CR 106"), "cr_106_wbgt_data_hourly");
+  assert.equal(wbgtTableForProject("C991-SGB"), "c991_sgb_wbgt_data_hourly");
+  assert.equal(wbgt.rpc?.expects("CR 106"), "cr_106_wbgt_data_hourly");
+});
+
+test("the readings table is created before the config row", () => {
+  // Order matters: a config row pointing at a table that was never created is
+  // the half-onboarded state the RPC-first sequence exists to avoid.
+  assert.equal(wbgt.rpc?.fn, "ensure_project_readings_table");
+  assert.deepEqual(wbgt.rpc?.args("ZRB"), { p_project_code: "ZRB" });
+});
+
+test("sensor fields never reach the config insert", () => {
+  // sensor_label is a column of wbgt_sensors, not wbgt_project_configs.
+  // Sending it would fail the row outright.
+  const built = buildInsertRow(wbgt, { project_code: "ZRB", sensor_label: "WBGT ZRB (WC-20)" }, {});
+  assert.equal("sensor_label" in built, false);
+  assert.equal("site_name" in built, false);
+  assert.equal(built.project_code, "ZRB");
+  assert.equal(built.enabled, false, "wbgt.enabled defaults to TRUE in Postgres, so false must be explicit");
+});
+
+test("a blank sensor label becomes an obvious placeholder, not a plausible guess", () => {
+  // Only CloudLynx knows the real label, and a plausible wrong one fails
+  // silently — the scrape reports missing_configured_sensors and collects
+  // nothing. So the placeholder is written to be unmistakable.
+  const [row] = wbgt.companion!.build({}, "ZRB");
+  assert.equal(row.project_code, "ZRB");
+  assert.match(String(row.sensor_label), /set the CloudLynx label/);
+  assert.equal(row.active, true);
+  assert.equal(row.site_name, null);
+
+  const [typed] = wbgt.companion!.build({ sensor_label: "WBGT ZRB (WC-20)", site_name: "Zion Road" }, "ZRB");
+  assert.equal(typed.sensor_label, "WBGT ZRB (WC-20)");
+  assert.equal(typed.site_name, "Zion Road");
+});
+
+test("the sensor row upserts on the key the table actually has", () => {
+  assert.equal(wbgt.companion?.table, "wbgt_sensors");
+  assert.equal(wbgt.companion?.onConflict, "project_code,sensor_label");
+});
+
+test("wbgt has no NOT NULL text column to fake, unlike ailytics", () => {
+  // Every NOT NULL column on wbgt_project_configs has a default and there are no
+  // CHECK constraints, so a draft row needs no empty-string convention.
+  const notNullText = wbgt.fields.filter((f) => f.notNull && f.column !== "project_code" && f.column !== "source_type");
+  assert.deepEqual(notNullText, [], "no wbgt field should need the empty-string treatment");
+  assert.equal(wbgt.uniqueTogether, undefined, "and there is no composite unique key to pre-empt");
+});
+
+test("both onboarding flows name the steps HALO cannot perform", () => {
+  for (const definition of [wbgt, onboardingFor("ailytics")!]) {
+    assert.ok(definition.outsideHalo.length >= 2, definition.service);
+    for (const step of definition.outsideHalo) assert.ok(step.length > 40, "steps must be actionable");
+  }
+  assert.ok(wbgt.outsideHalo.some((s) => /character-exactly/.test(s)), "the label trap must be stated");
 });

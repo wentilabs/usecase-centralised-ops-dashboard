@@ -43,6 +43,12 @@ export type OnboardField = {
    * row — the tab is created on demand from this exact string.
    */
   computed?: boolean;
+  /**
+   * Which table this field writes to. `companion` fields are collected in the
+   * same form but must NOT reach the config insert — `wbgt_sensors.sensor_label`
+   * is not a column of `wbgt_project_configs`, and sending it would fail the row.
+   */
+  target?: "config" | "companion";
   /** Env var supplying the default, resolved server-side. */
   envDefault?: string;
   /** Literal default. */
@@ -59,7 +65,45 @@ export type OnboardDefinition = {
   fields: OnboardField[];
   /** Columns forming a composite unique constraint, checked before insert. */
   uniqueTogether?: string[];
+  /**
+   * A `security definer` function to run before the config row is inserted.
+   *
+   * WBGT keeps one readings table per project, which is DDL and therefore out of
+   * reach for PostgREST. The wbgt repo installs a narrow function for it; a 404
+   * means that migration has not been run, which the dialog reports as a missing
+   * prerequisite rather than a failed insert.
+   */
+  rpc?: {
+    fn: string;
+    /** Argument object, PostgREST style — named after the function's parameter. */
+    args: (projectCode: string) => Record<string, unknown>;
+    /** What it creates, for the dialog and the result panel. */
+    describes: string;
+    /** Table the function is expected to produce, for the readiness check. */
+    expects: (projectCode: string) => string;
+  };
+  /** Rows written into a second table after the config row. */
+  companion?: {
+    table: string;
+    label: string;
+    onConflict: string;
+    build: (draft: OnboardDraft, projectCode: string) => Record<string, unknown>[];
+  };
 };
+
+/**
+ * Mirrors `normalizeProjectCode` in the wbgt repo's `lib/naming.js`, and the
+ * `normalize_wbgt_project_code` SQL function that shadows it. All three must
+ * agree, or HALO would name a table the service cannot address.
+ */
+export function wbgtTableForProject(projectCode: string): string {
+  const slug = String(projectCode)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `${slug}_wbgt_data_hourly`;
+}
 
 /**
  * The tab names follow the `(CODE) …` convention TEST and ZRA use. Note this is
@@ -68,6 +112,105 @@ export type OnboardDefinition = {
  * column default.
  */
 export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
+  wbgt: {
+    service: "wbgt",
+    label: "＋ Add project",
+    title: "Add a new WBGT project",
+    description:
+      "Creates the project's readings table, one disabled config row, and a sensor row. Fill in the sensor label and delivery details, then enable it in the editor.",
+    outsideHalo: [
+      "Set the sensor label to match the CloudLynx AMR dropdown text character-exactly — whitespace, parentheses and the trailing (WC-NN) all matter. A mismatch is silent: the scrape reports missing_configured_sensors and collects nothing.",
+      "For a source type other than default, the Lambda needs that profile's CloudLynx credentials and its own Browserbase context — the profiles must never share one.",
+    ],
+    rpc: {
+      fn: "ensure_project_readings_table",
+      args: (projectCode) => ({ p_project_code: projectCode }),
+      describes: "the project's readings table",
+      expects: wbgtTableForProject,
+    },
+    companion: {
+      table: "wbgt_sensors",
+      label: "sensor",
+      onConflict: "project_code,sensor_label",
+      build: (draft, projectCode) => [
+        {
+          project_code: projectCode,
+          // Placeholder rather than a guess: only CloudLynx knows the real
+          // label, and a plausible-looking wrong one would fail silently.
+          sensor_label: String(draft.sensor_label ?? "").trim() || `${projectCode} — set the CloudLynx label`,
+          site_name: String(draft.site_name ?? "").trim() || null,
+          active: true,
+        },
+      ],
+    },
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Also names the readings table — CR 106 becomes cr_106_wbgt_data_hourly. Must start with a letter.",
+      },
+      {
+        column: "sensor_label",
+        target: "companion",
+        label: "Sensor label",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Must match the CloudLynx dropdown exactly. Left blank, a clearly-marked placeholder is written so the row exists and can be corrected.",
+      },
+      {
+        column: "site_name",
+        target: "companion",
+        label: "Site name",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Optional. Shown before the timestamp in the message footer.",
+      },
+      {
+        column: "source_type",
+        label: "Login profile",
+        kind: "text",
+        required: false,
+        notNull: true,
+        fallback: "default",
+        help: "default, whgd, svs or pentaocean. Each needs its own credentials and Browserbase context on the Lambda.",
+      },
+      {
+        column: "whatsapp_group_id",
+        label: "WhatsApp group ID",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Looks like 120363…@g.us.",
+      },
+      {
+        column: "instance_name",
+        label: "WhatsApp instance",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "client_id",
+        label: "Client ID",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
+        notNull: false,
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
+      },
+    ],
+  },
   ailytics: {
     service: "ailytics",
     label: "＋ Add project",
@@ -297,6 +440,7 @@ export function buildInsertRow(
   const code = String(draft.project_code ?? "").trim();
   const row: Record<string, unknown> = { enabled: false };
   for (const field of definition.fields) {
+    if (field.target === "companion") continue;
     const value = resolveValue(field, draft, code, env);
     row[field.column] = value ? value : field.notNull ? "" : null;
   }
@@ -316,7 +460,7 @@ export function prefillDefaults(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const field of definition.fields) {
-    if (field.computed) continue;
+    if (field.computed || field.target === "companion") continue;
     const value = field.envDefault ? (env[field.envDefault] ?? "") : (field.fallback ?? "");
     if (value) out[field.column] = String(value).trim();
   }

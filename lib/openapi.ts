@@ -66,6 +66,10 @@ export const openapiDocument = {
       "The column set for each service is not fixed in this document. It is introspected from the live",
       "database, so new columns appear without a release. Call `getSchema` first and work from what it",
       "returns, including each field's widget, options, default and help text.",
+      "",
+      "**Agents:** the same operations are available over MCP at `/api/mcp` (Streamable HTTP, JSON only),",
+      "with tools derived from this document — one tool per `operationId`, carrying safety annotations.",
+      "That is usually the better surface; this one is the contract it is generated from.",
     ].join("\n"),
     contact: { name: "Wenti Labs" },
   },
@@ -236,9 +240,9 @@ export const openapiDocument = {
           "Only updates are recorded. Row creation and deletion are not.",
         ].join("\n"),
         parameters: [
-          { name: "table", in: "query", schema: { type: "string" }, description: "Restrict to one config table." },
-          { name: "rowId", in: "query", schema: { type: "string" }, description: "Restrict to one project." },
-          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500 } },
+          { name: "service", in: "query", schema: { type: "string", enum: [...SERVICE_KEYS] }, description: "Restrict to one service's config table." },
+          { name: "project", in: "query", schema: { type: "string" }, description: "Restrict to one project — `project_code`, or the row id for Ailytics and Subcon." },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500, default: 200 } },
         ],
         responses: {
           "200": { description: "Audit entries, newest first.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
@@ -267,7 +271,9 @@ export const openapiDocument = {
         summary: "Noise meters for one project",
         description:
           "Resolves a noise project's meter RecIDs to their location names. Needed to interpret or set `noise_meters_included`, which stores RecIDs rather than names.",
-        parameters: [{ name: "projectCode", in: "query", required: true, schema: { type: "string" } }],
+        parameters: [
+          { name: "project", in: "query", required: true, schema: { type: "string" }, description: "Project code." },
+        ],
         responses: {
           "200": { description: "Meters for the project.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
           "401": errorResponses["401"],

@@ -29,6 +29,7 @@
     "lib/meter-selection.ts",
     "lib/config-values.ts",
     "lib/openapi.ts",
+    "lib/mcp.ts",
     "lib/api-tokens.ts",
     "lib/derive.ts",
     "lib/onboarding.ts",

@@ -366,6 +366,34 @@ Two rules worth keeping:
   production entry appears only when `HALO_PUBLIC_URL` is set. A guessed URL in a contract
   an agent resolves is worse than a missing one.
 
+### MCP
+
+`/api/mcp` speaks MCP over Streamable HTTP, JSON only — no SSE, no session ids. That is a
+permitted subset and the right one here: every operation is a short request/response, so
+there is nothing to stream.
+
+Tools are **derived from the OpenAPI document**, not hand-listed (`lib/mcp.ts`). That is
+why the spec is 3.1 rather than 3.0 — in 3.1 the schema objects *are* JSON Schema 2020-12,
+which is exactly what an MCP `inputSchema` must be, so the conversion is mechanical and
+there is one description of the API rather than two that drift.
+
+Two decisions worth keeping:
+
+- **Arguments are flattened.** Path, query and body properties sit side by side, because a
+  model handles `{"service": "haze", "changes": {…}}` far more reliably than a nested
+  `{"path": …, "body": …}`. `toCallPlan` puts each back where it belongs, and anything the
+  operation does not declare is dropped rather than forwarded.
+- **A call is dispatched by making the corresponding HTTP request against this same app**,
+  carrying the caller's own credential. MCP therefore cannot acquire a capability the HTTP
+  API does not already grant, and a scope check written once in a route handler governs
+  both surfaces.
+
+Safety annotations are derived from the operation rather than declared, so a new endpoint
+cannot be added without one. `runJob` is the only tool marked `destructiveHint` — it can
+make a service send WhatsApp messages to a live construction site — and the only one that
+is not idempotent. `updateProjectConfig` is idempotent and not destructive even though it
+changes production; the description carries that weight, not the flag.
+
 ### Bearer tokens
 
 Agents authenticate with `Authorization: Bearer halo_…`, resolved inside

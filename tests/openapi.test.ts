@@ -47,8 +47,20 @@ async function handlerPaths(): Promise<Map<string, string[]>> {
   return found;
 }
 
+/**
+ * Route handlers deliberately absent from the OpenAPI document, and why.
+ *
+ * An exemption has to be justified here rather than silently tolerated —
+ * otherwise this test stops meaning anything.
+ */
+const NOT_REST: Record<string, string> = {
+  "/api/mcp":
+    "JSON-RPC 2.0, not REST. Describing it as a single POST with an opaque body would add nothing an agent could use, and would produce a meaningless operationId. It is announced in info.description instead, and lib/mcp.ts derives its tools from this same document.",
+};
+
 test("every route handler is described, and every operation has a handler", async () => {
   const handlers = await handlerPaths();
+  for (const path of Object.keys(NOT_REST)) handlers.delete(path);
   const described = new Set(operations().map((entry) => `${entry.method} ${entry.path}`));
 
   const missing: string[] = [];
@@ -159,4 +171,58 @@ test("no server URL is invented", () => {
       "a non-localhost server must come from HALO_PUBLIC_URL",
     );
   }
+});
+
+test("an exemption from the REST contract is recorded, and still real", () => {
+  // If /api/mcp ever gains a REST operation, the note here becomes a lie.
+  const described = new Set(
+    Object.keys(openapiDocument.paths as Record<string, unknown>),
+  );
+  for (const [path, reason] of Object.entries(NOT_REST)) {
+    assert.ok(reason.length > 60, `${path} needs a real reason`);
+    assert.equal(described.has(path), false, `${path} is now described — drop it from NOT_REST`);
+  }
+  // And the MCP surface must still be discoverable from the document.
+  assert.match(String(openapiDocument.info.description), /\/api\/mcp/, "info.description should point at MCP");
+});
+
+test("declared query parameters are the ones the handlers actually read", async () => {
+  // The path/method check above cannot see this. Both listNoiseMeters and
+  // listAudit shipped with wrong parameter names and were only caught by calling
+  // them — the endpoint answered "project is required" to a request the spec
+  // said was complete. That is the worst kind of wrong for an agent: a
+  // well-formed call that fails for a reason the contract denies.
+  const handlers = await handlerPaths();
+  const problems: string[] = [];
+
+  for (const [path] of handlers) {
+    const file = resolve(`app/api${path.replace(/\{(.+?)\}/g, "[$1]").replace("/api", "")}/route.ts`);
+    let source: string;
+    try {
+      source = await readFile(file, "utf8");
+    } catch {
+      continue;
+    }
+    const read = new Set(
+      [...source.matchAll(/searchParams\.get\(\s*["'`]([^"'`]+)["'`]\s*\)/g)].map((m) => m[1]),
+    );
+    if (!read.size) continue;
+
+    const declared = new Set(
+      operations()
+        .filter((entry) => entry.path === path)
+        .flatMap((entry) => ((entry.op as { parameters?: { name: string; in: string }[] }).parameters ?? []))
+        .filter((parameter) => parameter.in === "query")
+        .map((parameter) => parameter.name),
+    );
+
+    for (const name of read) {
+      if (!declared.has(name)) problems.push(`${path} reads "${name}" but the spec does not declare it`);
+    }
+    for (const name of declared) {
+      if (!read.has(name)) problems.push(`${path} declares "${name}" but the handler never reads it`);
+    }
+  }
+
+  assert.deepEqual(problems, [], problems.join("\n"));
 });

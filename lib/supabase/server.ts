@@ -1,6 +1,9 @@
 import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
+
+import { bearerFrom, permits, type Scope } from "../api-tokens";
+import { resolveApiToken } from "../config-repository";
 import { cookies, headers } from "next/headers";
 
 import {
@@ -19,6 +22,13 @@ export type DashboardSession = {
   configured: boolean;
   /** Recorded against every config change in ops.config_audit. */
   actor: string;
+  /**
+   * How this caller proved who they are. `token` is an agent holding a bearer
+   * credential; `session` is a signed-in browser; `local-bypass` is loopback dev.
+   */
+  kind: "session" | "token" | "local-bypass" | "none";
+  /** Present only for a token. A session has no scope list — see canEdit. */
+  scopes: Scope[];
 };
 
 function hostnameFromHost(requestHost?: string) {
@@ -45,6 +55,38 @@ export async function getDashboardSession(): Promise<DashboardSession> {
     bypassSetting: process.env.LOCAL_AUTH_BYPASS,
     bypassDisabled: cookieStore.get(LOCAL_AUTH_BYPASS_DISABLED_COOKIE)?.value === "1",
   });
+
+  // A bearer token short-circuits the cookie path entirely. Checked first so an
+  // agent never depends on cookie state, and so the loopback bypass cannot
+  // silently grant an unauthenticated request the powers of a real token.
+  const bearer = bearerFrom(requestHeaders.get("authorization"));
+  if (bearer) {
+    const identity = await resolveApiToken(bearer);
+    if (!identity) {
+      return {
+        email: null,
+        allowed: false,
+        canEdit: false,
+        isLocalBypass: false,
+        configured: true,
+        actor: "unknown-token",
+        kind: "none",
+        scopes: [],
+      };
+    }
+    return {
+      email: null,
+      allowed: permits(identity.scopes, "read") || identity.scopes.length > 0,
+      // Scopes are additive and not hierarchical: `write` is required to change
+      // anything, and holding `read` alone never confers it.
+      canEdit: permits(identity.scopes, "write"),
+      isLocalBypass: false,
+      configured: true,
+      actor: identity.actor,
+      kind: "token",
+      scopes: identity.scopes,
+    };
+  }
 
   const config = getSupabaseAuthConfig();
   let email: string | null = null;
@@ -82,5 +124,11 @@ export async function getDashboardSession(): Promise<DashboardSession> {
     isLocalBypass,
     configured: Boolean(config),
     actor: email ?? (isLocalBypass ? "local-bypass" : "unknown"),
+    kind: isLocalBypass ? "local-bypass" : allowed ? "session" : "none",
+    // A browser session is governed by the allow-lists, not by scopes. Reporting
+    // the equivalent set keeps a route's scope check uniform across both paths.
+    scopes: allowed
+      ? ((isLocalBypass || canEditConfigs(email)) ? (["read", "write", "jobs"] as Scope[]) : (["read"] as Scope[]))
+      : [],
   };
 }

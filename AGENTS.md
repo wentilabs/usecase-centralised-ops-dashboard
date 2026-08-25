@@ -341,6 +341,46 @@ found sitting unlabelled in the "Other" bucket:
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 ```
 
+## The agent-facing API
+
+`lib/openapi.ts` is the single source of truth for HALO's API contract, served at
+`/openapi.json` and `/openapi.yaml`, with a committed `openapi.yaml` for reading in the
+repo. Authored in TypeScript rather than as a YAML file and rather than generated: the App
+Router has no central router to introspect, and authoring in TS means the document is
+type-checked and `tests/openapi.test.ts` can import it to check it against the handlers
+that actually exist.
+
+That test is the point of the exercise. A spec describing endpoints that do not exist is
+worse than no spec, because an agent acts on it. It asserts both directions — every route
+handler has an operation, every operation has a handler — plus unique lowerCamelCase
+`operationId`s (agent frameworks turn these into tool names), a real description on every
+operation, a documented 401, and that the committed YAML is not stale. Run
+`npm run openapi` after editing the spec.
+
+Two rules worth keeping:
+
+- **A description says what changes in the world**, not what the endpoint returns. An agent
+  reading "updates a row" behaves differently from one reading "changes production
+  behaviour on the next cron tick". A test enforces that every mutating operation says so.
+- **Never invent a server URL.** The deployed hostname is not recorded in this repo, so the
+  production entry appears only when `HALO_PUBLIC_URL` is set. A guessed URL in a contract
+  an agent resolves is worse than a missing one.
+
+### Bearer tokens
+
+Agents authenticate with `Authorization: Bearer halo_…`, resolved inside
+`getDashboardSession` **before** the cookie path — so a bearer request never inherits the
+loopback dev bypass. Only the SHA-256 hash reaches `ops.api_tokens`; the plaintext is shown
+once by `scripts/mint-api-token.mjs` and is not recoverable.
+
+Scopes are additive and deliberately **not** hierarchical: `read`, `write`, `jobs`. Holding
+`write` does not confer `read`, and neither confers `jobs` — a token that may trigger a job
+that sends WhatsApp messages to a site should not thereby be able to read every project's
+configuration. `POST /api/jobs/{job}` checks the `jobs` scope on top of `canEdit`.
+
+A token's name becomes its audit actor (`agent:<name>`), which means an agent's writes are
+better attributed than a human editing Supabase directly — those record no actor at all.
+
 ## Verifying a change
 
 ```bash

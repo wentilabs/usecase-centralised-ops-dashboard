@@ -1,5 +1,13 @@
 import "server-only";
 
+import {
+  hashToken,
+  hashesMatch,
+  isRevoked,
+  scopesOf,
+  type TokenIdentity,
+  type TokenRecord,
+} from "./api-tokens";
 import { buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
@@ -135,6 +143,37 @@ export async function insertConfig(
   });
   if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
   return res.body as ProjectConfigRow[];
+}
+
+/**
+ * Resolve a bearer token to an identity, or null.
+ *
+ * Looked up by hash — the plaintext is never stored, so this is the only way a
+ * token can be recognised at all. A revoked token resolves to null.
+ *
+ * `last_used_at` is updated opportunistically and its failure is ignored: an
+ * agent request must not fail because a bookkeeping write did.
+ */
+export async function resolveApiToken(token: string): Promise<TokenIdentity | null> {
+  const hash = hashToken(token);
+  const res = await request(
+    `api_tokens?select=id,name,scopes,revoked_at,token_hash&token_hash=eq.${encodeURIComponent(hash)}&limit=1`,
+    { schema: "ops" },
+  );
+  if (!res.ok) return null;
+  const record = (res.body as (TokenRecord & { token_hash: string })[])[0];
+  if (!record || !hashesMatch(record.token_hash, hash) || isRevoked(record)) return null;
+
+  const scopes = scopesOf(record);
+  if (!scopes.length) return null;
+
+  void request(`api_tokens?id=eq.${encodeURIComponent(record.id)}`, {
+    schema: "ops",
+    method: "PATCH",
+    body: JSON.stringify({ last_used_at: new Date().toISOString() }),
+  }).catch(() => {});
+
+  return { actor: `agent:${record.name}`, scopes, tokenId: record.id };
 }
 
 /**

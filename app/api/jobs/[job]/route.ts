@@ -24,6 +24,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
   if (!session.canEdit) {
     return NextResponse.json({ error: "This account is read-only." }, { status: 403 });
   }
+  // Jobs are their own scope, not covered by `write`. A token that may edit
+  // configuration should not automatically be able to drive a CloudLynx browser
+  // session or make a service send WhatsApp messages to a site group.
+  if (!session.scopes.includes("jobs")) {
+    return NextResponse.json(
+      { error: "This credential lacks the `jobs` scope, which triggering a job requires." },
+      { status: 403 },
+    );
+  }
 
   const { job: jobParam } = await context.params;
   if (!isJobKey(jobParam)) return NextResponse.json({ error: `Unknown job ${jobParam}` }, { status: 404 });

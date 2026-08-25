@@ -106,3 +106,24 @@ test("the formatter preview stays a desktop affordance", async () => {
   const button = component.slice(component.indexOf("export function FormatterPreviewButton"));
   assert.match(button, /className="hidden [^"]*md:inline-flex/);
 });
+
+test("a disabled card is dimmed once, not twice", async () => {
+  const card = await source("components/ProjectCard.tsx");
+  // Only the class list, not the comments around it — the comment above this
+  // block names `opacity-60` while describing why it was removed, and matching
+  // prose instead of code is how this test would lie.
+  const block = card.slice(card.indexOf('"bg-card",'), card.indexOf("].join("));
+
+  // The original bug was compounding: opacity-60 AND a 45% scrim made a disabled
+  // card unreadable, and since every new project starts disabled there was no way
+  // to enable one from the UI. A light wash is fine; stacking is what broke it.
+  const classes = block.replace(/\/\/[^\n]*/g, "");
+  assert.doesNotMatch(classes, /opacity-60/, "no blanket opacity on the card");
+  assert.doesNotMatch(classes, /after:bg-black\/(3\d|4\d|[5-9]\d)/, "no heavy scrim");
+  assert.match(block, /after:bg-black\/20/, "disabled gets its own light wash");
+  assert.ok(block.includes("? ") && block.includes(": emphasis !== \"active\""), "the two are exclusive");
+
+  // And the signal a reader actually needs stays at full contrast.
+  assert.match(card, /border-2 border-warn\/50/, "disabled keeps its amber border");
+  assert.match(card, /bg-warn\/20 px-1\.5 py-0\.5 text-warn/, "and its loud badge");
+});

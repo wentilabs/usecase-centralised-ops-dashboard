@@ -146,19 +146,22 @@ export function ProjectCard({
         "relative flex flex-col gap-2.5 rounded-2xl p-3.5 shadow-soft md:gap-3 md:p-4",
         "bg-card",
         // A disabled project is the one you most need to find — it is what a
-        // newly created project looks like, and the only way to switch it on is
-        // to open its card. It previously carried `opacity-60` AND a 45% scrim,
-        // which stacked into something unreadable: the card was in the DOM but
-        // effectively invisible, so a new project could not be enabled from the
-        // UI at all. De-emphasis must never cost legibility, so the signal is
-        // now the border and the badge, and the content stays at full contrast.
+        // newly created project looks like, and opening its card is the only way
+        // to switch it on. It used to carry `opacity-60` AND a 45% scrim, which
+        // stacked into something unreadable: present in the DOM but effectively
+        // invisible, so a new project could not be enabled from the UI at all.
+        // The amber border and badge carry the signal now.
         enabled ? "border border-border" : "border-2 border-warn/50",
-        // The remaining scrim only marks an *enabled* project with nothing
-        // scheduled. Lighter than before, and never applied to a disabled one.
-        enabled && emphasis !== "active"
-          ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
-            (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/25")
-          : "",
+        // One scrim, never two. Disabled gets a light grey wash on top of the
+        // amber border — enough to read as inactive at a glance, deliberately
+        // far short of the old stack. When a card is both disabled and idle the
+        // disabled wash wins rather than compounding.
+        !enabled
+          ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/20"
+          : emphasis !== "active"
+            ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
+              (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/25")
+            : "",
       ].join(" ")}
     >
       {/* The whole card is one tap target on mobile; on desktop the card stays

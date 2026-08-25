@@ -161,6 +161,14 @@ export function ProjectCard({
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>{label}</span>
         {String(config.project_code ?? rowId)}
+        {/* Identity only — a project code says nothing about who it belongs to.
+            Rendered quietly next to the code rather than as a pill, so it reads
+            as part of the name instead of competing with the switches below. */}
+        {config.company ? (
+          <span className="rounded bg-muted/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {String(config.company)}
+          </span>
+        ) : null}
         <span
           className={`ml-auto shrink-0 text-[11px] font-semibold ${
             enabled ? "text-on" : "rounded-md bg-warn/20 px-1.5 py-0.5 text-warn"

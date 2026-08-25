@@ -59,6 +59,15 @@ export type IntrospectedColumn = {
 
 // Columns the dashboard must never write: identity, audit stamps, and
 // runtime state owned by the alert jobs.
+/**
+ * Operating companies, offered as a dropdown for the `company` column.
+ *
+ * The column is plain nullable text in Postgres with no CHECK, on purpose — a new
+ * company should not need a migration. These values are HALO's guidance only, so
+ * a hand-set value outside the list is stored and shown rather than rejected.
+ */
+export const COMPANIES = ["Wohhup", "Obayashi", "PentaOcean"] as const;
+
 const READONLY: Record<string, string[]> = {
   wbgt: [
     "project_code",
@@ -85,26 +94,33 @@ const READONLY: Record<string, string[]> = {
 // anyway, so the worst case is a failed save, not bad data.
 const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
   wbgt: {
+    company: [...COMPANIES],
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
     source_type: ["default", "whgd", "svs", "pentaocean"],
   },
   noise: {
+    company: [...COMPANIES],
     source_type: ["default", "whgd", "svs", "pentaocean"],
   },
   haze: {
+    company: [...COMPANIES],
     nea_region: ["north", "south", "east", "west", "central"],
     // Same five PSI bands as alert_only_when_at_least, but this one is a CHECK
     // rather than a pg enum, so introspection cannot see the values.
     poc_mentions_at_least: ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
   },
   lightning: {
+    company: [...COMPANIES],
     // text[] columns constrained to <@ array['G','C']
     red_detection_types: ["G", "C"],
     amber_detection_types: ["G", "C"],
   },
-  ailytics: {},
-  subcon: {},
+  ailytics: {
+    company: [...COMPANIES],},
+  subcon: {
+    company: [...COMPANIES],},
+  issueChaser: { company: [...COMPANIES] },
 };
 
 // Field-level hints:
@@ -117,6 +133,10 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
 //   row     — fields sharing a row key render side by side on one compact row
 const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   wbgt: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
     source_type: { label: "Login profile", help: "Which CloudLynx credentials + Browserbase context to scrape with." },
     timezone: { label: "Timezone" },
@@ -216,6 +236,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   noise: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     // Not quite a master switch any more: the scrape endpoint deliberately
     // includes TEST even when disabled, so it can mirror ZRA's live locations
     // as a pipeline test destination (noise repo, "Mirror ZRA scrapes into
@@ -322,6 +346,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   haze: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
     four_hourly: {
@@ -390,6 +418,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   lightning: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     enabled: { label: "Project enabled", help: "Master switch — off means no lightning alert is sent." },
     timezone: { label: "Timezone" },
     config_version: { label: "Config version", widget: "number", help: "Bump when policy changes; recorded on alerts." },
@@ -474,6 +506,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   ailytics: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     enabled: { label: "Project enabled", help: "Master switch — off means CCTV events are ignored." },
     timezone: { label: "Timezone" },
 
@@ -503,6 +539,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   subcon: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     // The service was reduced to one route: POST /housekeeping-intake. Water
     // Parade moved to WBGT; manpower classification, extraction and every
     // outbound message moved to the base template. `enabled`, `timezone` and all
@@ -533,6 +573,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     updated_at: { hidden: true },
   },
   issueChaser: {
+    company: {
+      label: "Company",
+      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+    },
     // Two CHECK constraints shape everything here, and both bite on save rather
     // than at run time:
     //   issue_chaser_enabled_delivery_check — `enabled` is refused unless the
@@ -589,7 +633,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 // Ordered groups. Any column not named here lands in "Other".
 const GROUPS: Record<string, FieldGroup[]> = {
   wbgt: [
-    { title: "Status", fields: ["enabled", "source_type", "timezone"] },
+    { title: "Status", fields: ["company", "enabled", "source_type", "timezone"] },
     {
       title: "Cadences",
       fields: [
@@ -625,7 +669,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
     },
   ],
   noise: [
-    { title: "Status", fields: ["enabled", "source_type", "timezone"] },
+    { title: "Status", fields: ["company", "enabled", "source_type", "timezone"] },
     // Each cadence keeps its own flag, format and window together, so turning
     // one off collapses everything that belongs to it.
     {
@@ -670,7 +714,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
   haze: [
     {
       title: "Status",
-      fields: ["enabled", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
+      fields: ["company", "enabled", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
     },
     { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
@@ -682,7 +726,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   lightning: [
-    { title: "Status", fields: ["enabled", "timezone", "config_version"] },
+    { title: "Status", fields: ["company", "enabled", "timezone", "config_version"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude", "site_extent_radius_m"] },
     { title: "🔴 Red threshold", fields: ["red_radius_m", "red_dwell_seconds", "red_detection_types"] },
     {
@@ -707,7 +751,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   ailytics: [
-    { title: "Status", fields: ["enabled", "timezone"] },
+    { title: "Status", fields: ["company", "enabled", "timezone"] },
     { title: "Telegram source", fields: ["telegram_chat_id", "upstream_bot_username", "expected_chat_title"] },
     { title: "Google Sheet", fields: ["spreadsheet_id", "safety_sheet_tab", "activity_history_tab"] },
     {
@@ -725,12 +769,12 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   subcon: [
-    { title: "Project", fields: ["project_code"] },
+    { title: "Project", fields: ["company", "project_code"] },
     { title: "Intake", fields: ["enable_housekeeping", "source_client_identifier", "source_group_ids"] },
     { title: "Google Sheets", fields: ["spreadsheet_id"] },
   ],
   issueChaser: [
-    { title: "Status", fields: ["enabled", "timezone"] },
+    { title: "Status", fields: ["company", "enabled", "timezone"] },
     { title: "Safety sheet", fields: ["safety_sheet_id"] },
     {
       title: "Chaser styles",

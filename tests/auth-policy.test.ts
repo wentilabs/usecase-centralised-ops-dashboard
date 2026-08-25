@@ -10,7 +10,7 @@ import {
 } from "../lib/auth-policy";
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
-import { buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { COMPANIES, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { EXPORT_FORMATS, EXPORTS, JOBS, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
@@ -978,4 +978,39 @@ test("the evening summary is surfaced as a pill", () => {
   const pills = pillsFor("noise", { enable_evening_summary: true });
   assert.ok(pills.some((p) => p.label === "evening summary" && p.on));
   assert.ok(pillsFor("noise", {}).some((p) => p.label === "evening summary" && !p.on));
+});
+
+test("company is offered on every service, as guidance rather than a constraint", () => {
+  // Identity only: no code reads it. The column is plain nullable text with no
+  // CHECK so a new company needs no migration — these values exist so the editor
+  // can offer a dropdown and a typo is unlikely from the UI.
+  assert.deepEqual([...COMPANIES], ["Wohhup", "Obayashi", "PentaOcean"]);
+
+  const columns = {
+    project_code: { type: "string" as const, format: "text", enum: null, default: null },
+    created_at: { type: "string" as const, format: "text", enum: null, default: null },
+    updated_at: { type: "string" as const, format: "text", enum: null, default: null },
+    company: { type: "string" as const, format: "text", enum: null, default: null },
+  };
+
+  for (const key of SERVICE_KEYS) {
+    const spec = buildFieldSpec(key, {
+      ...columns,
+      ...(SERVICES[key].idColumn === "id"
+        ? { id: { type: "string" as const, format: "text", enum: null, default: null } }
+        : {}),
+    });
+    const field = spec.fields.company;
+    assert.ok(field, `${key} must accept a company column`);
+    assert.notEqual(field.label, "company", `${key}.company needs a label`);
+    // A select, so the three known values are offered rather than typed.
+    assert.equal(field.widget, "select", `${key}.company should be a dropdown`);
+    assert.deepEqual(field.options, [...COMPANIES], `${key}.company options`);
+    assert.equal(field.readonly, false, "it is set by hand where instance_name does not imply one");
+    // Placed, never swept into "Other".
+    assert.ok(
+      spec.groups.some((g) => g.title !== "Other" && g.fields.includes("company")),
+      `${key}.company must be in a named group`,
+    );
+  }
 });

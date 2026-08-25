@@ -124,7 +124,16 @@ export function DashboardShell({
   const visible = useMemo(() => {
     const list = rows[active.key] ?? [];
     return list
-      .filter((row) => !query || String(row.project_code ?? "").toLowerCase().includes(query.toLowerCase()))
+      // Company is matched as well as project code, so "obayashi" narrows the tab
+      // to that company's projects — the reason the column exists.
+      .filter((row) => {
+        if (!query) return true;
+        const needle = query.toLowerCase();
+        return (
+          String(row.project_code ?? "").toLowerCase().includes(needle) ||
+          String(row.company ?? "").toLowerCase().includes(needle)
+        );
+      })
       .slice()
       .sort((a, b) => {
         // Scheduled first, then manual-ingestion projects, then idle ones.

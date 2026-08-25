@@ -557,7 +557,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     client_identifier_number: {
       label: "Source client identifier",
-      help: "Which listener client sent the message — a company, not a project. Several project codes share one, so this cannot identify a project and is already gated upstream in the middleware. Leave it blank and route by group IDs; set on its own it matches every site in that company.",
+      help: "Retained for compatibility and display only. Nothing in the central service reads this column for routing or behavior; it names the company's listener client, while project routing is by group IDs.",
     },
     safety_group_ids: {
       label: "Source group IDs",

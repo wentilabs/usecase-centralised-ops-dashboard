@@ -419,7 +419,6 @@ test("subcon onboarding matches the two-route service, and the house field order
   assert.deepEqual(columns, [
     "project_code",
     "spreadsheet_id",
-    "client_identifier_number",
     "safety_group_ids",
     "manpower_activity_outbound_group_id",
     "instance_name",

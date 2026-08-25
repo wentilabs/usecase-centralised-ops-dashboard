@@ -1,6 +1,7 @@
 "use client";
 
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
+import { CompanyMark } from "./CompanyMark";
 import { tagLabel } from "@/lib/services";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -163,6 +164,12 @@ export function ProjectCard({
             : "",
       ].join(" ")}
     >
+      {/* Identity, as a shape rather than a word: a project code says nothing
+          about whose site it is, and "Wohhup" on 90-odd cards cost a line of
+          width to say what a mark says at a glance. Painted behind the content
+          and inert, so it can never intercept a click. */}
+      {config.company ? <CompanyMark company={String(config.company)} /> : null}
+
       {/* The whole card is one tap target on mobile; on desktop the card stays
           inert and its individual links/buttons do the work. Sits above the
           no-cadence scrim so a disabled project is still openable. */}
@@ -180,14 +187,6 @@ export function ProjectCard({
           {tagLabel(service)}
         </span>
         {String(config.project_code ?? rowId)}
-        {/* Identity only — a project code says nothing about who it belongs to.
-            Rendered quietly next to the code rather than as a pill, so it reads
-            as part of the name instead of competing with the switches below. */}
-        {config.company ? (
-          <span className="rounded bg-muted/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {String(config.company)}
-          </span>
-        ) : null}
         <span
           className={`ml-auto shrink-0 text-[11px] font-semibold ${
             enabled ? "text-on" : "rounded-md bg-warn/20 px-1.5 py-0.5 text-warn"

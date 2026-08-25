@@ -127,3 +127,36 @@ test("a disabled card is dimmed once, not twice", async () => {
   assert.match(card, /border-2 border-warn\/50/, "disabled keeps its amber border");
   assert.match(card, /bg-warn\/20 px-1\.5 py-0\.5 text-warn/, "and its loud badge");
 });
+
+test("the company watermark cannot swallow a click, and stays readable to a reader", async () => {
+  const mark = await source("components/CompanyMark.tsx");
+
+  // It sits over the whole card, so if it were not inert it would eat every
+  // click on the card beneath it — including Edit and the group links.
+  assert.match(mark, /pointer-events-none/, "the watermark must be inert");
+  assert.match(mark, /absolute/, "and positioned out of flow");
+  // Subtle enough not to fight the text it sits behind.
+  assert.match(mark, /opacity-\[0\.0\d\]/, "a watermark, not a background image");
+
+  // A logo is unreadable to anyone who does not already know it — a new joiner,
+  // or a screen reader. The name has to survive in text.
+  assert.match(mark, /sr-only/, "the company name must remain in the accessible name");
+  assert.match(mark, /<title>\{company\}<\/title>/, "and in a tooltip");
+  assert.match(mark, /aria-hidden="true"/, "the svg itself is decorative");
+
+  // An unmapped company must render as itself rather than disappear.
+  assert.match(mark, /if \(!mark\)/, "there is a fallback branch");
+  assert.match(mark, /\{company\}/, "and it prints the name");
+});
+
+test("every company HALO offers has a mark or a named fallback", async () => {
+  const mark = await source("components/CompanyMark.tsx");
+  const spec = await source("lib/field-spec.ts");
+  const companies = [...spec.matchAll(/COMPANIES = \[([^\]]+)\]/g)][0]?.[1] ?? "";
+  const names = [...companies.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  assert.deepEqual(names, ["Wohhup", "Obayashi", "PentaOcean"], "the dropdown list");
+  for (const name of names) {
+    assert.ok(mark.includes(`"${name}"`), `${name} needs a mark or an explicit case`);
+  }
+});

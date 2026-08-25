@@ -8,8 +8,8 @@
  * script lifts them verbatim instead and writes `lib/message-previews.generated.ts`.
  *
  * It is a DEV tool, not part of the build: it needs the noise repo checked out
- * next to this one, and its output is committed. Run it after the noise repo's
- * message shapes change:
+ * next to this one (a sibling directory), and its output is committed. Run it
+ * after the noise repo's message shapes change:
  *
  *     node scripts/build-message-previews.mjs
  *     NOISE_REPO=/path/to/repo node scripts/build-message-previews.mjs
@@ -18,15 +18,37 @@
  * for why (their docs are organised by band, not by formatter value).
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const NOISE_REPO =
-  process.env.NOISE_REPO ?? resolve(process.env.HOME ?? "", "Documents/GitHub/usecase-wohhup-noise-meter-alerts");
+
+/**
+ * Where the noise repo is.
+ *
+ * Resolved as a SIBLING of this repo rather than from an absolute path under
+ * $HOME. The absolute form was `~/Documents/GitHub/usecase-wohhup-noise-meter-alerts`,
+ * and when the estate moved into `wh-centralised-services/` this script stopped
+ * running — silently, because its output is committed and still looked right.
+ * A relative sibling path survives the whole checkout being moved or renamed.
+ */
+const NOISE_REPO = process.env.NOISE_REPO ?? resolve(here, "../../usecase-wohhup-noise-meter-alerts");
 const DOC = resolve(NOISE_REPO, "MESSAGE_SHAPES.md");
-const OUT = resolve(here, "../lib/message-previews.generated.ts");
+// Overridable so a test can regenerate into a temp file and compare, rather
+// than having to write over the committed one to find out whether it is stale.
+const OUT = process.env.PREVIEWS_OUT ?? resolve(here, "../lib/message-previews.generated.ts");
+
+if (!existsSync(DOC)) {
+  // Say which path was tried and how to override it. The previous failure was a
+  // bare ENOENT stack trace, which does not tell a reader that NOISE_REPO exists.
+  console.error(
+    `Cannot read the noise repo's MESSAGE_SHAPES.md.\n` +
+      `  looked in: ${DOC}\n` +
+      `  override with: NOISE_REPO=/path/to/usecase-wohhup-noise-meter-alerts node scripts/build-message-previews.mjs`,
+  );
+  process.exit(1);
+}
 
 /** `## 7. \`half_hourly_formatter = all_5mins_list_Leq1hr\`` */
 const KEYED_HEADER = /^## \d+\.\s+`([a-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)`\s*$/;

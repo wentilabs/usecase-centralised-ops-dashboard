@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { existsSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -148,6 +151,48 @@ test("noise previews are lifted from the noise repo, not retyped", async () => {
   assert.match(generated, /scripts\/build-message-previews\.mjs/);
   for (const preview of MESSAGE_PREVIEWS.filter((entry) => entry.service === "noise")) {
     assert.match(preview.source, /MESSAGE_SHAPES\.md §\d+/, `${preview.value} source`);
+  }
+});
+
+/**
+ * The drift guard the provenance test above cannot be.
+ *
+ * `message-previews.generated.ts` is committed, so a change to the noise repo's
+ * MESSAGE_SHAPES.md leaves HALO showing a message the service no longer sends —
+ * and nothing fails, because the file still looks well-formed. That is exactly
+ * what happened: the generator's default path was an absolute
+ * `~/Documents/GitHub/...`, the estate moved into `wh-centralised-services/`,
+ * the script stopped running, and the previews silently fell a format behind
+ * (bare `(67)` where the service now sends `(limit 67)`).
+ *
+ * So: when the noise repo is checked out beside this one — which is where the
+ * file actually gets edited — regenerate into a temp file and compare. Skipped
+ * rather than failed when it is absent, so a HALO-only checkout still passes.
+ */
+test("the committed noise previews match the noise repo's MESSAGE_SHAPES.md", async (t) => {
+  const noiseDoc = resolve("../usecase-wohhup-noise-meter-alerts/MESSAGE_SHAPES.md");
+  if (!existsSync(noiseDoc)) {
+    t.skip("the noise repo is not checked out beside this one");
+    return;
+  }
+
+  const temp = resolve(tmpdir(), `halo-previews-${process.pid}.ts`);
+  try {
+    execFileSync(process.execPath, ["scripts/build-message-previews.mjs"], {
+      env: { ...process.env, PREVIEWS_OUT: temp },
+      stdio: "pipe",
+    });
+    const [committed, regenerated] = await Promise.all([
+      readFile(resolve("lib/message-previews.generated.ts"), "utf8"),
+      readFile(temp, "utf8"),
+    ]);
+    assert.equal(
+      regenerated,
+      committed,
+      "lib/message-previews.generated.ts is stale — run `node scripts/build-message-previews.mjs` and commit the result",
+    );
+  } finally {
+    rmSync(temp, { force: true });
   }
 });
 

@@ -105,11 +105,11 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": null,
-        "text": "🕒 13:40 (ZRA) estimated Leq1hr\nNM01: 62.9 (67) ✅\nNM02: 69.9 (67) 🟠 - Reduce, stay below 54.7 dBA\nNM03: 78.9 (67) 🔴 - Stop, Leq1hr exceeded\nNM04: data unavailable\nNM05: 64 (NIL) ✅"
+        "text": "🕒 13:40 (ZRA) estimated Leq1hr\nNM01: 62.9 (limit 67) ✅\nNM02: 69.9 (limit 67) 🟠 - Reduce, stay below 54.7 dBA\nNM03: 78.9 (limit 67) 🔴 - Stop, Leq1hr exceeded\nNM04: data unavailable\nNM05: 64 (NIL) ✅"
       },
       {
         "caption": "With a `Leq12hr` fallback in play",
-        "text": "🕒 10:30 (ZRB) estimated Leq1hr\n_Fallback on Leq12h limit when no Leq1h limit is found_\n\nNM01: 75.9 (75 Leq12hr) 🟠 - Reduce, stay below 73.4 dBA\nNM02: 70 (75 Leq12hr) ✅"
+        "text": "🕒 10:30 (ZRB) estimated Leq1hr\nNM01: 75.9 (fallback on Leq12hr limit 75) 🟠 - Reduce, stay below 73.4 dBA\nNM02: 70 (fallback on Leq12hr limit 75) ✅"
       }
     ],
     "isFallback": true,
@@ -124,11 +124,11 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": null,
-        "text": "🕐 19:32 (Clifford Centre) 7PM Leq1hr (1900 to 1925)\n\n*NM01* Leq5min (7PM-10PM limit 72)\n\n1900: 72.3 dBA 🔴\n1905: 72.7 dBA 🔴\n1910: 71.7 dBA ✅\n1915: data unavailable\n1920: 71.7 dBA ✅\n1925: 73.1 dBA 🔴\n\nNM01 estimated Leq1hr: 71 dBA (72) ✅"
+        "text": "🕐 19:32 (Clifford Centre) 7PM Leq1hr (1900 to 1925)\n\n*NM01* Leq5min (7PM-10PM limit 72)\n\n1900: 72.3 dBA 🔴\n1905: 72.7 dBA 🔴\n1910: 71.7 dBA ✅\n1915: data unavailable\n1920: 71.7 dBA ✅\n1925: 73.1 dBA 🔴\n\nNM01 estimated Leq1hr: 71 dBA (limit 72) ✅"
       },
       {
         "caption": "Exceeded example",
-        "text": "🕐 19:32 (Clifford Centre) 7PM Leq1hr (1900 to 1925)\n\n*NM02* Leq5min (7PM-10PM limit 73)\n\n1900: 77.1 dBA 🔴\n1905: 79.2 dBA 🔴\n1910: 81.5 dBA 🔴\n1915: 77.3 dBA 🔴\n1920: 77.1 dBA 🔴\n1925: 76.9 dBA 🔴\n\nNM02 estimated Leq1hr: 79.1 dBA (73) 🔴, stay below 64.2"
+        "text": "🕐 19:32 (Clifford Centre) 7PM Leq1hr (1900 to 1925)\n\n*NM02* Leq5min (7PM-10PM limit 73)\n\n1900: 77.1 dBA 🔴\n1905: 79.2 dBA 🔴\n1910: 81.5 dBA 🔴\n1915: 77.3 dBA 🔴\n1920: 77.1 dBA 🔴\n1925: 76.9 dBA 🔴\n\nNM02 estimated Leq1hr: 79.1 dBA (limit 73) 🔴, stay below 64.2"
       },
       {
         "caption": "No-limit / unavailable example",
@@ -211,11 +211,11 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": null,
-        "text": "28-Jul-2026\n🕒 11:03 (ZRA) 10AM estimated Leq12hr (7AM - 7PM)\nNM01: 62.9 (67) ✅ - Max allowable Leq1hr: 71.4 dBA\nNM02: 69.9 (67) 🟠 - Reduce, stay below 54.7 dBA Leq1hr\nNM03: 78.9 (67) 🔴 - Stop, Leq12hr exceeded\nNM04: data unavailable\nNM05: 64 (75) ✅"
+        "text": "28-Jul-2026\n🕒 11:03 (ZRA) 10AM estimated Leq12hr (7AM - 7PM)\nNM01: 62.9 (limit 67) ✅ - Max allowable Leq1hr: 71.4 dBA\nNM02: 69.9 (limit 67) 🟠 - Reduce, stay below 54.7 dBA Leq1hr\nNM03: 78.9 (limit 67) 🔴 - Stop, Leq12hr exceeded\nNM04: data unavailable\nNM05: 64 (limit 75) ✅"
       },
       {
         "caption": "Once the band has closed",
-        "text": "28-Jul-2026\n🕒 19:03 (ZRA) 6PM Leq12hr (7AM - 7PM)\nNM01: 63.4 (67) ✅\nNM03: 78.9 (67) 🔴 - Leq12hr exceeded"
+        "text": "28-Jul-2026\n🕒 19:03 (ZRA) 6PM Leq12hr (7AM - 7PM)\nNM01: 63.4 (limit 67) ✅\nNM03: 78.9 (limit 67) 🔴 - Leq12hr exceeded"
       }
     ],
     "isFallback": false,
@@ -249,11 +249,11 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": null,
-        "text": "🕐 10:04 (ZRA) (0700 to 1000)\n\n*NM01*\n-7AM Leq1hr: 63.8 (70) ✅\n-8AM Leq1hr: 91.2 (70) 🔴\n-9AM Leq1hr: 63.8 (70) ✅\nEstimated Leq12hr: 69.4 dBA (75) ✅\n\n*NM02*\n-7AM Leq1hr: 63.8 (70) ✅\n-8AM Leq1hr: 91.2 (70) 🔴\n-9AM Leq1hr: 63.8 (70) ✅\nEstimated Leq12hr: 76.9 dBA (75) 🔴, stay below 73.8 Leq1hr"
+        "text": "🕐 10:04 (ZRA) (0700 to 1000)\n\n*NM01*\n-7AM Leq1hr: 63.8 (limit 70) ✅\n-8AM Leq1hr: 91.2 (limit 70) 🔴\n-9AM Leq1hr: 63.8 (limit 70) ✅\nEstimated Leq12hr: 69.4 dBA (limit 75) ✅\n\n*NM02*\n-7AM Leq1hr: 63.8 (limit 70) ✅\n-8AM Leq1hr: 91.2 (limit 70) 🔴\n-9AM Leq1hr: 63.8 (limit 70) ✅\nEstimated Leq12hr: 76.9 dBA (limit 75) 🔴, stay below 73.8 Leq1hr"
       },
       {
         "caption": "Completed-band example",
-        "text": "🕐 19:04 (ZRA) (1600 to 1900)\n\n*NM01*\n-4PM Leq1hr: 68.2 (70) ✅\n-5PM Leq1hr: 70.1 (70) ✅\n-6PM Leq1hr: 72.4 (70) 🔴\nLeq12hr: 74.6 dBA (75) ✅"
+        "text": "🕐 19:04 (ZRA) (1600 to 1900)\n\n*NM01*\n-4PM Leq1hr: 68.2 (limit 70) ✅\n-5PM Leq1hr: 70.1 (limit 70) ✅\n-6PM Leq1hr: 72.4 (limit 70) 🔴\nLeq12hr: 74.6 dBA (limit 75) ✅"
       }
     ],
     "isFallback": true,
@@ -268,11 +268,11 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": "Example with `morning_summary_start_hhmm = 0000`",
-        "text": "🕐 7:04 (ZRA) (0000 to 0700)\n*NM01*\n-12AM Leq1hr: 61.8 (70) ✅\n-1AM Leq1hr: 60.4 (70) ✅\n-2AM Leq1hr: 59.9 (70) ✅\n-3AM Leq1hr: 58.7 (70) ✅\n-4AM Leq1hr: 57.8 (70) ✅\n-5AM Leq1hr: 56.9 (70) ✅\n-6AM Leq1hr: 58.1 (70) ✅\n\nLeq12hr(7PM-7AM): 66.4 dBA (limit 75) ✅"
+        "text": "🕐 7:04 (ZRA) (0000 to 0700)\n*NM01*\n-12AM Leq1hr: 61.8 (limit 70) ✅\n-1AM Leq1hr: 60.4 (limit 70) ✅\n-2AM Leq1hr: 59.9 (limit 70) ✅\n-3AM Leq1hr: 58.7 (limit 70) ✅\n-4AM Leq1hr: 57.8 (limit 70) ✅\n-5AM Leq1hr: 56.9 (limit 70) ✅\n-6AM Leq1hr: 58.1 (limit 70) ✅\n\nLeq12hr(7PM-7AM): 66.4 dBA (limit 75) ✅"
       },
       {
         "caption": "Example with `morning_summary_start_hhmm = 2200`",
-        "text": "🕐 7:04 (ZRA) (2200 to 0700)\n*NM01*\n-10PM Leq1hr: 64.2 (70) ✅\n-11PM Leq1hr: 62.1 (70) ✅\n-12AM Leq1hr: 61.8 (70) ✅\n-1AM Leq1hr: 60.4 (70) ✅\n-2AM Leq1hr: 59.9 (70) ✅\n-3AM Leq1hr: 58.7 (70) ✅\n-4AM Leq1hr: 57.8 (70) ✅\n-5AM Leq1hr: 56.9 (70) ✅\n-6AM Leq1hr: 58.1 (70) ✅\n\nLeq12hr(7PM-7AM): 66.4 dBA (limit 75) ✅"
+        "text": "🕐 7:04 (ZRA) (2200 to 0700)\n*NM01*\n-10PM Leq1hr: 64.2 (limit 70) ✅\n-11PM Leq1hr: 62.1 (limit 70) ✅\n-12AM Leq1hr: 61.8 (limit 70) ✅\n-1AM Leq1hr: 60.4 (limit 70) ✅\n-2AM Leq1hr: 59.9 (limit 70) ✅\n-3AM Leq1hr: 58.7 (limit 70) ✅\n-4AM Leq1hr: 57.8 (limit 70) ✅\n-5AM Leq1hr: 56.9 (limit 70) ✅\n-6AM Leq1hr: 58.1 (limit 70) ✅\n\nLeq12hr(7PM-7AM): 66.4 dBA (limit 75) ✅"
       }
     ],
     "isFallback": true,
@@ -287,7 +287,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
     "bubbles": [
       {
         "caption": "Expected message shape",
-        "text": "🕐 19:04 (ZRA) (0700 to 1900)\n\n*NM01*\n-7AM Leq1hr: 64.2 (70) ✅\n-8AM Leq1hr: 63.8 (70) ✅\n...\n-6PM Leq1hr: 61.8 (70) ✅\n\nLeq12hr(7AM-7PM): 66.4 dBA (75) ✅"
+        "text": "🕐 19:04 (ZRA) (0700 to 1900)\n\n*NM01*\n-7AM Leq1hr: 64.2 (limit 70) ✅\n-8AM Leq1hr: 63.8 (limit 70) ✅\n...\n-6PM Leq1hr: 61.8 (limit 70) ✅\n\nLeq12hr(7AM-7PM): 66.4 dBA (limit 75) ✅"
       }
     ],
     "isFallback": true,

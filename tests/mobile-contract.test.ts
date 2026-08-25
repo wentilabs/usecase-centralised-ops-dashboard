@@ -127,10 +127,23 @@ test("a disabled card is dimmed once, not twice", async () => {
   // card unreadable, and since every new project starts disabled there was no way
   // to enable one from the UI. A light wash is fine; stacking is what broke it.
   const classes = block.replace(/\/\/[^\n]*/g, "");
-  assert.doesNotMatch(classes, /opacity-60/, "no blanket opacity on the card");
-  assert.doesNotMatch(classes, /after:bg-black\/(3\d|4\d|[5-9]\d)/, "no heavy scrim");
-  assert.match(block, /after:bg-black\/20/, "disabled gets its own light wash");
+  assert.doesNotMatch(classes, /opacity-\d\d/, "no blanket opacity on the card");
   assert.ok(block.includes("? ") && block.includes(": emphasis !== \"active\""), "the two are exclusive");
+
+  // Every wash, in the order they appear: disabled, then manual, then idle.
+  const washes = [...classes.matchAll(/after:bg-black\/(\d+)/g)].map((m) => Number(m[1]));
+  assert.equal(washes.length, 3, "one wash for disabled, one for manual, one for idle");
+  const [disabled, manual, idle] = washes;
+
+  // 45% stacked with opacity-60 is what made a disabled card unfindable, and
+  // every new project starts disabled. Anything approaching that is the bug.
+  for (const wash of washes) assert.ok(wash <= 35, `a ${wash}% wash is too heavy to read through`);
+
+  // A disabled card must never be the darkest thing on screen: it is the one a
+  // reader has to find and open in order to switch the project on.
+  assert.ok(disabled <= idle, `disabled (${disabled}%) is darker than idle (${idle}%)`);
+  // Manual ingestion still does real work, so it is the dimmest wash of the three.
+  assert.ok(manual <= disabled && manual <= idle, `manual (${manual}%) should be the lightest`);
 
   // And the signal a reader actually needs stays at full contrast.
   assert.match(card, /border-2 border-warn\/50/, "disabled keeps its amber border");
@@ -158,10 +171,23 @@ test("the company watermark cannot swallow a click, and stays readable to a read
   const opacity = raw?.[1] ? Number(raw[1]) : Number(raw?.[2] ?? 100) / 100;
   assert.ok(opacity > 0 && opacity <= 0.33, `opacity ${opacity} is not a watermark`);
 
-  // Sized against the card, not in pixels, so it tracks a card whose height
-  // depends on how many delivery groups it lists.
-  assert.match(mark, /h-\[\d\d%\]/, "height is a proportion of the card");
-  assert.match(mark, /w-\[\d\d%\]/, "and so is width");
+  // A fixed pixel box, not a share of the card. It was 70% of each card, which
+  // made the same logo appear at two sizes on one screen, because card height
+  // varies with how many delivery groups a project lists.
+  const box = mark.match(/h-\[(\d+)px\]\s+w-\[(\d+)px\]/);
+  assert.ok(box, "the watermark box must be fixed in pixels, not a percentage");
+  const [, boxHeight, boxWidth] = box!.map(Number);
+
+  // And it must fit the SHORTEST card. The card is `relative` with no
+  // overflow-hidden, so an oversized mark spills past its edge instead of being
+  // clipped. 404 x 257 is the smallest card the desktop grid produces.
+  const scales = [...mark.matchAll(/scale-(\d+)/g)].map((m) => Number(m[1]) / 100);
+  const largest = Math.max(1, ...scales);
+  assert.ok(
+    boxHeight * largest <= 257 && boxWidth * largest <= 404,
+    `the box is ${boxWidth}x${boxHeight} and scale-${largest * 100} makes it ` +
+      `${Math.round(boxWidth * largest)}x${Math.round(boxHeight * largest)}, past a 404x257 card`,
+  );
 
   // A logo is unreadable to anyone who does not already know it — a new joiner,
   // or a screen reader. The name has to survive in text.

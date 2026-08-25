@@ -167,15 +167,21 @@ export function ProjectCard({
         // invisible, so a new project could not be enabled from the UI at all.
         // The amber border and badge carry the signal now.
         enabled ? "border border-border" : "border-2 border-warn/50",
-        // One scrim, never two. Disabled gets a light grey wash on top of the
-        // amber border — enough to read as inactive at a glance, deliberately
-        // far short of the old stack. When a card is both disabled and idle the
-        // disabled wash wins rather than compounding.
+        // One scrim, never two. Three depths, each a step apart: manual
+        // ingestion is dimmest because those cards do real work on a photo,
+        // disabled sits in the middle behind its amber border, and a card with
+        // nothing scheduled at all is darkest. When a card is both disabled and
+        // idle the disabled wash wins rather than compounding.
+        //
+        // Each was raised one step from 15/20/25, which was too faint to read
+        // as inactive against `bg-card`. The ceiling is the old 45% wash that,
+        // stacked with `opacity-60`, made a disabled card impossible to find —
+        // the border and badge carry the signal, the scrim only supports it.
         !enabled
-          ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/20"
+          ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-black/30"
           : emphasis !== "active"
             ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
-              (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/25")
+              (emphasis === "manual" ? "after:bg-black/25" : "after:bg-black/35")
             : "",
       ].join(" ")}
     >

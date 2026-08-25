@@ -24,13 +24,30 @@
  * brings the navy up without touching the two logos that already read.
  */
 const ASSETS: Record<string, { src: string; tweak?: string }> = {
-  // Per-logo scale, because 70% of the card means something different for each:
-  // the artwork's own margins differ, so the same box leaves Wohhup looking
-  // oversized and the other two looking small. Tuned by eye against the cards.
+  // Per-logo scale, because one box means something different for each: the
+  // artwork's own margins differ, so the same box leaves Wohhup looking
+  // oversized and the other two looking small. Tuned by eye against the cards,
+  // and these three ratios are the part worth preserving if the base box moves.
   Wohhup: { src: "/company/wohhup.png", tweak: "scale-75" },
   Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125" },
   PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125" },
 };
+
+/**
+ * The base box every logo is fitted into, in pixels rather than as a share of
+ * the card.
+ *
+ * It was 70% × 70% of the card, which made the watermark grow with the number
+ * of delivery groups a project lists — cards on one screen range from 257px to
+ * 527px tall, so the same logo appeared at two noticeably different sizes and
+ * read as inconsistent rather than as a background.
+ *
+ * 250 × 160 is sized against the *shortest* card: the largest tweak is
+ * scale-125, giving 312 × 200, which still sits inside a 404 × 257 card. Raising
+ * this would spill the mark past a short card's edge, because the card is
+ * `relative` without `overflow-hidden`.
+ */
+const BOX = "h-[160px] w-[250px]";
 
 export function CompanyMark({ company }: { company: string }) {
   const asset = ASSETS[company];
@@ -57,11 +74,10 @@ export function CompanyMark({ company }: { company: string }) {
         alt=""
         aria-hidden="true"
         draggable={false}
-        // Sized as a proportion of the card rather than in fixed pixels, so it
-        // scales with a card whose height varies by how many delivery groups it
-        // lists. `object-contain` means the logo fits inside that box at its own
-        // aspect ratio, so 70% is a ceiling on both axes, not a stretch.
-        className={`pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 object-contain opacity-20 ${asset.tweak ?? ""}`}
+        // A fixed box, centred on the card. `object-contain` means the logo
+        // fits inside it at its own aspect ratio, so BOX is a ceiling on both
+        // axes rather than a stretch.
+        className={`pointer-events-none absolute left-1/2 top-1/2 ${BOX} -translate-x-1/2 -translate-y-1/2 object-contain opacity-20 ${asset.tweak ?? ""}`}
       />
     </>
   );

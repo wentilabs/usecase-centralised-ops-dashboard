@@ -1,3 +1,4 @@
+import { deriveNeaRegion, withinServiceArea } from "./derive";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /**
@@ -21,7 +22,7 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  * default when three of the fields may still be blank.
  */
 
-export type OnboardFieldKind = "text" | "sheet";
+export type OnboardFieldKind = "text" | "sheet" | "number";
 
 export type OnboardField = {
   column: string;
@@ -35,8 +36,20 @@ export type OnboardField = {
    * Keeping this explicit stops a future edit "tidying up" blanks into nulls.
    */
   notNull: boolean;
-  /** Computed from the project code, e.g. "(ZRA) CCTV History". */
-  derive?: (projectCode: string) => string;
+  /** Computed from the draft, e.g. "(ZRA) CCTV History". */
+  derive?: (draft: OnboardDraft, projectCode: string) => string;
+  /** Numeric bounds, mirroring the column's CHECK constraint. */
+  range?: { min: number; max: number };
+  /**
+   * Recomputed from the rest of the draft as it changes, and written into the
+   * field — until someone edits it by hand, after which their value stands.
+   *
+   * For a value the service itself derives and then trusts forever, like haze's
+   * `nea_region`, this is the honest shape: suggest it, show the reasoning, and
+   * let a human overrule it. A `computed` field would be wrong here, because the
+   * source repo explicitly supports an override.
+   */
+  autofill?: (draft: OnboardDraft) => { value: string; note: string; review: boolean } | null;
   /**
    * Derived and NOT editable. The server ignores whatever the client sends for
    * these, so a stale or hand-edited draft cannot put a mismatched tab name on a
@@ -63,6 +76,15 @@ export type OnboardDefinition = {
   /** Steps HALO cannot do, shown in the dialog so they are not forgotten. */
   outsideHalo: string[];
   fields: OnboardField[];
+  /**
+   * The project-code rule this service actually enforces. Not shared: haze and
+   * lightning both CHECK `^[A-Z0-9][A-Z0-9-]{0,47}$` — uppercase, hyphens, no
+   * underscores — ailytics constrains nothing, and wbgt has no CHECK but derives
+   * a table name that must start with a letter. One shared regex accepted codes
+   * Postgres then rejected.
+   */
+  codePattern: RegExp;
+  codeHelp: string;
   /** Columns forming a composite unique constraint, checked before insert. */
   uniqueTogether?: string[];
   /**
@@ -112,8 +134,208 @@ export function wbgtTableForProject(projectCode: string): string {
  * column default.
  */
 export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
+  haze: {
+    service: "haze",
+    codePattern: /^[A-Z0-9][A-Z0-9-]{0,47}$/,
+    codeHelp: "Uppercase letters, digits and hyphens only — the column CHECK rejects lowercase and underscores.",
+    label: "＋ Add project",
+    title: "Add a new Haze project",
+    description:
+      "Creates one disabled row in haze.haze_project_configs. Readings are shared per region, so there is nothing else to create.",
+    outsideHalo: [
+      "Confirm the derived NEA region against NEA's own regional map. HALO infers it from the coordinates, and the service then trusts the stored value forever — correcting the coordinates later will NOT move the project.",
+      "Delivery cannot be half-configured: haze_enabled_delivery_check refuses enabled = true unless lambda_url, instance_name, client_id and the group list are all set, so fill them in before enabling.",
+    ],
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Uppercase. Enforced by a CHECK on the column.",
+      },
+      {
+        column: "latitude",
+        label: "Latitude",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 1.1, max: 1.5 },
+        help: "Singapore only. Use the address lookup if you do not have coordinates.",
+      },
+      {
+        column: "longitude",
+        label: "Longitude",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 103.55, max: 104.15 },
+      },
+      {
+        column: "site_address",
+        label: "Site address",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Optional. Filled in by the address lookup.",
+      },
+      {
+        column: "nea_region",
+        label: "NEA region",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Derived from the coordinates as you type. Editable — an explicit value is trusted outright.",
+        autofill: (draft) => {
+          const derived = deriveNeaRegion(Number(draft.latitude), Number(draft.longitude));
+          if (!derived) return null;
+          return { value: derived.region, note: derived.note, review: derived.requiresManualReview };
+        },
+      },
+      {
+        column: "wa_group_ids",
+        label: "WhatsApp group IDs",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Comma-separated; one message per group.",
+      },
+      {
+        column: "instance_name",
+        label: "WhatsApp instance",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "client_id",
+        label: "Client ID",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
+        notNull: false,
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
+      },
+    ],
+  },
+  lightning: {
+    service: "lightning",
+    codePattern: /^[A-Z0-9][A-Z0-9-]{0,47}$/,
+    codeHelp: "Uppercase letters, digits and hyphens only — the column CHECK rejects lowercase and underscores.",
+    label: "＋ Add project",
+    title: "Add a new Lightning project",
+    description:
+      "Creates one disabled row in lightning.lightning_project_configs. The two ring radii are client-approved and have no defaults.",
+    outsideHalo: [
+      "The red and amber radii are a client-approved safety decision, not a default — the repo's own wizard refuses to proceed without both. Confirm them before enabling.",
+      "Remember that an uncertainty margin WIDENS the trigger ring, and site extent does too: the ring is measured from the site boundary. Both default to 0 here and can be set in the editor.",
+    ],
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Uppercase. Enforced by a CHECK on the column.",
+      },
+      {
+        column: "latitude",
+        label: "Latitude",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 1.1, max: 1.5 },
+        help: "Singapore only. Use the address lookup if you do not have coordinates.",
+      },
+      {
+        column: "longitude",
+        label: "Longitude",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 103.55, max: 104.15 },
+      },
+      {
+        column: "site_address",
+        label: "Site address",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Optional. Filled in by the address lookup.",
+      },
+      {
+        column: "red_radius_m",
+        label: "Red radius (m)",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 1, max: 100000 },
+        help: "Stop-work ring. Client-approved — there is deliberately no default.",
+      },
+      {
+        column: "amber_radius_m",
+        label: "Amber radius (m)",
+        kind: "number",
+        required: true,
+        notNull: true,
+        range: { min: 1, max: 100000 },
+        help: "Warning ring. Usually wider than red; a narrower one is allowed but warns.",
+      },
+      {
+        column: "site_extent_radius_m",
+        label: "Site extent (m)",
+        kind: "number",
+        required: false,
+        notNull: true,
+        fallback: "0",
+        range: { min: 0, max: 50000 },
+        help: "Rings are measured from the site boundary, so this widens both.",
+      },
+      {
+        column: "whatsapp_group_id",
+        label: "WhatsApp group ID",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "instance_name",
+        label: "WhatsApp instance",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "client_id",
+        label: "Client ID",
+        kind: "text",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
+        notNull: false,
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
+      },
+    ],
+  },
   wbgt: {
     service: "wbgt",
+    // No CHECK on the column, but normalizeProjectCode() rejects anything whose
+    // normalised form does not start with a letter — "106" would throw.
+    codePattern: /^[A-Za-z][A-Za-z0-9 _-]{0,47}$/,
+    codeHelp: "Must start with a letter. Spaces and hyphens are fine — CR 106 becomes cr_106_wbgt_data_hourly.",
     label: "＋ Add project",
     title: "Add a new WBGT project",
     description:
@@ -213,6 +435,10 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
   },
   ailytics: {
     service: "ailytics",
+    // No constraint on the column; this is HALO's own rule, kept conservative
+    // because the code also names two Google Sheet tabs.
+    codePattern: /^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/,
+    codeHelp: "Letters, digits, hyphen and underscore.",
     label: "＋ Add project",
     title: "Add a new Ailytics project",
     description:
@@ -254,7 +480,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         kind: "text",
         required: true,
         notNull: true,
-        derive: (code) => `(${code}) CCTV History`,
+        derive: (_draft, code) => `(${code}) CCTV History`,
         help: "Created automatically on first write if missing.",
       },
       {
@@ -264,7 +490,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         kind: "text",
         required: true,
         notNull: true,
-        derive: (code) => `(${code}) CCTV Safety Sheet`,
+        derive: (_draft, code) => `(${code}) CCTV Safety Sheet`,
       },
       {
         column: "telegram_chat_id",
@@ -345,9 +571,6 @@ export function onboardingFor(service: ServiceKey): OnboardDefinition | null {
   return ONBOARDING[service] ?? null;
 }
 
-/** Project codes are used as sheet-tab names, so keep them boring. */
-const PROJECT_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/;
-
 export type OnboardDraft = Record<string, string>;
 
 /**
@@ -371,16 +594,39 @@ export function validateDraft(
   const code = value("project_code");
   if (!code) {
     problems.push("Project code is required.");
-  } else if (!PROJECT_CODE.test(code)) {
-    problems.push("Project code may use letters, digits, hyphen and underscore only.");
+  } else if (!definition.codePattern.test(code)) {
+    problems.push(`Project code is not valid for ${definition.service}: ${definition.codeHelp}`);
   } else if (existing.some((row) => String(row.project_code ?? "").toLowerCase() === code.toLowerCase())) {
     problems.push(`${code} already exists.`);
   }
 
   for (const field of definition.fields) {
     if (field.column === "project_code") continue;
-    if (field.required && !resolveValue(field, draft, code, env).trim()) {
+    const resolved = resolveValue(field, draft, code, env).trim();
+    if (field.required && !resolved) {
       problems.push(`${field.label} is required.`);
+      continue;
+    }
+    // Range checks mirror the column CHECKs, so a value Postgres would reject is
+    // caught here rather than surfacing as a constraint violation.
+    if (resolved && field.kind === "number") {
+      const value = Number(resolved);
+      if (!Number.isFinite(value)) {
+        problems.push(`${field.label} must be a number.`);
+      } else if (field.range && (value < field.range.min || value > field.range.max)) {
+        problems.push(`${field.label} must be between ${field.range.min} and ${field.range.max}.`);
+      }
+    }
+  }
+
+  // Coordinates are checked as a pair: one alone cannot be inside the service
+  // area, and the CHECK constraints reject the row rather than the field.
+  const hasCoords = definition.fields.some((field) => field.column === "latitude");
+  if (hasCoords) {
+    const lat = Number(value("latitude"));
+    const lon = Number(value("longitude"));
+    if (value("latitude") && value("longitude") && !withinServiceArea(lat, lon)) {
+      problems.push("Latitude and longitude must fall inside Singapore — 1.10 to 1.50, 103.55 to 104.15.");
     }
   }
 
@@ -416,11 +662,11 @@ export function resolveValue(
   env: Record<string, string | undefined>,
 ): string {
   // A computed field is derived from the project code, whatever the draft says.
-  if (field.computed) return field.derive && projectCode ? field.derive(projectCode) : "";
+  if (field.computed) return field.derive && projectCode ? field.derive(draft, projectCode) : "";
   const typed = String(draft[field.column] ?? "").trim();
   if (typed) return typed;
   if (field.envDefault && env[field.envDefault]) return String(env[field.envDefault]).trim();
-  if (field.derive && projectCode) return field.derive(projectCode);
+  if (field.derive && projectCode) return field.derive(draft, projectCode);
   if (field.fallback) return field.fallback;
   return "";
 }

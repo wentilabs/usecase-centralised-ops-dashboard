@@ -41,6 +41,14 @@ export function OnboardDialog({
   const [rpc, setRpc] = useState<{ fn: string; describes: string; installed: boolean | null } | null>(null);
   const [steps, setSteps] = useState<{ step: string; detail: string }[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  /** Fields a human has edited. Autofill stops touching these. */
+  const [edited, setEdited] = useState<Set<string>>(() => new Set());
+  const [lookup, setLookup] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [candidates, setCandidates] = useState<
+    { index: number; address: string; postal_code: string | null; latitude: number; longitude: number; valid: boolean }[]
+  >([]);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEscapeKey(!busy, onClose);
 
@@ -86,6 +94,32 @@ export function OnboardDialog({
     () => validateDraft(definition, draft, rows, envStub),
     [definition, draft, rows, envStub],
   );
+  /**
+   * Values the service would derive, recomputed on every keystroke. Applied only
+   * to fields nobody has edited, so a deliberate override always survives.
+   */
+  const derived = useMemo(() => {
+    const out: Record<string, { value: string; note: string; review: boolean }> = {};
+    for (const entry of definition.fields) {
+      if (!entry.autofill) continue;
+      const result = entry.autofill(draft);
+      if (result) out[entry.column] = result;
+    }
+    return out;
+  }, [definition, draft]);
+
+  useEffect(() => {
+    const pending = Object.entries(derived).filter(
+      ([column, result]) => !edited.has(column) && draft[column] !== result.value,
+    );
+    if (!pending.length) return;
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const [column, result] of pending) next[column] = result.value;
+      return next;
+    });
+  }, [derived, edited, draft]);
+
   const touched = Object.values(draft).some((value) => String(value ?? "").trim());
   const canRun = problems.length === 0 && !busy;
 
@@ -112,6 +146,47 @@ export function OnboardDialog({
     } finally {
       setBusy(false);
     }
+  }
+
+  const wantsCoordinates = definition.fields.some((entry) => entry.column === "latitude");
+
+  async function runLookup() {
+    setLookingUp(true);
+    setLookupError(null);
+    setCandidates([]);
+    try {
+      const res = await fetch(`/api/onboard/geocode?q=${encodeURIComponent(lookup)}`);
+      const body = await res.json();
+      if (!res.ok) {
+        setLookupError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      if (!body.results?.length) setLookupError(`OneMap returned nothing for "${lookup}".`);
+      setCandidates(body.results ?? []);
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
+  /** Taking a candidate counts as filling the coordinates in, not as editing
+   *  the region — so the derived region still follows. */
+  function useCandidate(candidate: (typeof candidates)[number]) {
+    setEdited((prev) => {
+      const next = new Set(prev);
+      next.add("latitude");
+      next.add("longitude");
+      next.add("site_address");
+      return next;
+    });
+    setDraft((prev) => ({
+      ...prev,
+      latitude: String(candidate.latitude),
+      longitude: String(candidate.longitude),
+      site_address: candidate.address ?? prev.site_address ?? "",
+    }));
+    setCandidates([]);
   }
 
   const field = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
@@ -179,6 +254,61 @@ export function OnboardDialog({
               </p>
             ) : null}
 
+            {wantsCoordinates ? (
+              <div className="mt-4 rounded-lg border border-border bg-card/40 p-3">
+                <div className="text-[11px] font-semibold">Find the coordinates</div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Postal code or address, looked up through OneMap. Or type the coordinates below directly.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    className={field}
+                    value={lookup}
+                    disabled={busy || lookingUp}
+                    placeholder="e.g. 068914, or V on Shenton"
+                    onChange={(event) => setLookup(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && lookup.trim()) {
+                        event.preventDefault();
+                        void runLookup();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void runLookup()}
+                    disabled={!lookup.trim() || busy || lookingUp}
+                    className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-40"
+                  >
+                    {lookingUp ? "Searching…" : "Search"}
+                  </button>
+                </div>
+                {lookupError ? <p className="mt-2 text-[11px] text-warn">{lookupError}</p> : null}
+                {candidates.length ? (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {candidates.map((candidate) => (
+                      <li key={candidate.index}>
+                        <button
+                          type="button"
+                          onClick={() => useCandidate(candidate)}
+                          disabled={!candidate.valid}
+                          className="w-full rounded border border-border px-2 py-1.5 text-left text-[11px] hover:border-primary disabled:opacity-40"
+                        >
+                          <span className="text-foreground">{candidate.address}</span>
+                          <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                            {candidate.latitude}, {candidate.longitude}
+                          </span>
+                          {candidate.valid ? null : (
+                            <span className="ml-2 text-warn">outside the service area</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="mt-4 flex flex-col gap-3">
               {definition.fields.map((entry) => (
                 <div key={entry.column} className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3">
@@ -207,12 +337,20 @@ export function OnboardDialog({
                         value={draft[entry.column] ?? ""}
                         disabled={busy}
                         placeholder={placeholderFor(entry)}
-                        onChange={(event) =>
-                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }))
-                        }
+                        onChange={(event) => {
+                          setEdited((prev) => new Set(prev).add(entry.column));
+                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
+                        }}
                       />
                     )}
-                    {entry.help ? (
+                    {derived[entry.column] && !edited.has(entry.column) ? (
+                      <p
+                        className={`mt-1 text-[11px] ${derived[entry.column].review ? "text-warn" : "text-muted-foreground"}`}
+                      >
+                        {derived[entry.column].review ? "Derived — confirm before enabling. " : ""}
+                        {derived[entry.column].note}
+                      </p>
+                    ) : entry.help ? (
                       <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
                     ) : null}
                   </div>

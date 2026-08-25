@@ -28,6 +28,7 @@
     "lib/jobs.ts",
     "lib/meter-selection.ts",
     "lib/config-values.ts",
+    "lib/derive.ts",
     "lib/onboarding.ts",
     "lib/message-previews.ts",
     "lib/message-previews.generated.ts",

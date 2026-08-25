@@ -34,12 +34,49 @@ const complete = {
   lambda_url: "https://listener.example/send-message",
 };
 
-test("onboarding is offered for ailytics and wbgt only", () => {
-  assert.ok(onboardingFor("ailytics"));
-  assert.ok(onboardingFor("wbgt"));
-  for (const service of ["noise", "haze", "lightning", "subcon"] as const) {
+test("onboarding is offered for four services, and each has its own code rule", () => {
+  for (const service of ["ailytics", "wbgt", "haze", "lightning"] as const) {
+    assert.ok(onboardingFor(service), service);
+  }
+  // noise creates a per-project readings table AND per-meter limit rows; subcon
+  // has not been asked for. Both are absent on purpose rather than forgotten.
+  for (const service of ["noise", "subcon"] as const) {
     assert.equal(onboardingFor(service), null, service);
   }
+});
+
+test("the project-code rule follows the service, not HALO", () => {
+  // One shared regex used to accept codes that Postgres then rejected.
+  const haze = onboardingFor("haze")!;
+  const lightning = onboardingFor("lightning")!;
+  const wbgtDef = onboardingFor("wbgt")!;
+  const ailyticsDef = onboardingFor("ailytics")!;
+
+  // haze and lightning both CHECK ^[A-Z0-9][A-Z0-9-]{0,47}$ — no lowercase, no
+  // underscores.
+  for (const definition of [haze, lightning]) {
+    assert.equal(definition.codePattern.test("ZRA"), true, definition.service);
+    assert.equal(definition.codePattern.test("CR-106"), true, definition.service);
+    assert.equal(definition.codePattern.test("zra"), false, `${definition.service} lowercase`);
+    assert.equal(definition.codePattern.test("CR_106"), false, `${definition.service} underscore`);
+  }
+
+  // wbgt has no CHECK, but the table name must start with a letter.
+  assert.equal(wbgtDef.codePattern.test("CR 106"), true, "wbgt allows the space it normalises away");
+  assert.equal(wbgtDef.codePattern.test("106"), false, "a leading digit would break the table name");
+
+  // ailytics constrains nothing at the database, so HALO is the only rule.
+  assert.equal(ailyticsDef.codePattern.test("cr_106"), true);
+});
+
+test("a code the service would reject is caught before the insert", () => {
+  const haze = onboardingFor("haze")!;
+  const problems = validateDraft(
+    haze,
+    { project_code: "zra", latitude: "1.2792", longitude: "103.848" },
+    [],
+  );
+  assert.ok(problems.some((p) => /not valid for haze/.test(p)), problems.join(" | "));
 });
 
 test("a blank NOT NULL column is stored as empty string, never null", () => {
@@ -267,4 +304,79 @@ test("both onboarding flows name the steps HALO cannot perform", () => {
     for (const step of definition.outsideHalo) assert.ok(step.length > 40, "steps must be actionable");
   }
   assert.ok(wbgt.outsideHalo.some((s) => /character-exactly/.test(s)), "the label trap must be stated");
+});
+
+// ---------------------------------------------------------------------------
+// haze and lightning: one insert each, but with real constraints.
+// ---------------------------------------------------------------------------
+
+const haze = onboardingFor("haze")!;
+const lightning = onboardingFor("lightning")!;
+
+test("haze derives the NEA region live, and marks it for review", () => {
+  const field = haze.fields.find((f) => f.column === "nea_region")!;
+  const derived = field.autofill!({ latitude: "1.4043", longitude: "103.9022" });
+  assert.equal(derived?.value, "north", "Punggol is North, not the nearest centroid");
+  assert.equal(derived?.review, true);
+
+  // Editable, not computed — the source repo supports an explicit override.
+  assert.equal(field.computed, undefined);
+  assert.equal(field.autofill!({ latitude: "", longitude: "" }), null);
+});
+
+test("coordinates are validated as a pair, against the CHECK bounds", () => {
+  for (const definition of [haze, lightning]) {
+    const outside = validateDraft(
+      definition,
+      { project_code: "ZRA", latitude: "51.5", longitude: "-0.12", nea_region: "north", red_radius_m: "8000", amber_radius_m: "12000" },
+      [],
+    );
+    assert.ok(outside.some((p) => /inside Singapore/.test(p)), definition.service);
+  }
+});
+
+test("lightning requires both radii and defaults neither", () => {
+  // The repo's own wizard calls them client-approved and refuses without them.
+  const problems = validateDraft(
+    lightning,
+    { project_code: "ZRA", latitude: "1.2792", longitude: "103.848" },
+    [],
+  );
+  assert.ok(problems.some((p) => /Red radius .* is required/.test(p)), problems.join(" | "));
+  assert.ok(problems.some((p) => /Amber radius .* is required/.test(p)), problems.join(" | "));
+
+  for (const field of ["red_radius_m", "amber_radius_m"]) {
+    const entry = lightning.fields.find((f) => f.column === field)!;
+    assert.equal(entry.fallback, undefined, `${field} must have no default`);
+    assert.equal(entry.envDefault, undefined, `${field} must not come from env`);
+  }
+});
+
+test("a radius outside its CHECK range is refused before the insert", () => {
+  const base = { project_code: "ZRA", latitude: "1.2792", longitude: "103.848", amber_radius_m: "12000" };
+  assert.ok(
+    validateDraft(lightning, { ...base, red_radius_m: "200000" }, []).some((p) => /between 1 and 100000/.test(p)),
+  );
+  assert.ok(
+    validateDraft(lightning, { ...base, red_radius_m: "0" }, []).some((p) => /between 1 and 100000/.test(p)),
+  );
+  assert.deepEqual(validateDraft(lightning, { ...base, red_radius_m: "8000" }, []), []);
+});
+
+test("neither haze nor lightning needs a table or a companion row", () => {
+  // Readings are shared per region (haze) or island-wide (lightning), so unlike
+  // wbgt there is no per-project DDL and nothing to create alongside the row.
+  for (const definition of [haze, lightning]) {
+    assert.equal(definition.rpc, undefined, definition.service);
+    assert.equal(definition.companion, undefined, definition.service);
+  }
+});
+
+test("both warn that enabling is what trips the delivery CHECK", () => {
+  // The row is created disabled, so haze_enabled_delivery_check and its
+  // lightning twin do not fire on insert — they bite later.
+  for (const definition of [haze, lightning]) {
+    assert.equal(buildInsertRow(definition, { project_code: "ZRA" }, {}).enabled, false);
+  }
+  assert.ok(haze.outsideHalo.some((s) => /haze_enabled_delivery_check/.test(s)));
 });

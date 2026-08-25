@@ -1014,3 +1014,22 @@ test("company is offered on every service, as guidance rather than a constraint"
     );
   }
 });
+
+test("an empty group list is not always a misconfiguration", () => {
+  // Issue Chaser recovers the destination from the issue's own sheet row when
+  // send_to_originating_groups is on, which is the default. Reporting "no group
+  // configured" there describes a problem that does not exist.
+  assert.deepEqual(deliveryGroups("issueChaser", {}), []);
+  assert.deepEqual(deliveryGroups("issueChaser", { whatsapp_group_ids: "g@g.us" }), [
+    { chatId: "g@g.us", role: undefined },
+  ]);
+  // The fires-at line is where that intent is stated in words.
+  assert.match(
+    firesAt("issueChaser", { severity_cadence_chaser_enabled: true }),
+    /originating group/,
+  );
+  assert.match(
+    firesAt("issueChaser", { severity_cadence_chaser_enabled: true, send_to_originating_groups: false }),
+    /configured groups/,
+  );
+});

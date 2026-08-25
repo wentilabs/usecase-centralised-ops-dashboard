@@ -113,6 +113,19 @@ export function ProjectCard({
   const links = autoLinks(service, config);
   const wording = STATUS_WORDING[service] ?? { on: "● ENABLED", off: "○ DISABLED" };
 
+  /**
+   * What an empty group list means, which is not the same thing everywhere.
+   *
+   * Issue Chaser recovers the destination from the issue's own row in the Safety
+   * sheet when `send_to_originating_groups` is on — which is the default — so a
+   * blank group list is the intended configuration, not a missing one. Saying
+   * "no group configured" there reports a problem that does not exist.
+   */
+  const noGroupWording =
+    service === "issueChaser" && config.send_to_originating_groups !== false
+      ? "replies in each issue's originating group"
+      : "no group configured";
+
   // Mobile keeps only the switches that are actually on, capped. Chosen by
   // index so services with repeated labels can't collide.
   const pills = pillsFor(service, config);
@@ -240,7 +253,7 @@ export function ProjectCard({
       <p className="truncate text-xs text-muted-foreground md:hidden">
         {groups.length
           ? `💬 ${groupNames[groups[0].chatId] ?? groups[0].chatId}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
-          : "💬 no group configured"}
+          : `💬 ${noGroupWording}`}
       </p>
 
       <div className="hidden md:block">
@@ -262,7 +275,7 @@ export function ProjectCard({
               />
             ))
           ) : (
-            <Chip label="" value="no group configured" />
+            <Chip label="" value={noGroupWording} />
           )}
         </div>
       </div>

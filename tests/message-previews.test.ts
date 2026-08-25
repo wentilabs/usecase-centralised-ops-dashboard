@@ -151,6 +151,15 @@ test("noise previews are lifted from the noise repo, not retyped", async () => {
   }
 });
 
+test("WBGT short crossing previews use boundary-safe wording", () => {
+  const preview = previewsFor("wbgt", "five_min_alert_formatter").find((entry) => entry.value === "short");
+  assert.ok(preview);
+  const text = preview.bubbles.map((bubble) => bubble.text).join("\n");
+  assert.match(text, /is at or above the threshold of 32°C/);
+  assert.match(text, /is at or above the threshold of 33°C/);
+  assert.doesNotMatch(text, /has exceeded the threshold/);
+});
+
 /**
  * Columns that look like formatters but deliberately have no preview, and why.
  *

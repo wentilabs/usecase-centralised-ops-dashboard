@@ -161,11 +161,11 @@ const WBGT_PREVIEWS: FormatterPreview[] = [
     bubbles: [
       {
         caption: "Crossing up through 32°C",
-        text: "🟠 WBGT Alert: WBGT ZRB (WC-20) has exceeded the threshold of 32°C. Current WBGT: 32.4°C",
+        text: "🟠 WBGT Alert: WBGT ZRB (WC-20) is at or above the threshold of 32°C. Current WBGT: 32.4°C",
       },
       {
         caption: "Crossing up through 33°C",
-        text: "🔴 WBGT Alert: WBGT ZRB (WC-20) has exceeded the threshold of 33°C. Current WBGT: 33.4°C",
+        text: "🔴 WBGT Alert: WBGT ZRB (WC-20) is at or above the threshold of 33°C. Current WBGT: 33.4°C",
       },
       {
         caption: "Recovering below 31°C",

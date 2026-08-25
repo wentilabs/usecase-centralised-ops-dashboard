@@ -557,12 +557,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     client_identifier_number: {
       label: "Source client identifier",
-      help: "Which listener client's forwarded messages belong to this project. Either this or the safety group IDs must be set, or nothing routes here.",
+      help: "Which listener client sent the message — a company, not a project. Several project codes share one, so this cannot identify a project and is already gated upstream in the middleware. Leave it blank and route by group IDs; set on its own it matches every site in that company.",
     },
     safety_group_ids: {
       label: "Source group IDs",
       widget: "groups",
-      help: "Inbound only. Comma-separated; messages from these groups are accepted as this project's.",
+      help: "Inbound only, and the only thing that routes a message to this project. Comma-separated; messages from these groups are accepted as this project's. Empty means nothing arrives.",
     },
     spreadsheet_id: {
       label: "Manpower workbook",

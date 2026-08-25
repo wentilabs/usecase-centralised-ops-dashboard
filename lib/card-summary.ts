@@ -348,15 +348,21 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "morning report", on: config.enabled !== false },
         { label: "manpower workbook", on: on(config.spreadsheet_id) },
         {
-          // What it answers: does anything reach this project at all? A
-          // forwarded message is matched to a project either by the group it
-          // came from (`safety_group_ids`) or by which listener client sent it
-          // (`client_identifier_number`). With neither set, intake can be on
-          // and still receive nothing, which is the state this pill exists to
-          // make visible. Named "source routing" at first, which said how it
-          // works rather than what it tells you.
+          // What it answers: does anything reach this project at all? Only
+          // `safety_group_ids` answers it. `client_identifier_number` is NOT a
+          // project identifier — several project codes share one, because it
+          // identifies the listener client, which is a company. The service's
+          // matcher ORs the two when only one is set, so a row carrying just a
+          // client identifier matches every message from every site in that
+          // company; the identifier is already gated upstream in the
+          // middleware, which is where it belongs.
+          //
+          // So this pill is lit by the group list alone. A project with a
+          // client identifier and no groups is not routed — it is a wildcard,
+          // and showing it as configured would hide exactly the mistake worth
+          // seeing.
           label: "message source",
-          on: on(config.safety_group_ids) || on(config.client_identifier_number),
+          on: on(config.safety_group_ids),
         },
       ];
     case "issueChaser":

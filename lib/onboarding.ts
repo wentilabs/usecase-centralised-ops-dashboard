@@ -410,7 +410,8 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       "Creates one row in manpower_activity.project_configs. Two routes: housekeeping intake, and the outbound morning activity + manpower summary.",
     outsideHalo: [
       "Share the manpower workbook with the service account as Editor. This service writes the `Daily Activity` tab and maintains `Activity and Manpower Daily`; the `Manpower` and `Machines` tabs belong to the base template.",
-      "Point the base template's forwarder at this service, and make sure the source client identifier or the source group IDs below match what it actually sends — neither set means nothing routes here.",
+      "Fill in the source group IDs. They are the only thing that routes a message to this project: `client_identifier_number` names the company's listener client, several project codes share one, and the middleware already gates on it upstream. With no groups, intake is switched on and nothing arrives.",
+      "Point the base template's forwarder at this service, and confirm the groups it forwards from are the ones listed here.",
       "The morning report needs a destination group as well as the send URL. With the group blank it stays switched on and delivers nothing.",
     ],
     fields: [
@@ -436,15 +437,23 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         kind: "text",
         required: false,
         notNull: false,
-        help: "Either this or the source group IDs must be set for anything to route here.",
+        // Not a project identifier: several project codes share one, because it
+        // names the listener client, which is a company. Set on its own it
+        // matches every site in that company. The middleware already gates on
+        // it upstream, so leaving it blank is the normal case.
+        help: "Optional, and not how routing works — it names the company's listener client, not this project. Leave blank unless you know why you are setting it.",
       },
       {
         column: "safety_group_ids",
         label: "Source group IDs",
         kind: "groups",
+        // Not required, because the column is NOT NULL with a '' default and a
+        // project is often drafted before its groups exist. The gap is called
+        // out in `outsideHalo` instead, and the card's "message source" pill
+        // shows it as unlit until it is filled.
         required: false,
         notNull: true,
-        help: "Inbound only — messages from these groups are accepted as this project's.",
+        help: "The only thing that routes a message to this project. Without at least one group, intake is on and nothing arrives.",
       },
       {
         column: "manpower_activity_outbound_group_id",

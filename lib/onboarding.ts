@@ -400,17 +400,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
   },
   subcon: {
     service: "subcon",
-    // The table has no CHECK on project_code, and the code is not used to build
-    // an identifier, so this is HALO's own conservative rule.
+    // The table has no CHECK on project_code and the code is not used to build an
+    // identifier, so this is HALO's own conservative rule.
     codePattern: /^[A-Za-z0-9][A-Za-z0-9 _-]{0,47}$/,
     codeHelp: "Letters, digits, spaces, hyphen and underscore.",
     label: "＋ Add project",
     title: "Add a new Subcon Activities project",
     description:
-      "Creates one row in manpower_activity.project_configs. Housekeeping intake only — there is no outbound surface to configure.",
+      "Creates one row in manpower_activity.project_configs. Two routes: housekeeping intake, and the outbound morning activity + manpower summary.",
     outsideHalo: [
-      "Share the manpower workbook with the service account as Editor. This service appends to the `Daily Activity` tab; the `Manpower` and `Machines` tabs belong to the base template.",
-      "Point the base template's forwarder at this service, and make sure the source client identifier or group IDs below match what it sends.",
+      "Share the manpower workbook with the service account as Editor. This service writes the `Daily Activity` tab and maintains `Activity and Manpower Daily`; the `Manpower` and `Machines` tabs belong to the base template.",
+      "Point the base template's forwarder at this service, and make sure the source client identifier or the source group IDs below match what it actually sends — neither set means nothing routes here.",
+      "The morning report needs a destination group as well as the send URL. With the group blank it stays switched on and delivers nothing.",
     ],
     fields: [
       {
@@ -426,27 +427,46 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         label: "Manpower workbook",
         kind: "sheet",
         required: true,
-        notNull: false,
-        help: "Must already exist and be shared with the service account.",
+        notNull: true,
+        help: "Must already exist and be shared with the service account as Editor.",
       },
       {
-        column: "source_client_identifier",
+        column: "client_identifier_number",
         label: "Source client identifier",
         kind: "text",
         required: false,
         notNull: false,
-        help: "Either this or the group IDs must be set, or nothing routes here.",
+        help: "Either this or the source group IDs must be set for anything to route here.",
       },
       {
-        column: "source_group_ids",
+        column: "safety_group_ids",
         label: "Source group IDs",
         kind: "groups",
         required: false,
+        notNull: true,
+        help: "Inbound only — messages from these groups are accepted as this project's.",
+      },
+      {
+        column: "manpower_activity_outbound_group_id",
+        label: "Morning report group",
+        kind: "groups",
+        required: false,
+        notNull: true,
+        help: "Where the daily summary is sent.",
+      },
+      { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
+      { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
         notNull: false,
-        help: "Comma-separated. Inbound only.",
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
       },
     ],
   },
+
   issueChaser: {
     service: "issueChaser",
     codePattern: /^[A-Z0-9][A-Z0-9-]{0,47}$/,

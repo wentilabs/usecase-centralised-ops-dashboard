@@ -543,20 +543,23 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Company",
       help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
     },
-    // The service was reduced to one route: POST /housekeeping-intake. Water
-    // Parade moved to WBGT; manpower classification, extraction and every
-    // outbound message moved to the base template. `enabled`, `timezone` and all
-    // delivery columns were dropped with them, so what is left is the intake
-    // surface and nothing else.
+    // Two routes: POST /housekeeping-intake accepts forwarded messages, and
+    // POST /daily-activity-manpower-summary sends the morning report. Water
+    // Parade belongs to WBGT, and the base template still owns manpower
+    // classification and the Manpower/Machines tabs.
     enable_housekeeping: {
       label: "Housekeeping intake",
-      help: "Off means forwarded housekeeping messages are ignored for this project. There is no other switch — the service has no outbound surface at all.",
+      help: "Off means forwarded housekeeping messages are ignored. Independent of Enabled, which governs the outbound morning report.",
     },
-    source_client_identifier: {
+    enabled: {
+      label: "Morning report",
+      help: "Governs outbound delivery of the daily activity + manpower summary. Intake continues either way.",
+    },
+    client_identifier_number: {
       label: "Source client identifier",
-      help: "Which listener client's forwarded messages belong to this project.",
+      help: "Which listener client's forwarded messages belong to this project. Either this or the safety group IDs must be set, or nothing routes here.",
     },
-    source_group_ids: {
+    safety_group_ids: {
       label: "Source group IDs",
       widget: "groups",
       help: "Inbound only. Comma-separated; messages from these groups are accepted as this project's.",
@@ -564,8 +567,16 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     spreadsheet_id: {
       label: "Manpower workbook",
       widget: "sheet",
-      help: "This service writes only the `Daily Activity` tab. The `Manpower` and `Machines` tabs belong to the base template.",
+      help: "This service writes the `Daily Activity` tab, and the summary route also maintains `Activity and Manpower Daily`. The `Manpower` and `Machines` tabs belong to the base template.",
     },
+    manpower_activity_outbound_group_id: {
+      label: "Morning report group",
+      widget: "groups",
+      help: "Where the daily summary is sent. Empty means the report has nowhere to go even with Morning report on.",
+    },
+    instance_name: { label: "WhatsApp instance", row: "wa_identity" },
+    client_id: { label: "Client ID", row: "wa_identity" },
+    lambda_url: { label: "Send-message proxy URL" },
 
     project_code: { label: "Project code" },
     id: { hidden: true },
@@ -770,8 +781,12 @@ const GROUPS: Record<string, FieldGroup[]> = {
 
   subcon: [
     { title: "Project", fields: ["company", "project_code"] },
-    { title: "Intake", fields: ["enable_housekeeping", "source_client_identifier", "source_group_ids"] },
+    { title: "Intake", fields: ["enable_housekeeping", "client_identifier_number", "safety_group_ids"] },
     { title: "Google Sheets", fields: ["spreadsheet_id"] },
+    {
+      title: "Morning report",
+      fields: ["enabled", "manpower_activity_outbound_group_id", "instance_name", "client_id", "lambda_url"],
+    },
   ],
   issueChaser: [
     { title: "Status", fields: ["company", "enabled", "timezone"] },

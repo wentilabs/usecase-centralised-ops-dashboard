@@ -28,9 +28,13 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   haze: [{ column: "wa_group_ids" }],
   lightning: [{ column: "whatsapp_group_id" }],
   ailytics: [{ column: "whatsapp_group_ids" }],
-  // The reduced housekeeping service has no outbound surface at all, so the only
-  // groups it knows about are the ones it accepts messages FROM.
-  subcon: [{ column: "source_group_ids", role: "inbound" }],
+  // Two directions again: safety_group_ids is where messages come FROM, and the
+  // morning report goes TO its own group. Labelled so the card cannot imply that
+  // an inbound group receives anything.
+  subcon: [
+    { column: "manpower_activity_outbound_group_id", role: "morning report" },
+    { column: "safety_group_ids", role: "inbound" },
+  ],
   issueChaser: [{ column: "whatsapp_group_ids" }],
 };
 
@@ -196,14 +200,22 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "subcon") {
-    // One route now: POST /housekeeping-intake, appending to the Daily Activity
-    // tab. Water Parade moved to WBGT; manpower classification, extraction and
-    // every outbound message moved to the base template, and `enabled`,
-    // `timezone` and the delivery columns were dropped with them.
-    if (config.enable_housekeeping === false) {
-      return "Housekeeping intake disabled — forwarded messages are ignored";
+    // Two independent routes: /housekeeping-intake accepts forwarded messages,
+    // /daily-activity-manpower-summary sends the morning report. `enabled`
+    // governs only the second — intake runs either way, which is the distinction
+    // the old single-switch wording lost.
+    const parts: string[] = [];
+    if (config.enable_housekeeping !== false) {
+      parts.push("housekeeping events appended to the Daily Activity tab");
     }
-    return "Event-driven on forwarded WhatsApp — accepted housekeeping events appended to the Daily Activity tab";
+    if (config.enabled !== false) parts.push("morning activity + manpower summary");
+    if (!parts.length) return "Both routes off — nothing is accepted and nothing is sent";
+    let line = `Event-driven on forwarded WhatsApp — ${parts.join(" · ")}`;
+    // A report with no destination is the quiet failure worth surfacing.
+    if (config.enabled !== false && !String(config.manpower_activity_outbound_group_id ?? "").trim()) {
+      line += " — no morning report group set, so nothing is delivered";
+    }
+    return line;
   }
   if (service === "issueChaser") {
     const parts: string[] = [];
@@ -333,8 +345,12 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "subcon":
       return [
         { label: "housekeeping intake", on: config.enable_housekeeping !== false },
-        { label: "Daily Activity tab", on: on(config.spreadsheet_id) },
-        { label: "source routing", on: on(config.source_group_ids) || on(config.source_client_identifier) },
+        { label: "morning report", on: config.enabled !== false },
+        { label: "manpower workbook", on: on(config.spreadsheet_id) },
+        {
+          label: "source routing",
+          on: on(config.safety_group_ids) || on(config.client_identifier_number),
+        },
       ];
     case "issueChaser":
       return [
@@ -483,8 +499,9 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     );
   }
   if (service === "subcon") {
-    // The only switch left. There is no `enabled` column any more.
-    return config.enable_housekeeping !== false;
+    // Either route is work. `enabled` came back with the morning report, but it
+    // governs only that — a project with intake on is not idle.
+    return config.enable_housekeeping !== false || config.enabled !== false;
   }
   if (service === "issueChaser") {
     // `enabled` alone sends nothing — a chaser style has to be on too, and a

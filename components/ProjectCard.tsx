@@ -24,7 +24,7 @@ const TAG_TONE: Record<ServiceKey, string> = {
  * are ignored rather than that outbound is muted.
  */
 const STATUS_WORDING: Partial<Record<ServiceKey, { on: string; off: string }>> = {
-  subcon: { on: "● INTAKE ON", off: "○ INTAKE OFF" },
+  subcon: { on: "● ACTIVE", off: "○ BOTH ROUTES OFF" },
 };
 
 /**
@@ -36,7 +36,10 @@ const STATUS_WORDING: Partial<Record<ServiceKey, { on: string; off: string }>> =
  * because the column is absent rather than false.
  */
 function isProjectOn(service: ServiceKey, config: ProjectConfigRow): boolean {
-  if (service === "subcon") return config.enable_housekeeping !== false;
+  // Subcon has two independent switches and `enabled` is not the master one: it
+  // governs the outbound morning report only, while `enable_housekeeping` gates
+  // the intake. A project doing either is on.
+  if (service === "subcon") return config.enable_housekeeping !== false || config.enabled !== false;
   return config.enabled !== false;
 }
 

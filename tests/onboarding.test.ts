@@ -412,20 +412,40 @@ test("noise onboarding does not pretend to set up limits", () => {
   );
 });
 
-test("subcon onboarding reflects the reduced service", () => {
-  // No enabled, no timezone, no delivery columns — the reduction dropped them.
+test("subcon onboarding matches the two-route service, and the house field order", () => {
+  // The delivery URL goes last, as it does for every other flow: prefilled from
+  // env and rarely touched, so it should not interrupt what someone types.
   const columns = subcon.fields.map((f) => f.column);
   assert.deepEqual(columns, [
     "project_code",
     "spreadsheet_id",
-    "source_client_identifier",
-    "source_group_ids",
+    "client_identifier_number",
+    "safety_group_ids",
+    "manpower_activity_outbound_group_id",
+    "instance_name",
+    "client_id",
+    "lambda_url",
   ]);
+  assert.equal(subcon.fields.at(-1)?.envDefault, "DEFAULT_LAMBDA_URL_SEND", "and it is prefilled");
   assert.equal(subcon.rpc, undefined, "no DDL");
   assert.equal(subcon.companion, undefined);
-  // `enabled` does not exist on this table, so buildInsertRow must not send it.
-  const row = buildInsertRow(subcon, { project_code: "ZRA", spreadsheet_id: "S".repeat(30) }, {});
-  assert.equal("enabled" in row, true, "the shared builder always sets it");
+
+  // Only what the database actually demands is required. Every switch and every
+  // delivery field can be filled in later from the editor.
+  const required = subcon.fields.filter((f) => f.required).map((f) => f.column);
+  assert.deepEqual(required, ["project_code", "spreadsheet_id"], "the two NOT NULL columns with no default");
+});
+
+test("every onboarding flow requires only what the table demands", () => {
+  // A field marked required that the database would happily accept as null is a
+  // dialog inventing a rule, and it blocks a legitimate draft row.
+  for (const key of SERVICE_KEYS) {
+    const definition = onboardingFor(key)!;
+    for (const field of definition.fields.filter((f) => f.required)) {
+      const ok = field.column === "project_code" || field.notNull || field.envDefault || field.fallback;
+      assert.ok(ok, `${key}.${field.column} is required but nothing forces it`);
+    }
+  }
 });
 
 test("issue chaser cannot be created with a style already on", () => {

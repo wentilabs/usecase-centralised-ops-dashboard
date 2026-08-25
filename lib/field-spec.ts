@@ -77,6 +77,7 @@ const READONLY: Record<string, string[]> = {
   // Same shape as ailytics: uuid identity, project_code is how the intake
   // resolves a forwarded message to this row.
   subcon: ["id", "project_code", "created_at", "updated_at"],
+  issueChaser: ["project_code", "created_at", "updated_at"],
 };
 
 // Allowed values for CHECK-constrained (non-enum) columns. Keep in sync with
@@ -164,11 +165,16 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
+      // The sentinel is exact-match and unmixable, and getting it wrong fails
+      // silently — a value containing `manpower-sheet` alongside anything else
+      // resolves to NO numbers, so nobody is mentioned and nothing complains.
+      help: "Digits only, comma-separated, 8+ digits each. Or the single value `manpower-sheet` to take today's sender/PIC phones from the Manpower tab of the Manpower sheet — on its own, never mixed with numbers, or no one is mentioned at all.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
       widget: "groups",
+      help: "Per-group opt-in, fail-closed: empty means nothing is mentioned anywhere.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
 
@@ -497,68 +503,83 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   },
 
   subcon: {
-    // `enabled` means something narrower here than in the alert services: the
-    // intake, classification, Supabase writes and Sheet writes all still run
-    // when it is off. Only outbound WhatsApp is withheld.
-    enabled: {
-      label: "Outbound WhatsApp enabled",
-      help: "Notification entitlement ONLY. Off still classifies inbound messages and writes Supabase and the Google Sheets — it just sends nothing.",
-    },
-    timezone: { label: "Timezone" },
-
-    enable_manpower: {
-      label: "Manpower & activity",
-      help: "Classify manpower, attendance and daily-activity messages into the Manpower / Machines / Daily Activity tabs.",
-    },
+    // The service was reduced to one route: POST /housekeeping-intake. Water
+    // Parade moved to WBGT; manpower classification, extraction and every
+    // outbound message moved to the base template. `enabled`, `timezone` and all
+    // delivery columns were dropped with them, so what is left is the intake
+    // surface and nothing else.
     enable_housekeeping: {
-      label: "Housekeeping",
-      help: "Match housekeeping completion messages and send the end-of-day report.",
+      label: "Housekeeping intake",
+      help: "Off means forwarded housekeeping messages are ignored for this project. There is no other switch — the service has no outbound surface at all.",
     },
-    enable_water_parade: {
-      label: "Water Parade",
-      help: "Open a Water Parade cycle on each non-green hourly WBGT reading and chase it with two half-hourly reminders.",
-    },
-
     source_client_identifier: {
-      label: "Inbound listener identifier",
-      help: "The listener/bot identity on forwarded messages, e.g. 6587842038. Distinct from the outbound Client ID below.",
+      label: "Source client identifier",
+      help: "Which listener client's forwarded messages belong to this project.",
     },
     source_group_ids: {
-      label: "Inbound source groups",
+      label: "Source group IDs",
       widget: "groups",
-      help: "Comma-separated groups whose messages this project accepts. Left blank, the listener identifier alone resolves the project.",
+      help: "Inbound only. Comma-separated; messages from these groups are accepted as this project's.",
     },
-
     spreadsheet_id: {
-      label: "Manpower spreadsheet ID",
+      label: "Manpower workbook",
       widget: "sheet",
-      help: "Holds the Manpower, Machines and Daily Activity tabs. A spreadsheet id forwarded by the project Lambda overrides this fallback.",
-    },
-    wbgt_google_sheet_id: {
-      label: "WBGT spreadsheet ID",
-      widget: "sheet",
-      help: "Where the Water Parade tab lives — that record belongs with the WBGT-triggered sheet, not the manpower one.",
+      help: "This service writes only the `Daily Activity` tab. The `Manpower` and `Machines` tabs belong to the base template.",
     },
 
-    manpower_activity_outbound_group_id: {
-      label: "Manpower / activity group",
-      widget: "groups",
-      help: "Receives the morning activity and manpower summary.",
+    project_code: { label: "Project code" },
+    id: { hidden: true },
+    created_at: { hidden: true },
+    updated_at: { hidden: true },
+  },
+  issueChaser: {
+    // Two CHECK constraints shape everything here, and both bite on save rather
+    // than at run time:
+    //   issue_chaser_enabled_delivery_check — `enabled` is refused unless the
+    //     sheet id and the full delivery set are present.
+    //   issue_chaser_feature_requires_enabled_check — a style toggle is refused
+    //     unless `enabled` is already true. That is the inverse of every sibling
+    //     service, where you configure first and switch on last.
+    enabled: {
+      label: "Project enabled",
+      help: "Refused unless the Safety sheet ID, an https send URL, instance and client are all set. Must be on before any chaser style can be turned on.",
     },
-    housekeeping_outbound_group_id: {
-      label: "Housekeeping group",
+    safety_sheet_id: {
+      label: "Safety workbook",
+      widget: "sheet",
+      help: "Source of all issue state. The service finds the `Safety` tab and any `Safety-MMM YYYY` archives, reads rows by header name, and never writes to it.",
+    },
+    severity_cadence_chaser_enabled: {
+      label: "Severity cadence chaser",
+      help: "P1 every 3 hours round the clock; P2 daily and P3 weekly, both 07:00–19:00 SGT. A due time in quiet hours waits for the next in-window tick.",
+    },
+    same_day_open_snapshot_enabled: {
+      label: "Same-day open snapshot",
+      help: "09:00 and 21:00 SGT. Issues opened today and still open — deliberately does not chase older ones.",
+    },
+    priority_one_escalation_enabled: {
+      label: "P1 escalation digest",
+      help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours.",
+    },
+    include_issue_images: { label: "Include issue images", help: "Sends the sheet's `Image` for each issue." },
+    mention_sender_fallback: {
+      label: "Mention the sender",
+      help: "Tags the issue's `Sender Phone` when no PIC phone is available.",
+    },
+    send_to_originating_groups: {
+      label: "Reply in the originating group",
+      help: "Recovers the group from the sheet's `Message Id Serialized`, so no per-project group is needed. Off — or when that column is missing — delivery falls back to the group list below.",
+    },
+    whatsapp_group_ids: {
+      label: "WhatsApp group IDs",
       widget: "groups",
-      help: "Receives the end-of-day housekeeping report.",
+      help: "Fallback destinations. Required to enable the project unless Reply in the originating group is on.",
     },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
-    outbound_lambda_url: {
-      label: "Send-message proxy URL",
-      help: "Either the listener receiver root or its full /send-message URL — the service normalises the root form.",
-    },
-    reply_lambda_url: { label: "Reply proxy URL" },
+    lambda_url: { label: "Send-message proxy URL" },
+    timezone: { label: "Timezone", help: "Pinned to Asia/Singapore by a CHECK." },
 
-    id: { hidden: true },
     project_code: { hidden: true },
     created_at: { hidden: true },
     updated_at: { hidden: true },
@@ -704,20 +725,25 @@ const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   subcon: [
+    { title: "Project", fields: ["project_code"] },
+    { title: "Intake", fields: ["enable_housekeeping", "source_client_identifier", "source_group_ids"] },
+    { title: "Google Sheets", fields: ["spreadsheet_id"] },
+  ],
+  issueChaser: [
     { title: "Status", fields: ["enabled", "timezone"] },
-    { title: "Usecases", fields: ["enable_manpower", "enable_housekeeping", "enable_water_parade"] },
-    { title: "Inbound", fields: ["source_client_identifier", "source_group_ids"] },
-    { title: "Google Sheets", fields: ["spreadsheet_id", "wbgt_google_sheet_id"] },
+    { title: "Safety sheet", fields: ["safety_sheet_id"] },
+    {
+      title: "Chaser styles",
+      fields: [
+        "severity_cadence_chaser_enabled",
+        "same_day_open_snapshot_enabled",
+        "priority_one_escalation_enabled",
+      ],
+    },
+    { title: "Message content", fields: ["include_issue_images", "mention_sender_fallback"] },
     {
       title: "Delivery",
-      fields: [
-        "manpower_activity_outbound_group_id",
-        "housekeeping_outbound_group_id",
-        "instance_name",
-        "client_id",
-        "outbound_lambda_url",
-        "reply_lambda_url",
-      ],
+      fields: ["send_to_originating_groups", "whatsapp_group_ids", "instance_name", "client_id", "lambda_url"],
     },
   ],
 };

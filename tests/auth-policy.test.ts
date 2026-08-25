@@ -205,36 +205,48 @@ test("lightning fires-at distinguishes red-only sites", () => {
 // Subcon Activities — the one service whose `enabled` flag is not a master
 // switch, and the first with several group columns that mean different things.
 // ---------------------------------------------------------------------------
-test("subcon fires-at names the jobs its toggles enable", () => {
-  const all = { enable_manpower: true, enable_housekeeping: true, enable_water_parade: true };
-  const line = firesAt("subcon", all);
-  assert.match(line, /morning activity \+ manpower summary/);
-  assert.match(line, /end-of-day housekeeping report/);
-  assert.match(line, /next two :00\/:30/);
+test("subcon fires-at describes the one route it now has", () => {
+  // The repo was reduced to POST /housekeeping-intake. Water Parade moved to
+  // WBGT, manpower and every outbound message moved to the base template, and
+  // the migration dropped `enabled`, `timezone` and the delivery columns.
+  const line = firesAt("subcon", { enable_housekeeping: true });
+  assert.match(line, /Daily Activity tab/);
+  assert.doesNotMatch(line, /manpower|Water Parade/i, "those are other services' work now");
 
-  // enable_manpower and enable_housekeeping default true in Postgres, so an
-  // empty row is NOT idle — only an explicit false turns them off.
-  assert.match(firesAt("subcon", {}), /morning activity/);
+  // enable_housekeeping defaults true in Postgres, so an empty row is not idle.
+  assert.match(firesAt("subcon", {}), /Daily Activity tab/);
+  assert.match(firesAt("subcon", { enable_housekeeping: false }), /disabled — forwarded messages are ignored/);
+});
+
+test("subcon has one switch, and it is not called enabled", () => {
+  // `enabled` no longer exists on this table. Reading it would report every
+  // project as on, because the column is absent rather than false.
+  assert.equal(hasCadence("subcon", {}), true, "defaults true in Postgres");
+  assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false);
   assert.equal(
-    firesAt("subcon", { enable_manpower: false, enable_housekeeping: false, enable_water_parade: false }),
-    "No usecases enabled",
+    hasCadence("subcon", { enabled: false, enable_housekeeping: true }),
+    true,
+    "a stray `enabled` must not be consulted",
   );
 });
 
-test("subcon says outbound is muted rather than implying nothing runs", () => {
-  const muted = firesAt("subcon", { enabled: false, enable_manpower: true });
-  assert.match(muted, /outbound muted, still classifying and writing sheets/);
-  assert.doesNotMatch(firesAt("subcon", { enabled: true, enable_manpower: true }), /muted/);
+test("issue chaser needs a style on, not just enabled", () => {
+  // A CHECK refuses any style unless `enabled` is already true, so enabled-only
+  // is a real and silent state: nothing is ever sent.
+  assert.equal(hasCadence("issueChaser", { enabled: true }), false);
+  assert.equal(hasCadence("issueChaser", { enabled: true, severity_cadence_chaser_enabled: true }), true);
+  assert.match(firesAt("issueChaser", { enabled: true }), /No chaser style enabled/);
 
-  // Cadence drives the grey scrim and the sort; a muted project is still busy.
-  assert.equal(hasCadence("subcon", { enabled: false, enable_water_parade: true }), true);
-  assert.equal(
-    hasCadence("subcon", { enable_manpower: false, enable_housekeeping: false, enable_water_parade: false }),
-    false,
+  const line = firesAt("issueChaser", { enabled: true, severity_cadence_chaser_enabled: true });
+  assert.match(line, /P1 every 3h/);
+  assert.match(line, /originating group/, "the usual destination is not a configured group");
+  assert.match(
+    firesAt("issueChaser", { severity_cadence_chaser_enabled: true, send_to_originating_groups: false }),
+    /configured groups/,
   );
 });
 
-test("delivery groups keep each service's columns and label subcon's roles", () => {
+test("delivery groups keep each service's columns", () => {
   assert.deepEqual(deliveryGroups("wbgt", { whatsapp_group_id: "a@g.us, b@g.us" }), [
     { chatId: "a@g.us", role: undefined },
     { chatId: "b@g.us", role: undefined },
@@ -243,34 +255,41 @@ test("delivery groups keep each service's columns and label subcon's roles", () 
   assert.deepEqual(deliveryGroups("ailytics", { whatsapp_group_ids: "x@g.us" }), [
     { chatId: "x@g.us", role: undefined },
   ]);
+  assert.deepEqual(deliveryGroups("issueChaser", { whatsapp_group_ids: "i@g.us" }), [
+    { chatId: "i@g.us", role: undefined },
+  ]);
 
-  // One chat serving two roles must collapse to a single entry — repeating it
-  // would also duplicate the React key on the card.
-  assert.deepEqual(
-    deliveryGroups("subcon", {
-      manpower_activity_outbound_group_id: "same@g.us",
-      housekeeping_outbound_group_id: "same@g.us",
-      source_group_ids: "in@g.us",
-    }),
-    [
-      { chatId: "same@g.us", role: "manpower + housekeeping" },
-      { chatId: "in@g.us", role: "inbound" },
-    ],
-  );
+  // Subcon has no outbound surface at all now, so the only group it knows is the
+  // one it accepts messages FROM — labelled so the card cannot imply otherwise.
+  assert.deepEqual(deliveryGroups("subcon", { source_group_ids: "in@g.us" }), [
+    { chatId: "in@g.us", role: "inbound" },
+  ]);
   assert.deepEqual(deliveryGroups("subcon", {}), []);
+
+  // One chat serving two roles still collapses to a single entry — repeating it
+  // would duplicate the React key on the card.
+  assert.deepEqual(
+    deliveryGroups("wbgt", { whatsapp_group_id: "same@g.us", water_parade_outbound_group_id: "same@g.us" }),
+    [{ chatId: "same@g.us", role: "water parade" }],
+  );
 });
 
 test("the same spreadsheet_id column is labelled per service", () => {
-  const subcon = autoLinks("subcon", { spreadsheet_id: "S1", wbgt_google_sheet_id: "W1" });
+  // Subcon writes only the Daily Activity tab of the manpower workbook, so
+  // "Manpower sheet" over-claimed what this service touches.
   assert.deepEqual(
-    subcon.map((l) => l.label),
-    ["📗 Manpower sheet", "📗 WBGT sheet (Water Parade)"],
+    autoLinks("subcon", { spreadsheet_id: "S1" }).map((l) => l.label),
+    ["📗 Daily Activity"],
   );
-  assert.match(subcon[0].href, /spreadsheets\/d\/S1\/edit$/);
+  assert.match(autoLinks("subcon", { spreadsheet_id: "S1" })[0].href, /spreadsheets\/d\/S1\/edit$/);
 
   assert.deepEqual(
     autoLinks("ailytics", { spreadsheet_id: "S1" }).map((l) => l.label),
     ["📗 Safety sheet"],
+  );
+  assert.deepEqual(
+    autoLinks("issueChaser", { safety_sheet_id: "K1" }).map((l) => l.label),
+    ["📗 Safety workbook"],
   );
   // Unchanged for the alert services.
   assert.deepEqual(
@@ -290,9 +309,13 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   assert.ok(ltg.some((p) => p.label === "🔴 POC mentions" && p.on));
 
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
-  assert.ok(subconPills.some((p) => p.label === "outbound WhatsApp" && !p.on));
-  assert.ok(subconPills.some((p) => p.label === "Water Parade" && p.on));
-  assert.ok(subconPills.some((p) => p.label === "manpower & activity" && p.on), "defaults to on");
+  // Subcon has no outbound surface at all now, so there is no such pill to show.
+  assert.ok(!subconPills.some((p) => p.label === "outbound WhatsApp"));
+  assert.ok(subconPills.some((p) => p.label === "housekeeping intake"));
+  // Water Parade belongs to the WBGT service now, so subcon must not claim it.
+  assert.ok(!subconPills.some((p) => /Water Parade/.test(p.label)));
+  // enable_housekeeping defaults true in Postgres, so an absent flag reads as on.
+  assert.ok(subconPills.some((p) => p.label === "housekeeping intake" && p.on), "defaults to on");
 });
 
 // ---------------------------------------------------------------------------
@@ -309,7 +332,11 @@ test("every registered service is fully wired", () => {
   };
 
   for (const key of SERVICE_KEYS) {
-    const spec = buildFieldSpec(key, { ...columns, ...(SERVICES[key].idColumn === "id" ? { id: identity } : {}) });
+    // Subcon genuinely has no `enabled` column since the reduction, so injecting
+    // one would test a shape that cannot occur.
+    const { enabled, ...withoutEnabled } = columns;
+    const base = key === "subcon" ? withoutEnabled : columns;
+    const spec = buildFieldSpec(key, { ...base, ...(SERVICES[key].idColumn === "id" ? { id: identity } : {}) });
 
     // A missing READONLY entry would silently make the business key writable.
     for (const locked of ["project_code", "created_at", "updated_at"]) {
@@ -321,9 +348,13 @@ test("every registered service is fully wired", () => {
     assert.equal(spec.fields.created_at?.hidden, true, `${key}.created_at must be hidden`);
     assert.equal(spec.fields.updated_at?.hidden, true, `${key}.updated_at must be hidden`);
 
-    // `enabled` is meaningful for every service, so it must be labelled and
-    // placed — never swept into "Other".
-    assert.notEqual(spec.fields.enabled?.label, "enabled", `${key}.enabled needs a label`);
+    // `enabled` is meaningful for every service that HAS it — subcon's was
+    // dropped when the repo was reduced, and its switch is enable_housekeeping.
+    if (spec.fields.enabled) {
+      assert.notEqual(spec.fields.enabled.label, "enabled", `${key}.enabled needs a label`);
+    } else {
+      assert.equal(key, "subcon", `${key} has no enabled column — only subcon should not`);
+    }
     const titles = spec.groups.map((g) => g.title);
     assert.ok(titles.length > 0, `${key} has no groups`);
     assert.ok(!titles.includes("Other"), `${key} put a known column in Other: ${JSON.stringify(spec.groups)}`);
@@ -337,7 +368,8 @@ test("every service resolves its WhatsApp group column", () => {
     whatsapp_group_id: "a@g.us",
     wa_group_ids: "a@g.us",
     whatsapp_group_ids: "a@g.us",
-    manpower_activity_outbound_group_id: "a@g.us",
+    // Subcon's only group column is inbound — it has no outbound surface.
+    source_group_ids: "a@g.us",
   };
   for (const key of SERVICE_KEYS) {
     assert.ok(deliveryGroups(key, row).length > 0, `${key} resolves no delivery group`);
@@ -370,13 +402,13 @@ test("every group-picker column is one we resolve names for", () => {
 });
 
 test("chat ids are collected across every service's columns", () => {
-  // Subcon's role-specific columns are included by derivation, not by hand.
+  // Every group column is included by derivation from GROUP_COLUMNS, not by hand.
   for (const column of [
     "whatsapp_group_id",
     "wa_group_ids",
     "whatsapp_group_ids",
-    "manpower_activity_outbound_group_id",
-    "housekeeping_outbound_group_id",
+    // Subcon's outbound columns were dropped with the reduction; only its
+    // inbound routing column survives.
     "source_group_ids",
     "alert_whatsapp_gid",
     "poc_alert_wa_groups",

@@ -28,11 +28,10 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   haze: [{ column: "wa_group_ids" }],
   lightning: [{ column: "whatsapp_group_id" }],
   ailytics: [{ column: "whatsapp_group_ids" }],
-  subcon: [
-    { column: "manpower_activity_outbound_group_id", role: "manpower" },
-    { column: "housekeeping_outbound_group_id", role: "housekeeping" },
-    { column: "source_group_ids", role: "inbound" },
-  ],
+  // The reduced housekeeping service has no outbound surface at all, so the only
+  // groups it knows about are the ones it accepts messages FROM.
+  subcon: [{ column: "source_group_ids", role: "inbound" }],
+  issueChaser: [{ column: "whatsapp_group_ids" }],
 };
 
 export type DeliveryGroup = { chatId: string; role?: string };
@@ -197,20 +196,28 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "subcon") {
-    const parts: string[] = [];
-    // enable_manpower and enable_housekeeping default to true in Postgres, so
-    // only an explicit false turns them off.
-    if (config.enable_manpower !== false) parts.push("morning activity + manpower summary");
-    if (config.enable_housekeeping !== false) parts.push("end-of-day housekeeping report");
-    if (config.enable_water_parade) {
-      parts.push("Water Parade reminders at the next two :00/:30 after a non-green hourly WBGT reading");
+    // One route now: POST /housekeeping-intake, appending to the Daily Activity
+    // tab. Water Parade moved to WBGT; manpower classification, extraction and
+    // every outbound message moved to the base template, and `enabled`,
+    // `timezone` and the delivery columns were dropped with them.
+    if (config.enable_housekeeping === false) {
+      return "Housekeeping intake disabled — forwarded messages are ignored";
     }
-    if (!parts.length) return "No usecases enabled";
-    let line = `Event-driven on forwarded WhatsApp — ${parts.join(" · ")}`;
-    // The distinction the service is emphatic about: `enabled` gates outbound
-    // only, so a muted project is still classifying and writing sheets.
-    if (config.enabled === false) line += " — outbound muted, still classifying and writing sheets";
-    return line;
+    return "Event-driven on forwarded WhatsApp — accepted housekeeping events appended to the Daily Activity tab";
+  }
+  if (service === "issueChaser") {
+    const parts: string[] = [];
+    if (config.severity_cadence_chaser_enabled) {
+      parts.push("P1 every 3h round the clock, P2 daily and P3 weekly within 07:00–19:00");
+    }
+    if (config.same_day_open_snapshot_enabled) parts.push("same-day open snapshot at 09:00 and 21:00");
+    if (config.priority_one_escalation_enabled) parts.push("P1 digest every 2h, 09:00–18:00");
+    if (!parts.length) return "No chaser style enabled — nothing is sent";
+    const line = `Reads the Safety workbook — ${parts.join(" · ")}`;
+    // Worth stating: the destination is usually not a configured group at all.
+    return config.send_to_originating_groups === false
+      ? `${line} — replies to the configured groups`
+      : `${line} — replies in each issue's originating group`;
   }
 
   return "Event-driven — fires when the CCTV bot posts.";
@@ -229,6 +236,18 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
 export type Pill = { label: string; on: boolean; tone?: "warn" | "info" };
 
 /** The at-a-glance switches for a project, per service. */
+/**
+ * Whether POC mentions are resolved from the Manpower sheet rather than a list.
+ *
+ * `poc_phone_numbers` accepts either digits or the single exact value
+ * `manpower-sheet`. Mixing them is not a partial success: the service returns NO
+ * numbers, so nobody is mentioned and nothing errors. Detected here so the card
+ * can distinguish "reads the sheet daily" from "someone left this blank".
+ */
+export function usesManpowerSheetPocs(config: ProjectConfigRow): boolean {
+  return String(config.poc_phone_numbers ?? "").trim().toLowerCase() === "manpower-sheet";
+}
+
 export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] {
   const on = (value: unknown) => Boolean(value);
   switch (service) {
@@ -244,7 +263,11 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "skip lunch", on: on(config.skip_lunch_hour) },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
-        { label: "POC mentions", on: on(config.enable_red_band_poc_mentions) },
+        // Where the numbers come from matters: the sentinel resolves them from
+        // the Manpower sheet each day, so an empty list is not a misconfiguration.
+        ...(usesManpowerSheetPocs(config)
+          ? [{ label: "🔴 POC from sheet", on: true, tone: "info" as const }]
+          : [{ label: "POC mentions", on: on(config.enable_red_band_poc_mentions) }]),
       ];
     case "noise":
       return [
@@ -309,11 +332,19 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
       ];
     case "subcon":
       return [
-        { label: "manpower & activity", on: config.enable_manpower !== false },
-        { label: "housekeeping", on: config.enable_housekeeping !== false },
-        { label: "Water Parade", on: on(config.enable_water_parade) },
-        { label: "outbound WhatsApp", on: config.enabled !== false },
-        { label: "WBGT sheet", on: on(config.wbgt_google_sheet_id) },
+        { label: "housekeeping intake", on: config.enable_housekeeping !== false },
+        { label: "Daily Activity tab", on: on(config.spreadsheet_id) },
+        { label: "source routing", on: on(config.source_group_ids) || on(config.source_client_identifier) },
+      ];
+    case "issueChaser":
+      return [
+        // A style cannot be on unless `enabled` is, so an unlit style on an
+        // enabled project means nobody switched it on.
+        { label: "severity cadence", on: on(config.severity_cadence_chaser_enabled) },
+        { label: "same-day snapshot", on: on(config.same_day_open_snapshot_enabled) },
+        { label: "P1 escalation", on: on(config.priority_one_escalation_enabled) },
+        { label: "reply in origin group", on: config.send_to_originating_groups !== false },
+        { label: "images", on: config.include_issue_images !== false },
       ];
     default:
       return [
@@ -337,15 +368,15 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { labe
     // Same column, different documents: ailytics keeps its safety log there,
     // subcon its manpower workbook.
     links.push({
-      label: service === "subcon" ? "📗 Manpower sheet" : "📗 Safety sheet",
+      label: service === "subcon" ? "📗 Daily Activity" : "📗 Safety sheet",
       href: sheet(config.spreadsheet_id),
     });
   }
   if (config.manpower_spreadsheet_id) {
     links.push({ label: "📗 Manpower sheet", href: sheet(config.manpower_spreadsheet_id) });
   }
-  if (config.wbgt_google_sheet_id) {
-    links.push({ label: "📗 WBGT sheet (Water Parade)", href: sheet(config.wbgt_google_sheet_id) });
+  if (config.safety_sheet_id) {
+    links.push({ label: "📗 Safety workbook", href: sheet(config.safety_sheet_id) });
   }
   if (config.latitude && config.longitude) {
     links.push({
@@ -417,10 +448,16 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     );
   }
   if (service === "subcon") {
-    // Not gated on `enabled`: outbound can be muted while the intake, the
-    // classification and the Sheet writes all keep running.
+    // The only switch left. There is no `enabled` column any more.
+    return config.enable_housekeeping !== false;
+  }
+  if (service === "issueChaser") {
+    // `enabled` alone sends nothing — a chaser style has to be on too, and a
+    // CHECK means a style cannot be on unless `enabled` already is.
     return Boolean(
-      config.enable_manpower !== false || config.enable_housekeeping !== false || config.enable_water_parade,
+      config.severity_cadence_chaser_enabled ||
+        config.same_day_open_snapshot_enabled ||
+        config.priority_one_escalation_enabled,
     );
   }
   return config.enabled !== false;

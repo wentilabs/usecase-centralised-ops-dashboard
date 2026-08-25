@@ -463,13 +463,29 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    served the stale spec until the server restarted. `/api/session` reports
    `cachedSpecs` so this is checkable — render the dashboard, then read it; a
    non-zero value means the two paths share one cache.
-9. `enabled` is a master switch in five services but **not** in Subcon
-   Activities, where it gates outbound WhatsApp only — the intake, the
-   classification, the Supabase writes and the Google Sheet writes all continue
-   when it is off. The card says `INTAKE ONLY` rather than `DISABLED` for that
-   reason (`STATUS_WORDING` in `ProjectCard`), and `hasCadence` ignores it.
-   Lightning also has a CHECK that rejects `enable_red_band_poc_mentions` unless
-   both POC lists are non-empty, so those three fields must be saved together.
+9. **Not every service spells its master switch `enabled`.** Subcon Activities
+   has no `enabled` column at all any more: the repo was reduced to a single
+   `POST /housekeeping-intake` route, and the migration dropped `enabled`,
+   `timezone` and every delivery column along with Water Parade (now owned by
+   WBGT) and manpower (now owned by the base template). Its switch is
+   `enable_housekeeping`, which `isProjectOn` in `ProjectCard` knows about —
+   reading `config.enabled !== false` there reports every project as on, because
+   the column is absent rather than false. Issue Chaser has the inverse quirk:
+   `enabled` alone sends nothing, because a CHECK refuses any chaser style
+   unless `enabled` is already true, so you enable first and switch styles on
+   second. Lightning has a CHECK that rejects `enable_red_band_poc_mentions`
+   unless both POC lists are non-empty, so those three fields must be saved
+   together.
+10. **A disabled project must stay legible.** It used to carry `opacity-60` *and*
+   a 45% scrim, which stacked into something unreadable — the card was in the DOM
+   but effectively invisible, and since every newly created project starts
+   disabled, there was no way to switch one on from the UI. De-emphasis is now
+   carried by the border and a loud badge, never by dimming the content, and the
+   remaining scrim applies only to an *enabled* project with nothing scheduled.
+11. **WBGT's `poc_phone_numbers` is not only a number list.** The single exact
+   value `manpower-sheet` resolves today's sender/PIC phones from the Manpower
+   tab instead. Mixing the sentinel with digits is not a partial success: the
+   service returns NO numbers, so nobody is mentioned and nothing errors.
 10. A stored haze value is not always a value in force. `four_hourly` (on for 21
     of 24 projects) sends at 08:00/12:00/16:00/20:00 SGT and **bypasses**
     `alert_only_when_at_least`, so a card that quoted the stored gate would

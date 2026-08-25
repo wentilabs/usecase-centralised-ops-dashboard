@@ -10,16 +10,33 @@ const TAG_TONE: Record<ServiceKey, string> = {
   lightning: "bg-violet-400/15 text-violet-300",
   ailytics: "bg-cyan-400/15 text-cyan-300",
   subcon: "bg-emerald-400/15 text-emerald-300",
+  issueChaser: "bg-rose-400/15 text-rose-300",
 };
 
 /**
- * `enabled` is a master switch everywhere except subcon, where it gates only
- * outbound WhatsApp — the intake, classification and Sheet writes continue. The
- * card must not call that "DISABLED".
+ * Per-service status wording.
+ *
+ * Subcon no longer has an `enabled` column at all — the reduction to a single
+ * housekeeping-intake route dropped it — so its badge tracks
+ * `enable_housekeeping` instead, and "disabled" there means forwarded messages
+ * are ignored rather than that outbound is muted.
  */
 const STATUS_WORDING: Partial<Record<ServiceKey, { on: string; off: string }>> = {
-  subcon: { on: "● OUTBOUND ON", off: "○ INTAKE ONLY" },
+  subcon: { on: "● INTAKE ON", off: "○ INTAKE OFF" },
 };
+
+/**
+ * Whether this project is switched on, by whichever column the service uses.
+ *
+ * Not every service spells it `enabled`: subcon's master switch is
+ * `enable_housekeeping` since the reduction dropped `enabled`. Reading
+ * `config.enabled !== false` for that service would report every project as on,
+ * because the column is absent rather than false.
+ */
+function isProjectOn(service: ServiceKey, config: ProjectConfigRow): boolean {
+  if (service === "subcon") return config.enable_housekeeping !== false;
+  return config.enabled !== false;
+}
 
 /**
  * How many switches a phone-width card shows before deferring the rest to the
@@ -87,7 +104,7 @@ export function ProjectCard({
   /** Base URL of Viso; when set, chips link to the mirrored thread. */
   visoUrl?: string | null;
 }) {
-  const enabled = config.enabled !== false;
+  const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
   // manual project has no cadence but is live, so it gets a lighter scrim than
   // an idle one and says so on the header row.
@@ -113,12 +130,22 @@ export function ProjectCard({
   return (
     <article
       className={[
-        "relative flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5 shadow-soft md:gap-3 md:p-4",
-        enabled ? "" : "opacity-60",
-        emphasis === "active"
-          ? ""
-          : "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
-            (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/45"),
+        "relative flex flex-col gap-2.5 rounded-2xl p-3.5 shadow-soft md:gap-3 md:p-4",
+        "bg-card",
+        // A disabled project is the one you most need to find — it is what a
+        // newly created project looks like, and the only way to switch it on is
+        // to open its card. It previously carried `opacity-60` AND a 45% scrim,
+        // which stacked into something unreadable: the card was in the DOM but
+        // effectively invisible, so a new project could not be enabled from the
+        // UI at all. De-emphasis must never cost legibility, so the signal is
+        // now the border and the badge, and the content stays at full contrast.
+        enabled ? "border border-border" : "border-2 border-warn/50",
+        // The remaining scrim only marks an *enabled* project with nothing
+        // scheduled. Lighter than before, and never applied to a disabled one.
+        enabled && emphasis !== "active"
+          ? "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl " +
+            (emphasis === "manual" ? "after:bg-black/15" : "after:bg-black/25")
+          : "",
       ].join(" ")}
     >
       {/* The whole card is one tap target on mobile; on desktop the card stays
@@ -134,7 +161,11 @@ export function ProjectCard({
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>{label}</span>
         {String(config.project_code ?? rowId)}
-        <span className={`ml-auto text-[11px] font-semibold ${enabled ? "text-on" : "text-muted-foreground"}`}>
+        <span
+          className={`ml-auto shrink-0 text-[11px] font-semibold ${
+            enabled ? "text-on" : "rounded-md bg-warn/20 px-1.5 py-0.5 text-warn"
+          }`}
+        >
           <span className="md:hidden">{enabled ? "●" : "○"}</span>
           <span className="hidden md:inline">{enabled ? wording.on : wording.off}</span>
         </span>

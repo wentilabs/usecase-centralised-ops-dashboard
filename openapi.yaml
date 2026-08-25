@@ -174,6 +174,7 @@ paths:
               - lightning
               - ailytics
               - subcon
+              - issueChaser
         - name: rowId
           in: path
           required: true
@@ -258,6 +259,7 @@ paths:
               - lightning
               - ailytics
               - subcon
+              - issueChaser
           description: Restrict to one service's config table.
         - name: project
           in: query
@@ -480,6 +482,7 @@ paths:
               - lightning
               - ailytics
               - subcon
+              - issueChaser
       responses:
         "200":
           description: Requirements and defaults.
@@ -525,6 +528,7 @@ paths:
               - lightning
               - ailytics
               - subcon
+              - issueChaser
       requestBody:
         required: true
         content:

@@ -226,6 +226,15 @@ the registry; HALO proxies through `app/api/jobs/[job]` rather than calling from
 the browser, so the service URLs stay server-side and triggering a job needs the
 same editor permission as a config write.
 
+**Only noise and WBGT have actions.** That is a decision, not an oversight: every
+other service's routes are cron-driven, and `baseUrlEnv` is typed to the two URLs
+HALO actually holds. One deliberate gap is worth naming — haze added
+`POST /api/haze-report-now` (an on-demand PSI report for one project), and HALO
+does not expose it. Adding it would mean a `HAZE_API_URL` env var, widening the
+`baseUrlEnv` union, and a caution in the dialog, because that route honours
+neither the Sunday/public-holiday mutes nor working hours (INV-HAZE-16 in the
+haze repo). Asked and declined for now — call the route directly meanwhile.
+
 **The payload shapes differ between endpoints and must not be unified.**
 Verified against the handlers: the noise endpoints take `project_code` /
 `start_date` / `end_date`; `wbgt-sheet-fill` takes `projectCode` / `from` / `to`,
@@ -420,8 +429,17 @@ because it gets trusted:
 
 - **noise** — lifted verbatim from that repo's own `MESSAGE_SHAPES.md` by
   `scripts/build-message-previews.mjs` into `lib/message-previews.generated.ts`.
-  Re-run it (needs the noise repo checked out; `NOISE_REPO=` overrides the path)
-  after the noise message shapes change.
+  Re-run it (needs the noise repo checked out as a **sibling** of this one;
+  `NOISE_REPO=` overrides the path) after the noise message shapes change.
+
+  This is the one part of the previews that can rot without anything failing, and
+  it did: the script's default path was absolute under `$HOME`, the estate moved
+  into `wh-centralised-services/`, and it silently stopped running while its
+  committed output kept looking well-formed — eleven bubbles fell a message
+  format behind. The default is now resolved from the script's own location, and
+  `tests/message-previews.test.ts` regenerates into a temp file and compares
+  whenever the sibling repo is present. Do not replace that comparison with a
+  check that the file merely exists.
 - **wbgt** and **haze** — produced by *executing* those repos' own builders
   (`buildFiveMinAlertMessage`, `buildHazeMessage`) and pasting the output, because
   their docs are organised by reading band rather than by formatter value.

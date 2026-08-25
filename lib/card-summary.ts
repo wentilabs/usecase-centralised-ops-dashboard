@@ -348,7 +348,14 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "morning report", on: config.enabled !== false },
         { label: "manpower workbook", on: on(config.spreadsheet_id) },
         {
-          label: "source routing",
+          // What it answers: does anything reach this project at all? A
+          // forwarded message is matched to a project either by the group it
+          // came from (`safety_group_ids`) or by which listener client sent it
+          // (`client_identifier_number`). With neither set, intake can be on
+          // and still receive nothing, which is the state this pill exists to
+          // make visible. Named "source routing" at first, which said how it
+          // works rather than what it tells you.
+          label: "message source",
           on: on(config.safety_group_ids) || on(config.client_identifier_number),
         },
       ];

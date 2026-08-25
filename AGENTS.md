@@ -6,25 +6,33 @@ expensive to debug.
 ## What this repo is
 
 **HALO Centralised Services** — the control surface for the project
-configuration behind six centralised services that share one Supabase project:
+configuration behind seven centralised services that share one Supabase project:
 
-| Service | Schema | Table | Row identity |
-|---|---|---|---|
-| WBGT | `wbgts` | `wbgt_project_configs` | `project_code` |
-| Noise | `noise-meters` | `noise_project_configs` | `project_code` |
-| Haze | `haze` | `haze_project_configs` | `project_code` |
-| Lightning | `lightning` | `lightning_project_configs` | `project_code` |
-| Ailytics | `ailytics` | `project_configs` | **`id` (uuid)** |
-| Subcon Activities | `manpower_activity` | `project_configs` | **`id` (uuid)** |
+| Service | Key | Schema | Table | Row identity |
+|---|---|---|---|---|
+| WBGT | `wbgt` | `wbgts` | `wbgt_project_configs` | `project_code` |
+| Noise | `noise` | `noise-meters` | `noise_project_configs` | `project_code` |
+| Haze | `haze` | `haze` | `haze_project_configs` | `project_code` |
+| Lightning | `lightning` | `lightning` | `lightning_project_configs` | `project_code` |
+| Ailytics | `ailytics` | `ailytics` | `project_configs` | **`id` (uuid)** |
+| Subcon Activities | `subcon` | `manpower_activity` | `project_configs` | **`id` (uuid)** |
+| Issue Chaser | `issueChaser` | `issue_chaser` | `project_configs` | `project_code` |
 
 Each service has its own repo (`usecase-*-alerts`, `mdw-lambda-ailytics`,
-`usecase-wohhup-coy-housekeeping-waterparade`) that reads these tables and sends
-WhatsApp messages. This app only edits configuration; it never sends anything.
+`usecase-issue-chaser`, `usecase-wohhup-coy-housekeeping-waterparade`) that reads
+these tables and sends WhatsApp messages. This app only edits configuration; it
+never sends anything.
 
-Two names differ between the schema and the UI. **Subcon Activities** is the
-operator-facing name for the manpower / housekeeping / Water Parade service; its
-schema is still called `manpower_activity` after the repo's original scope. Do
-not rename the schema to match the label.
+Names differ between schema and UI in two places, and neither should be
+"corrected". **Subcon Activities** is the operator-facing name for what is now a
+housekeeping-intake plus morning-report service; its schema is still
+`manpower_activity` after the repo's original scope. **Issue Chaser** is keyed
+`issueChaser` in code — the only camelCase service key — because its schema is
+`issue_chaser` and the key has to be a valid identifier.
+
+A service must also be exposed to PostgREST before HALO can read it at all
+(Supabase → Settings → API → Exposed schemas). Issue Chaser returned a clean
+per-service error for a while purely because that had not been done.
 
 Next 16 (App Router) · React 19 · TypeScript · Tailwind 3 · deployed on AWS
 Amplify. See `DEPLOYMENT.md`.
@@ -133,20 +141,30 @@ would drop to dashboard-only edits.
 
 ## Outbound-only switches
 
-Four columns now read as "enabled" but gate **only** outbound delivery — the
-service keeps recording, classifying and writing either way. Labelling any of
-them "enabled" would say the opposite of what is true:
+Several columns read as "enabled" but gate **only** part of a service. Labelling
+any of them plainly "enabled" would say the opposite of what is true:
 
 | Service | Column | Off still does |
 |---|---|---|
-| Subcon | `enabled` | intake, classification, Supabase and Sheet writes |
+| Subcon | `enabled` | the whole housekeeping intake — it gates the morning report only |
+| Subcon | `enable_housekeeping` | the morning report — it gates the intake only |
 | WBGT | `water_parade_enabled` | cycles, roster snapshots, inbound events, photo decisions, reminder audits |
 | Ailytics | `forward_pending_to_whatsapp` | stores the PENDING activity and writes activity history |
+| Ailytics | `enabled` | lets existing issues still be closed over WhatsApp — it gates Telegram intake only |
 | Noise | `noise_meters_included` | scraping, calculations, Sheets, ops fail-safes keep every meter |
+| Issue Chaser | `enabled` | nothing on its own: a chaser style must also be on, and a CHECK refuses one unless `enabled` already is |
 
 Each one's `help` text says what carries on regardless. `hasCadence` counts
 `water_parade_enabled`, because a project with no WBGT cadence but Water Parade
 on is still sending reminders and must not be scrimmed as idle.
+
+**Subcon has no master switch at all.** Its two routes are independent:
+`enable_housekeeping` gates `POST /housekeeping-intake` and `enabled` gates
+`POST /daily-activity-manpower-summary`. `isProjectOn` in `ProjectCard` therefore
+asks per service rather than reading `config.enabled`, and the badge says
+`BOTH ROUTES OFF` rather than `DISABLED`, because that is what it means. This
+column set has changed twice — it briefly had no `enabled` column at all — so
+check the live schema before trusting any description of it, including this one.
 
 ## Outbound meter selection (noise)
 
@@ -257,22 +275,46 @@ groups whose name sat one row further back; filtering recovered 254 of them.
 ## Adding a service
 
 `SERVICES` in `lib/services.ts` is the entry point, but a service is only half
-wired at that point. The rest, in order:
+wired at that point. This list is what adding Issue Chaser actually took, in
+order:
 
-1. `lib/field-spec.ts` — `READONLY` (identity + audit stamps), `CHECK_ENUMS`
+1. **Expose the schema to PostgREST** (Supabase → Settings → API → Exposed
+   schemas). Nothing else works until this is done, and the symptom is a
+   per-service `406 PGRST106`, not an obvious misconfiguration.
+2. `lib/services.ts` — the `SERVICES` entry and the `ServiceKey` union. Add
+   `shortLabel` if the full name will not fit beside a project code; there is a
+   12-character ceiling on the card tag, enforced by a test.
+3. `lib/field-spec.ts` — `READONLY` (identity + audit stamps), `CHECK_ENUMS`
    (values behind a CHECK rather than a pg enum), `FIELDS` (labels, widgets,
-   `showIf`), `GROUPS` (order). Anything unlisted lands under "Other".
-2. `lib/card-summary.ts` — `GROUP_COLUMNS` (which columns hold chat ids, and
+   `showIf`), `GROUPS` (order). Anything unlisted lands under "Other". Include
+   `company` in both, or it lands there too.
+4. `lib/card-summary.ts` — `GROUP_COLUMNS` (which columns hold chat ids, and
    what each is for), `pillsFor`, `firesAt`, `hasCadence`, and `autoLinks` if it
    derives sheet links.
-3. `app/page.tsx` — add any new group-id column to the chat-name resolver list,
+5. `components/ProjectCard.tsx` — `TAG_TONE`.
+6. `lib/onboarding.ts` — an `ONBOARDING` definition, if the service should offer
+   `＋ Add project`. A test asserts every registered service has one.
+7. `app/page.tsx` — add any new group-id column to the chat-name resolver list,
    or the cards show raw ids.
-4. `supabase/config_audit_setup.sql` — attach the audit trigger to the new
+8. `supabase/config_audit_setup.sql` — attach the audit trigger to the new
    table, naming its identity column, then re-run the file.
-5. Expose the schema to PostgREST (Supabase → Settings → API → Exposed schemas).
+9. `supabase/migrate_company_column.sql` in the service's own repo, so the table
+   carries `company` like the rest.
 
-`tests/auth-policy.test.ts` asserts steps 1 and 2 for every registered service,
-and the typechecker catches a missing `GROUP_COLUMNS` or `TAG_TONE` entry.
+`tests/auth-policy.test.ts` and `tests/onboarding.test.ts` assert steps 2, 3, 4
+and 6 for every registered service, and the exhaustive `Record<ServiceKey, …>`
+types make the typechecker point at a missing `GROUP_COLUMNS` or `TAG_TONE`
+entry rather than letting it fail at runtime.
+
+Two things happen automatically and need no work: the OpenAPI document and the
+MCP tool list both read `SERVICE_KEYS`, so a new service appears in the
+`service` enum of `updateProjectConfig` and friends as soon as it is registered.
+Regenerate the committed spec with `npm run openapi`.
+
+One thing that bit: `/api/schema` used `Promise.all`, so registering a service
+whose schema was not yet exposed took the **whole endpoint** down and turned the
+dashboard into a 500. It settles per service now — but the lesson generalises,
+so prefer `allSettled` for anything that fans out across services.
 
 ## Editing the field spec
 
@@ -289,6 +331,81 @@ listing it in `GROUPS[service]` in `lib/field-spec.ts`. Useful keys:
 Columns owned by the alert jobs (e.g. WBGT's `top_of_hour_band`, Lightning's
 `lightning_project_runtime` state) belong in `READONLY` or `hidden`, not in the
 editor.
+
+## Creating a project
+
+`＋ Add project` on every service tab. `lib/onboarding.ts` holds one definition
+per service and is the only place that knows what creating a row involves — the
+route and the dialog are generic over it.
+
+**Rows are always created disabled**, and `enabled` is not settable from the
+dialog. Every service's own docs prescribe that order, and it is the only safe
+default when half the fields may still be blank.
+
+What varies, and why the definitions are not copies of each other:
+
+| | what creating a row involves |
+|---|---|
+| haze, lightning, subcon, Issue Chaser | one insert |
+| ailytics | one insert, but five NOT NULL columns are routinely unknown, so a blank one is written `""` and never `null` |
+| wbgt, noise | a per-project readings table **first**, via a `security definer` RPC, then the row — and for wbgt a `wbgt_sensors` row after it |
+
+Rules that are easy to get wrong and are pinned by tests:
+
+- **The project-code rule follows the service, not HALO.** haze, lightning and
+  Issue Chaser CHECK `^[A-Z0-9][A-Z0-9-]{0,47}$`; ailytics constrains nothing;
+  wbgt and noise have no CHECK but derive a table name that must start with a
+  letter. One shared regex accepted codes Postgres then rejected.
+- **Only require what the table demands.** A field marked required that the
+  database would accept as null is a dialog inventing a rule and blocking a
+  legitimate draft row.
+- **DDL runs first.** A config row pointing at a readings table that was never
+  created is the half-onboarded state the ordering avoids. A companion row runs
+  last, and a failure there is reported rather than thrown, because the config
+  row is real and editable by then.
+- **A group column uses the picker, never free text.** Both directions are
+  tested: every group column in a flow must be `kind: "groups"`, and no column
+  the alias store resolves may be rendered as anything else.
+- **Computed fields are enforced server-side.** `resolveValue` ignores whatever
+  the draft carries for one, so a hand-crafted POST cannot put a mismatched
+  Google Sheet tab name on an ailytics row.
+- **Say what HALO cannot do.** Every definition carries `outsideHalo`, shown
+  before and after creation. Sharing a workbook, deploying an adapter, importing
+  `noise_limits`, matching a CloudLynx sensor label — a row without them looks
+  finished and does nothing.
+
+Onboarding is **not** audited: the trigger behind `ops.config_audit` is
+`AFTER UPDATE` only, so row creation and deletion leave no trail. The row's own
+`created_at` is the only record.
+
+## Identity: the `company` column
+
+Every config table carries a nullable `company`, for identity only — no service
+reads it. Backfilled from `instance_name` (`wohhup`/`wohhup-backup` → Wohhup,
+`obayashi` → Obayashi, `pentaocean` → PentaOcean), and deliberately left NULL
+where that implied nothing rather than defaulting to Wohhup and inventing an
+attribution. Nine of 108 rows came out blank, all of them with no delivery
+configured.
+
+Plain text with no CHECK — a new company should never need a migration — so the
+known values live in `COMPANIES` as dropdown options instead. Guided in the UI,
+permissive in the database.
+
+It surfaces two ways: as a watermark behind the card (`CompanyMark`), and in the
+search box. Logos live in `public/company/` and are referenced by file, so
+replacing one is dropping in a file. Two things there are load-bearing:
+`pointer-events-none`, without which the mark would swallow every click on the
+card beneath it; and a per-logo `tweak` for scale and brightness, because the
+artwork was drawn for white paper — PentaOcean's navy wordmark vanishes on a dark
+card without a brightness lift.
+
+## The search box
+
+Matches project code, company, **and the card's own switched-on pills**, so
+"water parade" returns the projects that have it. Only pills that are ON count:
+matching a struck-through pill would return exactly the projects the searcher
+does not want. It reads from `pillsFor`, so a new switch becomes searchable the
+moment it becomes a pill — there is no label list to maintain.
 
 ## Formatter previews
 
@@ -463,19 +580,19 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    served the stale spec until the server restarted. `/api/session` reports
    `cachedSpecs` so this is checkable — render the dashboard, then read it; a
    non-zero value means the two paths share one cache.
-9. **Not every service spells its master switch `enabled`.** Subcon Activities
-   has no `enabled` column at all any more: the repo was reduced to a single
-   `POST /housekeeping-intake` route, and the migration dropped `enabled`,
-   `timezone` and every delivery column along with Water Parade (now owned by
-   WBGT) and manpower (now owned by the base template). Its switch is
-   `enable_housekeeping`, which `isProjectOn` in `ProjectCard` knows about —
-   reading `config.enabled !== false` there reports every project as on, because
-   the column is absent rather than false. Issue Chaser has the inverse quirk:
-   `enabled` alone sends nothing, because a CHECK refuses any chaser style
-   unless `enabled` is already true, so you enable first and switch styles on
-   second. Lightning has a CHECK that rejects `enable_red_band_poc_mentions`
-   unless both POC lists are non-empty, so those three fields must be saved
-   together.
+9. **Not every service spells its master switch `enabled`, and Subcon has none.**
+   Its two routes are independent — `enable_housekeeping` gates the intake,
+   `enabled` gates the morning report — so `isProjectOn` in `ProjectCard` asks
+   per service. That column set has now changed twice: it briefly had no
+   `enabled` at all, then got one back meaning something narrower. **Read the
+   live schema before trusting any description of that table, this one
+   included.** Issue Chaser has the inverse quirk: `enabled` alone sends
+   nothing, because a CHECK refuses any chaser style unless `enabled` is already
+   true, so you enable first and switch styles on second. Ailytics' `enabled`
+   gates Telegram intake only — a disabled project can still have existing
+   issues closed over WhatsApp. Lightning has a CHECK that rejects
+   `enable_red_band_poc_mentions` unless both POC lists are non-empty, so those
+   three fields must be saved together.
 10. **A disabled project must stay legible.** It used to carry `opacity-60` *and*
    a 45% scrim, which stacked into something unreadable — the card was in the DOM
    but effectively invisible, and since every newly created project starts
@@ -486,10 +603,21 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    value `manpower-sheet` resolves today's sender/PIC phones from the Manpower
    tab instead. Mixing the sentinel with digits is not a partial success: the
    service returns NO numbers, so nobody is mentioned and nothing errors.
-10. A stored haze value is not always a value in force. `four_hourly` (on for 21
+12. A stored haze value is not always a value in force. `four_hourly` (on for 21
     of 24 projects) sends at 08:00/12:00/16:00/20:00 SGT and **bypasses**
     `alert_only_when_at_least`, so a card that quoted the stored gate would
     misdescribe the project — the pill row reports `every band` instead. Haze
     working hours have the opposite trap: the service reads one configured end
     as *no* window at all, so the card only renders a range when both ends are
     set. Both are asserted in `tests/auth-policy.test.ts`.
+13. **A test that matches the letter of something instead of its purpose will
+    pass while the thing regresses.** Four of these appeared in one session and
+    each looked fine: an assertion that `opacity-60` is absent from
+    `ProjectCard.tsx` matched a *comment* explaining why it was removed; a check
+    that a disabled Water Parade pill does not match the search passed whether
+    or not the filter existed, because that pill is omitted entirely when off; a
+    pinned opacity digit broke twice on deliberate changes; and the OpenAPI
+    contract test verified paths and methods while two operations declared query
+    parameter names the handlers never read. The habit that catches all four:
+    after writing an assertion, break the code deliberately and confirm the test
+    fails. If it still passes, the test is decoration.

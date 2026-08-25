@@ -118,6 +118,19 @@ export type OnboardDefinition = {
  * `normalize_wbgt_project_code` SQL function that shadows it. All three must
  * agree, or HALO would name a table the service cannot address.
  */
+export function noiseTableForProject(projectCode: string): string {
+  return `${normalizeCode(projectCode)}_noise_data_daily`;
+}
+
+/** Shared by both readings-table services; both repos normalise identically. */
+function normalizeCode(projectCode: string): string {
+  return String(projectCode)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export function wbgtTableForProject(projectCode: string): string {
   const slug = String(projectCode)
     .trim()
@@ -320,6 +333,155 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: false,
         notNull: false,
       },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
+        notNull: false,
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
+      },
+    ],
+  },
+  noise: {
+    service: "noise",
+    // No CHECK on the column, but normalizeProjectCode() in the noise repo
+    // rejects anything whose normalised form does not start with a letter.
+    codePattern: /^[A-Za-z][A-Za-z0-9 _-]{0,47}$/,
+    codeHelp: "Must start with a letter. Spaces and hyphens are fine — CR 106 becomes cr_106_noise_data_daily.",
+    label: "＋ Add project",
+    title: "Add a new Noise project",
+    description:
+      "Creates the project's readings table and one disabled config row. Limits are separate — this does not touch noise_limits.",
+    outsideHalo: [
+      "Import the project's limits into noise_limits — one row per meter, per hour band, per day type. Nothing is measured against anything until they exist, and this dialog deliberately does not invent them.",
+      "Meter RecIDs are discovered by the scraper, so the meter names on the card only appear after a successful scrape.",
+    ],
+    rpc: {
+      fn: "ensure_project_readings_table",
+      args: (projectCode) => ({ p_project_code: projectCode }),
+      describes: "the project's readings table",
+      expects: noiseTableForProject,
+    },
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Also names the readings table, and must match the prefix of every full_identifier in noise_limits.",
+      },
+      {
+        column: "source_type",
+        label: "Login profile",
+        kind: "text",
+        required: false,
+        notNull: true,
+        fallback: "default",
+        help: "Which NoiseLynx credentials the scraper uses: default, whgd or svs.",
+      },
+      { column: "whatsapp_group_id", label: "WhatsApp group ID", kind: "text", required: false, notNull: false },
+      { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
+      { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },
+      {
+        column: "lambda_url",
+        label: "Send-message URL",
+        kind: "text",
+        required: false,
+        notNull: false,
+        envDefault: "DEFAULT_LAMBDA_URL_SEND",
+      },
+    ],
+  },
+  subcon: {
+    service: "subcon",
+    // The table has no CHECK on project_code, and the code is not used to build
+    // an identifier, so this is HALO's own conservative rule.
+    codePattern: /^[A-Za-z0-9][A-Za-z0-9 _-]{0,47}$/,
+    codeHelp: "Letters, digits, spaces, hyphen and underscore.",
+    label: "＋ Add project",
+    title: "Add a new Subcon Activities project",
+    description:
+      "Creates one row in manpower_activity.project_configs. Housekeeping intake only — there is no outbound surface to configure.",
+    outsideHalo: [
+      "Share the manpower workbook with the service account as Editor. This service appends to the `Daily Activity` tab; the `Manpower` and `Machines` tabs belong to the base template.",
+      "Point the base template's forwarder at this service, and make sure the source client identifier or group IDs below match what it sends.",
+    ],
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "How a forwarded message is resolved to this row.",
+      },
+      {
+        column: "spreadsheet_id",
+        label: "Manpower workbook",
+        kind: "sheet",
+        required: true,
+        notNull: false,
+        help: "Must already exist and be shared with the service account.",
+      },
+      {
+        column: "source_client_identifier",
+        label: "Source client identifier",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Either this or the group IDs must be set, or nothing routes here.",
+      },
+      {
+        column: "source_group_ids",
+        label: "Source group IDs",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Comma-separated. Inbound only.",
+      },
+    ],
+  },
+  issueChaser: {
+    service: "issueChaser",
+    codePattern: /^[A-Z0-9][A-Z0-9-]{0,47}$/,
+    codeHelp: "Uppercase letters, digits and hyphens only — the column CHECK rejects lowercase and underscores.",
+    label: "＋ Add project",
+    title: "Add a new Issue Chaser project",
+    description:
+      "Creates one disabled row in issue_chaser.project_configs. Enable it first, then switch on a chaser style — a CHECK enforces that order.",
+    outsideHalo: [
+      "Share the Safety workbook with the service account. The service reads the `Safety` tab and any `Safety-MMM YYYY` archives by header name, and never writes to it.",
+      "The sheet needs `Status`, a date column and an issue identifier at minimum. `Message Id Serialized` is what lets a reminder land back in the group the issue came from.",
+    ],
+    fields: [
+      {
+        column: "project_code",
+        label: "Project code",
+        kind: "text",
+        required: true,
+        notNull: true,
+        help: "Uppercase. Enforced by a CHECK on the column.",
+      },
+      {
+        column: "safety_sheet_id",
+        label: "Safety workbook",
+        kind: "sheet",
+        required: true,
+        notNull: true,
+        help: "Source of all issue state. Required before the project can be enabled.",
+      },
+      {
+        column: "whatsapp_group_ids",
+        label: "WhatsApp group IDs",
+        kind: "text",
+        required: false,
+        notNull: false,
+        help: "Fallback destinations. Not needed while Reply in the originating group is on, which is the default.",
+      },
+      { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
+      { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },
       {
         column: "lambda_url",
         label: "Send-message URL",

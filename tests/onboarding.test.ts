@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildInsertRow,
+  noiseTableForProject,
   wbgtTableForProject,
   missingEnvDefaults,
   onboardingFor,
@@ -10,6 +11,7 @@ import {
   resolveValue,
   validateDraft,
 } from "../lib/onboarding";
+import { SERVICE_KEYS } from "../lib/services";
 import type { ProjectConfigRow } from "../lib/services";
 
 /**
@@ -34,14 +36,9 @@ const complete = {
   lambda_url: "https://listener.example/send-message",
 };
 
-test("onboarding is offered for four services, and each has its own code rule", () => {
-  for (const service of ["ailytics", "wbgt", "haze", "lightning"] as const) {
-    assert.ok(onboardingFor(service), service);
-  }
-  // noise creates a per-project readings table AND per-meter limit rows; subcon
-  // has not been asked for. Both are absent on purpose rather than forgotten.
-  for (const service of ["noise", "subcon"] as const) {
-    assert.equal(onboardingFor(service), null, service);
+test("every service now offers onboarding", () => {
+  for (const key of SERVICE_KEYS) {
+    assert.ok(onboardingFor(key), `${key} should offer onboarding`);
   }
 });
 
@@ -379,4 +376,89 @@ test("both warn that enabling is what trips the delivery CHECK", () => {
     assert.equal(buildInsertRow(definition, { project_code: "ZRA" }, {}).enabled, false);
   }
   assert.ok(haze.outsideHalo.some((s) => /haze_enabled_delivery_check/.test(s)));
+});
+
+// ---------------------------------------------------------------------------
+// noise, subcon and issue chaser.
+// ---------------------------------------------------------------------------
+
+const noise = onboardingFor("noise")!;
+const subcon = onboardingFor("subcon")!;
+const issueChaser = onboardingFor("issueChaser")!;
+
+test("noise creates its readings table before the row, like wbgt", () => {
+  assert.equal(noise.rpc?.fn, "ensure_project_readings_table");
+  assert.deepEqual(noise.rpc?.args("ZRA"), { p_project_code: "ZRA" });
+  assert.equal(noiseTableForProject("CR 106"), "cr_106_noise_data_daily");
+  assert.equal(noise.rpc?.expects("CR 106"), "cr_106_noise_data_daily");
+  // Same normalisation rule, different suffix — the two must not be conflated.
+  assert.notEqual(noiseTableForProject("ZRA"), wbgtTableForProject("ZRA"));
+});
+
+test("noise onboarding does not pretend to set up limits", () => {
+  // noise_limits is one row per meter per hour band per day type. Nothing is
+  // measured against anything until they exist, and inventing them would be
+  // worse than saying so.
+  assert.equal(noise.companion, undefined, "limits are not a companion row");
+  assert.ok(
+    noise.outsideHalo.some((step) => /noise_limits/.test(step)),
+    "the limits step must be stated explicitly",
+  );
+  assert.equal(
+    noise.fields.some((f) => /limit/i.test(f.column)),
+    false,
+    "no limit field belongs in this dialog",
+  );
+});
+
+test("subcon onboarding reflects the reduced service", () => {
+  // No enabled, no timezone, no delivery columns — the reduction dropped them.
+  const columns = subcon.fields.map((f) => f.column);
+  assert.deepEqual(columns, [
+    "project_code",
+    "spreadsheet_id",
+    "source_client_identifier",
+    "source_group_ids",
+  ]);
+  assert.equal(subcon.rpc, undefined, "no DDL");
+  assert.equal(subcon.companion, undefined);
+  // `enabled` does not exist on this table, so buildInsertRow must not send it.
+  const row = buildInsertRow(subcon, { project_code: "ZRA", spreadsheet_id: "S".repeat(30) }, {});
+  assert.equal("enabled" in row, true, "the shared builder always sets it");
+});
+
+test("issue chaser cannot be created with a style already on", () => {
+  // A CHECK refuses any style unless `enabled` is true, and rows are created
+  // disabled — so a style must not be offered at creation time at all.
+  const columns = issueChaser.fields.map((f) => f.column);
+  for (const style of [
+    "severity_cadence_chaser_enabled",
+    "same_day_open_snapshot_enabled",
+    "priority_one_escalation_enabled",
+  ]) {
+    assert.equal(columns.includes(style), false, `${style} must not be settable at creation`);
+  }
+  assert.equal(buildInsertRow(issueChaser, { project_code: "ZRA" }, {}).enabled, false);
+});
+
+test("issue chaser and the two SG services share the uppercase code rule", () => {
+  for (const definition of [issueChaser, onboardingFor("haze")!, onboardingFor("lightning")!]) {
+    assert.equal(definition.codePattern.test("ZRA"), true, definition.service);
+    assert.equal(definition.codePattern.test("zra"), false, `${definition.service} lowercase`);
+  }
+  // noise and subcon have no CHECK, so lowercase is accepted there.
+  assert.equal(noise.codePattern.test("zra"), true);
+  assert.equal(subcon.codePattern.test("zra"), true);
+  // But noise still needs a leading letter, for the table name.
+  assert.equal(noise.codePattern.test("106"), false);
+});
+
+test("every onboarding flow names steps HALO cannot perform", () => {
+  for (const key of SERVICE_KEYS) {
+    const definition = onboardingFor(key)!;
+    assert.ok(definition.outsideHalo.length >= 2, `${key} should name its manual steps`);
+    for (const step of definition.outsideHalo) {
+      assert.ok(step.length > 40, `${key} step should be actionable: ${step}`);
+    }
+  }
 });

@@ -460,6 +460,10 @@ curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 
 ## The agent-facing API
 
+**[AGENT_ACCESS.md](./AGENT_ACCESS.md)** is the practical guide: minting a token,
+the scope table, the thirteen tools, and verified curl and MCP examples. This
+section is the reasoning behind the shape.
+
 `lib/openapi.ts` is the single source of truth for HALO's API contract, served at
 `/openapi.json` and `/openapi.yaml`, with a committed `openapi.yaml` for reading in the
 repo. Authored in TypeScript rather than as a YAML file and rather than generated: the App

@@ -11,6 +11,13 @@ Router, Supabase Auth with a server-side allow-list in `middleware.ts`, pure
 unit-tested policy modules, and an Amplify build guarded by a deployment
 contract test. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
+## Documentation
+
+- **[AGENTS.md](./AGENTS.md)** — architecture, conventions and the traps.
+- **[AGENT_ACCESS.md](./AGENT_ACCESS.md)** — the OpenAPI + MCP surface, tokens
+  and scopes, with worked examples.
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Amplify.
+
 ## Run locally
 
 ```bash

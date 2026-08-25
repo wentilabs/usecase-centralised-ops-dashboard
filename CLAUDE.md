@@ -28,6 +28,13 @@ file only adds notes specific to working here interactively.
   missing, add or read a boolean that reveals which side is blind — that is how
   the allow-list problem was finally isolated.
 
+## Giving an agent access
+
+**[AGENT_ACCESS.md](./AGENT_ACCESS.md)** — the OpenAPI contract at
+`/openapi.json`, the MCP endpoint at `/api/mcp`, how to mint and revoke a bearer
+token, and what each scope does. On loopback the dev bypass grants all three
+scopes, so the examples there run without a token.
+
 ## Useful commands
 
 ```bash

@@ -5,23 +5,35 @@ import { CompanyMark } from "./CompanyMark";
 import { tagLabel } from "@/lib/services";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
+/**
+ * Service pill colour, one hue each.
+ *
+ * The hues are spread deliberately: amber 45°, sky 200°, orange 30°, violet
+ * 270°, cyan 190°, lime 85°, rose 350°. Subcon was emerald (160°), which sat
+ * between cyan and sky and read as a third blue-green at 11px. Lime is the
+ * widest gap left in the wheel — yellow-green, and far enough from amber's gold
+ * to be told apart at a glance.
+ *
+ * Adding a service means picking a hue that is not already within ~30° of one
+ * of these.
+ */
 const TAG_TONE: Record<ServiceKey, string> = {
   wbgt: "bg-amber-400/15 text-amber-300",
   noise: "bg-sky-400/15 text-sky-300",
   haze: "bg-orange-400/15 text-orange-300",
   lightning: "bg-violet-400/15 text-violet-300",
   ailytics: "bg-cyan-400/15 text-cyan-300",
-  subcon: "bg-emerald-400/15 text-emerald-300",
+  subcon: "bg-lime-400/15 text-lime-300",
   issueChaser: "bg-rose-400/15 text-rose-300",
 };
 
 /**
  * Per-service status wording.
  *
- * Subcon no longer has an `enabled` column at all — the reduction to a single
- * housekeeping-intake route dropped it — so its badge tracks
- * `enable_housekeeping` instead, and "disabled" there means forwarded messages
- * are ignored rather than that outbound is muted.
+ * Subcon has two independent switches and no master: `enable_housekeeping`
+ * gates the intake route, `enabled` gates the morning report, and neither
+ * implies the other (INV-HK-01 in the subcon repo's AGENTS.md). So its badge
+ * says ACTIVE while either is on, and only "BOTH ROUTES OFF" means idle.
  */
 const STATUS_WORDING: Partial<Record<ServiceKey, { on: string; off: string }>> = {
   subcon: { on: "● ACTIVE", off: "○ BOTH ROUTES OFF" },

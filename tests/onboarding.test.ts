@@ -11,6 +11,7 @@ import {
   resolveValue,
   validateDraft,
 } from "../lib/onboarding";
+import { CHAT_ID_COLUMNS } from "../lib/card-summary";
 import { SERVICE_KEYS } from "../lib/services";
 import type { ProjectConfigRow } from "../lib/services";
 
@@ -461,4 +462,33 @@ test("every onboarding flow names steps HALO cannot perform", () => {
       assert.ok(step.length > 40, `${key} step should be actionable: ${step}`);
     }
   }
+});
+
+test("every onboarding flow picks WhatsApp groups, never types them", () => {
+  // A chat id says nothing on its own, and choosing the wrong group is the kind
+  // of mistake nobody notices until a site receives another site's messages. The
+  // editor has always used the picker; onboarding was still a plain text box.
+  const groupColumns = new Set(CHAT_ID_COLUMNS);
+  for (const key of SERVICE_KEYS) {
+    const definition = onboardingFor(key)!;
+    const groupFields = definition.fields.filter((f) => groupColumns.has(f.column));
+    assert.ok(groupFields.length >= 1, `${key} should collect at least one group column`);
+    for (const field of groupFields) {
+      assert.equal(field.kind, "groups", `${key}.${field.column} must use the picker`);
+    }
+  }
+});
+
+test("no onboarding field claims a group column under another kind", () => {
+  // The reverse direction: a column the alias store resolves must not be
+  // rendered as free text, or the names never appear.
+  const mistyped: string[] = [];
+  for (const key of SERVICE_KEYS) {
+    for (const field of onboardingFor(key)!.fields) {
+      if (CHAT_ID_COLUMNS.includes(field.column) && field.kind !== "groups") {
+        mistyped.push(`${key}.${field.column} is ${field.kind}`);
+      }
+    }
+  }
+  assert.deepEqual(mistyped, []);
 });

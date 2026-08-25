@@ -22,7 +22,7 @@ import {
   serializeSelection,
   toggleMeter,
 } from "../lib/meter-selection";
-import { SERVICE_KEYS, SERVICES } from "../lib/services";
+import { SERVICE_KEYS, SERVICES, tagLabel } from "../lib/services";
 import {
   autoLinks,
   cardEmphasis,
@@ -1116,4 +1116,19 @@ test("the search box advertises what it now accepts", async () => {
     placeholders.some((p) => /pill|capability/i.test(p)),
     `at least one placeholder should mention capabilities: ${JSON.stringify(placeholders)}`,
   );
+});
+
+test("a card tag uses the short service name where one exists", () => {
+  // The tag sits beside a project code, so "Subcon Activities" and "Issue
+  // Chaser" wrapped onto two lines. The tabs keep the full names.
+  assert.equal(tagLabel("subcon"), "Subcon");
+  assert.equal(tagLabel("issueChaser"), "Chaser");
+  assert.equal(SERVICES.subcon.label, "Subcon Activities", "the tab is unchanged");
+  assert.equal(SERVICES.issueChaser.label, "Issue Chaser", "the tab is unchanged");
+
+  // Everything else falls through to its full label, so no service is nameless.
+  for (const key of SERVICE_KEYS) {
+    assert.ok(tagLabel(key).length > 0, `${key} needs a tag`);
+    assert.ok(tagLabel(key).length <= 12, `${key} tag is too long for the card: ${tagLabel(key)}`);
+  }
 });

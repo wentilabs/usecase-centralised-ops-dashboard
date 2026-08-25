@@ -325,7 +325,6 @@ export function DashboardShell({
             <ProjectCard
               key={rowId}
               service={active.key}
-              label={active.label}
               config={row}
               rowId={rowId}
               canEdit={session.canEdit && Boolean(active.spec)}
@@ -394,6 +393,7 @@ export function DashboardShell({
         <OnboardDialog
           definition={onboardingFor(active.key)!}
           rows={rows[active.key] ?? []}
+          groupNames={groupNames}
           onClose={() => setOnboarding(false)}
           onCreated={() => void refreshData()}
         />

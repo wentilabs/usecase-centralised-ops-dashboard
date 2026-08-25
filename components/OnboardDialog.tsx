@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { GroupPicker } from "./GroupPicker";
 import { resolveValue, validateDraft, type OnboardDefinition, type OnboardDraft } from "@/lib/onboarding";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
@@ -22,11 +23,14 @@ import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 export function OnboardDialog({
   definition,
   rows,
+  groupNames = {},
   onClose,
   onCreated,
 }: {
   definition: OnboardDefinition;
   rows: ProjectConfigRow[];
+  /** Chat id to human group name, so the picker shows names rather than ids. */
+  groupNames?: Record<string, string>;
   onClose: () => void;
   onCreated: (projectCode: string) => void;
 }) {
@@ -331,6 +335,19 @@ export function OnboardDialog({
                         )}
                         <span className="ml-2 text-[10px] uppercase tracking-wider">automatic</span>
                       </div>
+                    ) : entry.kind === "groups" ? (
+                      // The same picker the editor uses: a chat id says nothing,
+                      // and picking the wrong group is the kind of mistake nobody
+                      // notices until a site gets someone else's messages.
+                      <GroupPicker
+                        value={draft[entry.column] ?? ""}
+                        groupNames={groupNames}
+                        disabled={busy}
+                        onChange={(next) => {
+                          setEdited((prev) => new Set(prev).add(entry.column));
+                          setDraft((prev) => ({ ...prev, [entry.column]: next }));
+                        }}
+                      />
                     ) : (
                       <input
                         className={field}

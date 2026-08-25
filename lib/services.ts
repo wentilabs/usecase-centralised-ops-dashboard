@@ -15,10 +15,21 @@ export type ServiceKey =
 export type ServiceDefinition = {
   key: ServiceKey;
   label: string;
+  /**
+   * Label for the tag on a project card, where the space is a few characters
+   * wide. Falls back to `label`; set it only where the full name is too long to
+   * sit beside a project code without wrapping.
+   */
+  shortLabel?: string;
   schema: string;
   table: string;
   idColumn: string;
 };
+
+/** The card tag's text — short form where one exists. */
+export function tagLabel(service: ServiceKey): string {
+  return SERVICES[service].shortLabel ?? SERVICES[service].label;
+}
 
 export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
   wbgt: { key: "wbgt", label: "WBGT", schema: "wbgts", table: "wbgt_project_configs", idColumn: "project_code" },
@@ -34,6 +45,7 @@ export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
   subcon: {
     key: "subcon",
     label: "Subcon Activities",
+    shortLabel: "Subcon",
     schema: "manpower_activity",
     table: "project_configs",
     idColumn: "id",
@@ -41,6 +53,7 @@ export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
   issueChaser: {
     key: "issueChaser",
     label: "Issue Chaser",
+    shortLabel: "Chaser",
     schema: "issue_chaser",
     table: "project_configs",
     idColumn: "project_code",

@@ -1,6 +1,7 @@
 "use client";
 
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
+import { tagLabel } from "@/lib/services";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 const TAG_TONE: Record<ServiceKey, string> = {
@@ -82,7 +83,6 @@ function Chip({
 
 export function ProjectCard({
   service,
-  label,
   config,
   rowId,
   canEdit,
@@ -92,7 +92,6 @@ export function ProjectCard({
   visoUrl = null,
 }: {
   service: ServiceKey;
-  label: string;
   config: ProjectConfigRow;
   rowId: string;
   canEdit: boolean;
@@ -175,7 +174,11 @@ export function ProjectCard({
       />
 
       <h2 className="flex items-center gap-2 text-base font-semibold">
-        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>{label}</span>
+        {/* Short form: this sits beside a project code, so "Subcon Activities"
+            wrapped onto two lines. The tab keeps the full name. */}
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>
+          {tagLabel(service)}
+        </span>
         {String(config.project_code ?? rowId)}
         {/* Identity only — a project code says nothing about who it belongs to.
             Rendered quietly next to the code rather than as a pill, so it reads

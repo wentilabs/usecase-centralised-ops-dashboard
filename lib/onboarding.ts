@@ -22,7 +22,11 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  * default when three of the fields may still be blank.
  */
 
-export type OnboardFieldKind = "text" | "sheet" | "number";
+/**
+ * `groups` renders the same chat picker the editor uses — resolved group names,
+ * searchable, and still accepting a pasted id the alias store has never seen.
+ */
+export type OnboardFieldKind = "text" | "sheet" | "number" | "groups";
 
 export type OnboardField = {
   column: string;
@@ -209,7 +213,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "wa_group_ids",
         label: "WhatsApp group IDs",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: false,
         help: "Comma-separated; one message per group.",
@@ -315,7 +319,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "whatsapp_group_id",
         label: "WhatsApp group ID",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: false,
       },
@@ -381,7 +385,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         fallback: "default",
         help: "Which NoiseLynx credentials the scraper uses: default, whgd or svs.",
       },
-      { column: "whatsapp_group_id", label: "WhatsApp group ID", kind: "text", required: false, notNull: false },
+      { column: "whatsapp_group_id", label: "WhatsApp group ID", kind: "groups", required: false, notNull: false },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
       { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },
       {
@@ -436,7 +440,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "source_group_ids",
         label: "Source group IDs",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: false,
         help: "Comma-separated. Inbound only.",
@@ -475,7 +479,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "whatsapp_group_ids",
         label: "WhatsApp group IDs",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: false,
         help: "Fallback destinations. Not needed while Reply in the originating group is on, which is the default.",
@@ -566,7 +570,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "whatsapp_group_id",
         label: "WhatsApp group ID",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: false,
         help: "Looks like 120363…@g.us.",
@@ -695,7 +699,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       {
         column: "whatsapp_group_ids",
         label: "WhatsApp group IDs",
-        kind: "text",
+        kind: "groups",
         required: false,
         notNull: true,
         help: "Comma-separated.",

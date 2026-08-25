@@ -27,7 +27,7 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
   // Per-logo scale, because 70% of the card means something different for each:
   // the artwork's own margins differ, so the same box leaves Wohhup looking
   // oversized and the other two looking small. Tuned by eye against the cards.
-  Wohhup: { src: "/company/wohhup.png", tweak: "scale-90" },
+  Wohhup: { src: "/company/wohhup.png", tweak: "scale-75" },
   Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125" },
   PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125" },
 };

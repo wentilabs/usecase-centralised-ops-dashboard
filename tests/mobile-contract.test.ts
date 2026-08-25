@@ -151,11 +151,17 @@ test("the company watermark cannot swallow a click, and stays readable to a read
   assert.match(mark, /-translate-x-1\/2/, "and actually offset back, not just positioned");
   assert.match(mark, /-translate-y-1\/2/);
   // Subtle enough not to fight the text it sits behind.
-  // A watermark range, not a fixed value — the right level depends on the
-  // artwork, and these three differ. Anything at or above 0.20 stops being a
-  // watermark and starts competing with the text it sits behind.
-  const opacity = Number(mark.match(/opacity-\[(0\.\d+)\]/)?.[1] ?? "1");
-  assert.ok(opacity > 0 && opacity < 0.2, `opacity ${opacity} is not a watermark`);
+  // A range, not a fixed value: the right level depends on the artwork, and
+  // these three differ. Past roughly a third it stops being a watermark and
+  // starts competing with the text it sits behind.
+  const raw = mark.match(/opacity-(?:\[(0\.\d+)\]|(\d{1,2}))/);
+  const opacity = raw?.[1] ? Number(raw[1]) : Number(raw?.[2] ?? 100) / 100;
+  assert.ok(opacity > 0 && opacity <= 0.33, `opacity ${opacity} is not a watermark`);
+
+  // Sized against the card, not in pixels, so it tracks a card whose height
+  // depends on how many delivery groups it lists.
+  assert.match(mark, /h-\[\d\d%\]/, "height is a proportion of the card");
+  assert.match(mark, /w-\[\d\d%\]/, "and so is width");
 
   // A logo is unreadable to anyone who does not already know it — a new joiner,
   // or a screen reader. The name has to survive in text.
@@ -166,7 +172,7 @@ test("the company watermark cannot swallow a click, and stays readable to a read
   assert.match(mark, /object-contain/, "no stretching");
 
   // An unmapped company must render as itself rather than disappear.
-  assert.match(mark, /if \(!src\)/, "there is a fallback branch for an unmapped company");
+  assert.match(mark, /if \(!asset\)/, "there is a fallback branch for an unmapped company");
   assert.match(mark, /\{company\}/, "and it prints the name");
 });
 
@@ -180,7 +186,7 @@ test("every company in the dropdown has an asset that exists on disk", async () 
   assert.deepEqual(names, ["Wohhup", "Obayashi", "PentaOcean"], "the dropdown list");
 
   const assets = Object.fromEntries(
-    [...mark.matchAll(/(\w+): "(\/company\/[^"]+)"/g)].map((m) => [m[1], m[2]]),
+    [...mark.matchAll(/(\w+): \{ src: "(\/company\/[^"]+)"/g)].map((m) => [m[1], m[2]]),
   );
   for (const name of names) {
     const path = assets[name];

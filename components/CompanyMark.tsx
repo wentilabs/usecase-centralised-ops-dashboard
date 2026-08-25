@@ -14,19 +14,27 @@
  * place that knows which is which.
  */
 
-/** Company name to its file under `public/company/`. */
-const ASSETS: Record<string, string> = {
-  Wohhup: "/company/wohhup.png",
-  Obayashi: "/company/obayashi.svg",
-  PentaOcean: "/company/pentaocean.png",
+/**
+ * Company name to its file under `public/company/`, plus any per-logo tweak.
+ *
+ * `tweak` exists because these logos were drawn for white paper. PentaOcean's
+ * wordmark is dark navy, which on a dark card at watermark opacity disappears
+ * entirely — only the cyan pentagon survives, and the name is the half that
+ * makes it recognisable to someone who has not seen the mark. A brightness lift
+ * brings the navy up without touching the two logos that already read.
+ */
+const ASSETS: Record<string, { src: string; tweak?: string }> = {
+  Wohhup: { src: "/company/wohhup.png" },
+  Obayashi: { src: "/company/obayashi.svg" },
+  PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2]" },
 };
 
 export function CompanyMark({ company }: { company: string }) {
-  const src = ASSETS[company];
+  const asset = ASSETS[company];
 
   // An unmapped company keeps a readable text label rather than vanishing — a new
   // company should show up as itself, not as nothing.
-  if (!src) {
+  if (!asset) {
     return (
       <span className="rounded bg-muted/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
         {company}
@@ -42,11 +50,15 @@ export function CompanyMark({ company }: { company: string }) {
           click on Edit and the group links. `object-contain` keeps each logo's
           own aspect ratio — the three supplied files are not the same shape. */}
       <img
-        src={src}
+        src={asset.src}
         alt=""
         aria-hidden="true"
         draggable={false}
-        className="pointer-events-none absolute left-1/2 top-1/2 h-24 w-40 -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.10] md:h-28 md:w-48"
+        // Sized as a proportion of the card rather than in fixed pixels, so it
+        // scales with a card whose height varies by how many delivery groups it
+        // lists. `object-contain` means the logo fits inside that box at its own
+        // aspect ratio, so 70% is a ceiling on both axes, not a stretch.
+        className={`pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 object-contain opacity-20 ${asset.tweak ?? ""}`}
       />
     </>
   );

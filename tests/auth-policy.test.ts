@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import {
   canAccessDashboard,
@@ -28,6 +30,8 @@ import {
   chatIdsIn,
   deliveryGroups,
   emphasisRank,
+  matchesQuery,
+  searchTokens,
   firesAt,
   hasCadence,
   isManualIngestion,
@@ -1031,5 +1035,85 @@ test("an empty group list is not always a misconfiguration", () => {
   assert.match(
     firesAt("issueChaser", { severity_cadence_chaser_enabled: true, send_to_originating_groups: false }),
     /configured groups/,
+  );
+});
+
+test("search matches a card's switched-on capabilities, not just its code", () => {
+  // The question someone is really asking when they type into the filter is
+  // "which projects have this?" — so an enabled pill has to be searchable.
+  const withWaterParade = { project_code: "TEST", water_parade_enabled: true, enable_hourly: true };
+  assert.equal(matchesQuery("wbgt", withWaterParade, "water parade"), true);
+  assert.equal(matchesQuery("wbgt", withWaterParade, "WATER PARADE"), true, "case-insensitive");
+  // The emoji on the label must not block a plain-text search.
+  assert.ok(searchTokens("wbgt", withWaterParade).some((t) => t.includes("💧")));
+});
+
+test("a struck-through pill is NOT a match", () => {
+  // This is the whole distinction: matching an off pill would return exactly the
+  // projects the searcher does not want.
+  //
+  // It has to be tested with a pill that is EMITTED in both states. Water Parade
+  // is not — it is omitted entirely when off — so asserting on that passed
+  // whether or not the `pill.on` filter existed. "5-min alerts" is always
+  // rendered, lit or struck through, which is what makes this a real guard.
+  const row = { project_code: "ZRA", enable_hourly: true, enable_5min_alerts: false };
+  const pills = pillsFor("wbgt", row);
+  const fiveMin = pills.find((p) => p.label === "5-min alerts");
+  assert.ok(fiveMin, "the pill must exist for this test to mean anything");
+  assert.equal(fiveMin.on, false, "and it must be off");
+
+  assert.equal(matchesQuery("wbgt", row, "5-min alerts"), false, "an off pill must not match");
+  assert.equal(matchesQuery("wbgt", row, "hourly"), true, "an on pill still matches");
+  assert.equal(
+    searchTokens("wbgt", row).some((t) => t.includes("5-min")),
+    false,
+    "and it is absent from the tokens entirely",
+  );
+});
+
+test("code and company still match, and an empty query matches everything", () => {
+  const row = { project_code: "CRP", company: "Obayashi", amber_enabled: true };
+  assert.equal(matchesQuery("lightning", row, "crp"), true);
+  assert.equal(matchesQuery("lightning", row, "obayashi"), true);
+  assert.equal(matchesQuery("lightning", row, ""), true);
+  assert.equal(matchesQuery("lightning", row, "   "), true, "whitespace is not a filter");
+  assert.equal(matchesQuery("lightning", row, "pentaocean"), false);
+});
+
+test("capability search works across every service", () => {
+  // Each service names its own switches, so the feature is only useful if it
+  // reaches all of them rather than the ones that happened to be tested.
+  const cases = [
+    { service: "wbgt" as const, row: { enable_5min_alerts: true }, needle: "5-min alerts" },
+    { service: "noise" as const, row: { enable_morning_summary: true }, needle: "morning summary" },
+    { service: "haze" as const, row: { four_hourly: true }, needle: "4-hourly" },
+    { service: "lightning" as const, row: { enable_red_band_poc_mentions: true }, needle: "poc mentions" },
+    { service: "ailytics" as const, row: { forward_pending_to_whatsapp: true }, needle: "forward pending" },
+    { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping intake" },
+    { service: "issueChaser" as const, row: { priority_one_escalation_enabled: true }, needle: "p1 escalation" },
+  ];
+  for (const { service, row, needle } of cases) {
+    assert.equal(matchesQuery(service, row, needle), true, `${service} should match "${needle}"`);
+  }
+  // Every service is covered, so a new one cannot quietly miss out.
+  assert.equal(cases.length, SERVICE_KEYS.length);
+});
+
+test("the search box advertises what it now accepts", async () => {
+  // A capability filter nobody knows about is not a feature. The placeholder is
+  // the only place a user learns this, so it is worth pinning.
+  const shell = await readFile(resolve("components/DashboardShell.tsx"), "utf8");
+  const placeholders = [...shell.matchAll(/placeholder="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(placeholders.length >= 2, "mobile and desktop each have one");
+  for (const placeholder of placeholders) {
+    assert.doesNotMatch(
+      placeholder,
+      /^Filter by project code…?$/,
+      "the placeholder must not still claim code-only",
+    );
+  }
+  assert.ok(
+    placeholders.some((p) => /pill|capability/i.test(p)),
+    `at least one placeholder should mention capabilities: ${JSON.stringify(placeholders)}`,
   );
 });

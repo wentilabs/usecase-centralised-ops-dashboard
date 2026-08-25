@@ -10,7 +10,7 @@ import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
-import { emphasisRank, formatSgt } from "@/lib/card-summary";
+import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor } from "@/lib/onboarding";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
@@ -124,16 +124,10 @@ export function DashboardShell({
   const visible = useMemo(() => {
     const list = rows[active.key] ?? [];
     return list
-      // Company is matched as well as project code, so "obayashi" narrows the tab
-      // to that company's projects — the reason the column exists.
-      .filter((row) => {
-        if (!query) return true;
-        const needle = query.toLowerCase();
-        return (
-          String(row.project_code ?? "").toLowerCase().includes(needle) ||
-          String(row.company ?? "").toLowerCase().includes(needle)
-        );
-      })
+      // Matches project code, company, and the card's own switched-ON pills — so
+      // "water parade" or "obayashi" narrows the tab as directly as a code does.
+      // See matchesQuery; only enabled pills count.
+      .filter((row) => matchesQuery(active.key, row, query))
       .slice()
       .sort((a, b) => {
         // Scheduled first, then manual-ingestion projects, then idle ones.
@@ -168,8 +162,8 @@ export function DashboardShell({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter code…"
-          aria-label="Filter by project code"
+          placeholder="Code, company, pill…"
+          aria-label="Filter by project code, company or capability"
           className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary"
         />
 
@@ -211,7 +205,7 @@ export function DashboardShell({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter by project code…"
+          placeholder="Filter by code, company or capability — e.g. water parade"
           className="w-[220px] rounded-lg border border-border bg-card px-3 py-1.5 text-sm outline-none focus:border-primary"
         />
 

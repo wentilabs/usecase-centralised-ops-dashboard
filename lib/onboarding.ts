@@ -1,4 +1,5 @@
 import { deriveNeaRegion, withinServiceArea } from "./derive";
+import { readSheetId } from "./jobs";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /**
@@ -360,6 +361,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     outsideHalo: [
       "Import the project's limits into noise_limits — one row per meter, per hour band, per day type. Nothing is measured against anything until they exist, and this dialog deliberately does not invent them.",
       "Meter RecIDs are discovered by the scraper, so the meter names on the card only appear after a successful scrape.",
+      "Share the analysis workbook with the service account as Editor. Bootstrap creates the tabs itself and sets column widths, which Viewer cannot do.",
     ],
     rpc: {
       fn: "ensure_project_readings_table",
@@ -384,6 +386,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: true,
         fallback: "default",
         help: "Which NoiseLynx credentials the scraper uses: default, whgd or svs.",
+      },
+      {
+        column: "google_sheet_id",
+        label: "Analysis sheet ID",
+        kind: "sheet",
+        // Nullable, so not required — but both of this service's actions
+        // (⤓ Bootstrap sheet, ⟳ Sync sheet) are gated on it, so a project
+        // created without it cannot be worked on from the action row until
+        // someone opens the editor. Offering it here saves that round trip.
+        required: false,
+        notNull: false,
+        help: "The analysis workbook. Both sheet actions are unavailable until it is set. A pasted spreadsheet URL is accepted — the id is taken out of it.",
       },
       { column: "whatsapp_group_id", label: "WhatsApp group ID", kind: "groups", required: false, notNull: false },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
@@ -526,6 +540,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     outsideHalo: [
       "Set the sensor label to match the CloudLynx AMR dropdown text character-exactly — whitespace, parentheses and the trailing (WC-NN) all matter. A mismatch is silent: the scrape reports missing_configured_sensors and collects nothing.",
       "For a source type other than default, the Lambda needs that profile's CloudLynx credentials and its own Browserbase context — the profiles must never share one.",
+      "Share the monthly workbook with the service account as Editor, and give it a `Template Monitoring Record` tab. The job clones that tab into `<Mon>-<YYYY>` on the month's first reading.",
     ],
     rpc: {
       fn: "ensure_project_readings_table",
@@ -583,6 +598,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: true,
         fallback: "default",
         help: "default, whgd, svs or pentaocean. Each needs its own credentials and Browserbase context on the Lambda.",
+      },
+      {
+        column: "monthly_sheet_id",
+        label: "Monthly sheet ID",
+        kind: "sheet",
+        // Nullable, so not required. ⟳ Sync sheets is gated on it, and the
+        // Water Parade Log is written into this same workbook rather than the
+        // manpower one — the mistake that made a rebuild report `completed`
+        // while writing nothing.
+        required: false,
+        notNull: false,
+        help: "The monthly monitoring record. ⟳ Sync sheets needs it, and the Water Parade Log is written into this workbook too. A pasted spreadsheet URL is accepted — the id is taken out of it.",
       },
       {
         column: "whatsapp_group_id",
@@ -790,6 +817,14 @@ export function validateDraft(
       problems.push(`${field.label} is required.`);
       continue;
     }
+    // A sheet id Postgres would happily store but Google would reject. Caught
+    // here because the failure is otherwise a cron-time Sheets error on a
+    // project nobody is watching yet.
+    if (resolved && field.kind === "sheet" && !readSheetId(resolved)) {
+      problems.push(
+        `${field.label} does not look like a Google Sheet id. Paste the sheet's URL, or the id from it — the long string between /d/ and /edit.`,
+      );
+    }
     // Range checks mirror the column CHECKs, so a value Postgres would reject is
     // caught here rather than surfacing as a constraint violation.
     if (resolved && field.kind === "number") {
@@ -847,7 +882,15 @@ export function resolveValue(
   // A computed field is derived from the project code, whatever the draft says.
   if (field.computed) return field.derive && projectCode ? field.derive(draft, projectCode) : "";
   const typed = String(draft[field.column] ?? "").trim();
-  if (typed) return typed;
+  if (typed) {
+    // Pasting the browser's address bar is the natural gesture for a sheet
+    // field, and every service wants the bare id — a stored URL fails at the
+    // Sheets API, far from here. `readSheetId` is the same extraction HALO's
+    // job preconditions use, so the two cannot disagree. An unparseable value
+    // is returned untouched, for validateDraft to reject with a reason.
+    if (field.kind === "sheet") return readSheetId(typed) ?? typed;
+    return typed;
+  }
   if (field.envDefault && env[field.envDefault]) return String(env[field.envDefault]).trim();
   if (field.derive && projectCode) return field.derive(draft, projectCode);
   if (field.fallback) return field.fallback;

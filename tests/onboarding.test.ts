@@ -12,8 +12,9 @@ import {
   validateDraft,
 } from "../lib/onboarding";
 import { CHAT_ID_COLUMNS } from "../lib/card-summary";
+import { jobsForService } from "../lib/jobs";
 import { SERVICE_KEYS } from "../lib/services";
-import type { ProjectConfigRow } from "../lib/services";
+import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 
 /**
  * Onboarding is the only INSERT in the app, and the ailytics table punishes the
@@ -510,4 +511,61 @@ test("no onboarding field claims a group column under another kind", () => {
     }
   }
   assert.deepEqual(mistyped, []);
+});
+
+test("noise and wbgt can be given their sheet id at creation", () => {
+  // Both services' sheet actions are gated on these columns, so a project
+  // created without one cannot be worked on from the action row at all — the
+  // reason they belong in the create dialog and not only in the editor.
+  const gated: [ServiceKey, string, string][] = [
+    ["noise", "google_sheet_id", "Analysis sheet ID"],
+    ["wbgt", "monthly_sheet_id", "Monthly sheet ID"],
+  ];
+
+  for (const [service, column, label] of gated) {
+    const field = onboardingFor(service)!.fields.find((entry) => entry.column === column);
+    assert.ok(field, `${service} onboarding must offer ${column}`);
+    assert.equal(field!.kind, "sheet", "and as a sheet field, so a pasted URL is unpacked");
+    assert.equal(field!.label, label, "labelled as the editor labels it");
+    // Nullable columns: the house rule is that the dialog requires only what the
+    // table demands, and a project is often drafted before its sheet exists.
+    assert.equal(field!.required, false);
+    // The job registry must be gating on the same column, or this field is
+    // offering to fill something no action reads.
+    const jobs = jobsForService(service);
+    assert.ok(
+      jobs.some((job) => job.precondition.label === label),
+      `${service} has no job gated on ${label} — check the column still matches lib/jobs.ts`,
+    );
+  }
+});
+
+test("a pasted sheet URL becomes the bare id, and nonsense is refused", () => {
+  const definition = onboardingFor("wbgt")!;
+  const id = "1l9EbI6hcwHSjSaO6_Z4Z8ODrbVzqy5Bb-_9nqpDjmgk";
+  const field = definition.fields.find((entry) => entry.column === "monthly_sheet_id")!;
+
+  // Pasting the address bar is the natural gesture; the services want the id.
+  assert.equal(
+    resolveValue(field, { monthly_sheet_id: `https://docs.google.com/spreadsheets/d/${id}/edit#gid=0` }, "TJR", {}),
+    id,
+  );
+  assert.equal(resolveValue(field, { monthly_sheet_id: ` ${id} ` }, "TJR", {}), id);
+
+  // And the row that gets written carries the id, not the URL.
+  const row = buildInsertRow(definition, {
+    project_code: "TJR",
+    monthly_sheet_id: `https://docs.google.com/spreadsheets/d/${id}/edit`,
+  });
+  assert.equal(row.monthly_sheet_id, id);
+
+  // A value Postgres would store and Google would reject fails here instead.
+  const problems = validateDraft(definition, { project_code: "TJR", monthly_sheet_id: "the monthly one" }, []);
+  assert.ok(
+    problems.some((problem) => /does not look like a Google Sheet id/.test(problem)),
+    `expected a sheet-id complaint, got ${JSON.stringify(problems)}`,
+  );
+
+  // Blank stays legal: the column is nullable and a draft row is the point.
+  assert.deepEqual(validateDraft(definition, { project_code: "TJR" }, []), []);
 });

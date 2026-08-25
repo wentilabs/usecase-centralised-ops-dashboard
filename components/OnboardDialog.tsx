@@ -360,6 +360,16 @@ export function OnboardDialog({
                         }}
                       />
                     )}
+                    {/* A pasted sheet URL is stored as the bare id, and the box
+                        keeps showing what was typed. Say what will actually be
+                        written, so nobody has to trust that silently. */}
+                    {entry.kind === "sheet" &&
+                    draft[entry.column] &&
+                    resolveValue(entry, draft, code, {}) !== String(draft[entry.column]).trim() ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        stored as <code className="font-mono">{resolveValue(entry, draft, code, {})}</code>
+                      </p>
+                    ) : null}
                     {derived[entry.column] && !edited.has(entry.column) ? (
                       <p
                         className={`mt-1 text-[11px] ${derived[entry.column].review ? "text-warn" : "text-muted-foreground"}`}

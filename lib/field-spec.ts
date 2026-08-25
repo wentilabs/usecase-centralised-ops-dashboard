@@ -555,10 +555,6 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Morning report",
       help: "Governs outbound delivery of the daily activity + manpower summary. Intake continues either way.",
     },
-    client_identifier_number: {
-      label: "Source client identifier",
-      help: "Retained for compatibility and display only. Nothing in the central service reads this column for routing or behavior; it names the company's listener client, while project routing is by group IDs.",
-    },
     safety_group_ids: {
       label: "Source group IDs",
       widget: "groups",
@@ -781,7 +777,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
 
   subcon: [
     { title: "Project", fields: ["company", "project_code"] },
-    { title: "Intake", fields: ["enable_housekeeping", "client_identifier_number", "safety_group_ids"] },
+    { title: "Intake", fields: ["enable_housekeeping", "safety_group_ids"] },
     { title: "Google Sheets", fields: ["spreadsheet_id"] },
     {
       title: "Morning report",

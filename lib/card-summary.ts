@@ -349,15 +349,12 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "manpower workbook", on: on(config.spreadsheet_id) },
         {
           // What it answers: does anything reach this project at all? Only
-          // `safety_group_ids` answers it. `client_identifier_number` is NOT a
-          // project identifier — several project codes share one, because it
-          // identifies the listener client, which is a company. Central does
-          // not read that column; the middleware gates on it upstream, which is
-          // where it belongs.
+          // `safety_group_ids` answers it. Project routing is group-based; the
+          // listener middleware owns any client-level gating upstream.
           //
           // So this pill is lit by the group list alone. A project with a
-          // client identifier and no groups is not routed, and showing it as
-          // configured would hide exactly the mistake worth seeing.
+          // no groups is not routed, and showing it as configured would hide
+          // exactly the mistake worth seeing.
           label: "message source",
           on: on(config.safety_group_ids),
         },

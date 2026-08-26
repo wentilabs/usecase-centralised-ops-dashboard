@@ -291,8 +291,19 @@ test("the sensor row upserts on the key the table actually has", () => {
 
 test("wbgt has no NOT NULL text column to fake, unlike ailytics", () => {
   // Every NOT NULL column on wbgt_project_configs has a default and there are no
-  // CHECK constraints, so a draft row needs no empty-string convention.
-  const notNullText = wbgt.fields.filter((f) => f.notNull && f.column !== "project_code" && f.column !== "source_type");
+  // CHECK constraints, so a draft row needs no empty-string convention. Three
+  // kinds are exempt from that convention rather than breaking it: a toggle is
+  // written as a real boolean, and a `number` with a fallback can never resolve
+  // to blank — `site_hours_start`/`site_hours_end` carry the site day, which is
+  // written but not asked about.
+  const notNullText = wbgt.fields.filter(
+    (f) =>
+      f.notNull &&
+      f.kind !== "toggle" &&
+      !(f.kind === "number" && f.fallback) &&
+      f.column !== "project_code" &&
+      f.column !== "source_type",
+  );
   assert.deepEqual(notNullText, [], "no wbgt field should need the empty-string treatment");
   assert.equal(wbgt.uniqueTogether, undefined, "and there is no composite unique key to pre-empt");
 });
@@ -647,8 +658,13 @@ test("haze and lightning can be configured at creation; noise and wbgt stay mini
   // excluded here and asserted separately below.
   const cadenceish = (key: ServiceKey) =>
     onboardingFor(key)!
+      // Only what is RENDERED: hidden fields are written without being asked
+      // about, and the two mutes are hidden in every service that has them.
       .fields.filter(
-        (f) => f.column !== "company" && (f.kind === "toggle" || f.kind === "select" || f.kind === "hhmm"),
+        (f) =>
+          !f.hidden &&
+          f.column !== "company" &&
+          (f.kind === "toggle" || f.kind === "select" || f.kind === "hhmm"),
       )
       .map((f) => f.column);
 
@@ -656,22 +672,40 @@ test("haze and lightning can be configured at creation; noise and wbgt stay mini
     "four_hourly",
     "alert_only_when_at_least",
     "advisory_format",
-    "working_hours_start_hhmm",
-    "working_hours_end_hhmm",
-    "remove_sunday_notifications",
-    "remove_ph_notifications",
     "enable_poc_mentions",
     "poc_mentions_at_least",
   ]);
-  assert.deepEqual(cadenceish("lightning"), [
-    "amber_enabled",
-    "working_hours_start_hhmm",
-    "working_hours_end_hhmm",
-    "remove_sunday_notifications",
-    "remove_ph_notifications",
-  ]);
+  assert.deepEqual(cadenceish("lightning"), ["amber_enabled"]);
+  // Noise and WBGT are asked nothing about cadence — but they are still given
+  // the two mutes, hidden, so a new project starts muted like every other
+  // service. `cadenceish` counts only what is rendered.
   assert.deepEqual(cadenceish("noise"), []);
   assert.deepEqual(cadenceish("wbgt"), []);
+});
+
+test("a new project of any service starts muted on Sundays and public holidays", () => {
+  // The columns default to false in Postgres, so every one of these has to be
+  // written rather than omitted. Hidden everywhere: a site that works weekends
+  // has them turned off in the editor, which is the rarer case.
+  for (const key of ["wbgt", "noise", "haze", "lightning"] as ServiceKey[]) {
+    const definition = onboardingFor(key)!;
+    const row = buildInsertRow(definition, { project_code: "ZZT" });
+    assert.equal(row.remove_sunday_notifications, true, `${key} Sundays`);
+    assert.equal(row.remove_ph_notifications, true, `${key} holidays`);
+    for (const column of ["remove_sunday_notifications", "remove_ph_notifications"]) {
+      const field = definition.fields.find((f) => f.column === column)!;
+      assert.ok(field, `${key} must write ${column}`);
+      assert.equal(field.hidden, true, `${key}.${column} must not be asked about`);
+      assert.equal(field.kind, "toggle", `${key}.${column} must be a real boolean`);
+    }
+  }
+
+  // The three services without those columns must not invent them.
+  for (const key of ["ailytics", "subcon", "issueChaser"] as ServiceKey[]) {
+    const row = buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" });
+    assert.equal("remove_sunday_notifications" in row, false, key);
+    assert.equal("remove_ph_notifications" in row, false, key);
+  }
 });
 
 test("every onboarding flow offers the company, and lightning hides what it still writes", () => {
@@ -698,6 +732,8 @@ test("every onboarding flow offers the company, and lightning hides what it stil
     "feed_stale_after_seconds",
     "red_dwell_seconds",
     "amber_dwell_seconds",
+    "working_hours_start_hhmm",
+    "working_hours_end_hhmm",
     "remove_sunday_notifications",
     "remove_ph_notifications",
   ]);
@@ -735,10 +771,21 @@ test("the new field kinds reach Postgres in the shape the column wants", () => {
     assert.ok(muteFields.every((f) => f.hidden), `${key}: the mutes are not asked about`);
   }
 
-  // And the working day is prefilled rather than left blank, since a blank pair
-  // means no window at all.
-  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).working_hours_start_hhmm, "0800");
-  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).working_hours_end_hhmm, "1900");
+  // The working day is written rather than asked about, and never left blank —
+  // a blank pair means no window at all. WBGT keeps the same 08:00-19:00 in two
+  // integer HOUR columns, where the end is exclusive, so 19 makes the 18:00 hour
+  // the last one that fires.
+  for (const key of ["haze", "lightning"] as ServiceKey[]) {
+    const row = buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" });
+    assert.equal(row.working_hours_start_hhmm, "0800", key);
+    assert.equal(row.working_hours_end_hhmm, "1900", key);
+    for (const column of ["working_hours_start_hhmm", "working_hours_end_hhmm"]) {
+      assert.equal(onboardingFor(key)!.fields.find((f) => f.column === column)!.hidden, true, `${key}.${column}`);
+    }
+  }
+  const wbgtRow = buildInsertRow(onboardingFor("wbgt")!, { project_code: "ZZT" });
+  assert.equal(wbgtRow.site_hours_start, "8");
+  assert.equal(wbgtRow.site_hours_end, "19", "the column default is 18, which would stop an hour early");
 
   // A NOT NULL enum keeps its fallback; a nullable select left alone is null.
   assert.equal(row.advisory_format, "default");

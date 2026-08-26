@@ -297,6 +297,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "working_hours_start_hhmm",
         label: "Working hours start",
         kind: "hhmm",
+        hidden: true,
         required: false,
         notNull: false,
         fallback: "0800",
@@ -306,6 +307,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "working_hours_end_hhmm",
         label: "Working hours end",
         kind: "hhmm",
+        hidden: true,
         required: false,
         notNull: false,
         fallback: "1900",
@@ -560,6 +562,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "working_hours_start_hhmm",
         label: "Working hours start",
         kind: "hhmm",
+        hidden: true,
         required: false,
         notNull: false,
         fallback: "0800",
@@ -569,6 +572,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "working_hours_end_hhmm",
         label: "Working hours end",
         kind: "hhmm",
+        hidden: true,
         required: false,
         notNull: false,
         fallback: "1900",
@@ -686,6 +690,30 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: false,
         notNull: false,
         help: "The analysis workbook. Both sheet actions are unavailable until it is set. A pasted spreadsheet URL is accepted — the id is taken out of it.",
+      },
+      // Hidden, and ON for a new project. Same rule as haze and lightning: a
+      // site that works Sundays or holidays has them turned off in the editor,
+      // which is the rarer case. Both columns default to false in Postgres, so
+      // these have to be written rather than omitted.
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Outbound only — scraping, readings and the sheets continue. On by default for a new project.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Same, for the hard-coded Singapore holiday list.",
       },
       { column: "whatsapp_group_id", label: "WhatsApp group ID", kind: "groups", required: false, notNull: false },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
@@ -922,6 +950,57 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: true,
         fallback: "default",
         help: "default, whgd, svs or pentaocean. Each needs its own credentials and Browserbase context on the Lambda.",
+      },
+      // Hidden, and ON for a new project. Same rule as haze and lightning: a
+      // site that works Sundays or holidays has them turned off in the editor,
+      // which is the rarer case. Both columns default to false in Postgres, so
+      // these have to be written rather than omitted.
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Outbound only — scraping, readings and the sheets continue. On by default for a new project.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Same, for the hard-coded Singapore holiday list.",
+      },
+      // The site day, written but not asked about — the same 08:00-19:00 as haze
+      // and lightning. WBGT keeps it in two integer HOUR columns rather than an
+      // HHMM pair, and `site_hours_end` is EXCLUSIVE: 19 means the 18:00 hour is
+      // the last one that fires. The column default is 18, so this has to be
+      // written rather than omitted.
+      {
+        column: "site_hours_start",
+        label: "Site hours start",
+        kind: "number",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "8",
+        range: { min: 0, max: 23 },
+        help: "Hour of day, SGT. 8 = messages from 08:00.",
+      },
+      {
+        column: "site_hours_end",
+        label: "Site hours end",
+        kind: "number",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "19",
+        range: { min: 1, max: 24 },
+        help: "Exclusive: 19 means the 18:00 hour is the last one that fires.",
       },
       {
         column: "monthly_sheet_id",

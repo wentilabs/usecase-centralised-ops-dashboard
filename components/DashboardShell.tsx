@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { SmartChat } from "./SmartChat";
+import { shouldFocusSearch } from "@/lib/search-hotkey";
 import { ExportDialog } from "./ExportDialog";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
@@ -56,6 +57,16 @@ export function DashboardShell({
   visoUrl: string | null;
 }) {
   const [tab, setTab] = useState<ServiceKey>(services[0]?.key ?? "wbgt");
+  /**
+   * ⌘F / Ctrl+F focuses the filter instead of the browser's find.
+   *
+   * Two inputs, because the mobile header and the desktop bar are separate
+   * elements; whichever is actually laid out gets the focus. The brief ring is
+   * there because a silent focus change is invisible — the shortcut has to
+   * announce that it did something, or it reads as broken.
+   */
+  const searchInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [searchFlash, setSearchFlash] = useState(false);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
@@ -126,6 +137,26 @@ export function DashboardShell({
     }
   }, [router]);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const visible = searchInputs.current.find((input) => input && input.offsetParent !== null) ?? null;
+      if (!visible) return;
+      if (!shouldFocusSearch(event, document.activeElement === visible)) return;
+      event.preventDefault();
+      visible.focus();
+      visible.select();
+      setSearchFlash(true);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!searchFlash) return;
+    const timer = window.setTimeout(() => setSearchFlash(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [searchFlash]);
+
   const active = services.find((service) => service.key === tab) ?? services[0];
 
   const visible = useMemo(() => {
@@ -166,12 +197,17 @@ export function DashboardShell({
         </button>
 
         <input
+          ref={(element) => {
+            searchInputs.current[0] = element;
+          }}
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Code, company, pill…"
           aria-label="Filter by project code, company or capability"
-          className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary"
+          className={`min-w-0 flex-1 rounded-lg border bg-card px-3 py-2 outline-none focus:border-primary ${
+            searchFlash ? "border-primary ring-2 ring-primary/70" : "border-border"
+          }`}
         />
 
         <button
@@ -209,11 +245,18 @@ export function DashboardShell({
         </nav>
 
         <input
+          ref={(element) => {
+            searchInputs.current[1] = element;
+          }}
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter by code, company or capability — e.g. water parade"
-          className="w-[220px] rounded-lg border border-border bg-card px-3 py-1.5 text-sm outline-none focus:border-primary"
+          className={`w-[220px] rounded-lg border bg-card px-3 py-1.5 text-sm outline-none transition-shadow focus:border-primary ${
+            searchFlash
+              ? "border-primary ring-2 ring-primary/70 shadow-[0_0_0_4px_hsl(var(--primary)/0.25)]"
+              : "border-border"
+          }`}
         />
 
         {/* Desktop only for now: the proposal opens the editor, which is itself a

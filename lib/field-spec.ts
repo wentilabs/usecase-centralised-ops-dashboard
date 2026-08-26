@@ -213,7 +213,11 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     water_parade_outbound_group_id: {
       label: "Water Parade reminder group",
       widget: "groups",
-      help: "The dedicated reminder group. Often NOT the same as the WBGT alert groups above.",
+      help: "The dedicated reminder group, and exactly one — unlike the WBGT alert groups above, this is not a list. The reminder is posted to this value as a single chat id, so a second id makes the whole string an invalid group. Often NOT one of the alert groups.",
+    },
+    water_parade_cooldown_enabled: {
+      label: "Cooldown between cycles",
+      help: "Off by default. On, a new cycle is not created when one already exists in either of the two preceding hour bands of the same day — so a long hot spell asks the site once, not every hour. Suppressed cycles are logged as `cooldown_active`; nothing is sent and no reminder is due.",
     },
     manpower_spreadsheet_id: {
       label: "Manpower spreadsheet ID",
@@ -677,7 +681,12 @@ const GROUPS: Record<string, FieldGroup[]> = {
     { title: "Sheets", fields: ["monthly_sheet_id", "monthly_sheet_fill_mode"] },
     {
       title: "Water Parade",
-      fields: ["water_parade_enabled", "water_parade_outbound_group_id", "manpower_spreadsheet_id"],
+      fields: [
+        "water_parade_enabled",
+        "water_parade_cooldown_enabled",
+        "water_parade_outbound_group_id",
+        "manpower_spreadsheet_id",
+      ],
     },
   ],
   noise: [

@@ -968,18 +968,49 @@ test("Water Parade leads the pills, in its own colour, only when configured", ()
   assert.equal(pills[0].label, "💧 Water Parade");
   assert.equal(pills[0].tone, "info");
   assert.equal(pills[0].on, true);
-  // The cadence pills still follow in their usual order.
-  assert.equal(pills[1].label, "hourly");
+  // Its cooldown rides directly behind it, because the two answer one question
+  // together: does this site get asked, and how often.
+  assert.equal(pills[1].label, "cooldown 2h");
+  assert.equal(pills[1].on, false, "off by default");
+  assert.equal(
+    pillsFor("wbgt", { water_parade_enabled: true, water_parade_cooldown_enabled: true })[1].on,
+    true,
+  );
+  // Then the cadence pills, in their usual order.
+  assert.equal(pills[2].label, "hourly");
 
-  // Not configured: absent entirely. 24 of 25 projects do not use it, so a
-  // struck-through pill on each would be noise rather than emphasis.
-  for (const row of [{ water_parade_enabled: false }, {}]) {
+  // Not configured: both absent entirely. Most projects do not use Water Parade,
+  // so struck-through pills on each would be noise rather than emphasis — and a
+  // cooldown pill on a project with no cycles to cool down says nothing at all.
+  for (const row of [
+    { water_parade_enabled: false },
+    {},
+    // Even with the flag set, which happens when Water Parade is switched off
+    // again and the cooldown is left behind.
+    { water_parade_enabled: false, water_parade_cooldown_enabled: true },
+  ]) {
     assert.equal(
-      pillsFor("wbgt", row).some((p) => /Water Parade/.test(p.label)),
+      pillsFor("wbgt", row).some((p) => /Water Parade|cooldown/.test(p.label)),
       false,
       JSON.stringify(row),
     );
   }
+});
+
+test("the Water Parade cooldown is described where it changes the cadence", () => {
+  const on = firesAt("wbgt", { water_parade_enabled: true, water_parade_cooldown_enabled: true });
+  assert.match(on, /Water Parade reminders/);
+  assert.match(on, /previous 2 hour bands/, "the suppression window belongs in words");
+  // Same number as the pill: `cooldown 2h` and the sentence must not describe
+  // the same rule with two different figures.
+  assert.match(on, /2 hour bands/);
+
+  const off = firesAt("wbgt", { water_parade_enabled: true });
+  assert.match(off, /Water Parade reminders/);
+  assert.doesNotMatch(off, /previous 2 hour bands/, "and must not be implied when it is off");
+
+  // The flag alone changes nothing: cycle creation is what the cooldown gates.
+  assert.doesNotMatch(firesAt("wbgt", { water_parade_cooldown_enabled: true }), /Water Parade|hour bands/);
 });
 
 test("Ailytics shows its two switches and not its setup", () => {

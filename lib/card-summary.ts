@@ -144,7 +144,19 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (config.enable_5min_alerts) parts.push("5-min on 32/33°C crossings");
-    if (config.water_parade_enabled) parts.push("Water Parade reminders");
+    if (config.water_parade_enabled) {
+      // The cooldown changes how often a site is asked, which is the part an
+      // operator is answering questions about — worth a clause, not just a pill.
+      parts.push(
+        config.water_parade_cooldown_enabled
+          // Phrased as the lookback the code performs — `cooldownHourBands`
+          // checks the two preceding hour bands of the same day — rather than
+          // "one per 3 bands", which is the same rule stated as arithmetic and
+          // reads as a contradiction next to the "cooldown 2h" pill.
+          ? "Water Parade reminders, skipped if a cycle ran in the previous 2 hour bands"
+          : "Water Parade reminders",
+      );
+    }
     if (!parts.length) {
       return isManualIngestion(service, config)
         ? "Manual photo ingestion — readings arrive as photos; no scheduled message"
@@ -279,7 +291,14 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "wbgt":
       return [
         ...(config.water_parade_enabled
-          ? [{ label: "💧 Water Parade", on: true, tone: "info" as const }]
+          ? [
+              { label: "💧 Water Parade", on: true, tone: "info" as const },
+              // Only shown where Water Parade runs: on a project without it the
+              // flag is inert, and a struck-through pill on 20 cards would be
+              // noise. Lit or unlit here is a real difference in how often a
+              // site is asked.
+              { label: "cooldown 2h", on: on(config.water_parade_cooldown_enabled) },
+            ]
           : []),
         // A second id in `water_parade_outbound_group_id` is not a second
         // recipient: the reminder path posts the raw column value as one

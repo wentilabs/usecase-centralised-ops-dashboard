@@ -181,6 +181,8 @@ export function ConfigEditor({
   onClose,
   onSaved,
   groupNames = {},
+  initialDraft,
+  initialNote,
 }: {
   service: ServiceKey;
   serviceLabel: string;
@@ -191,11 +193,22 @@ export function ConfigEditor({
   onSaved: (updated: ProjectConfigRow) => void;
   /** chat id → group name, for the "groups" widget's type-ahead. */
   groupNames?: Record<string, string>;
+  /**
+   * Fields already changed when the editor opens, and why.
+   *
+   * How the smart chat hands over: it proposes, and the proposal arrives here as
+   * an ordinary draft. Everything after that is the path a person takes by hand —
+   * the same diff, the same confirmation, the same PATCH with its own validation
+   * and audit row. Nothing about the save is special-cased for the chat, which is
+   * the point: there is one way to change a row.
+   */
+  initialDraft?: Draft;
+  initialNote?: string;
 }) {
   const [current, setCurrent] = useState<ProjectConfigRow>(row);
-  const [draft, setDraft] = useState<Draft>({});
+  const [draft, setDraft] = useState<Draft>(initialDraft ?? {});
   const [confirming, setConfirming] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialNote ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<AuditEntry[] | null>(null);

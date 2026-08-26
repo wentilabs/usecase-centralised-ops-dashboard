@@ -103,8 +103,20 @@ test("operations that change the world say so in their description", () => {
   const mutating = operations().filter(({ method }) => method !== "get");
   assert.ok(mutating.length >= 4, "expected several write operations");
 
+  // `/api/chat` is a POST that writes nothing — it resolves a project, asks a
+  // model, and returns a proposal — so it cannot state a consequence it does not
+  // have. It has to say that instead, which is asserted below rather than waived.
+  const chat = openapiDocument.paths["/api/chat"].post;
+  assert.match(String(chat.description), /PROPOSES ONLY|writes nothing/i, "the chat must say it writes nothing");
+  assert.match(
+    String(chat.description),
+    /updateProjectConfig/,
+    "and name the operation that does the writing, so the two are not confused",
+  );
+
   for (const { path, method, op } of mutating) {
-    if (path.includes("reload") || path.includes("exports")) continue; // genuinely side-effect free
+    // Genuinely side-effect free: a cache drop, a file read, and a proposal.
+    if (path.includes("reload") || path.includes("exports") || path === "/api/chat") continue;
     const text = String(op.description);
     assert.match(
       text,

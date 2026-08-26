@@ -151,6 +151,46 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/chat": {
+      post: {
+        operationId: "proposeConfigChange",
+        tags: ["configuration"],
+        summary: "Turn one sentence into a proposed change for one project",
+        description:
+          "PROPOSES ONLY — writes nothing. Resolves which project a sentence is about from the project codes this dashboard holds, asks a model to map the request onto that service's columns, validates the result against the field spec, and returns the change set. Applying it is a separate `updateProjectConfig` call, which is where validation, optimistic concurrency and the audit row happen. Ambiguity comes back as a question: no project named, two projects named, or an outcome no column covers. Requires an editor session and `ANTHROPIC_API_KEY` on the server; an agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  prompt: {
+                    type: "string",
+                    maxLength: 2000,
+                    description: "One sentence naming the project and the outcome, e.g. \"CFC's WBGT alerts shouldn't go out on Sundays\".",
+                  },
+                },
+                required: ["prompt"],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Either a `proposal` to apply, or a `message` explaining why there is nothing to propose.",
+            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          },
+          "400": errorResponses["400"],
+          "401": errorResponses["401"],
+          "403": errorResponses["403"],
+          "502": {
+            description: "The model could not be reached, or did not answer usefully.",
+            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          },
+        },
+      },
+    },
     "/api/projects": {
       get: {
         operationId: "listProjects",

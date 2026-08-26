@@ -4,9 +4,10 @@ Written to be read once and absorbed. [AGENT_ACCESS.md](../AGENT_ACCESS.md) is t
 operator's manual — commands, curl, scope tables. This explains *why the pieces
 add up to something safe*, and what it would take to go further.
 
-The short version: **the agentic half already works.** A model with a token can
-read the live schema and change a project's configuration today. What is missing
-is a place inside HALO to do it by typing a sentence.
+The short version: **both halves work now.** A model with a token can read the
+live schema and change a project's configuration; and there is a line in HALO's
+header where a sentence becomes a proposed change you confirm in the ordinary
+editor. §8 covers the second one.
 
 ---
 
@@ -203,34 +204,51 @@ The judgement calls are about the credential, not the code:
 
 ## 8. Where this can go — B: a smart chat inside HALO
 
-The low-hanging fruit, because everything underneath it exists. What is missing is
-small:
+**Built.** One line in the header: a sentence in, and either an answer in words or
+the ordinary editor opening with those fields already changed.
 
-| piece | status |
+Set `ANTHROPIC_API_KEY` on the server to switch it on (`HALO_CHAT_MODEL`
+overrides the model, default `claude-sonnet-5`). Without the key it still tells
+you which project it understood and says the rest cannot be worked out — because
+the half that matters most needs no model at all.
+
+| piece | where |
 | --- | --- |
-| A contract a model can be handed | exists (`/openapi.json`) |
-| Column semantics in plain English | exists (`lib/field-spec.ts` help text) |
-| Validation before the DB | exists (`validateChanges`) |
-| Concurrency safety | exists (`baseUpdatedAt`) |
-| Audit attribution | exists (`ops.config_audit`) |
-| A confirmation UI showing a diff | exists — the editor's preview/save |
-| **An LLM credential and a route to call it** | missing |
-| **A parse → propose contract** | missing |
+| Which project a sentence is about | `lib/chat-intent.ts` → `resolveTarget`, deterministic |
+| What the model is told about each column | `briefFor` — the editor's own labels and help text |
+| The instruction it is given | `SYSTEM_PROMPT`, in the same file |
+| Checking what comes back | `checkProposal`, before anything reaches a form |
+| The route | `POST /api/chat` — proposes, writes nothing |
+| The confirmation | the ordinary editor, opened with a seeded draft |
+| The write | `PATCH /api/config/...`, exactly as if typed by hand |
 
-**The design that fits what is already here:**
+**Resolving the project is deliberately not the model's job.** A project code is a
+string match against a list HALO already holds; handing that to an LLM adds a way
+to be confidently wrong about the one part of the request that decides *whose site
+gets changed*. So the route matches codes itself — tolerantly enough that "CR 106"
+and "CR106" are one project, strictly enough that "TRI" does not match inside
+"TRIAL" — and returns ambiguity as a question:
 
-- **One project at a time.** The model's job is to turn a sentence into a
-  *proposed change set for one row*, not to plan a migration.
-- **The project is inferred from the prompt**, from the same project codes the
-  cards already show. If the sentence names no project, or names two, the answer
-  is a question rather than a guess.
-- **Nothing is applied by the chat.** It produces a proposal, and the proposal
-  opens the existing editor with those fields already changed — the same preview
-  and save a person uses by hand. The chat is a faster way to *reach* the
-  confirmation, not a way around it.
+> *"CFC should stop on Sundays"* → **CFC exists for WBGT, Haze and Lightning. Say which service you mean.**
+>
+> *"set ZRA and TJR to four-hourly"* → **You named ZRA and TJR — this handles one project at a time.**
+
+**The design, and why each part is that way:**
+
+- **One project at a time.** The model turns a sentence into a proposed change
+  set for one row. It does not plan a migration.
+- **Nothing is applied by the chat.** It proposes; the proposal opens the existing
+  editor with those fields already changed, and a person reads the same diff and
+  presses the same save. The chat is a faster way to *reach* the confirmation, not
+  a way around it — and `initialDraft` on `ConfigEditor` is the whole of the
+  handover, so there is no second save path to keep honest.
 - **The write goes through the same `PATCH`**, with the same `validateChanges`,
-  the same `baseUpdatedAt`, and an audit note that records the sentence that
-  produced it.
+  the same `baseUpdatedAt`, and a note that records what was asked for.
+- **It refuses more than it acts.** No project named, two projects named, a column
+  that does not exist, a boolean given as `"yes"`, a value outside its allowed
+  set — each comes back as a sentence rather than a save someone has to decode.
+- **It is an editor's tool.** A read-only session is told there is nothing to
+  propose, rather than handed a pre-filled dialog it cannot use.
 
 ### What a good prompt looks like
 

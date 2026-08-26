@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
+import { SmartChat } from "./SmartChat";
 import { ExportDialog } from "./ExportDialog";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
@@ -59,7 +60,13 @@ export function DashboardShell({
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
   );
-  const [editing, setEditing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
+  const [editing, setEditing] = useState<{
+    service: ServiceData;
+    row: ProjectConfigRow;
+    /** Set when the smart chat proposed this, so the editor opens pre-filled. */
+    draft?: Record<string, unknown>;
+    note?: string;
+  } | null>(null);
 
   // Mobile-only surfaces: the service/actions drawer, and the card detail sheet
   // that carries the details the phone card leaves out.
@@ -208,6 +215,26 @@ export function DashboardShell({
           placeholder="Filter by code, company or capability — e.g. water parade"
           className="w-[220px] rounded-lg border border-border bg-card px-3 py-1.5 text-sm outline-none focus:border-primary"
         />
+
+        {/* Desktop only for now: the proposal opens the editor, which is itself a
+            desktop surface. */}
+        <div className="hidden md:block">
+          <SmartChat
+            onProposal={(proposal) => {
+              const service = services.find((entry) => entry.key === proposal.service);
+              if (!service) return;
+              const row = (rows[service.key] ?? []).find(
+                (candidate) => String(candidate.project_code ?? "") === proposal.projectCode,
+              );
+              if (!row) return;
+              // Switch to the project's own tab, so what opens is visibly a
+              // change to a card the reader can see rather than one somewhere
+              // behind another tab.
+              setTab(service.key);
+              setEditing({ service, row, draft: proposal.changes, note: proposal.summary });
+            }}
+          />
+        </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
           <span>
@@ -419,6 +446,8 @@ export function DashboardShell({
           row={editing.row}
           rowId={rowIdOf(editing.service, editing.row)}
           groupNames={groupNames}
+          initialDraft={editing.draft}
+          initialNote={editing.note}
           onClose={() => setEditing(null)}
           onSaved={(updated) =>
             setRows((prev) => ({

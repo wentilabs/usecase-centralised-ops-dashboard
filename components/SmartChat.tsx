@@ -17,7 +17,10 @@ import { useState } from "react";
  */
 export function SmartChat({
   onProposal,
+  fullWidth = false,
 }: {
+  /** Stretch to the container. The mobile row is full width; the header is not. */
+  fullWidth?: boolean;
   onProposal: (proposal: {
     service: string;
     projectCode: string;
@@ -63,7 +66,7 @@ export function SmartChat({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className={`flex flex-col gap-1 ${fullWidth ? "w-full" : ""}`}>
       <div className="flex items-center gap-2">
         <input
           value={prompt}
@@ -75,21 +78,27 @@ export function SmartChat({
               void send();
             }
           }}
-          placeholder="Ask for a change — “CFC's WBGT alerts shouldn't go out on Sundays”"
+          placeholder={fullWidth ? "Ask for a change — “TJR lightning, amber off”" : "Ask for a change — “CFC's WBGT alerts shouldn't go out on Sundays”"}
           aria-label="Ask for a configuration change"
-          className="w-[340px] rounded-lg border border-border bg-card px-3 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-60"
+          className={`rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary disabled:opacity-60 ${
+            // Taller on the phone row, where it is a thumb target rather than one
+            // control among many in a dense header.
+            fullWidth ? "min-w-0 flex-1 py-2.5" : "w-[340px] py-1.5"
+          }`}
         />
         <button
           type="button"
           onClick={() => void send()}
           disabled={busy || !prompt.trim()}
-          className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:border-primary disabled:opacity-40"
+          className={`shrink-0 rounded-lg border border-border bg-card px-2.5 text-xs hover:border-primary disabled:opacity-40 ${
+            fullWidth ? "py-2.5" : "py-1.5"
+          }`}
         >
           {busy ? "Thinking…" : "Propose"}
         </button>
       </div>
       {message ? (
-        <p className="max-w-[420px] text-[11px] text-warn" role="status">
+        <p className={`text-[11px] text-warn ${fullWidth ? "" : "max-w-[420px]"}`} role="status">
           {message}
         </p>
       ) : null}

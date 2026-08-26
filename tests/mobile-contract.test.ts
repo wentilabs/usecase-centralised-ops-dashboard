@@ -366,3 +366,28 @@ test("a chat proposal opens the diff, not a form to go hunting in", async () => 
   // And a hand-opened editor still starts on the form.
   assert.match(editor, /initialDraft\?: Draft;/);
 });
+
+test("the phone gets the chat, and thumb-sized actions on a rail", async () => {
+  const shell = await source("components/DashboardShell.tsx");
+
+  // The chat exists on the phone, in its own full-width row rather than squeezed
+  // into a header that already holds a menu, a filter and refresh. It is more
+  // useful there than on a desktop: a sentence beats hunting one field in a
+  // thirty-row form.
+  assert.match(shell, /md:hidden">\s*<SmartChat fullWidth/);
+  // One handler for both instances, so the two cannot drift apart.
+  assert.equal((shell.match(/onProposal=\{proposeChange\}/g) ?? []).length, 2);
+
+  // Action buttons are thumb-sized on the phone and unchanged on the desktop.
+  const actionButtons = [...shell.matchAll(/className="shrink-0 whitespace-nowrap rounded-lg[^"]*"/g)].map((m) => m[0]);
+  assert.equal(actionButtons.length, 3, "add-project, jobs and exports");
+  for (const cls of actionButtons) {
+    assert.match(cls, /py-2\.5/, "40px on a phone, not the 30px it was");
+    assert.match(cls, /md:py-1\.5/, "and the desktop row stays compact");
+  }
+
+  // And they scroll inside their own rail rather than wrapping. Five thumb-sized
+  // buttons at 375px wrapped to three lines and pushed the first card off the
+  // screen; the page itself must never scroll sideways.
+  assert.match(shell, /overflow-x-auto[^"]*md:flex-wrap[^"]*md:overflow-visible/);
+});

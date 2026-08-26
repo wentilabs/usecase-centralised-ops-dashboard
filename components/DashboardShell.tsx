@@ -157,6 +157,33 @@ export function DashboardShell({
     return () => window.clearTimeout(timer);
   }, [searchFlash]);
 
+  /**
+   * Open the editor on a chat proposal. Shared by the mobile row and the desktop
+   * header so the two cannot drift into behaving differently.
+   */
+  const proposeChange = useCallback(
+    (proposal: {
+      service: string;
+      projectCode: string;
+      rowId: string;
+      changes: Record<string, unknown>;
+      summary: string;
+      rejected: { column: string; reason: string }[];
+    }) => {
+      const service = services.find((entry) => entry.key === proposal.service);
+      if (!service) return;
+      const row = (rows[service.key] ?? []).find(
+        (candidate) => String(candidate.project_code ?? "") === proposal.projectCode,
+      );
+      if (!row) return;
+      // Switch to the project's own tab, so what opens is visibly a change to a
+      // card the reader can see rather than one behind another tab.
+      setTab(service.key);
+      setEditing({ service, row, draft: proposal.changes, note: proposal.summary });
+    },
+    [rows, services],
+  );
+
   const active = services.find((service) => service.key === tab) ?? services[0];
 
   const visible = useMemo(() => {
@@ -221,6 +248,14 @@ export function DashboardShell({
         </button>
       </header>
 
+      {/* A sentence beats hunting for one field in a thirty-row form, which makes
+          this more useful on a phone than on a desktop — so it gets its own
+          full-width row rather than being squeezed into the header beside the
+          menu, the filter and refresh. */}
+      <div className="border-b border-border px-3 py-2 md:hidden">
+        <SmartChat fullWidth onProposal={proposeChange} />
+      </div>
+
       {/* ---------------------------------------------------------------------
        * Desktop header — unchanged.
        * ------------------------------------------------------------------- */}
@@ -262,21 +297,7 @@ export function DashboardShell({
         {/* Desktop only for now: the proposal opens the editor, which is itself a
             desktop surface. */}
         <div className="hidden md:block">
-          <SmartChat
-            onProposal={(proposal) => {
-              const service = services.find((entry) => entry.key === proposal.service);
-              if (!service) return;
-              const row = (rows[service.key] ?? []).find(
-                (candidate) => String(candidate.project_code ?? "") === proposal.projectCode,
-              );
-              if (!row) return;
-              // Switch to the project's own tab, so what opens is visibly a
-              // change to a card the reader can see rather than one somewhere
-              // behind another tab.
-              setTab(service.key);
-              setEditing({ service, row, draft: proposal.changes, note: proposal.summary });
-            }}
-          />
+          <SmartChat onProposal={proposeChange} />
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
@@ -334,11 +355,15 @@ export function DashboardShell({
         </div>
       </header>
 
+      {/* One scrolling rail on a phone, a wrapping row on a desktop. Wrapping
+          five thumb-sized buttons at 375px took three lines and pushed the first
+          card most of the way off the screen; a rail keeps the actions one swipe
+          away and the cards where they were. */}
       {jobsForService(active.key).length ||
       exportsForService(active.key).length ||
       onboardingFor(active.key) ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-5">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-3 py-2.5 [scrollbar-width:none] md:flex-wrap md:overflow-visible md:px-5 md:py-2">
+          <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground">
             {active.label} actions
           </span>
           {/* Creating a row is the only insert in the app, so it leads the row
@@ -348,7 +373,7 @@ export function DashboardShell({
               type="button"
               onClick={() => setOnboarding(true)}
               title={onboardingFor(active.key)?.description}
-              className="rounded-lg border border-on/40 bg-on/10 px-3 py-1.5 text-xs font-medium text-on hover:bg-on/20"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-on/40 bg-on/10 px-3 py-2.5 text-xs font-medium text-on hover:bg-on/20 md:py-1.5"
             >
               {onboardingFor(active.key)?.label}
             </button>
@@ -362,7 +387,7 @@ export function DashboardShell({
                   type="button"
                   onClick={() => setJob(definition)}
                   title={definition.description}
-                  className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
+                  className="shrink-0 whitespace-nowrap rounded-lg border border-primary/35 bg-primary/5 px-3 py-2.5 text-xs font-medium text-primary hover:bg-primary/15 md:py-1.5"
                 >
                   {definition.label}
                 </button>
@@ -374,7 +399,7 @@ export function DashboardShell({
               type="button"
               onClick={() => setExporter(definition)}
               title={definition.description}
-              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:border-primary hover:text-primary"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2.5 text-xs font-medium hover:border-primary hover:text-primary md:py-1.5"
             >
               {definition.label}
             </button>

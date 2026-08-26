@@ -411,7 +411,14 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "same-day snapshot", on: on(config.same_day_open_snapshot_enabled) },
         { label: "P1 escalation", on: on(config.priority_one_escalation_enabled) },
         { label: "reply in origin group", on: config.send_to_originating_groups !== false },
+        // Strict origin routing drops any issue whose row has no recoverable
+        // origin chat, rather than falling back to the group list. Silence is
+        // the symptom, so it belongs on the card rather than only in the editor.
+        { label: "origin required", on: on(config.require_origin_chat_identity) },
         { label: "images", on: config.include_issue_images !== false },
+        // Sender-phone fallback is on by default; PIC resolution is not, and it
+        // is the one that needs a Novade Name List tab in the workbook.
+        { label: "PIC mentions", on: on(config.pic_mentions_enabled) },
       ];
     default:
       // Ailytics. Three pills were dropped as noise rather than signal:

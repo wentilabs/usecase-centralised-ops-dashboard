@@ -1212,3 +1212,23 @@ test("a card tag uses the short service name where one exists", () => {
     assert.ok(tagLabel(key).length <= 12, `${key} tag is too long for the card: ${tagLabel(key)}`);
   }
 });
+
+test("Issue Chaser's two new switches are on the card, both off by default", () => {
+  // Both arrived with the chaser upgrade and default to false, and both fail
+  // quietly: strict origin routing DROPS an issue whose row has no recoverable
+  // origin chat instead of falling back to the group list, and PIC mentions
+  // need a `Novade Name List` tab that the code warns about and carries on
+  // without. Silence is the symptom for each, so the card has to say.
+  const bare = pillsFor("issueChaser", {});
+  assert.ok(bare.some((p) => p.label === "origin required" && !p.on));
+  assert.ok(bare.some((p) => p.label === "PIC mentions" && !p.on));
+
+  const strict = pillsFor("issueChaser", { require_origin_chat_identity: true, pic_mentions_enabled: true });
+  assert.ok(strict.some((p) => p.label === "origin required" && p.on));
+  assert.ok(strict.some((p) => p.label === "PIC mentions" && p.on));
+
+  // Each sits beside the switch it qualifies, so the pair reads as one decision.
+  const labels = bare.map((p) => p.label);
+  assert.equal(labels.indexOf("origin required"), labels.indexOf("reply in origin group") + 1);
+  assert.equal(labels.indexOf("PIC mentions"), labels.indexOf("images") + 1);
+});

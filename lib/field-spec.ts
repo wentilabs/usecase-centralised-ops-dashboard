@@ -626,9 +626,17 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Mention the sender",
       help: "Tags the issue's `Sender Phone` when no PIC phone is available.",
     },
+    pic_mentions_enabled: {
+      label: "Mention the PIC",
+      help: "Resolves each issue's `PIC` name against a `Novade Name List` tab in the same workbook and tags the phones it finds. Off, no PIC is ever tagged whatever the sheet holds. If that tab is missing or unreadable the run continues with no PIC mentions and only a warning in the log.",
+    },
     send_to_originating_groups: {
       label: "Reply in the originating group",
       help: "Recovers the group from the sheet's `Message Id Serialized`, so no per-project group is needed. Off — or when that column is missing — delivery falls back to the group list below.",
+    },
+    require_origin_chat_identity: {
+      label: "Only reply in the originating group",
+      help: "Strict mode: an issue whose row has no recoverable origin chat is DROPPED rather than falling back to the group list below. It also suppresses the P1 empty-state message, which would otherwise go to the group list. Use it where a chase must never reach the wrong site; expect silence on rows the sheet cannot identify.",
     },
     whatsapp_group_ids: {
       label: "WhatsApp group IDs",
@@ -810,10 +818,20 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "priority_one_escalation_enabled",
       ],
     },
-    { title: "Message content", fields: ["include_issue_images", "mention_sender_fallback"] },
+    {
+      title: "Message content",
+      fields: ["include_issue_images", "mention_sender_fallback", "pic_mentions_enabled"],
+    },
     {
       title: "Delivery",
-      fields: ["send_to_originating_groups", "whatsapp_group_ids", "instance_name", "client_id", "lambda_url"],
+      fields: [
+        "send_to_originating_groups",
+        "require_origin_chat_identity",
+        "whatsapp_group_ids",
+        "instance_name",
+        "client_id",
+        "lambda_url",
+      ],
     },
   ],
 };

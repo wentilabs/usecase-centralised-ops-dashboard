@@ -526,6 +526,11 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Forward PENDING alerts",
       help: "Outbound only — every matching alert is stored as PENDING and written to activity history either way. This decides whether it also reaches WhatsApp.",
     },
+    // Added by supabase/migrate_status_summary.sql in the ailytics repo.
+    status_summary_enabled: {
+      label: "Daily status summary",
+      help: "Lets POST /ailytics-safety/status-summary read this project's sheets and send its own Pending/open counts to the WhatsApp groups above. Project-local — it never aggregates across projects, and a disabled project is not sent one.",
+    },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -766,6 +771,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
       fields: [
         "whatsapp_group_ids",
         "forward_pending_to_whatsapp",
+        "status_summary_enabled",
         "instance_name",
         "client_id",
         "lambda_url",

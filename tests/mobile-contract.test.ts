@@ -220,3 +220,52 @@ test("every company in the dropdown has an asset that exists on disk", async () 
     assert.equal(await fileExists(`public${path}`), true, `${path} must exist in public/`);
   }
 });
+
+test("a Water Parade delivery group is marked with a droplet, not a speech bubble", async () => {
+  const card = await source("components/ProjectCard.tsx");
+
+  // The icon must be derived from the role deliveryGroups already assigns from
+  // water_parade_outbound_group_id. Re-reading the column in the component
+  // would let the icon and the tooltip beside it disagree.
+  assert.match(card, /groupIcon = \(role\?: string\) =>/, "one helper, taking the role");
+  assert.match(card, /role\?\.includes\("water parade"\).*💧.*💬/s, "droplet on the water-parade role");
+  // Comments stripped first: the helper's own comment names the column while
+  // explaining why the component does not read it, and matching prose instead
+  // of code is how this test would lie.
+  const code = card.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  assert.doesNotMatch(code, /water_parade_outbound_group_id/, "the component must not re-read the column");
+
+  // Both surfaces use it: the desktop chip list and the truncated mobile line.
+  assert.match(card, /label=\{groupIcon\(role\)\}/, "the desktop chip");
+  assert.match(card, /\$\{groupIcon\(groups\[0\]\.role\)\}/, "and the mobile line");
+});
+
+test("the water-parade role the droplet depends on is still assigned", async () => {
+  // The icon is only as good as the role. If GROUP_COLUMNS stops labelling
+  // water_parade_outbound_group_id, every WBGT group silently reverts to a
+  // speech bubble and nothing else fails.
+  const { deliveryGroups } = await import("../lib/card-summary");
+  const groups = deliveryGroups("wbgt", {
+    whatsapp_group_id: "1201@g.us, 1202@g.us",
+    water_parade_outbound_group_id: "1202@g.us",
+  });
+
+  assert.equal(groups.find((g) => g.chatId === "1201@g.us")?.role, undefined, "an ordinary group has no role");
+  assert.match(
+    groups.find((g) => g.chatId === "1202@g.us")?.role ?? "",
+    /water parade/,
+    "a group that also receives Water Parade carries the role",
+  );
+  // One chat serving both purposes is one chip, not two — it would also collide
+  // as a React key.
+  assert.equal(groups.length, 2);
+
+  // The column holds a comma-separated LIST, not one id: TEST and ZRA both
+  // carry two. Treating it as a single value marks only the first group.
+  const many = deliveryGroups("wbgt", {
+    whatsapp_group_id: "1201@g.us, 1202@g.us",
+    water_parade_outbound_group_id: "1201@g.us,1202@g.us",
+  });
+  assert.equal(many.length, 2);
+  for (const group of many) assert.match(group.role ?? "", /water parade/, group.chatId);
+});

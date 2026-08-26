@@ -143,6 +143,17 @@ export function ProjectCard({
 
   // Mobile keeps only the switches that are actually on, capped. Chosen by
   // index so services with repeated labels can't collide.
+  /**
+   * The chip's icon: a droplet when this group also receives Water Parade.
+   *
+   * Read off the role `deliveryGroups` already assigns from
+   * `water_parade_outbound_group_id`, rather than re-reading the column here, so
+   * the icon cannot disagree with the tooltip beside it. WBGT is the only
+   * service with that column, so every other service keeps the speech bubble
+   * without a special case.
+   */
+  const groupIcon = (role?: string) => (role?.includes("water parade") ? "💧" : "💬");
+
   const pills = pillsFor(service, config);
   const mobilePills = new Set<number>();
   // Toned pills first — a caution or a called-out capability is the reason to
@@ -278,7 +289,7 @@ export function ProjectCard({
       {/* Delivery: one truncated line on mobile, the full chip list on desktop. */}
       <p className="truncate text-xs text-muted-foreground md:hidden">
         {groups.length
-          ? `💬 ${groupNames[groups[0].chatId] ?? groups[0].chatId}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
+          ? `${groupIcon(groups[0].role)} ${groupNames[groups[0].chatId] ?? groups[0].chatId}${groups.length > 1 ? ` +${groups.length - 1}` : ""}`
           : `💬 ${noGroupWording}`}
       </p>
 
@@ -289,7 +300,7 @@ export function ProjectCard({
             groups.map(({ chatId, role }) => (
               <Chip
                 key={chatId}
-                label="💬"
+                label={groupIcon(role)}
                 value={groupNames[chatId] ?? chatId}
                 // Keep the id reachable — it is what Supabase actually stores.
                 title={

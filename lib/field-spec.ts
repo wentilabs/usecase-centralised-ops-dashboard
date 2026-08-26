@@ -353,14 +353,14 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
     four_hourly: {
-      label: "Four-hourly only",
+      label: "Four-hourly override",
       help:
-        "Send at 08:00, 12:00, 16:00 and 20:00 SGT instead of every hour. Those four sends ignore the band gate below, and the project is left out of the once-a-day kickoff message.",
+        "Guarantees a send in the 08:00, 12:00, 16:00 and 20:00 SGT hours, on top of the hourly advisory. Those four ignore both the band gate below and the working-hours window — 20:00 fires even on a site that closes at 19:00. Every other hour follows the ordinary rules. The check is on the hour, not the minute, and the cron runs at :35, so the messages land at 08:35, 12:35, 16:35 and 20:35. The project is also left out of the once-a-day kickoff message.",
     },
     alert_only_when_at_least: {
       label: "Alert only when at least",
       help:
-        "Suppress the advisory unless the 24-hour PSI band reaches this level. Unset = send every hour. Ignored while Four-hourly only is on.",
+        "Suppress the hourly advisory unless the 24-hour PSI band reaches this level. Unset = send every hour. Still applies with Four-hourly override on — it is bypassed only at those four hours, not for the rest of the day.",
     },
     timezone: { label: "Timezone" },
 

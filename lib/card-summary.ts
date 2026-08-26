@@ -177,16 +177,19 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     const hours = bothEnds
       ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
       : "all day";
-    if (config.four_hourly) {
-      // Four-hourly sends whatever the band, so quoting the gate would misread
-      // the config: the stored value is still there and simply not consulted.
-      return `advisory at 08:00, 12:00, 16:00 and 20:00 during ${hours} — every band, no daily kickoff${mutesSuffix(
-        config,
-      )}`;
-    }
     const gate = config.alert_only_when_at_least
       ? ` — only when PSI ≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
       : "";
+    if (config.four_hourly) {
+      // The override sends at those four hours whatever the band AND outside the
+      // working-hours window, which is why the 20:00 slot fires for a project
+      // whose window closes at 19:00. Every other hour follows the ordinary
+      // gates, so the floor is still quoted — dropping it would imply the
+      // whole day ignores it.
+      return `hourly advisory during ${hours}${gate}, plus a guaranteed send at 08:00, 12:00, 16:00 and 20:00 whatever the band and outside those hours — no daily kickoff${mutesSuffix(
+        config,
+      )}`;
+    }
     return `hourly advisory during ${hours}${gate}${mutesSuffix(config)}`;
   }
 
@@ -310,21 +313,25 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "haze":
       return [
         { label: String(config.nea_region ?? "no region"), on: on(config.nea_region) },
-        // Four-hourly is the majority mode — 21 of 24 projects — so it gets a
-        // plain pill rather than a toned one: emphasis on the common case would
-        // be noise, and what an operator actually wants to spot at a glance is
-        // the handful of sites still on the hourly cadence.
-        { label: config.four_hourly ? "🕓 4-hourly" : "hourly", on: true },
-        // Four-hourly sends whatever the band, so the stored gate is not
-        // consulted. Report what is in force, not what is written down.
-        config.four_hourly
-          ? { label: "every band", on: true }
-          : {
-              label: config.alert_only_when_at_least
-                ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
-                : "every hour",
-              on: on(config.alert_only_when_at_least),
-            },
+        // No cadence pill. Every haze project runs hourly — there is no second
+        // cadence to distinguish it from — so a pill reading "hourly" would be
+        // true of all 25 and tell a reader nothing. It said "4-hourly" vs
+        // "hourly" while `four_hourly` meant "only at those four hours"; it now
+        // means an override on top of the hourly run (INV-HAZE-01).
+        {
+          label: "🕓 4-hourly override",
+          on: on(config.four_hourly),
+        },
+        // The floor still governs every other hour, so it is reported as stored
+        // whether or not the override is on. Saying "every band" here was right
+        // when four-hourly was the whole cadence and is wrong now: it would
+        // claim the 09:00 and 10:00 sends ignore the gate too.
+        {
+          label: config.alert_only_when_at_least
+            ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
+            : "every band",
+          on: on(config.alert_only_when_at_least),
+        },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "POC mentions", on: on(config.enable_poc_mentions) },

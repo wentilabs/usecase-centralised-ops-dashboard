@@ -162,20 +162,32 @@ test("haze fires-at reflects the PSI alert gate", () => {
 });
 
 test("haze four-hourly reports the cadence it actually runs", () => {
+  // `four_hourly` used to mean "ONLY at those four hours", and this test used to
+  // assert the floor was not quoted. The service changed (INV-HAZE-01): every
+  // project runs hourly, and four-hourly is an override that at 08/12/16/20
+  // bypasses both the band floor and the working-hours window. Quoting the
+  // floor is now correct, because it governs every other hour of the day.
   const four = firesAt("haze", {
     four_hourly: true,
     working_hours_start_hhmm: "0800",
     working_hours_end_hhmm: "1900",
     alert_only_when_at_least: "unhealthy",
   });
+  assert.match(four, /^hourly advisory/, "hourly is the cadence for every project now");
+  assert.match(four, /08:00–19:00/, "the window governs the non-override hours");
+  assert.match(four, /only when PSI ≥ unhealthy/, "and so does the floor");
   assert.match(four, /08:00, 12:00, 16:00 and 20:00/);
-  assert.match(four, /08:00–19:00/, "the working-hours window still applies");
-  // The gate is stored but not consulted, so quoting it would misdescribe the
-  // project. This is the assertion that would catch it coming back.
-  assert.doesNotMatch(four, /only when PSI/);
+  assert.match(four, /whatever the band/, "the override ignores the floor at those hours");
+  assert.match(four, /outside those hours/, "and the working-hours window — 20:00 fires past a 19:00 close");
   assert.match(four, /no daily kickoff/, "four-hourly projects are skipped by the kickoff route");
 
-  assert.match(firesAt("haze", { four_hourly: false }), /^hourly advisory/);
+  const plain = firesAt("haze", {
+    working_hours_start_hhmm: "0800",
+    working_hours_end_hhmm: "1900",
+    alert_only_when_at_least: "unhealthy",
+  });
+  assert.match(plain, /^hourly advisory/);
+  assert.doesNotMatch(plain, /guaranteed send/, "no override without the flag");
 });
 
 test("a half-configured haze window is not reported as a range", () => {
@@ -188,15 +200,27 @@ test("a half-configured haze window is not reported as a range", () => {
 
 test("the haze cadence and band pills say what is in force", () => {
   const four = pillsFor("haze", { four_hourly: true, alert_only_when_at_least: "unhealthy" });
-  assert.ok(four.some((p) => p.label === "🕓 4-hourly" && p.on));
-  assert.ok(four.some((p) => p.label === "every band" && p.on));
-  assert.ok(!four.some((p) => p.label.startsWith("≥")), "the bypassed gate must not be shown as active");
-  // Four-hourly is the majority mode, so it must not be emphasised.
-  assert.equal(four.find((p) => p.label === "🕓 4-hourly")?.tone, undefined);
+  const plain = pillsFor("haze", { alert_only_when_at_least: "unhealthy" });
 
-  const hourly = pillsFor("haze", { alert_only_when_at_least: "unhealthy" });
-  assert.ok(hourly.some((p) => p.label === "hourly" && p.on));
-  assert.ok(hourly.some((p) => p.label === "≥ unhealthy" && p.on));
+  // Every haze project runs hourly, so a cadence pill would be true of all of
+  // them and carry no information. It existed only while four-hourly was an
+  // alternative cadence rather than an override.
+  for (const pills of [four, plain]) {
+    assert.ok(!pills.some((p) => /^(hourly|every hour)$/.test(p.label)), "no cadence pill");
+  }
+
+  assert.ok(four.some((p) => p.label === "🕓 4-hourly override" && p.on));
+  assert.ok(plain.some((p) => p.label === "🕓 4-hourly override" && !p.on), "unlit without the flag");
+  // The majority mode, so it must not be emphasised.
+  assert.equal(four.find((p) => p.label === "🕓 4-hourly override")?.tone, undefined);
+
+  // The floor is reported as stored either way: with the override on it still
+  // governs the other twenty hours, so showing "every band" there would claim
+  // the 09:00 send ignores it too.
+  assert.ok(four.some((p) => p.label === "≥ unhealthy" && p.on), "the floor still applies off-slot");
+  assert.ok(plain.some((p) => p.label === "≥ unhealthy" && p.on));
+  assert.ok(!four.some((p) => p.label === "every band"), "which is only true when no floor is stored");
+  assert.ok(pillsFor("haze", { four_hourly: true }).some((p) => p.label === "every band"));
 });
 
 test("lightning fires-at distinguishes red-only sites", () => {

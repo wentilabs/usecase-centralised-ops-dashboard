@@ -219,6 +219,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Cooldown between cycles",
       help: "Off by default. On, a new cycle is not created when one already exists in either of the two preceding hour bands of the same day — so a long hot spell asks the site once, not every hour. Suppressed cycles are logged as `cooldown_active`; nothing is sent and no reminder is due.",
     },
+    exclude_wohhup_from_manpower: {
+      label: "Exclude Woh Hup from the roster",
+      help: "On by default, which is the historical behaviour: Woh Hup, Wohhup and WHPL rows are dropped when the `Manpower` tab is read, because Woh Hup is the main contractor rather than a Water Parade participant. Off includes them — MBS is the project that needs that. Affects the Water Parade roster AND `manpower-sheet` POC resolution, since both read the same tab.",
+    },
     manpower_spreadsheet_id: {
       label: "Manpower spreadsheet ID",
       widget: "sheet",
@@ -694,6 +698,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "water_parade_cooldown_enabled",
         "water_parade_outbound_group_id",
         "manpower_spreadsheet_id",
+        "exclude_wohhup_from_manpower",
       ],
     },
   ],

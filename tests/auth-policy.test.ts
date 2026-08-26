@@ -1232,3 +1232,31 @@ test("Issue Chaser's two new switches are on the card, both off by default", () 
   assert.equal(labels.indexOf("origin required"), labels.indexOf("reply in origin group") + 1);
   assert.equal(labels.indexOf("PIC mentions"), labels.indexOf("images") + 1);
 });
+
+test("the Woh Hup roster filter appears only where the Manpower tab is read", () => {
+  // Default true, and it drops Woh Hup / Wohhup / WHPL rows when the Manpower
+  // tab is parsed. It governs two consumers at once — the Water Parade roster
+  // and manpower-sheet POC resolution — so it is shown for either.
+  const parade = pillsFor("wbgt", { water_parade_enabled: true });
+  assert.ok(parade.some((p) => p.label === "excl. Woh Hup" && p.on), "default is to exclude");
+
+  const included = pillsFor("wbgt", { water_parade_enabled: true, exclude_wohhup_from_manpower: false });
+  assert.ok(
+    included.some((p) => p.label === "excl. Woh Hup" && !p.on),
+    "struck through where Woh Hup counts as a participant — MBS today",
+  );
+
+  // POC numbers resolved from the sheet read the same tab, so the filter matters
+  // there even with Water Parade off.
+  const pocFromSheet = pillsFor("wbgt", { poc_phone_numbers: "manpower-sheet" });
+  assert.ok(pocFromSheet.some((p) => p.label === "excl. Woh Hup"));
+
+  // And nowhere else: on a project that never reads the tab the flag is inert,
+  // and a pill on all 25 cards would carry no information.
+  for (const row of [{}, { enable_hourly: true }, { poc_phone_numbers: "6591234567" }]) {
+    assert.ok(
+      !pillsFor("wbgt", row).some((p) => /Woh Hup/.test(p.label)),
+      JSON.stringify(row),
+    );
+  }
+});

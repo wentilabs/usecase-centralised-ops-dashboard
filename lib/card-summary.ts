@@ -320,6 +320,14 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         ...(usesManpowerSheetPocs(config)
           ? [{ label: "🔴 POC from sheet", on: true, tone: "info" as const }]
           : [{ label: "POC mentions", on: on(config.enable_red_band_poc_mentions) }]),
+        // Only where the Manpower tab is actually read — Water Parade, or POC
+        // numbers resolved from the sheet. Elsewhere the flag is inert and a
+        // pill on every card would say nothing. Lit is the default (Woh Hup
+        // filtered out as the main contractor); struck means a project counts
+        // it as a participant, which today is MBS alone.
+        ...(config.water_parade_enabled || usesManpowerSheetPocs(config)
+          ? [{ label: "excl. Woh Hup", on: config.exclude_wohhup_from_manpower !== false }]
+          : []),
       ];
     case "noise":
       return [

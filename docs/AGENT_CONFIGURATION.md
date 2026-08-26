@@ -207,10 +207,19 @@ The judgement calls are about the credential, not the code:
 **Built.** One line in the header: a sentence in, and either an answer in words or
 the ordinary editor opening with those fields already changed.
 
-Set `ANTHROPIC_API_KEY` on the server to switch it on (`HALO_CHAT_MODEL`
-overrides the model, default `claude-sonnet-5`). Without the key it still tells
-you which project it understood and says the rest cannot be worked out — because
-the half that matters most needs no model at all.
+Set **`OPENAI_API_KEY`** or `ANTHROPIC_API_KEY` on the server to switch it on.
+Whichever is present decides the provider — OpenAI wins if both are — and
+`HALO_CHAT_MODEL` overrides the model, defaulting to `gpt-5.6-terra` on OpenAI
+and `claude-sonnet-5` on Anthropic. Without either key it still tells you which
+project it understood and says the rest cannot be worked out, because the half
+that matters most needs no model at all.
+
+On OpenAI the call goes to the Responses API, and falls back to Chat Completions
+once if that endpoint rejects the model — some ids are served by one and not the
+other, and which is which is not knowable from the name. Neither request sends a
+JSON-mode parameter: a parameter an unfamiliar model rejects fails the whole
+call, so the instruction asks for JSON and the parser is forgiving about prose
+around it.
 
 | piece | where |
 | --- | --- |

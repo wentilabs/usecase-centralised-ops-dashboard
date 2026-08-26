@@ -34,6 +34,7 @@
     "lib/derive.ts",
     "lib/slippy-map.ts",
     "lib/chat-intent.ts",
+    "lib/chat-provider.ts",
     "lib/onboarding.ts",
     "lib/message-previews.ts",
     "lib/message-previews.generated.ts",

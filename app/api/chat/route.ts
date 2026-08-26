@@ -6,9 +6,17 @@ import {
   briefFor,
   checkProposal,
   describeAmbiguity,
+  parseModelJson,
   resolveTarget,
   type Proposal,
 } from "@/lib/chat-intent";
+import {
+  buildRequest,
+  chooseProvider,
+  extractText,
+  fallbackRequest,
+  shouldFallBack,
+} from "@/lib/chat-provider";
 import { getConfig, getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { SERVICES, SERVICE_KEYS } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
@@ -30,9 +38,6 @@ export const dynamic = "force-dynamic";
  * shows a person, and asked for JSON.
  */
 
-const MODEL = process.env.HALO_CHAT_MODEL ?? "claude-sonnet-5";
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-
 type ChatReply = {
   /** What to say back when there is nothing to propose. */
   message?: string;
@@ -51,20 +56,6 @@ type ChatReply = {
 
 function reply(body: ChatReply, status = 200) {
   return NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
-}
-
-/** The model is asked for JSON; this survives it wrapping the JSON in prose anyway. */
-export function parseModelJson(text: string): { changes?: unknown; summary?: unknown; question?: unknown } | null {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = (fenced ? fenced[1] : text).trim();
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch {
-    return null;
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -115,52 +106,60 @@ export async function POST(request: NextRequest) {
   // about needs no model, so "which project?" and "that could be either of
   // these" are answered even with no key configured. Only the mapping step
   // needs one.
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const choice = chooseProvider(process.env);
+  if (!choice.provider) {
     return reply({
       message:
-        `Understood ${projectCode} (${SERVICES[service].label}), but ANTHROPIC_API_KEY is not set on the server, ` +
+        `Understood ${projectCode} (${SERVICES[service].label}), but ${choice.reason}, ` +
         "so the change itself cannot be worked out. Use the editor directly.",
     });
   }
 
+  const turn = {
+    system: SYSTEM_PROMPT,
+    user: [
+      `Service: ${SERVICES[service].label}`,
+      `Project: ${projectCode}`,
+      "",
+      "Editable columns:",
+      JSON.stringify(columns, null, 1),
+      "",
+      `Request: ${prompt}`,
+    ].join("\n"),
+  };
+
+  async function ask(request: ReturnType<typeof buildRequest>) {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      cache: "no-store",
+    });
+    return { ok: response.ok, status: response.status, text: await response.text() };
+  }
+
   let text = "";
   try {
-    const response = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              `Service: ${SERVICES[service].label}`,
-              `Project: ${projectCode}`,
-              "",
-              "Editable columns:",
-              JSON.stringify(columns, null, 1),
-              "",
-              `Request: ${prompt}`,
-            ].join("\n"),
-          },
-        ],
-      }),
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      return reply({ message: `The model returned ${response.status}. ${detail.slice(0, 300)}` }, 502);
+    let result = await ask(buildRequest(choice, turn));
+
+    // Some model ids are served by one OpenAI endpoint and not the other, and
+    // which is which is not knowable from the name. Trying the second is cheaper
+    // than making whoever set HALO_CHAT_MODEL find out by reading an error.
+    if (!result.ok && shouldFallBack(result.status, result.text)) {
+      const second = fallbackRequest(choice, turn);
+      if (second) result = await ask(second);
     }
-    const body = (await response.json()) as { content?: { type: string; text?: string }[] };
-    text = (body.content ?? []).filter((part) => part.type === "text").map((part) => part.text ?? "").join("");
+
+    if (!result.ok) {
+      return reply(
+        { message: `${choice.model} returned ${result.status}. ${result.text.slice(0, 300)}` },
+        502,
+      );
+    }
+    text = extractText(JSON.parse(result.text));
+    if (!text) return reply({ message: `${choice.model} answered with nothing this could read.` }, 502);
   } catch (error) {
-    return reply({ message: `Could not reach the model: ${error instanceof Error ? error.message : error}` }, 502);
+    return reply({ message: `Could not reach ${choice.model}: ${error instanceof Error ? error.message : error}` }, 502);
   }
 
   const parsed = parseModelJson(text);

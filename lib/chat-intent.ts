@@ -230,6 +230,28 @@ export function checkProposal(
   return { changes, problems };
 }
 
+/**
+ * The model is asked for JSON; this survives it wrapping the JSON in prose.
+ *
+ * No JSON-mode parameter is sent — see `lib/chat-provider.ts` for why — so the
+ * parser is the thing that has to be forgiving. It handles a fenced block, a bare
+ * object, and either surrounded by explanation.
+ */
+export function parseModelJson(
+  text: string,
+): { changes?: unknown; summary?: unknown; question?: unknown } | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
 /** The instruction the model is given. Kept here so a test can read it. */
 export const SYSTEM_PROMPT = [
   "You turn one sentence from an operations engineer into a configuration change for ONE project.",

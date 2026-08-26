@@ -18,7 +18,7 @@ import {
   shouldFallBack,
 } from "@/lib/chat-provider";
 import { getConfig, getFieldSpec, listConfigs } from "@/lib/config-repository";
-import { SERVICES, SERVICE_KEYS } from "@/lib/services";
+import { SERVICES, SERVICE_KEYS, type ProjectConfigRow } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -86,10 +86,28 @@ export async function POST(request: NextRequest) {
 
   const target = resolveTarget(prompt, rows as never, (service) => SERVICES[service].idColumn);
   if (target.kind === "none") {
+    const named = target.hinted.map((key) => SERVICES[key].label).join(" / ");
+    return reply({
+      message: named
+        ? `Which ${named} project? Name its code — one project at a time.`
+        : "Which project? Name its code — for example “CFC's WBGT alerts shouldn't go out on Sundays”. " +
+          "One project at a time.",
+    });
+  }
+  if (target.kind === "not-in-service") {
+    // Answer about the service that was actually named, not the ones that were
+    // not. Listing a few of its real codes turns a dead end into a next step.
+    const label = target.services.map((key) => SERVICES[key].label).join(" / ");
+    const available = target.services
+      .flatMap((key) => (rows[key] ?? []) as ProjectConfigRow[])
+      .map((row) => String(row.project_code ?? "").trim())
+      .filter(Boolean)
+      .sort();
+    const sample = available.slice(0, 8).join(", ");
     return reply({
       message:
-        "Which project? Name its code — for example “CFC's WBGT alerts shouldn't go out on Sundays”. " +
-        "One project at a time.",
+        `${label} has no project called ${target.codes.join(" or ")}. ` +
+        (sample ? `Its projects include ${sample}${available.length > 8 ? `, and ${available.length - 8} more` : ""}.` : ""),
     });
   }
   if (target.kind === "many") {

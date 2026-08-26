@@ -35,8 +35,8 @@ test("a project code is matched the way people type it, and not inside another w
 
 test("the project is resolved without asking a model, and ambiguity is returned", () => {
   const rows: Partial<Record<ServiceKey, ProjectConfigRow[]>> = {
-    wbgt: [{ project_code: "CFC" }, { project_code: "ZRA" }] as ProjectConfigRow[],
-    haze: [{ project_code: "CFC" }, { project_code: "TJR" }] as ProjectConfigRow[],
+    wbgt: [{ project_code: "CFC" }, { project_code: "ZRA" }, { project_code: "TEST" }] as ProjectConfigRow[],
+    haze: [{ project_code: "CFC" }, { project_code: "TJR" }, { project_code: "TEST" }] as ProjectConfigRow[],
   };
 
   // One project, one service.
@@ -46,6 +46,32 @@ test("the project is resolved without asking a model, and ambiguity is returned"
 
   // Nothing named — a question, never a guess at which of ninety.
   assert.equal(resolveTarget("turn off Sunday messages", rows, idColumnFor).kind, "none");
+
+  // A named service takes precedence over everything else in the sentence. This
+  // is the case that used to answer with the services the person did NOT name:
+  // "Lightning, TEST, ..." listed the six services that do have a TEST, while
+  // Lightning has none.
+  const withLightning: typeof rows = {
+    ...rows,
+    lightning: [{ project_code: "TJR" }, { project_code: "ZRA" }] as ProjectConfigRow[],
+  };
+  const missing = resolveTarget("Lightning, TEST, make it 0900 to 2000", withLightning, idColumnFor);
+  assert.equal(missing.kind, "not-in-service");
+  if (missing.kind === "not-in-service") {
+    assert.deepEqual(missing.services, ["lightning"]);
+    assert.deepEqual(missing.codes, ["TEST"], "and it says which code it could not find there");
+  }
+
+  // A service named with a code it DOES have resolves straight away, even though
+  // that code exists elsewhere too.
+  const inLightning = resolveTarget("Lightning TJR amber off", withLightning, idColumnFor);
+  assert.equal(inLightning.kind, "one");
+  assert.equal(inLightning.kind === "one" && inLightning.target.service, "lightning");
+
+  // A service named with no code asks about that service rather than in general.
+  const noCode = resolveTarget("turn off lightning amber alerts", withLightning, idColumnFor);
+  assert.equal(noCode.kind, "none");
+  assert.deepEqual(noCode.kind === "none" ? noCode.hinted : [], ["lightning"]);
 
   // Two different projects named: the design is one at a time.
   assert.equal(resolveTarget("set ZRA and TJR to four-hourly", rows, idColumnFor).kind, "many");
@@ -293,4 +319,45 @@ test("formatter options are described from the service's own documentation", () 
   );
   // The distinguishing words are in there rather than left to the option name.
   assert.match(notes.date_loc_name_12h_complete_list, /location/i);
+});
+
+test("an array column is checked element by element, not as a whole", () => {
+  // The bug this fixes: the model correctly answered ["G","C"] for a text[]
+  // column and checkProposal replied "must be one of G, C" — comparing the whole
+  // array against the option list, which reads as a contradiction because it is.
+  const arraySpec = {
+    fields: {
+      red_detection_types: {
+        name: "red_detection_types",
+        label: "Red strike types",
+        type: "array",
+        widget: "multi",
+        options: ["G", "C"],
+        default: ["G"],
+        readonly: false,
+        hidden: false,
+        showIf: null,
+        row: null,
+      },
+    },
+    groups: [],
+  } as unknown as ServiceFieldSpec;
+  const row = { red_detection_types: ["G"] } as unknown as ProjectConfigRow;
+
+  const both = checkProposal(arraySpec, row, { changes: { red_detection_types: ["G", "C"] }, summary: "" });
+  assert.deepEqual(both.changes, { red_detection_types: ["G", "C"] });
+  assert.deepEqual(both.problems, []);
+
+  // A comma string is accepted and normalised, since PostgREST needs an array.
+  const asText = checkProposal(arraySpec, row, { changes: { red_detection_types: "G, C" }, summary: "" });
+  assert.deepEqual(asText.changes, { red_detection_types: ["G", "C"] });
+
+  // A bad element is named, rather than the whole value being rejected opaquely.
+  const bad = checkProposal(arraySpec, row, { changes: { red_detection_types: ["G", "X"] }, summary: "" });
+  assert.deepEqual(bad.changes, {});
+  assert.match(bad.problems[0].reason, /^X — allowed values are G, C$/);
+
+  // And the same set in the same order is not a change.
+  const same = checkProposal(arraySpec, row, { changes: { red_detection_types: ["G"] }, summary: "" });
+  assert.deepEqual(same.changes, {});
 });

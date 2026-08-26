@@ -47,7 +47,10 @@ export function SmartChat({
         // The sentence travels with the proposal and lands in the audit note, so
         // the trail records what was asked for, not just what changed.
         onProposal({ ...body.proposal, summary: body.proposal.summary });
-        setPrompt("");
+        // The prompt STAYS. A proposal is usually the first draft of a request —
+        // one radius wrong, or the wrong project — and retyping the whole
+        // sentence to change a digit is the kind of small hostility that stops
+        // people using a thing. Clear it yourself when you are done with it.
         setMessage(null);
         return;
       }

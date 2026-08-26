@@ -20,9 +20,19 @@ export type ChatTarget = { service: ServiceKey; projectCode: string; rowId: stri
 
 export type ResolveResult =
   | { kind: "one"; target: ChatTarget }
-  | { kind: "none" }
+  /** No code matched. `hinted` carries any service the sentence did name. */
+  | { kind: "none"; hinted: ServiceKey[] }
   /** Named more than one project, or one code that exists in several services. */
-  | { kind: "many"; candidates: ChatTarget[] };
+  | { kind: "many"; candidates: ChatTarget[] }
+  /**
+   * The sentence named a service AND a code, and that service does not have it.
+   *
+   * Worth its own answer. "Lightning, TEST, ..." used to come back listing the
+   * six OTHER services that do have a TEST — factually true, and useless: it
+   * ignored the service the person had just named. The honest reply is that
+   * Lightning has no TEST.
+   */
+  | { kind: "not-in-service"; services: ServiceKey[]; codes: string[] };
 
 /**
  * Codes are matched loosely enough to survive how people type them, and
@@ -97,17 +107,29 @@ export function resolveTarget(
     }
   }
 
-  if (found.length === 0) return { kind: "none" };
-  if (found.length === 1) return { kind: "one", target: found[0] };
+  const hints = serviceHintsIn(prompt);
 
-  // One code, several services — "CFC" exists for both WBGT and haze. If the
-  // sentence names a service, that settles it; otherwise ask.
-  const distinctCodes = new Set(found.map((entry) => normalise(entry.projectCode)));
-  if (distinctCodes.size === 1) {
-    const hints = serviceHintsIn(prompt);
-    const narrowed = found.filter((entry) => hints.includes(entry.service));
-    if (narrowed.length === 1) return { kind: "one", target: narrowed[0] };
+  // A named service is the strongest signal in the sentence, so it is applied
+  // FIRST rather than used to break a tie. Doing it the other way round is what
+  // made "Lightning, TEST, ..." answer with a list of services that were not
+  // Lightning.
+  if (hints.length) {
+    const inHinted = found.filter((entry) => hints.includes(entry.service));
+    if (inHinted.length === 1) return { kind: "one", target: inHinted[0] };
+    if (inHinted.length > 1) return { kind: "many", candidates: inHinted };
+    // A code was named, just not in the service that was named with it.
+    if (found.length) {
+      return {
+        kind: "not-in-service",
+        services: hints,
+        codes: [...new Set(found.map((entry) => entry.projectCode))],
+      };
+    }
+    return { kind: "none", hinted: hints };
   }
+
+  if (found.length === 0) return { kind: "none", hinted: [] };
+  if (found.length === 1) return { kind: "one", target: found[0] };
   return { kind: "many", candidates: found };
 }
 
@@ -241,6 +263,33 @@ export function checkProposal(
     }
     if (field.hidden) {
       problems.push({ column, reason: "not editable from the dashboard" });
+      continue;
+    }
+    // Array columns — lightning's strike types — are validated element by
+    // element. Comparing the whole array against the option list rejected a
+    // correct answer: the model returned ["G","C"] and this said "must be one of
+    // G, C", which reads like a contradiction because it was one.
+    const isArrayColumn = field.type === "array" || field.widget === "multi";
+    if (isArrayColumn) {
+      const values = Array.isArray(value)
+        ? value.map(String)
+        : String(value ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+      const bad = field.options ? values.filter((entry) => !field.options!.includes(entry)) : [];
+      if (bad.length) {
+        problems.push({
+          column,
+          reason: `${bad.join(", ")} — allowed values are ${(field.options ?? []).join(", ")}`,
+        });
+        continue;
+      }
+      // Normalised to an array whatever shape it arrived in, because that is
+      // what PostgREST needs for a text[] column.
+      const before = (row as Record<string, unknown>)[column] ?? null;
+      if (JSON.stringify(before) === JSON.stringify(values)) continue;
+      changes[column] = values;
       continue;
     }
     if (field.options && value !== null && value !== "" && !field.options.includes(String(value))) {

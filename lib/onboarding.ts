@@ -1,4 +1,5 @@
 import { deriveNeaRegion, withinServiceArea } from "./derive";
+import { COMPANIES } from "./field-spec";
 import { readSheetId } from "./jobs";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
@@ -33,7 +34,21 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  * `coerceValue` does on the editor's PATCH path. Sending the bare string "G" to a
  * `text[]` column is rejected by PostgREST.
  */
-export type OnboardFieldKind = "text" | "sheet" | "number" | "groups" | "multi";
+export type OnboardFieldKind =
+  | "text"
+  | "sheet"
+  | "number"
+  | "groups"
+  | "multi"
+  /** A boolean column. Held in the draft as "true"/"false", written as a real boolean. */
+  | "toggle"
+  /**
+   * A fixed set of values — a pg enum, or a CHECK the introspection cannot see.
+   * `options` carries them, and validateDraft refuses anything else.
+   */
+  | "select"
+  /** `HHMM`, validated against the same pattern the column CHECKs use. */
+  | "hhmm";
 
 export type OnboardField = {
   column: string;
@@ -49,9 +64,23 @@ export type OnboardField = {
   notNull: boolean;
   /** Computed from the draft, e.g. "(ZRA) CCTV History". */
   derive?: (draft: OnboardDraft, projectCode: string) => string;
+  /**
+   * Written on insert but never rendered.
+   *
+   * For a value that has one sensible answer nobody needs to be asked for, and
+   * where relying on the column default is not safe: HALO writes it explicitly.
+   * `feed_stale_after_seconds` is exactly that case — setup.sql says 600 and the
+   * live column default is 360, so an omitted field would silently produce the
+   * wrong number.
+   */
+  hidden?: boolean;
   /** Numeric bounds, mirroring the column's CHECK constraint. */
   range?: { min: number; max: number };
-  /** Permitted values for a `multi` field, mirroring the column's `<@` CHECK. */
+  /**
+   * Permitted values for a `multi` or `select` field, mirroring the column's
+   * CHECK or pg enum. An empty string is always allowed for a nullable select —
+   * that is how "leave it unset" is expressed.
+   */
   options?: string[];
   /**
    * Recomputed from the rest of the draft as it changes, and written into the
@@ -182,6 +211,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         help: "Uppercase. Enforced by a CHECK on the column.",
       },
       {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
+      },
+      {
         column: "latitude",
         label: "Latitude",
         kind: "number",
@@ -218,6 +259,73 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
           if (!derived) return null;
           return { value: derived.region, note: derived.note, review: derived.requiresManualReview };
         },
+      },
+      // Cadence and wording, offered here rather than left to the editor: these
+      // are the questions asked when a site is onboarded, and every one of them
+      // has a default that is a real decision.
+      {
+        column: "four_hourly",
+        label: "Four-hourly override",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "Guarantees a send in the 08, 12, 16 and 20 SGT hours on top of the hourly advisory, ignoring both the floor below and the working-hours window. Every other hour follows the ordinary rules.",
+      },
+      {
+        column: "alert_only_when_at_least",
+        label: "Alert only when at least",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Blank is the historical default and means every band sends. `good` is
+        // the lowest band, so choosing it is the same thing said louder.
+        options: ["", "good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
+        help: "Suppresses the hourly advisory below this band. Unset sends every hour; `good` is the lowest band, so it is identical to unset.",
+      },
+      {
+        column: "advisory_format",
+        label: "Advisory format",
+        kind: "select",
+        required: false,
+        notNull: true,
+        fallback: "default",
+        options: ["default", "wohhup"],
+        help: "`wohhup` renders the house wording. An unrecognised value throws at run time rather than falling back, which is why this is a fixed list.",
+      },
+      {
+        column: "working_hours_start_hhmm",
+        label: "Working hours start",
+        kind: "hhmm",
+        required: false,
+        notNull: false,
+        help: "HHMM, e.g. 0800. Both ends or neither — one alone means no window at all.",
+      },
+      {
+        column: "working_hours_end_hhmm",
+        label: "Working hours end",
+        kind: "hhmm",
+        required: false,
+        notNull: false,
+        help: "Exclusive. An end at or before the start is an overnight window, not an empty one.",
+      },
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "Outbound only — ingestion and evaluation continue. The on-demand report ignores this.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "Same, for the hard-coded Singapore holiday list, which currently ends on 2027-12-25.",
       },
       {
         column: "wa_group_ids",
@@ -273,6 +381,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         help: "Uppercase. Enforced by a CHECK on the column.",
       },
       {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
+      },
+      {
         column: "latitude",
         label: "Latitude",
         kind: "number",
@@ -319,11 +439,12 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "site_extent_radius_m",
         label: "Site extent (m)",
         kind: "number",
+        hidden: true,
         required: false,
         notNull: true,
         fallback: "0",
         range: { min: 0, max: 50000 },
-        help: "Rings are measured from the site boundary, so this widens both.",
+        help: "Rings are measured from the site boundary, so this widens both. Written as 0; set it in the editor for a site whose extent matters.",
       },
       {
         column: "red_detection_types",
@@ -352,11 +473,77 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         column: "feed_stale_after_seconds",
         label: "Feed stale after (s)",
         kind: "number",
+        // Hidden but still written: the live column default is 360 while
+        // setup.sql says 600, so leaving it out would quietly onboard a project
+        // onto a six-minute staleness window nobody chose.
+        hidden: true,
         required: false,
         notNull: true,
         fallback: "600",
         range: { min: 60, max: 86400 },
         help: "Ten minutes. Past this the feed counts as stale and the state goes DEGRADED — which never downgrades an open STOP.",
+      },
+      {
+        column: "amber_enabled",
+        label: "Amber alerts",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Off is not a mute: amber detections are not evaluated at all, and a stop then clears straight to SAFE with no intermediate WATCH.",
+      },
+      {
+        column: "red_dwell_seconds",
+        label: "🔴 Red dwell (s)",
+        kind: "number",
+        required: false,
+        notNull: true,
+        fallback: "1200",
+        range: { min: 1, max: 86400 },
+        help: "How long the stop persists after the last qualifying detection. Twenty minutes by default.",
+      },
+      {
+        column: "amber_dwell_seconds",
+        label: "🟠 Amber dwell (s)",
+        kind: "number",
+        required: false,
+        notNull: true,
+        fallback: "1200",
+        range: { min: 1, max: 86400 },
+        help: "Also the amber debounce: a new amber waits at least this long after the last one, so a storm edge crossing the ring does not ping-pong.",
+      },
+      {
+        column: "working_hours_start_hhmm",
+        label: "Working hours start",
+        kind: "hhmm",
+        required: false,
+        notNull: false,
+        help: "HHMM, e.g. 0800. Both ends or neither.",
+      },
+      {
+        column: "working_hours_end_hhmm",
+        label: "Working hours end",
+        kind: "hhmm",
+        required: false,
+        notNull: false,
+      },
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "Outbound only, and it never mutes the green that closes an open stop — nobody is left under a communicated stop-work instruction by a calendar setting.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "Same, for the hard-coded holiday list, which runs out at the end of 2027.",
       },
       {
         column: "whatsapp_group_id",
@@ -420,6 +607,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         help: "Also names the readings table, and must match the prefix of every full_identifier in noise_limits.",
       },
       {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
+      },
+      {
         column: "source_type",
         label: "Login profile",
         kind: "text",
@@ -477,6 +676,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: true,
         notNull: true,
         help: "How a forwarded message is resolved to this row.",
+      },
+      {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
       },
       {
         column: "spreadsheet_id",
@@ -539,6 +750,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: true,
         notNull: true,
         help: "Uppercase. Enforced by a CHECK on the column.",
+      },
+      {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
       },
       {
         column: "safety_sheet_id",
@@ -612,6 +835,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: true,
         notNull: true,
         help: "Also names the readings table — CR 106 becomes cr_106_wbgt_data_hourly. Must start with a letter.",
+      },
+      {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
       },
       {
         column: "sensor_label",
@@ -707,6 +942,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: true,
         notNull: true,
         help: "Unique. Also used to name both sheet tabs.",
+      },
+      {
+        column: "company",
+        label: "Company",
+        kind: "select",
+        required: false,
+        notNull: false,
+        // Identity only — nothing reads it — but it drives the card watermark and
+        // the search box, so it is worth setting while someone knows the answer.
+        // Blank stays legal: a new operating company arrives before this list does.
+        options: ["", ...COMPANIES],
+        help: "Identity only; no code reads it. Sets the card's background mark and makes the project findable by company.",
       },
       {
         column: "timezone",
@@ -858,6 +1105,15 @@ export function validateDraft(
       problems.push(`${field.label} is required.`);
       continue;
     }
+    if (resolved && field.kind === "select" && field.options && !field.options.includes(resolved)) {
+      problems.push(`${field.label}: "${resolved}" is not one of ${field.options.join(", ")}.`);
+    }
+    if (resolved && field.kind === "toggle" && resolved !== "true" && resolved !== "false") {
+      problems.push(`${field.label} must be true or false.`);
+    }
+    if (resolved && field.kind === "hhmm" && !/^([01][0-9]|2[0-3])[0-5][0-9]$/.test(resolved)) {
+      problems.push(`${field.label} must be a 24-hour HHMM time, e.g. 0800.`);
+    }
     if (resolved && field.kind === "multi" && field.options) {
       const bad = resolved
         .split(",")
@@ -885,6 +1141,19 @@ export function validateDraft(
       } else if (field.range && (value < field.range.min || value > field.range.max)) {
         problems.push(`${field.label} must be between ${field.range.min} and ${field.range.max}.`);
       }
+    }
+  }
+
+  // The working-hours window is both-or-neither in the database, and one end
+  // alone is silently treated as no window at all by the services. Caught here
+  // so the dialog does not offer a half-window that looks like a restriction.
+  const start = value("working_hours_start_hhmm");
+  const end = value("working_hours_end_hhmm");
+  if (definition.fields.some((field) => field.column === "working_hours_start_hhmm")) {
+    if (Boolean(start) !== Boolean(end)) {
+      problems.push("Working hours need both ends, or neither — one alone means no window at all.");
+    } else if (start && start === end) {
+      problems.push("Working hours cannot start and end at the same time.");
     }
   }
 
@@ -965,6 +1234,12 @@ export function buildInsertRow(
   for (const field of definition.fields) {
     if (field.target === "companion") continue;
     const value = resolveValue(field, draft, code, env);
+    if (field.kind === "toggle") {
+      // A boolean column, so write a boolean. "false" as a string is truthy in
+      // enough places that sending it would be asking for trouble.
+      row[field.column] = value === "true";
+      continue;
+    }
     if (field.kind === "multi") {
       // An empty list stays an empty array rather than "" or null, so a
       // cardinality CHECK reports the real reason instead of a type error.

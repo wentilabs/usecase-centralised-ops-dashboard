@@ -297,7 +297,9 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
               // flag is inert, and a struck-through pill on 20 cards would be
               // noise. Lit or unlit here is a real difference in how often a
               // site is asked.
-              { label: "cooldown 2h", on: on(config.water_parade_cooldown_enabled) },
+              // Blue, like 💧 Water Parade above it: tone marks the feature
+              // these pills belong to, and all three are Water Parade only.
+              { label: "cooldown 2h", on: on(config.water_parade_cooldown_enabled), tone: "info" as const },
             ]
           : []),
         // A second id in `water_parade_outbound_group_id` is not a second
@@ -326,7 +328,13 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         // filtered out as the main contractor); struck means a project counts
         // it as a participant, which today is MBS alone.
         ...(config.water_parade_enabled || usesManpowerSheetPocs(config)
-          ? [{ label: "excl. Woh Hup", on: config.exclude_wohhup_from_manpower !== false }]
+          ? [
+              {
+                label: "excl. Woh Hup",
+                on: config.exclude_wohhup_from_manpower !== false,
+                tone: "info" as const,
+              },
+            ]
           : []),
       ];
     case "noise":

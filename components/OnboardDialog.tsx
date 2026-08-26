@@ -314,7 +314,9 @@ export function OnboardDialog({
             ) : null}
 
             <div className="mt-4 flex flex-col gap-3">
-              {definition.fields.map((entry) => (
+              {definition.fields
+                .filter((entry) => !entry.hidden)
+                .map((entry) => (
                 <div key={entry.column} className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3">
                   <div className="md:pt-2">
                     <div className="text-sm font-medium">
@@ -348,12 +350,88 @@ export function OnboardDialog({
                           setDraft((prev) => ({ ...prev, [entry.column]: next }));
                         }}
                       />
+                    ) : entry.kind === "toggle" ? (
+                      // A real switch rather than a box someone types "true"
+                      // into. The draft still holds a string, which is what
+                      // resolveValue and the fallbacks work in.
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-primary"
+                          checked={(draft[entry.column] ?? entry.fallback ?? "false") === "true"}
+                          disabled={busy}
+                          onChange={(event) => {
+                            setEdited((prev) => new Set(prev).add(entry.column));
+                            setDraft((prev) => ({ ...prev, [entry.column]: event.target.checked ? "true" : "false" }));
+                          }}
+                        />
+                        <span className="text-muted-foreground">
+                          {(draft[entry.column] ?? entry.fallback ?? "false") === "true" ? "on" : "off"}
+                        </span>
+                      </label>
+                    ) : entry.kind === "multi" ? (
+                      // One checkbox per allowed value, as the editor does it. A
+                      // typed comma list invites "G,X" and a validation error
+                      // for something that is really a two-way choice. The draft
+                      // still holds a comma list, so resolveValue and
+                      // buildInsertRow are unchanged, and the order follows
+                      // `options` rather than click order so the stored value is
+                      // deterministic.
+                      <div className="flex flex-wrap items-center gap-3">
+                        {(entry.options ?? []).map((option) => {
+                          const chosen = new Set(
+                            String(draft[entry.column] ?? entry.fallback ?? "")
+                              .split(",")
+                              .map((value) => value.trim())
+                              .filter(Boolean),
+                          );
+                          return (
+                            <label key={option} className="flex items-center gap-1.5 text-sm">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-primary"
+                                checked={chosen.has(option)}
+                                disabled={busy}
+                                onChange={(event) => {
+                                  const next = new Set(chosen);
+                                  if (event.target.checked) next.add(option);
+                                  else next.delete(option);
+                                  const ordered = (entry.options ?? []).filter((value) => next.has(value));
+                                  setEdited((prev) => new Set(prev).add(entry.column));
+                                  setDraft((prev) => ({ ...prev, [entry.column]: ordered.join(",") }));
+                                }}
+                              />
+                              <span className="font-mono">{option}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {option === "G" ? "cloud-to-ground" : option === "C" ? "intra-cloud" : ""}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : entry.kind === "select" ? (
+                      <select
+                        className={field}
+                        value={draft[entry.column] ?? entry.fallback ?? ""}
+                        disabled={busy}
+                        onChange={(event) => {
+                          setEdited((prev) => new Set(prev).add(entry.column));
+                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
+                        }}
+                      >
+                        {(entry.options ?? []).map((option) => (
+                          <option key={option} value={option}>
+                            {option === "" ? "— unset —" : option.replace(/_/g, " ")}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         className={field}
                         value={draft[entry.column] ?? ""}
                         disabled={busy}
                         placeholder={placeholderFor(entry)}
+                        inputMode={entry.kind === "number" || entry.kind === "hhmm" ? "numeric" : undefined}
                         onChange={(event) => {
                           setEdited((prev) => new Set(prev).add(entry.column));
                           setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
@@ -381,8 +459,8 @@ export function OnboardDialog({
                       <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
                     ) : null}
                   </div>
-                </div>
-              ))}
+                  </div>
+                ))}
             </div>
 
             <div className="mt-4 rounded-lg border border-border bg-card/50 p-3">

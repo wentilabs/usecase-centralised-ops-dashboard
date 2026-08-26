@@ -289,3 +289,42 @@ test("a second water-parade group is flagged, not drawn as extra delivery", () =
   const one = pillsFor("wbgt", { water_parade_enabled: true, water_parade_outbound_group_id: "1201@g.us" });
   assert.ok(!one.some((p) => /water parade groups/.test(p.label)), "no warning on a correct row");
 });
+
+test("the Water Parade pills are one blue family, and an off one still reads as off", async () => {
+  // Tone says what a pill is ABOUT; `on` says whether it is in force. Before
+  // this, the tone branch ignored `on`, so an off toned pill rendered exactly
+  // like an on one — which would have made MBS look like it excludes Woh Hup
+  // when it is the one project that does not.
+  for (const file of ["components/ProjectCard.tsx", "components/ProjectSheet.tsx"]) {
+    const source_ = await source(file);
+    // Anchored FORWARD from the tone branch: `bg-muted` also appears earlier, in
+    // the Chip component, and slicing to its first occurrence produced an empty
+    // string that matched nothing.
+    const start = source_.indexOf('pill.tone === "info"');
+    const toned = source_.slice(start, source_.indexOf("bg-muted", start));
+    assert.ok(toned.length > 0, `${file}: could not find the toned-pill branch`);
+    assert.match(toned, /pill\.on/, `${file}: a toned pill must still branch on \`on\``);
+    assert.match(toned, /text-primary\/60 line-through/, `${file}: an off info pill is struck through`);
+    assert.match(toned, /text-warn\/60 line-through/, `${file}: and so is an off warn pill`);
+  }
+
+  // All three Water Parade pills carry the blue tone, and the two switchable
+  // ones report their real state.
+  const { pillsFor } = await import("../lib/card-summary");
+  const on_ = pillsFor("wbgt", {
+    water_parade_enabled: true,
+    water_parade_cooldown_enabled: true,
+    exclude_wohhup_from_manpower: true,
+  });
+  for (const label of ["💧 Water Parade", "cooldown 2h", "excl. Woh Hup"]) {
+    const pill = on_.find((p) => p.label === label);
+    assert.equal(pill?.tone, "info", `${label} should be blue`);
+    assert.equal(pill?.on, true, label);
+  }
+
+  const off = pillsFor("wbgt", { water_parade_enabled: true, exclude_wohhup_from_manpower: false });
+  assert.equal(off.find((p) => p.label === "cooldown 2h")?.on, false);
+  assert.equal(off.find((p) => p.label === "cooldown 2h")?.tone, "info", "still blue when off");
+  assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.on, false);
+  assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.tone, "info");
+});

@@ -419,6 +419,7 @@ test("subcon onboarding matches the two-route service, and the house field order
   const columns = subcon.fields.map((f) => f.column);
   assert.deepEqual(columns, [
     "project_code",
+    "company",
     "spreadsheet_id",
     "safety_group_ids",
     "manpower_activity_outbound_group_id",
@@ -634,5 +635,139 @@ test("a new Lightning project starts ground-only on both tiers", () => {
   assert.ok(
     problems.some((problem) => /allowed values are G, C/.test(problem)),
     `expected a strike-type complaint, got ${JSON.stringify(problems)}`,
+  );
+});
+
+test("haze and lightning can be configured at creation; noise and wbgt stay minimal", () => {
+  // Deliberately only these two. Noise carries eight cadences with their own
+  // formats and windows, and WBGT nearly as many — offering all of that at
+  // creation would be a worse dialog than the editor, and the user asked for
+  // these two only.
+  // `company` is a select in every service — identity, not cadence — so it is
+  // excluded here and asserted separately below.
+  const cadenceish = (key: ServiceKey) =>
+    onboardingFor(key)!
+      .fields.filter(
+        (f) => f.column !== "company" && (f.kind === "toggle" || f.kind === "select" || f.kind === "hhmm"),
+      )
+      .map((f) => f.column);
+
+  assert.deepEqual(cadenceish("haze"), [
+    "four_hourly",
+    "alert_only_when_at_least",
+    "advisory_format",
+    "working_hours_start_hhmm",
+    "working_hours_end_hhmm",
+    "remove_sunday_notifications",
+    "remove_ph_notifications",
+  ]);
+  assert.deepEqual(cadenceish("lightning"), [
+    "amber_enabled",
+    "working_hours_start_hhmm",
+    "working_hours_end_hhmm",
+    "remove_sunday_notifications",
+    "remove_ph_notifications",
+  ]);
+  assert.deepEqual(cadenceish("noise"), []);
+  assert.deepEqual(cadenceish("wbgt"), []);
+});
+
+test("every onboarding flow offers the company, and lightning hides what it still writes", () => {
+  for (const key of SERVICE_KEYS) {
+    const field = onboardingFor(key)!.fields.find((f) => f.column === "company");
+    assert.ok(field, `${key} must offer company`);
+    assert.equal(field!.kind, "select");
+    assert.equal(field!.required, false, "identity, and a new operating company arrives before the list does");
+    assert.deepEqual(field!.options, ["", "Wohhup", "Obayashi", "PentaOcean"]);
+    // A blank stays null rather than "", since nothing reads the column and an
+    // empty string would look like a company named "".
+    assert.equal(buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" }).company, null);
+  }
+
+  // Two lightning fields are written but not asked about. site_extent is 0 for
+  // almost every site; the staleness window has one sensible answer. Both are
+  // hidden rather than dropped, because the live column default for
+  // feed_stale_after_seconds is 360 while setup.sql says 600 — omitting the
+  // field would quietly onboard a six-minute window nobody chose.
+  const lightning = onboardingFor("lightning")!;
+  const hidden = lightning.fields.filter((f) => f.hidden).map((f) => f.column);
+  assert.deepEqual(hidden, ["site_extent_radius_m", "feed_stale_after_seconds"]);
+  const row = buildInsertRow(lightning, { project_code: "ZZT" });
+  assert.equal(row.site_extent_radius_m, "0");
+  assert.equal(row.feed_stale_after_seconds, "600", "not the column's 360");
+});
+
+test("the new field kinds reach Postgres in the shape the column wants", () => {
+  const haze = onboardingFor("haze")!;
+  const row = buildInsertRow(haze, {
+    project_code: "ZZT",
+    latitude: "1.3",
+    longitude: "103.8",
+    nea_region: "north",
+    four_hourly: "true",
+  });
+
+  // Booleans, not the strings "true"/"false" — "false" is truthy in enough
+  // places that sending it would eventually bite.
+  assert.equal(row.four_hourly, true);
+  assert.equal(typeof row.four_hourly, "boolean");
+  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).four_hourly, false, "the fallback is off");
+  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).remove_sunday_notifications, false);
+
+  // A NOT NULL enum keeps its fallback; a nullable select left alone is null.
+  assert.equal(row.advisory_format, "default");
+  assert.equal(row.alert_only_when_at_least, null);
+
+  // Amber defaults ON for lightning, which is the opposite of every other
+  // toggle here — off means amber is not evaluated at all.
+  assert.equal(buildInsertRow(onboardingFor("lightning")!, { project_code: "ZZT" }).amber_enabled, true);
+});
+
+test("a half-open working-hours window is refused, not silently ignored", () => {
+  // The database keeps them both-or-neither and the services treat one end alone
+  // as no window, so a dialog that accepted it would imply a restriction nothing
+  // enforces.
+  for (const key of ["haze", "lightning"] as ServiceKey[]) {
+    const definition = onboardingFor(key)!;
+    const base: Record<string, string> = {
+      project_code: "ZZT",
+      latitude: "1.3",
+      longitude: "103.8",
+      nea_region: "north",
+      red_radius_m: "8000",
+      amber_radius_m: "12000",
+    };
+    const half = validateDraft(definition, { ...base, working_hours_start_hhmm: "0800" }, []);
+    assert.ok(half.some((p) => /both ends, or neither/.test(p)), `${key}: ${JSON.stringify(half)}`);
+
+    const same = validateDraft(
+      definition,
+      { ...base, working_hours_start_hhmm: "0800", working_hours_end_hhmm: "0800" },
+      [],
+    );
+    assert.ok(same.some((p) => /same time/.test(p)), `${key}: ${JSON.stringify(same)}`);
+
+    // A real window passes, including one that wraps midnight.
+    assert.deepEqual(
+      validateDraft(definition, { ...base, working_hours_start_hhmm: "1900", working_hours_end_hhmm: "0700" }, []),
+      [],
+    );
+    // And a malformed time is caught before Postgres sees it.
+    assert.ok(
+      validateDraft(definition, { ...base, working_hours_start_hhmm: "8am", working_hours_end_hhmm: "1900" }, [])
+        .some((p) => /24-hour HHMM/.test(p)),
+    );
+  }
+});
+
+test("a select refuses a value its column would refuse", () => {
+  const problems = validateDraft(
+    onboardingFor("haze")!,
+    { project_code: "ZZT", latitude: "1.3", longitude: "103.8", nea_region: "north", advisory_format: "wohup" },
+    [],
+  );
+  assert.ok(
+    problems.some((p) => /is not one of default, wohhup/.test(p)),
+    `expected an advisory-format complaint, got ${JSON.stringify(problems)}`,
   );
 });

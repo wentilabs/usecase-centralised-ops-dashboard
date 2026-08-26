@@ -260,10 +260,18 @@ export function ProjectCard({
           <span
             key={pill.label}
             className={[
+              // A toned pill keeps its colour when it is OFF, but says so:
+              // dimmed and struck through, not rendered as if it were on. Tone
+              // marks what a pill is ABOUT — blue for Water Parade — while
+              // `on` still has to carry whether it is in force.
               pill.tone === "info"
-                ? "rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/40"
+                ? pill.on
+                  ? "rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/40"
+                  : "rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary/60 line-through ring-1 ring-primary/20"
                 : pill.tone === "warn"
-                  ? "rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-semibold text-warn ring-1 ring-warn/40"
+                  ? pill.on
+                    ? "rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-semibold text-warn ring-1 ring-warn/40"
+                    : "rounded-full bg-warn/10 px-2 py-0.5 text-[11px] font-semibold text-warn/60 line-through ring-1 ring-warn/20"
                   : pill.on
                     ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
                     : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through",

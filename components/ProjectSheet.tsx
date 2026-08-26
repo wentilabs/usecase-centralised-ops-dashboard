@@ -98,10 +98,17 @@ export function ProjectSheet({
                 <span
                   key={pill.label}
                   className={
+                    // Same rule as the card: a toned pill keeps its colour when
+                    // off and is struck through, so tone says what the pill is
+                    // about and `on` still says whether it is in force.
                     pill.tone === "info"
-                      ? "rounded-full bg-primary/20 px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/40"
+                      ? pill.on
+                        ? "rounded-full bg-primary/20 px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/40"
+                        : "rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary/60 line-through ring-1 ring-primary/20"
                       : pill.tone === "warn"
-                        ? "rounded-full bg-warn/20 px-2.5 py-1 text-xs font-semibold text-warn ring-1 ring-warn/40"
+                        ? pill.on
+                          ? "rounded-full bg-warn/20 px-2.5 py-1 text-xs font-semibold text-warn ring-1 ring-warn/40"
+                          : "rounded-full bg-warn/10 px-2.5 py-1 text-xs font-semibold text-warn/60 line-through ring-1 ring-warn/20"
                         : pill.on
                           ? "rounded-full bg-on/15 px-2.5 py-1 text-xs text-on ring-1 ring-on/30"
                           : "rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground line-through"

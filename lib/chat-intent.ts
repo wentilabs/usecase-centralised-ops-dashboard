@@ -1,5 +1,6 @@
 import { SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "./services";
 import type { FieldSpec, ServiceFieldSpec } from "./field-spec";
+import { previewsFor } from "./message-previews";
 
 /**
  * The pure half of the smart chat.
@@ -153,21 +154,55 @@ export type ColumnBrief = {
   type: string;
   options?: string[];
   current: unknown;
+  /**
+   * The column's own default.
+   *
+   * Included because "put it back to default" is a real request and the answer is
+   * never guessable from the option list. Noise's `hourly_formatter` has five
+   * options and the default is `date_loc_name_12h_complete_list` — not the
+   * similarly-named `12h_complete_list`, which is a different message shape.
+   * Without this the model picks the plausible one.
+   */
+  default?: unknown;
+  /**
+   * What each option actually produces, one line per value.
+   *
+   * Taken from the formatter previews — which are themselves lifted from the
+   * service repos' own `MESSAGE_SHAPES.md` — so the model reads the same
+   * description of a message shape that the operator reads behind the `?`, and
+   * both come from the service's documentation rather than from a name.
+   *
+   * This matters most where the names are nearly identical. Noise's
+   * `hourly_formatter` offers `12h_complete_list` and
+   * `date_loc_name_12h_complete_list`; the difference is a date line and the
+   * location name in each meter heading, which no amount of staring at the two
+   * strings will tell you.
+   */
+  optionNotes?: Record<string, string>;
 };
 
-export function briefFor(spec: ServiceFieldSpec, row: ProjectConfigRow): ColumnBrief[] {
+export function briefFor(service: ServiceKey, spec: ServiceFieldSpec, row: ProjectConfigRow): ColumnBrief[] {
   return Object.values(spec.fields)
     .filter((field) => !field.hidden && !field.readonly)
-    .map((field) => ({
-      name: field.name,
-      label: field.label,
-      ...(field.help ? { help: field.help } : {}),
-      // `string` is the introspected default for a column whose type HALO does
-      // not classify further; the model treats it as free text.
-      type: field.type ?? "string",
-      ...(field.options ? { options: [...field.options] } : {}),
-      current: (row as Record<string, unknown>)[field.name] ?? null,
-    }));
+    .map((field) => {
+      const notes = Object.fromEntries(
+        previewsFor(service, field.name)
+          .filter((preview) => preview.summary)
+          .map((preview) => [preview.value, preview.summary]),
+      );
+      return {
+        name: field.name,
+        label: field.label,
+        ...(field.help ? { help: field.help } : {}),
+        // `string` is the introspected default for a column whose type HALO does
+        // not classify further; the model treats it as free text.
+        type: field.type ?? "string",
+        ...(field.options ? { options: [...field.options] } : {}),
+        current: (row as Record<string, unknown>)[field.name] ?? null,
+        ...(field.default === undefined ? {} : { default: field.default }),
+        ...(Object.keys(notes).length ? { optionNotes: notes } : {}),
+      };
+    });
 }
 
 export type Proposal = {
@@ -272,4 +307,8 @@ export const SYSTEM_PROMPT = [
   "  ask a question instead of guessing.",
   "- Never propose a change whose effect you cannot state in the summary.",
   "- `enabled` switches a whole project off. Only touch it if the sentence plainly asks for that.",
+  '- "default", "back to normal" or "the usual" means the column\'s `default` value, which is given for each',
+  "  column. Write that value explicitly rather than clearing the column, and never assume the default is the",
+  "  first option or the one with the simplest name — noise's hourly default is `date_loc_name_12h_complete_list`,",
+  "  not the similar-looking `12h_complete_list`.",
 ].join("\n");

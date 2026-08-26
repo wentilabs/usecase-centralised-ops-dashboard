@@ -12,6 +12,7 @@ import {
 } from "../lib/chat-intent";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 import type { ServiceFieldSpec } from "../lib/field-spec";
+import { previewsFor } from "../lib/message-previews";
 
 const idColumnFor = (service: ServiceKey) => (service === "subcon" || service === "ailytics" ? "id" : "project_code");
 
@@ -121,7 +122,7 @@ const spec = (): ServiceFieldSpec => ({
 }) as unknown as ServiceFieldSpec;
 
 test("the model is briefed with the same words the operator reads", () => {
-  const brief = briefFor(spec(), { remove_sunday_notifications: false } as ProjectConfigRow);
+  const brief = briefFor("haze", spec(), { remove_sunday_notifications: false } as ProjectConfigRow);
   const sunday = brief.find((entry) => entry.name === "remove_sunday_notifications")!;
   assert.equal(sunday.label, "Mute Sundays");
   assert.equal(sunday.help, "Outbound only.", "the help text IS the semantic layer");
@@ -227,4 +228,69 @@ test("the two kinds of ambiguity get two different answers", () => {
     label,
   );
   assert.match(many, /A1, B2, C3 and 2 more/);
+});
+
+test("the chat route cannot write, structurally", async () => {
+  // The rule is that a chat turn NEVER changes configuration — proposing is the
+  // whole of its job, and the write happens only when a person presses save in
+  // the editor. That is worth asserting against the source rather than trusting,
+  // because the failure mode is silent: a route that writes looks exactly like
+  // one that proposes until a row moves.
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const route = await readFile(resolve("app/api/chat/route.ts"), "utf8");
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+  // None of the repository's writing helpers may be imported or called.
+  for (const writer of ["updateConfig", "insertConfig", "insertRows", "callRpc", "clearFieldSpecCache"]) {
+    assert.doesNotMatch(code, new RegExp(`\\b${writer}\\b`), `the chat route must not touch ${writer}`);
+  }
+  // Only the readers.
+  assert.match(code, /getConfig|getFieldSpec|listConfigs/);
+
+  // The one outbound request is the model call. Any other host would be a write
+  // path in disguise.
+  const urls = [...code.matchAll(/https?:\/\/[^"'`\s)]+/g)].map((match) => match[0]);
+  for (const url of urls) {
+    assert.match(url, /api\.openai\.com|api\.anthropic\.com/, `unexpected outbound URL: ${url}`);
+  }
+
+  // And it must not call HALO's own mutating endpoint on the caller's behalf.
+  assert.doesNotMatch(code, /\/api\/config\//, "applying a change is the editor's job, not the chat's");
+});
+
+test("the model is told each column's default, because \"default\" is a real request", () => {
+  const brief = briefFor("haze", spec(), { advisory_format: "wohhup" } as ProjectConfigRow);
+  const format = brief.find((entry) => entry.name === "advisory_format")!;
+  assert.equal(format.current, "wohhup", "what it is now");
+  assert.equal(format.default, "default", "and what it would go back to");
+
+  // The instruction has to say so, and say why guessing fails: noise's hourly
+  // default is date_loc_name_12h_complete_list, which is NOT the similar-looking
+  // 12h_complete_list, and not the first option either.
+  assert.match(SYSTEM_PROMPT, /"default", "back to normal" or "the usual"/);
+  assert.match(SYSTEM_PROMPT, /date_loc_name_12h_complete_list/);
+  assert.match(SYSTEM_PROMPT, /never assume the default is the/);
+  assert.match(SYSTEM_PROMPT, /Write that value explicitly rather than clearing the column/);
+});
+
+test("formatter options are described from the service's own documentation", () => {
+  // The gap this closes: hourly_formatter's help text is empty and its five
+  // option names are nearly identical, so a model choosing between
+  // `12h_complete_list` and `date_loc_name_12h_complete_list` had only the
+  // strings to go on. These summaries come from the formatter previews, which are
+  // lifted from the noise repo's own MESSAGE_SHAPES.md — the same words the
+  // operator reads behind the `?`.
+  const notes = Object.fromEntries(
+    previewsFor("noise", "hourly_formatter").map((preview) => [preview.value, preview.summary]),
+  );
+  assert.ok(notes.date_loc_name_12h_complete_list, "the default must be described");
+  assert.ok(notes["12h_complete_list"], "and so must the one it is confused with");
+  assert.notEqual(
+    notes.date_loc_name_12h_complete_list,
+    notes["12h_complete_list"],
+    "two formats with identical descriptions would be indistinguishable to a model",
+  );
+  // The distinguishing words are in there rather than left to the option name.
+  assert.match(notes.date_loc_name_12h_complete_list, /location/i);
 });

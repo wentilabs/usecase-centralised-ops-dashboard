@@ -207,7 +207,11 @@ export function ConfigEditor({
 }) {
   const [current, setCurrent] = useState<ProjectConfigRow>(row);
   const [draft, setDraft] = useState<Draft>(initialDraft ?? {});
-  const [confirming, setConfirming] = useState(false);
+  // A chat proposal opens straight into the diff — the point of asking for a
+  // change in words is to see what it would do, not to hunt for the fields it
+  // touched. Guarded on the draft actually having something in it, so an empty
+  // proposal can never open an empty confirmation.
+  const [confirming, setConfirming] = useState(Object.keys(initialDraft ?? {}).length > 0);
   const [note, setNote] = useState(initialNote ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,6 +253,10 @@ export function ConfigEditor({
       if (event.key !== "Escape") return;
       if (confirming) setConfirming(false);
       else onClose();
+      // Note: from a chat proposal the first Escape lands here with `confirming`
+      // true, so it steps back into the form with the fields still changed. That
+      // is deliberate — it is the natural place to adjust a proposal before
+      // saving it, and a second Escape closes.
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

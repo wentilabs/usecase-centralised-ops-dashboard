@@ -354,3 +354,15 @@ test("the coordinate picker is offered wherever coordinates are, and only there"
   // The crosshair must never eat the drag underneath it.
   assert.match(picker, /pointer-events-none absolute left-1\/2 top-1\/2/);
 });
+
+test("a chat proposal opens the diff, not a form to go hunting in", async () => {
+  const editor = await source("components/ConfigEditor.tsx");
+  // The confirmation opens itself when the editor is seeded with a draft — the
+  // point of asking in words is to see what it would do.
+  assert.match(editor, /useState\(Object\.keys\(initialDraft \?\? \{\}\)\.length > 0\)/);
+  // Guarded on the draft having contents, so an empty proposal cannot open an
+  // empty confirmation panel.
+  assert.doesNotMatch(editor, /useState\(Boolean\(initialDraft\)\)/, "presence is not the same as content");
+  // And a hand-opened editor still starts on the form.
+  assert.match(editor, /initialDraft\?: Draft;/);
+});

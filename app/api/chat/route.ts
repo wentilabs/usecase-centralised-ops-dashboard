@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
   const [spec, row] = await Promise.all([getFieldSpec(service), getConfig(service, rowId)]);
   if (!row) return reply({ message: `${projectCode} is no longer there — try refreshing.` });
 
-  const columns = briefFor(spec, row);
+  const columns = briefFor(service, spec, row);
 
   // Checked HERE rather than at the top: resolving which project a sentence is
   // about needs no model, so "which project?" and "that could be either of

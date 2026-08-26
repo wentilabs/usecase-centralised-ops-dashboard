@@ -32,6 +32,7 @@
     "lib/mcp.ts",
     "lib/api-tokens.ts",
     "lib/derive.ts",
+    "lib/slippy-map.ts",
     "lib/onboarding.ts",
     "lib/message-previews.ts",
     "lib/message-previews.generated.ts",

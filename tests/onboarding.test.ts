@@ -660,6 +660,8 @@ test("haze and lightning can be configured at creation; noise and wbgt stay mini
     "working_hours_end_hhmm",
     "remove_sunday_notifications",
     "remove_ph_notifications",
+    "enable_poc_mentions",
+    "poc_mentions_at_least",
   ]);
   assert.deepEqual(cadenceish("lightning"), [
     "amber_enabled",
@@ -691,10 +693,19 @@ test("every onboarding flow offers the company, and lightning hides what it stil
   // field would quietly onboard a six-minute window nobody chose.
   const lightning = onboardingFor("lightning")!;
   const hidden = lightning.fields.filter((f) => f.hidden).map((f) => f.column);
-  assert.deepEqual(hidden, ["site_extent_radius_m", "feed_stale_after_seconds"]);
+  assert.deepEqual(hidden, [
+    "site_extent_radius_m",
+    "feed_stale_after_seconds",
+    "red_dwell_seconds",
+    "amber_dwell_seconds",
+    "remove_sunday_notifications",
+    "remove_ph_notifications",
+  ]);
   const row = buildInsertRow(lightning, { project_code: "ZZT" });
   assert.equal(row.site_extent_radius_m, "0");
   assert.equal(row.feed_stale_after_seconds, "600", "not the column's 360");
+  assert.equal(row.red_dwell_seconds, "1200");
+  assert.equal(row.amber_dwell_seconds, "1200");
 });
 
 test("the new field kinds reach Postgres in the shape the column wants", () => {
@@ -712,7 +723,22 @@ test("the new field kinds reach Postgres in the shape the column wants", () => {
   assert.equal(row.four_hourly, true);
   assert.equal(typeof row.four_hourly, "boolean");
   assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).four_hourly, false, "the fallback is off");
-  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).remove_sunday_notifications, false);
+
+  // The two mutes are the exception: a new project starts muted on Sundays and
+  // public holidays, and neither is asked about. A site that works weekends has
+  // them turned off in the editor, which is the rarer case.
+  for (const key of ["haze", "lightning"] as ServiceKey[]) {
+    const fresh = buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" });
+    assert.equal(fresh.remove_sunday_notifications, true, key);
+    assert.equal(fresh.remove_ph_notifications, true, key);
+    const muteFields = onboardingFor(key)!.fields.filter((f) => f.column.startsWith("remove_"));
+    assert.ok(muteFields.every((f) => f.hidden), `${key}: the mutes are not asked about`);
+  }
+
+  // And the working day is prefilled rather than left blank, since a blank pair
+  // means no window at all.
+  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).working_hours_start_hhmm, "0800");
+  assert.equal(buildInsertRow(haze, { project_code: "ZZT" }).working_hours_end_hhmm, "1900");
 
   // A NOT NULL enum keeps its fallback; a nullable select left alone is null.
   assert.equal(row.advisory_format, "default");

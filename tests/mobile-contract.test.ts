@@ -328,3 +328,29 @@ test("the Water Parade pills are one blue family, and an off one still reads as 
   assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.on, false);
   assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.tone, "info");
 });
+
+test("the coordinate picker is offered wherever coordinates are, and only there", async () => {
+  const dialog = await source("components/OnboardDialog.tsx");
+  // Gated on the same condition as the address lookup, so the two always appear
+  // together — the lookup answers "where is 068914", the map answers "the site
+  // entrance is round the back".
+  assert.match(dialog, /wantsCoordinates \? \(\s*<div className="mt-2">\s*<CoordinatePicker/);
+  // Both fields are marked edited, or haze's nea_region autofill would not
+  // recompute from a dragged point.
+  assert.match(dialog, /add\("latitude"\)\.add\("longitude"\)/);
+
+  const picker = await source("components/CoordinatePicker.tsx");
+  // No mapping library: the arithmetic lives in the tested module, not here.
+  assert.doesNotMatch(picker, /from "leaflet"|from "mapbox|google\.maps/);
+  assert.match(picker, /from "@\/lib\/slippy-map"/);
+  // A drag must be anchored on where it started. Panning from the rendered
+  // centre loses every move that arrives before React re-renders, and the map
+  // then travels about half as far as the pointer.
+  assert.match(picker, /origin: centre/);
+  assert.match(picker, /panCentre\(state\.origin/);
+  assert.doesNotMatch(picker, /panCentre\(centre, \{ dx: -state/);
+  // Attribution is a condition of using OneMap's tiles.
+  assert.match(picker, /TILE_ATTRIBUTION/);
+  // The crosshair must never eat the drag underneath it.
+  assert.match(picker, /pointer-events-none absolute left-1\/2 top-1\/2/);
+});

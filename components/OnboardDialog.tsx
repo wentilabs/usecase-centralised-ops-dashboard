@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { CoordinatePicker } from "./CoordinatePicker";
 import { GroupPicker } from "./GroupPicker";
 import { resolveValue, validateDraft, type OnboardDefinition, type OnboardDraft } from "@/lib/onboarding";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -310,6 +311,22 @@ export function OnboardDialog({
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+
+            {wantsCoordinates ? (
+              <div className="mt-2">
+                <CoordinatePicker
+                  latitude={draft.latitude ?? ""}
+                  longitude={draft.longitude ?? ""}
+                  disabled={busy}
+                  onChange={(next) => {
+                    // Both fields count as edited, so an autofill that watches
+                    // them — haze's nea_region — recomputes from the new point.
+                    setEdited((prev) => new Set(prev).add("latitude").add("longitude"));
+                    setDraft((prev) => ({ ...prev, latitude: next.latitude, longitude: next.longitude }));
+                  }}
+                />
               </div>
             ) : null}
 

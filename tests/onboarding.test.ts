@@ -569,3 +569,70 @@ test("a pasted sheet URL becomes the bare id, and nonsense is refused", () => {
   // Blank stays legal: the column is nullable and a draft row is the point.
   assert.deepEqual(validateDraft(definition, { project_code: "TJR" }, []), []);
 });
+
+test("a new Lightning project starts ground-only on both tiers", () => {
+  const definition = onboardingFor("lightning")!;
+  const field = (column: string) => definition.fields.find((entry) => entry.column === column);
+
+  // Ground-only for both, so widening to intra-cloud is a decision someone makes
+  // rather than one they inherit. Note the amber column's own Postgres default is
+  // {C,G} — this deliberately differs from it.
+  assert.equal(field("red_detection_types")?.fallback, "G");
+  assert.equal(field("amber_detection_types")?.fallback, "G");
+  assert.equal(field("feed_stale_after_seconds")?.fallback, "600");
+
+  // Prefilled, so the values are visible before anyone approves the row.
+  const prefill = prefillDefaults(definition, {});
+  assert.equal(prefill.red_detection_types, "G");
+  assert.equal(prefill.amber_detection_types, "G");
+  assert.equal(prefill.feed_stale_after_seconds, "600");
+
+  // text[] columns must reach PostgREST as arrays. A bare "G" is rejected.
+  const row = buildInsertRow(definition, {
+    project_code: "ZZT",
+    latitude: "1.3",
+    longitude: "103.8",
+    red_radius_m: "8000",
+    amber_radius_m: "12000",
+  });
+  assert.deepEqual(row.red_detection_types, ["G"]);
+  assert.deepEqual(row.amber_detection_types, ["G"]);
+  assert.equal(row.feed_stale_after_seconds, "600");
+
+  // A typed list becomes an array.
+  assert.deepEqual(
+    buildInsertRow(definition, { project_code: "ZZT", red_detection_types: "G, C" }).red_detection_types,
+    ["G", "C"],
+  );
+  // Clearing the box falls back to G rather than writing an empty array, which
+  // the column's `cardinality(...) > 0` CHECK would refuse. The empty-array path
+  // in buildInsertRow is only reachable for a multi field with no fallback, and
+  // there is deliberately no such field.
+  assert.deepEqual(
+    buildInsertRow(definition, { project_code: "ZZT", red_detection_types: "" }).red_detection_types,
+    ["G"],
+  );
+  assert.deepEqual(
+    definition.fields.filter((entry) => entry.kind === "multi" && !entry.fallback),
+    [],
+    "a multi field with no fallback would insert [] and hit the cardinality CHECK",
+  );
+
+  // And a value the column's `<@ array['G','C']` CHECK would reject is caught here.
+  const problems = validateDraft(
+    definition,
+    {
+      project_code: "ZZT",
+      latitude: "1.3",
+      longitude: "103.8",
+      red_radius_m: "8000",
+      amber_radius_m: "12000",
+      red_detection_types: "G, X",
+    },
+    [],
+  );
+  assert.ok(
+    problems.some((problem) => /allowed values are G, C/.test(problem)),
+    `expected a strike-type complaint, got ${JSON.stringify(problems)}`,
+  );
+});

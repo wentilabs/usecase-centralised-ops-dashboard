@@ -27,7 +27,13 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  * `groups` renders the same chat picker the editor uses — resolved group names,
  * searchable, and still accepting a pasted id the alias store has never seen.
  */
-export type OnboardFieldKind = "text" | "sheet" | "number" | "groups";
+/**
+ * `multi` is a Postgres array column (lightning's strike types). Typed as a
+ * comma list and written as a real array — `buildInsertRow` converts it, the way
+ * `coerceValue` does on the editor's PATCH path. Sending the bare string "G" to a
+ * `text[]` column is rejected by PostgREST.
+ */
+export type OnboardFieldKind = "text" | "sheet" | "number" | "groups" | "multi";
 
 export type OnboardField = {
   column: string;
@@ -45,6 +51,8 @@ export type OnboardField = {
   derive?: (draft: OnboardDraft, projectCode: string) => string;
   /** Numeric bounds, mirroring the column's CHECK constraint. */
   range?: { min: number; max: number };
+  /** Permitted values for a `multi` field, mirroring the column's `<@` CHECK. */
+  options?: string[];
   /**
    * Recomputed from the rest of the draft as it changes, and written into the
    * field — until someone edits it by hand, after which their value stands.
@@ -316,6 +324,39 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         fallback: "0",
         range: { min: 0, max: 50000 },
         help: "Rings are measured from the site boundary, so this widens both.",
+      },
+      {
+        column: "red_detection_types",
+        label: "🔴 Red strike types",
+        kind: "multi",
+        required: false,
+        notNull: true,
+        fallback: "G",
+        options: ["G", "C"],
+        help: "G = cloud-to-ground, C = intra-cloud. Ground-only by default; adding C makes a stop fire on cloud-to-cloud activity too.",
+      },
+      {
+        column: "amber_detection_types",
+        label: "🟠 Amber strike types",
+        kind: "multi",
+        required: false,
+        notNull: true,
+        // The column's own default is {C,G}. Prefilled as G here so a new project
+        // starts on ground strikes for both tiers and widening is a decision
+        // someone makes rather than inherits.
+        fallback: "G",
+        options: ["G", "C"],
+        help: "Ground-only to start with, matching red. The column's own default is C,G — widen it here or in the editor once the site wants cloud activity to raise a watch.",
+      },
+      {
+        column: "feed_stale_after_seconds",
+        label: "Feed stale after (s)",
+        kind: "number",
+        required: false,
+        notNull: true,
+        fallback: "600",
+        range: { min: 60, max: 86400 },
+        help: "Ten minutes. Past this the feed counts as stale and the state goes DEGRADED — which never downgrades an open STOP.",
       },
       {
         column: "whatsapp_group_id",
@@ -817,6 +858,16 @@ export function validateDraft(
       problems.push(`${field.label} is required.`);
       continue;
     }
+    if (resolved && field.kind === "multi" && field.options) {
+      const bad = resolved
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .filter((entry) => !field.options!.includes(entry));
+      if (bad.length) {
+        problems.push(`${field.label}: ${bad.join(", ")} — allowed values are ${field.options.join(", ")}.`);
+      }
+    }
     // A sheet id Postgres would happily store but Google would reject. Caught
     // here because the failure is otherwise a cron-time Sheets error on a
     // project nobody is watching yet.
@@ -914,6 +965,14 @@ export function buildInsertRow(
   for (const field of definition.fields) {
     if (field.target === "companion") continue;
     const value = resolveValue(field, draft, code, env);
+    if (field.kind === "multi") {
+      // An empty list stays an empty array rather than "" or null, so a
+      // cardinality CHECK reports the real reason instead of a type error.
+      row[field.column] = value
+        ? value.split(",").map((entry) => entry.trim()).filter(Boolean)
+        : [];
+      continue;
+    }
     row[field.column] = value ? value : field.notNull ? "" : null;
   }
   return row;

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { deliveryGroups, pillsFor } from "../lib/card-summary";
+
 /**
  * Guards the mobile layer.
  *
@@ -240,11 +242,10 @@ test("a Water Parade delivery group is marked with a droplet, not a speech bubbl
   assert.match(card, /\$\{groupIcon\(groups\[0\]\.role\)\}/, "and the mobile line");
 });
 
-test("the water-parade role the droplet depends on is still assigned", async () => {
+test("the water-parade role the droplet depends on is still assigned", () => {
   // The icon is only as good as the role. If GROUP_COLUMNS stops labelling
   // water_parade_outbound_group_id, every WBGT group silently reverts to a
   // speech bubble and nothing else fails.
-  const { deliveryGroups } = await import("../lib/card-summary");
   const groups = deliveryGroups("wbgt", {
     whatsapp_group_id: "1201@g.us, 1202@g.us",
     water_parade_outbound_group_id: "1202@g.us",
@@ -260,12 +261,31 @@ test("the water-parade role the droplet depends on is still assigned", async () 
   // as a React key.
   assert.equal(groups.length, 2);
 
-  // The column holds a comma-separated LIST, not one id: TEST and ZRA both
-  // carry two. Treating it as a single value marks only the first group.
+  // The column can HOLD several ids — TEST and ZRA both do — but the reminder
+  // path reads it with String(...).trim() and posts it as one chatId, with no
+  // comma split. So only the first id is ever a recipient, and the rest must be
+  // marked as ignored rather than presented as extra delivery.
   const many = deliveryGroups("wbgt", {
     whatsapp_group_id: "1201@g.us, 1202@g.us",
     water_parade_outbound_group_id: "1201@g.us,1202@g.us",
   });
   assert.equal(many.length, 2);
-  for (const group of many) assert.match(group.role ?? "", /water parade/, group.chatId);
+  assert.match(many[0].role ?? "", /water parade/);
+  assert.doesNotMatch(many[0].role ?? "", /ignored/, "the first id is the real recipient");
+  assert.match(many[1].role ?? "", /ignored/, "and the second is not sent to at all");
+});
+
+test("a second water-parade group is flagged, not drawn as extra delivery", () => {
+  // Silent in the service: the column is non-empty, so it never reports missing
+  // delivery config — it just posts a chatId with a comma in it.
+  const two = pillsFor("wbgt", {
+    water_parade_enabled: true,
+    water_parade_outbound_group_id: "1201@g.us,1202@g.us",
+  });
+  const warning = two.find((p) => /water parade groups/.test(p.label));
+  assert.ok(warning?.on, "a project with two ids must say so");
+  assert.equal(warning?.tone, "warn", "and loudly, since nothing else reports it");
+
+  const one = pillsFor("wbgt", { water_parade_enabled: true, water_parade_outbound_group_id: "1201@g.us" });
+  assert.ok(!one.some((p) => /water parade groups/.test(p.label)), "no warning on a correct row");
 });

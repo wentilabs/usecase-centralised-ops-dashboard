@@ -19,10 +19,15 @@ export function splitList(value: unknown): string[] {
  * with several group columns that mean different things — showing them as one
  * undifferentiated list would lose that, hence the roles.
  */
-const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
+const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string; single?: boolean }[]> = {
   wbgt: [
     { column: "whatsapp_group_id" },
-    { column: "water_parade_outbound_group_id", role: "water parade" },
+    // `single`: the service reads this column with
+    // `String(config.water_parade_outbound_group_id || "").trim()` and posts it
+    // as one `chatId` — no comma split, unlike every other group column. So a
+    // second id in there is not a second recipient; it corrupts the chat id.
+    // Marked here so the card can say which group actually receives a reminder.
+    { column: "water_parade_outbound_group_id", role: "water parade", single: true },
   ],
   noise: [{ column: "whatsapp_group_id" }],
   haze: [{ column: "wa_group_ids" }],
@@ -48,10 +53,15 @@ export type DeliveryGroup = { chatId: string; role?: string };
  */
 export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): DeliveryGroup[] {
   const roles = new Map<string, string[]>();
-  for (const { column, role } of GROUP_COLUMNS[service] ?? []) {
-    for (const chatId of splitList(config[column])) {
+  for (const { column, role, single } of GROUP_COLUMNS[service] ?? []) {
+    const ids = splitList(config[column]);
+    for (const [index, chatId] of ids.entries()) {
       const existing = roles.get(chatId) ?? [];
-      if (role && !existing.includes(role)) existing.push(role);
+      // A `single` column only ever delivers to its first id. Anything after it
+      // is stored, shown, and never sent to — saying otherwise would present a
+      // misconfiguration as a capability.
+      const effective = single && index > 0 ? `${role} — ignored, the service sends to the first id only` : role;
+      if (effective && !existing.includes(effective)) existing.push(effective);
       roles.set(chatId, existing);
     }
   }
@@ -270,6 +280,14 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
       return [
         ...(config.water_parade_enabled
           ? [{ label: "💧 Water Parade", on: true, tone: "info" as const }]
+          : []),
+        // A second id in `water_parade_outbound_group_id` is not a second
+        // recipient: the reminder path posts the raw column value as one
+        // `chatId`, so the comma goes with it and the send is malformed. The
+        // service returns no error a reader would notice — the value is
+        // non-empty, so it never reports missing delivery config.
+        ...(splitList(config.water_parade_outbound_group_id).length > 1
+          ? [{ label: "⚠ 2+ water parade groups", on: true, tone: "warn" as const }]
           : []),
         { label: "hourly", on: on(config.enable_hourly) },
         { label: "intermittent", on: on(config.enable_intermittent_reports) },

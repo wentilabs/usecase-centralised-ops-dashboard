@@ -151,8 +151,14 @@ export function ProjectCard({
    * the icon cannot disagree with the tooltip beside it. WBGT is the only
    * service with that column, so every other service keeps the speech bubble
    * without a special case.
+   *
+   * Only the group that will actually receive a reminder gets the droplet. The
+   * reminder path posts that column's raw value as one `chatId`, so a second id
+   * is stored and never sent to — `deliveryGroups` marks those roles "ignored"
+   * and they keep the speech bubble.
    */
-  const groupIcon = (role?: string) => (role?.includes("water parade") ? "💧" : "💬");
+  const groupIcon = (role?: string) =>
+    role?.includes("water parade") && !role.includes("ignored") ? "💧" : "💬";
 
   const pills = pillsFor(service, config);
   const mobilePills = new Set<number>();

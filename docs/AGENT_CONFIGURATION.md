@@ -204,8 +204,15 @@ The judgement calls are about the credential, not the code:
 
 ## 8. Where this can go — B: a smart chat inside HALO
 
-**Built.** One line in the header: a sentence in, and either an answer in words or
-the ordinary editor opening with those fields already changed.
+**Built.** One line — in the desktop header, and in its own full-width row on a
+phone, where it helps most: a sentence beats hunting for one field in a thirty-row
+form. A sentence in, and either an answer in words or the ordinary editor opening
+on the diff of what it would change.
+
+Your prompt stays in the box after a proposal. A proposal is usually the first
+draft of a request — one radius wrong, or the wrong project — and retyping a
+sentence to change a digit is the kind of small hostility that stops people using
+a thing.
 
 Set **`OPENAI_API_KEY`** or `ANTHROPIC_API_KEY` on the server to switch it on.
 Whichever is present decides the provider — OpenAI wins if both are — and
@@ -228,19 +235,35 @@ around it.
 | The instruction it is given | `SYSTEM_PROMPT`, in the same file |
 | Checking what comes back | `checkProposal`, before anything reaches a form |
 | The route | `POST /api/chat` — proposes, writes nothing |
-| The confirmation | the ordinary editor, opened with a seeded draft |
+| The confirmation | the ordinary editor, opened straight on the diff |
 | The write | `PATCH /api/config/...`, exactly as if typed by hand |
+
+**The write-free guarantee is structural, not a promise.** A test reads the route's
+source and fails if it imports `updateConfig`, `insertConfig`, `insertRows` or
+`callRpc`, if it mentions `/api/config/`, or if it calls any host other than the
+two model APIs. The failure mode it guards is silent: a route that writes looks
+exactly like one that proposes, until a row moves.
 
 **Resolving the project is deliberately not the model's job.** A project code is a
 string match against a list HALO already holds; handing that to an LLM adds a way
 to be confidently wrong about the one part of the request that decides *whose site
 gets changed*. So the route matches codes itself — tolerantly enough that "CR 106"
-and "CR106" are one project, strictly enough that "TRI" does not match inside
-"TRIAL" — and returns ambiguity as a question:
+and "CR106" are one project and "C991 SGB" matches `C991-SGB`, strictly enough
+that "TRI" does not match inside "TRIAL" — and returns ambiguity as a question:
 
 > *"CFC should stop on Sundays"* → **CFC exists for WBGT, Haze and Lightning. Say which service you mean.**
 >
 > *"set ZRA and TJR to four-hourly"* → **You named ZRA and TJR — this handles one project at a time.**
+>
+> *"Lightning, TEST, make it 0900 to 2000"* → **Lightning has no project called TEST. Its projects include AST, C991-SGB, C992-SYT, …**
+
+That third one was a bug worth recording. A named service used to be applied only
+as a tie-breaker AFTER the code search, so the sentence above answered "TEST
+exists for WBGT, Noise, Haze, Ailytics, Subcon Activities and Issue Chaser" —
+six services, none of them the one named. **A service named in the sentence is the
+strongest signal in it**, so it is applied first, and a code named alongside a
+service that does not have it gets its own answer. Factually right and useless is
+still useless.
 
 **The design, and why each part is that way:**
 
@@ -256,6 +279,18 @@ and "CR106" are one project, strictly enough that "TRI" does not match inside
 - **It refuses more than it acts.** No project named, two projects named, a column
   that does not exist, a boolean given as `"yes"`, a value outside its allowed
   set — each comes back as a sentence rather than a save someone has to decode.
+  Array columns are checked element by element: comparing the whole array against
+  the option list rejected a correct `["G","C"]` with "must be one of G, C", which
+  reads as a contradiction because it was one.
+- **It knows what "default" means.** Each column's own default travels in the
+  brief, because the answer is never guessable from an option list — noise's
+  hourly default is `date_loc_name_12h_complete_list`, not the similar-looking
+  `12h_complete_list`, and not the first option either.
+- **Option meanings come from the service's documentation.** `hourly_formatter`
+  has empty help text and five nearly identical option names, so the brief carries
+  a one-line summary per option taken from the formatter previews — which are
+  themselves lifted from each repo's `MESSAGE_SHAPES.md`. The model reads the same
+  description of a message shape that the operator reads behind the `?`.
 - **It is an editor's tool.** A read-only session is told there is nothing to
   propose, rather than handed a pre-filled dialog it cannot use.
 

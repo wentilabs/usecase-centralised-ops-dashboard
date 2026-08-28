@@ -357,12 +357,15 @@ test("the coordinate picker is offered wherever coordinates are, and only there"
 
 test("a chat proposal opens the diff, not a form to go hunting in", async () => {
   const editor = await source("components/ConfigEditor.tsx");
+  // Whitespace collapsed first: the assertion is about the expression, not the
+  // line wrapping, and the formatter reflows this one whenever the file grows.
+  const flat = editor.replace(/\s+/g, " ");
   // The confirmation opens itself when the editor is seeded with a draft — the
   // point of asking in words is to see what it would do.
-  assert.match(editor, /useState\(Object\.keys\(initialDraft \?\? \{\}\)\.length > 0\)/);
+  assert.match(flat, /useState\( ?Object\.keys\(initialDraft \?\? \{\}\)\.length > 0,? ?\)/);
   // Guarded on the draft having contents, so an empty proposal cannot open an
   // empty confirmation panel.
-  assert.doesNotMatch(editor, /useState\(Boolean\(initialDraft\)\)/, "presence is not the same as content");
+  assert.doesNotMatch(flat, /useState\(Boolean\(initialDraft\)\)/, "presence is not the same as content");
   // And a hand-opened editor still starts on the form.
   assert.match(editor, /initialDraft\?: Draft;/);
 });
@@ -461,4 +464,39 @@ test("an overlay clears whichever screen edge it reaches", async () => {
     layout.indexOf("};", layout.indexOf("export const viewport: Viewport")),
   );
   assert.match(declaration, /viewportFit:\s*"cover"/, "safe-area insets are zero without it");
+});
+
+test("group columns are reviewed as chat names, in both places a change is shown", async () => {
+  const editor = await source("components/ConfigEditor.tsx");
+  const flat = editor.replace(/\s+/g, " ");
+
+  // One resolver, so the confirmation panel and the history list cannot drift.
+  // They show the same data and the history one is the copy nobody would
+  // remember to update.
+  assert.equal(
+    (editor.match(/groupDelta\(/g) ?? []).length,
+    1,
+    "resolve chat names in one place, not once per view",
+  );
+
+  // Both call sites go through it. Matched on the two loops by name, so moving
+  // one back to raw values fails here rather than silently.
+  // Matched on the destructured parameters, because `Object.entries(changes)`
+  // alone also hits the loop that builds the PATCH body.
+  for (const [loop, what] of [
+    ["Object.entries(changes).map(([name, change])", "the confirmation panel"],
+    ["Object.entries(entry.changes).map(([column, change])", "the history list"],
+  ] as const) {
+    const start = flat.indexOf(loop);
+    assert.notEqual(start, -1, `${what} loop not found — was it renamed?`);
+    assert.match(
+      flat.slice(start, start + 400),
+      /<ChangeValue/,
+      `${what} must render changes through the shared component`,
+    );
+  }
+
+  // And the resolver is keyed off the field's widget, not a hand-kept list of
+  // column names — a new group column should need no change here at all.
+  assert.match(flat, /spec\.fields\[column\]\?\.widget !== "groups"/);
 });

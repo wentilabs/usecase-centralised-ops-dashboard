@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FormatterPreviewButton } from "./FormatterPreview";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
-import { formatSgt } from "@/lib/card-summary";
+import { formatSgt, groupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -29,7 +29,10 @@ function display(value: unknown): string {
 /** A field is shown only while its controlling toggle holds the required value. */
 function isVisible(field: FieldSpec, values: Record<string, unknown>): boolean {
   if (!field.showIf) return true;
-  return JSON.stringify(values[field.showIf.field] ?? null) === JSON.stringify(field.showIf.equals);
+  return (
+    JSON.stringify(values[field.showIf.field] ?? null) ===
+    JSON.stringify(field.showIf.equals)
+  );
 }
 
 function Control({
@@ -46,10 +49,15 @@ function Control({
   /** Needed by the "meters" widget to resolve that project's RecIDs. */
   projectCode: string;
 }) {
-  const base = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
+  const base =
+    "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
 
   if (field.readonly) {
-    return <div className="px-3 py-2 font-mono text-xs text-muted-foreground">{display(value)}</div>;
+    return (
+      <div className="px-3 py-2 font-mono text-xs text-muted-foreground">
+        {display(value)}
+      </div>
+    );
   }
 
   // RecIDs are unmemorable, so meters are toggled by name. Stored form is still
@@ -96,14 +104,20 @@ function Control({
             className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`}
           />
         </span>
-        <span className="text-xs text-muted-foreground">{on ? "on" : "off"}</span>
+        <span className="text-xs text-muted-foreground">
+          {on ? "on" : "off"}
+        </span>
       </button>
     );
   }
 
   if (field.widget === "select") {
     return (
-      <select className={base} value={String(value ?? "")} onChange={(e) => onChange(e.target.value || null)}>
+      <select
+        className={base}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
         <option value="">— not set —</option>
         {(field.options ?? []).map((option) => (
           <option key={option} value={option}>
@@ -119,13 +133,18 @@ function Control({
     return (
       <div className="flex flex-wrap gap-3 pt-1.5">
         {(field.options ?? []).map((option) => (
-          <label key={option} className="flex min-h-11 items-center gap-1.5 text-sm md:min-h-0">
+          <label
+            key={option}
+            className="flex min-h-11 items-center gap-1.5 text-sm md:min-h-0"
+          >
             <input
               type="checkbox"
               checked={selected.includes(option)}
               onChange={(e) =>
                 onChange(
-                  e.target.checked ? [...selected, option] : selected.filter((entry) => entry !== option),
+                  e.target.checked
+                    ? [...selected, option]
+                    : selected.filter((entry) => entry !== option),
                 )
               }
             />
@@ -142,7 +161,9 @@ function Control({
         className={base}
         type="number"
         value={value === null || value === undefined ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? null : Number(e.target.value))
+        }
       />
     );
   }
@@ -211,27 +232,104 @@ export function ConfigEditor({
   // change in words is to see what it would do, not to hunt for the fields it
   // touched. Guarded on the draft actually having something in it, so an empty
   // proposal can never open an empty confirmation.
-  const [confirming, setConfirming] = useState(Object.keys(initialDraft ?? {}).length > 0);
+  const [confirming, setConfirming] = useState(
+    Object.keys(initialDraft ?? {}).length > 0,
+  );
   const [note, setNote] = useState(initialNote ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<AuditEntry[] | null>(null);
 
-  const values = useMemo(() => ({ ...current, ...draft }) as Record<string, unknown>, [current, draft]);
+  const values = useMemo(
+    () => ({ ...current, ...draft }) as Record<string, unknown>,
+    [current, draft],
+  );
 
   const changes = useMemo(() => {
-    const out: Record<string, { from: unknown; to: unknown; label: string }> = {};
+    const out: Record<string, { from: unknown; to: unknown; label: string }> =
+      {};
     for (const [name, value] of Object.entries(draft)) {
       const before = (current as Record<string, unknown>)[name] ?? null;
       const after = value ?? null;
       if (JSON.stringify(before) !== JSON.stringify(after)) {
-        out[name] = { from: before, to: after, label: spec.fields[name]?.label ?? name };
+        out[name] = {
+          from: before,
+          to: after,
+          label: spec.fields[name]?.label ?? name,
+        };
       }
     }
     return out;
   }, [draft, current, spec.fields]);
 
   const dirtyCount = Object.keys(changes).length;
+
+  /**
+   * How one column's before-and-after is shown, in both places that show it.
+   *
+   * Group columns are resolved to chat names: approving or auditing a delivery
+   * change meant reading `120363410971872748@g.us` and deciding from that
+   * whether it was the right chat, which nobody can. The names are already
+   * loaded for the picker on this screen.
+   *
+   * Rendered as a per-id delta rather than two lists of names, because names
+   * are far longer than ids and before/after prose would have made a one-group
+   * change harder to read, not easier.
+   */
+  const ChangeValue = ({
+    column,
+    from,
+    to,
+  }: {
+    column: string;
+    from: unknown;
+    to: unknown;
+  }) => {
+    if (spec.fields[column]?.widget !== "groups") {
+      return (
+        <>
+          <span className="text-muted-foreground line-through">
+            {display(from)}
+          </span>{" "}
+          → <span className="font-semibold text-on">{display(to)}</span>
+        </>
+      );
+    }
+    const delta = groupDelta(from, to, groupNames);
+    if (!delta.length)
+      return <span className="text-muted-foreground">— no groups —</span>;
+    return (
+      <ul className="mt-1 space-y-0.5">
+        {delta.map((entry) => (
+          <li
+            key={`${entry.state}-${entry.chatId}`}
+            // The id stays reachable on hover, because it is what gets written.
+            title={
+              entry.name === entry.chatId
+                ? entry.chatId
+                : `${entry.name} · ${entry.chatId}`
+            }
+            className={
+              entry.state === "removed"
+                ? "text-danger line-through"
+                : entry.state === "added"
+                  ? "font-semibold text-on"
+                  : "text-muted-foreground"
+            }
+          >
+            <span className="mr-1.5 font-mono text-[11px]">
+              {entry.state === "removed"
+                ? "−"
+                : entry.state === "added"
+                  ? "+"
+                  : "·"}
+            </span>
+            {entry.name}
+          </li>
+        ))}
+      </ul>
+    );
+  };
 
   // A field you can't see must not be saved: drop edits that become hidden.
   useEffect(() => {
@@ -266,18 +364,27 @@ export function ConfigEditor({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/config/${service}/${encodeURIComponent(rowId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          changes: Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, value.to])),
-          baseUpdatedAt: current.updated_at ?? null,
-          note,
-        }),
-      });
+      const res = await fetch(
+        `/api/config/${service}/${encodeURIComponent(rowId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            changes: Object.fromEntries(
+              Object.entries(changes).map(([key, value]) => [key, value.to]),
+            ),
+            baseUpdatedAt: current.updated_at ?? null,
+            note,
+          }),
+        },
+      );
       const body = await res.json();
       if (!res.ok) {
-        setError(body.rejected ? `${body.error} — ${body.rejected.join("; ")}` : body.error);
+        setError(
+          body.rejected
+            ? `${body.error} — ${body.rejected.join("; ")}`
+            : body.error,
+        );
         if (res.status === 409 && body.current) {
           setCurrent(body.current);
           setDraft({});
@@ -297,7 +404,9 @@ export function ConfigEditor({
   }
 
   async function loadHistory() {
-    const res = await fetch(`/api/audit?service=${service}&project=${encodeURIComponent(rowId)}&limit=50`);
+    const res = await fetch(
+      `/api/audit?service=${service}&project=${encodeURIComponent(rowId)}&limit=50`,
+    );
     const body = await res.json();
     setHistory(res.ok ? body.entries : []);
     if (!res.ok) setError(body.error);
@@ -310,11 +419,14 @@ export function ConfigEditor({
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 pt-safe md:px-5 md:py-4">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">{serviceLabel}</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">
+                {serviceLabel}
+              </span>
               {String(current.project_code ?? rowId)}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Editing live Supabase config · last updated {formatSgt(current.updated_at)}
+              Editing live Supabase config · last updated{" "}
+              {formatSgt(current.updated_at)}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -352,28 +464,39 @@ export function ConfigEditor({
                     <div className="text-[11px] text-muted-foreground">
                       {formatSgt(entry.at)} ·{" "}
                       {entry.external ? (
-                        <b className="text-warn">⚠️ changed outside the dashboard</b>
+                        <b className="text-warn">
+                          ⚠️ changed outside the dashboard
+                        </b>
                       ) : (
                         entry.actor_email
                       )}
                     </div>
-                    {entry.note ? <div className="mt-1 text-warn">📝 {entry.note}</div> : null}
+                    {entry.note ? (
+                      <div className="mt-1 text-warn">📝 {entry.note}</div>
+                    ) : null}
                     {Object.entries(entry.changes).map(([column, change]) => (
                       <div key={column} className="mt-1">
                         <code className="font-mono text-[11px]">{column}</code>{" "}
-                        <span className="text-muted-foreground line-through">{display(change.from)}</span> →{" "}
-                        <span className="font-semibold text-on">{display(change.to)}</span>
+                        <ChangeValue
+                          column={column}
+                          from={change.from}
+                          to={change.to}
+                        />
                       </div>
                     ))}
                   </div>
                 ))
               ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">No changes recorded yet.</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No changes recorded yet.
+                </p>
               )}
             </section>
           ) : (
             spec.groups.map((group) => {
-              const visible = group.fields.filter((name) => isVisible(spec.fields[name], values));
+              const visible = group.fields.filter((name) =>
+                isVisible(spec.fields[name], values),
+              );
               if (!visible.length) return null;
               return (
                 <section key={group.title} className="pt-5">
@@ -392,7 +515,9 @@ export function ConfigEditor({
                       >
                         <div className="md:pt-1.5">
                           <div className="flex items-center gap-1.5">
-                            <div className="text-sm font-medium">{field.label}</div>
+                            <div className="text-sm font-medium">
+                              {field.label}
+                            </div>
                             {/* Formatter names say nothing about the message they
                                 produce, so the `?` shows the real thing. Only a
                                 select can be set from the preview: a toggle's
@@ -404,23 +529,33 @@ export function ConfigEditor({
                               current={String(values[name] ?? "")}
                               onPick={
                                 field.widget === "select"
-                                  ? (next) => setDraft((prev) => ({ ...prev, [name]: next }))
+                                  ? (next) =>
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        [name]: next,
+                                      }))
                                   : undefined
                               }
                             />
                           </div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{name}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">
+                            {name}
+                          </div>
                         </div>
                         <div>
                           <Control
                             field={field}
                             value={values[name]}
-                            onChange={(next) => setDraft((prev) => ({ ...prev, [name]: next }))}
+                            onChange={(next) =>
+                              setDraft((prev) => ({ ...prev, [name]: next }))
+                            }
                             groupNames={groupNames}
                             projectCode={String(current.project_code ?? rowId)}
                           />
                           {field.help ? (
-                            <p className="mt-1.5 text-[11px] text-muted-foreground">{field.help}</p>
+                            <p className="mt-1.5 text-[11px] text-muted-foreground">
+                              {field.help}
+                            </p>
                           ) : null}
                         </div>
                       </div>
@@ -433,10 +568,16 @@ export function ConfigEditor({
         </div>
 
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">
-          <div className={`text-xs ${dirtyCount ? "font-semibold text-primary" : "text-muted-foreground"}`}>
-            {error ? <span className="text-danger">{error}</span> : dirtyCount
-              ? `${dirtyCount} unsaved change${dirtyCount === 1 ? "" : "s"}`
-              : "No changes"}
+          <div
+            className={`text-xs ${dirtyCount ? "font-semibold text-primary" : "text-muted-foreground"}`}
+          >
+            {error ? (
+              <span className="text-danger">{error}</span>
+            ) : dirtyCount ? (
+              `${dirtyCount} unsaved change${dirtyCount === 1 ? "" : "s"}`
+            ) : (
+              "No changes"
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -466,10 +607,14 @@ export function ConfigEditor({
             <div className="mb-4 text-sm">
               {Object.entries(changes).map(([name, change]) => (
                 <div key={name} className="mt-1.5">
-                  <b>{change.label}</b> <code className="font-mono text-[11px]">{name}</code>
-                  <br />
-                  <span className="text-muted-foreground line-through">{display(change.from)}</span> →{" "}
-                  <span className="font-semibold text-on">{display(change.to)}</span>
+                  <b>{change.label}</b>{" "}
+                  <code className="font-mono text-[11px]">{name}</code>
+                  {spec.fields[name]?.widget === "groups" ? null : <br />}
+                  <ChangeValue
+                    column={name}
+                    from={change.from}
+                    to={change.to}
+                  />
                 </div>
               ))}
             </div>

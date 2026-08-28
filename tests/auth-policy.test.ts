@@ -33,6 +33,7 @@ import {
   matchesQuery,
   searchTokens,
   firesAt,
+  groupDelta,
   hasCadence,
   isManualIngestion,
   pillsFor,
@@ -1367,4 +1368,49 @@ test("the half-hourly warning relay reads as routing, not as another cadence", (
     /half-hourly.*warnings relayed/,
   );
   assert.doesNotMatch(firesAt("noise", base), /relayed/);
+});
+
+test("a group-list change is reviewed as names, not as chat ids", () => {
+  const names = {
+    "1@g.us": "Noise tracking",
+    "2@g.us": "ZRA - Subcon WSHE Matters",
+    "3@g.us": "Wentilabs - WH trial platform",
+  };
+
+  // The ordinary case: one group swapped for another. Removed first, then
+  // added, then what was left alone — the order someone checks a change in.
+  assert.deepEqual(groupDelta("1@g.us, 3@g.us", "3@g.us, 2@g.us", names), [
+    { chatId: "1@g.us", name: "Noise tracking", state: "removed" },
+    { chatId: "2@g.us", name: "ZRA - Subcon WSHE Matters", state: "added" },
+    { chatId: "3@g.us", name: "Wentilabs - WH trial platform", state: "kept" },
+  ]);
+
+  // Adding to an empty column, and clearing one entirely — the two ends of the
+  // range, and the ones where a raw-id diff told you least.
+  assert.deepEqual(groupDelta(null, "2@g.us", names), [
+    { chatId: "2@g.us", name: "ZRA - Subcon WSHE Matters", state: "added" },
+  ]);
+  assert.deepEqual(groupDelta("2@g.us", "", names), [
+    { chatId: "2@g.us", name: "ZRA - Subcon WSHE Matters", state: "removed" },
+  ]);
+
+  // An id with no alias keeps the id. It must not vanish or render blank: an
+  // alias that has not been fetched is not a group that does not exist.
+  assert.deepEqual(groupDelta("", "9@g.us", names), [
+    { chatId: "9@g.us", name: "9@g.us", state: "added" },
+  ]);
+
+  // Reordering alone is not an addition or a removal.
+  const reordered = groupDelta("1@g.us, 2@g.us", "2@g.us, 1@g.us", names);
+  assert.deepEqual(
+    reordered.map((entry) => entry.state),
+    ["kept", "kept"],
+  );
+
+  // Arrays are accepted as well as the stored comma string, since PostgREST
+  // hands back `text[]` columns as arrays.
+  assert.deepEqual(groupDelta(["1@g.us"], ["1@g.us", "2@g.us"], names).map((e) => e.state), [
+    "added",
+    "kept",
+  ]);
 });

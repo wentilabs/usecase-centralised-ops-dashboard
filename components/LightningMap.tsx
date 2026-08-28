@@ -34,6 +34,8 @@ import {
   MIN_ZOOM,
   SG_CENTRE,
   TILE_ATTRIBUTION,
+  WHEEL_PER_ZOOM,
+  clampCentre,
   clampZoom,
   panCentre,
   pointAtOffset,
@@ -66,6 +68,19 @@ import { useBodyScrollLock, useEscapeKey } from "@/lib/use-body-scroll-lock";
 
 const RED = { stroke: "248, 113, 113", fill: "248, 113, 113" };
 const AMBER = { stroke: "251, 191, 36", fill: "251, 191, 36" };
+
+/**
+ * Strike pins. Cloud-to-ground is the type that hurts people, so it takes the
+ * heavier brown-gold; intra-cloud takes a light blue that recedes. The letter
+ * is the actual guarantee — colour alone fails for anyone who cannot separate
+ * these two hues.
+ */
+const PIN_G = { fill: "#c8860d", edge: "#5c3c05", ink: "#fffbeb" };
+const PIN_C = { fill: "#93c5fd", edge: "#1e40af", ink: "#0b2559" };
+
+/** Pin head radius, and how far above its tip the head sits. */
+const PIN_R = 8;
+const PIN_LIFT = 12;
 
 /** Zoom at which a project earns its code label. Below it, 28 labels is soup. */
 const LABEL_ZOOM = 12;
@@ -161,6 +176,9 @@ export function LightningMap({
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
 
   const box = useRef<HTMLDivElement | null>(null);
+  /** Read by the resize handler, which must not re-subscribe on every zoom. */
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const canvas = useRef<HTMLCanvasElement | null>(null);
   /** Where each drawn strike landed, so the pointer can be matched to one. */
   const plotted = useRef<{ x: number; y: number }[]>([]);
@@ -173,7 +191,11 @@ export function LightningMap({
   useEffect(() => {
     const element = box.current;
     if (!element) return;
-    const measure = () => setSize({ width: element.clientWidth, height: element.clientHeight });
+    const measure = () => {
+      const next = { width: element.clientWidth, height: element.clientHeight };
+      setSize(next);
+      setCentre((point) => clampCentre(point, zoomRef.current, next.width, next.height));
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -305,8 +327,87 @@ export function LightningMap({
     // rings were wider than the viewport.
     const labelled: { x: number; y: number; w: number }[] = [];
 
-    // Rings. Amber first so a red ring is never buried under the wider amber
-    // fill of the same project.
+    /**
+     * Rings, shaded rather than outlined.
+     *
+     * The fills are composited through one offscreen layer per tier instead of
+     * being painted straight onto the canvas. Twenty-eight translucent discs
+     * drawn directly compound wherever they overlap, and at island zoom that
+     * turned the map into one orange mass with no coastline left. Drawing each
+     * tier opaque into its own layer and then compositing that layer once gives
+     * the union of the rings at a single, predictable alpha — overlap reads as
+     * one shaded area, which is what it is.
+     */
+    const shade = (
+      tier: "red" | "amber",
+      alpha: number,
+      pick: (project: ProjectConfigRow) => boolean = () => true,
+    ) => {
+      const layer = document.createElement("canvas");
+      layer.width = element.width;
+      layer.height = element.height;
+      const lctx = layer.getContext("2d");
+      if (!lctx) return;
+      lctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      lctx.fillStyle = `rgb(${(tier === "red" ? RED : AMBER).fill})`;
+
+      let drew = false;
+      for (const project of sited.filter(pick)) {
+        const latitude = Number(project.latitude);
+        const point = screenPoint(
+          { latitude, longitude: Number(project.longitude) },
+          centre,
+          zoom,
+          size.width,
+          size.height,
+        );
+        for (const ring of ringsFor(project).filter((entry) => entry.tier === tier)) {
+          const pixels = radiusPixels(ring.radiusM, latitude, zoom);
+          if (
+            point.x + pixels < 0 ||
+            point.x - pixels > size.width ||
+            point.y + pixels < 0 ||
+            point.y - pixels > size.height
+          ) {
+            continue;
+          }
+          lctx.beginPath();
+          lctx.arc(point.x, point.y, pixels, 0, Math.PI * 2);
+          lctx.fill();
+          drew = true;
+        }
+      }
+      if (!drew) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layer, 0, 0);
+      ctx.restore();
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    };
+
+    // Amber first, so red sits on top of the wider amber area it lies inside.
+    //
+    // The passes are mutually exclusive by project, not stacked: shading
+    // everything and then shading the focused project again on top put four
+    // layers over the same pixels and took the red interior to roughly 0.44,
+    // which buried the basemap it is drawn over.
+    const isFocused = (project: ProjectConfigRow) =>
+      Boolean(focus) && project.project_code === focus?.project_code;
+    const others = (project: ProjectConfigRow) => !isFocused(project);
+
+    if (focus) {
+      // Context, kept faint so it cannot compete with the project in question.
+      shade("amber", 0.06, others);
+      shade("red", 0.07, others);
+      shade("amber", 0.13, isFocused);
+      shade("red", 0.15, isFocused);
+    } else {
+      shade("amber", 0.12);
+      shade("red", 0.14);
+    }
+
+    // Outlines and labels on top of the shading.
     for (const project of sited) {
       const latitude = Number(project.latitude);
       const longitude = Number(project.longitude);
@@ -317,7 +418,6 @@ export function LightningMap({
       for (const tier of ["amber", "red"] as const) {
         for (const ring of rings.filter((entry) => entry.tier === tier)) {
           const pixels = radiusPixels(ring.radiusM, latitude, zoom);
-          // Off-screen by more than its own radius: nothing of it can be visible.
           if (
             point.x + pixels < 0 ||
             point.x - pixels > size.width ||
@@ -329,16 +429,8 @@ export function LightningMap({
           const colour = tier === "red" ? RED : AMBER;
           ctx.beginPath();
           ctx.arc(point.x, point.y, pixels, 0, Math.PI * 2);
-          // Only the focused project gets a fill. Twenty-eight translucent
-          // discs at island zoom overlap into one orange mass that hides both
-          // the coastline and the strikes — the fills add up, so "faint" has to
-          // mean "no fill at all" in the all-projects view.
-          if (isFocus && focus) {
-            ctx.fillStyle = `rgba(${colour.fill}, 0.1)`;
-            ctx.fill();
-          }
-          ctx.strokeStyle = `rgba(${colour.stroke}, ${focus ? (isFocus ? 0.85 : 0.16) : 0.34})`;
-          ctx.lineWidth = focus && isFocus ? 1.6 : 1;
+          ctx.strokeStyle = `rgba(${colour.stroke}, ${focus ? (isFocus ? 0.9 : 0.2) : 0.5})`;
+          ctx.lineWidth = focus && isFocus ? 1.8 : 1;
           ctx.stroke();
 
           // The types a ring governs are labelled on the ring itself, and only
@@ -419,7 +511,16 @@ export function LightningMap({
       }
     }
 
-    // Strikes. Oldest first, so the most recent sit on top of a dense cluster.
+    /**
+     * Strikes, as map pins with their type written on them.
+     *
+     * They were 3px dots, distinguished by fill versus outline, and at a glance
+     * a sky full of harmless intra-cloud flashes looked the same as a sky full
+     * of ground strikes. A pin with a letter in it cannot be misread, and it
+     * points at its own coordinate rather than covering it.
+     *
+     * Oldest first, so the most recent sit on top of a dense cluster.
+     */
     const span = view ? Math.max(1, view.to - view.from) : 1;
     const positions: { x: number; y: number }[] = [];
     const ordered = [...detections].sort(
@@ -428,46 +529,56 @@ export function LightningMap({
 
     for (const detection of ordered) {
       const point = screenPoint(detection, centre, zoom, size.width, size.height);
-      positions.push(point);
-      if (point.x < -8 || point.x > size.width + 8 || point.y < -8 || point.y > size.height + 8) continue;
+      // The pin's tip marks the strike; its head sits above. Hit-testing uses
+      // the head, because that is the part the pointer can actually land on.
+      const head = { x: point.x, y: point.y - PIN_LIFT };
+      positions.push(head);
+      if (point.x < -20 || point.x > size.width + 20 || point.y < -30 || point.y > size.height + 20) continue;
 
-      // Older strikes fade. A storm crossing the island then reads as a
-      // direction of travel rather than as an undifferentiated scatter.
+      // Older strikes fade, so a storm crossing the island reads as a direction
+      // of travel. The floor is high enough that an old pin is still legible —
+      // it is evidence, not decoration.
       const age = view ? ((detection.published_at ?? detection.occurred_at) - view.from) / span : 1;
-      const alpha = 0.3 + 0.7 * Math.min(1, Math.max(0, age));
+      const alpha = 0.55 + 0.45 * Math.min(1, Math.max(0, age));
+
+      const ground = detection.detection_type === "G";
+      const skin = ground ? PIN_G : PIN_C;
 
       const fired =
         focus && (qualifies(focus, detection, "red") || qualifies(focus, detection, "amber"));
-
       if (fired) {
         // A strike that would have fired gets a halo in its tier's colour, so
-        // the exceptions are findable without reading every marker.
+        // the exceptions are findable without reading every pin.
         ctx.beginPath();
-        ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+        ctx.arc(head.x, head.y, PIN_R + 5, 0, Math.PI * 2);
         ctx.fillStyle = qualifies(focus, detection, "red")
-          ? `rgba(${RED.fill}, 0.5)`
-          : `rgba(${AMBER.fill}, 0.5)`;
+          ? `rgba(${RED.fill}, 0.55)`
+          : `rgba(${AMBER.fill}, 0.55)`;
         ctx.fill();
       }
 
-      if (detection.detection_type === "G") {
-        // Cloud-to-ground: the type that hurts people, so it is the solid one.
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(250, 204, 21, ${alpha})`;
-        ctx.fill();
-        ctx.strokeStyle = `rgba(120, 53, 15, ${alpha})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      } else {
-        // Cloud-to-cloud: hollow, so a sky full of them cannot be mistaken for
-        // a sky full of ground strikes at a glance.
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(148, 197, 253, ${alpha})`;
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-      }
+      ctx.globalAlpha = alpha;
+
+      // Teardrop: a circular head with two tangent lines running down to the
+      // tip, so the pin reads as pointing at one exact spot.
+      const spread = Math.asin(Math.min(1, PIN_R / PIN_LIFT));
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, PIN_R, Math.PI / 2 - spread, Math.PI / 2 + spread, true);
+      ctx.lineTo(point.x, point.y);
+      ctx.closePath();
+      ctx.fillStyle = skin.fill;
+      ctx.fill();
+      ctx.strokeStyle = skin.edge;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = skin.ink;
+      ctx.font = "700 9px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ground ? "G" : "C", head.x, head.y + 0.5);
+
+      ctx.globalAlpha = 1;
     }
     plotted.current = positions;
     // `hover` is deliberately not a dependency: the tooltip is HTML, so moving
@@ -507,7 +618,7 @@ export function LightningMap({
       const dy = event.clientY - state.startY;
       if (!state.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
       state.moved = true;
-      setCentre(panCentre(state.origin, { dx: -dx, dy: -dy }, zoom));
+      setCentre(clampCentre(panCentre(state.origin, { dx: -dx, dy: -dy }, zoom), zoom, size.width, size.height));
       return;
     }
 
@@ -517,8 +628,25 @@ export function LightningMap({
     setHover(index === -1 ? null : { index, x, y });
   }
 
+  /**
+   * Accumulated wheel travel, reset each time it buys a zoom level.
+   *
+   * A trackpad emits a stream of small deltas per gesture, so stepping a level
+   * per event sent one flick through four levels and past whatever you were
+   * trying to look at.
+   */
+  const wheelTravel = useRef(0);
+
   function onWheel(event: React.WheelEvent<HTMLDivElement>) {
-    const next = clampZoom(zoom + (event.deltaY < 0 ? 1 : -1));
+    // A reversal starts a fresh count. Otherwise scrolling back up first has to
+    // pay off the travel banked going down, and the map ignores you.
+    if (Math.sign(event.deltaY) !== Math.sign(wheelTravel.current)) wheelTravel.current = 0;
+    wheelTravel.current += event.deltaY;
+    if (Math.abs(wheelTravel.current) < WHEEL_PER_ZOOM) return;
+    const direction = wheelTravel.current < 0 ? 1 : -1;
+    wheelTravel.current = 0;
+
+    const next = clampZoom(zoom + direction);
     if (next === zoom) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const dx = event.clientX - rect.left - rect.width / 2;
@@ -526,7 +654,7 @@ export function LightningMap({
     // Keep whatever is under the cursor under the cursor, so zooming towards a
     // project does not require a pan afterwards.
     const under = pointAtOffset(centre, { dx, dy }, zoom);
-    setCentre(panCentre(under, { dx: -dx, dy: -dy }, next));
+    setCentre(clampCentre(panCentre(under, { dx: -dx, dy: -dy }, next), next, size.width, size.height));
     setZoom(next);
   }
 
@@ -639,7 +767,13 @@ export function LightningMap({
             type="button"
             aria-label="Zoom out"
             disabled={zoom <= MIN_ZOOM}
-            onClick={() => setZoom((current) => clampZoom(current - 1))}
+            onClick={() =>
+              setZoom((current) => {
+                const next = clampZoom(current - 1);
+                setCentre((point) => clampCentre(point, next, size.width, size.height));
+                return next;
+              })
+            }
             className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
           >
             −
@@ -648,7 +782,13 @@ export function LightningMap({
             type="button"
             aria-label="Zoom in"
             disabled={zoom >= MAX_ZOOM}
-            onClick={() => setZoom((current) => clampZoom(current + 1))}
+            onClick={() =>
+              setZoom((current) => {
+                const next = clampZoom(current + 1);
+                setCentre((point) => clampCentre(point, next, size.width, size.height));
+                return next;
+              })
+            }
             className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
           >
             +
@@ -690,6 +830,16 @@ export function LightningMap({
             draggable={false}
             width={256}
             height={256}
+            // OneMap serves Singapore and nothing else, so a tile beyond the
+            // coastline 404s and the browser paints its own broken-image icon.
+            // Hiding the element is the whole fix; the map is clamped to the
+            // covered area anyway, and this catches the edges of it.
+            onError={(event) => {
+              event.currentTarget.style.visibility = "hidden";
+            }}
+            onLoad={(event) => {
+              event.currentTarget.style.visibility = "visible";
+            }}
             className="pointer-events-none absolute select-none"
             style={{ left: tile.left, top: tile.top }}
           />
@@ -810,10 +960,10 @@ export function LightningMap({
             <span className="text-warn">No ring is being evaluated for this project.</span>
           ) : null}
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-[#facc15]" /> G — cloud-to-ground
+            <span className="h-2.5 w-2.5 rounded-full border border-[#5c3c05] bg-[#c8860d]" /> G — cloud-to-ground
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full border border-[#94c5fd]" /> C — intra-cloud
+            <span className="h-2.5 w-2.5 rounded-full border border-[#1e40af] bg-[#93c5fd]" /> C — intra-cloud
           </span>
           {/* The ring swatches restate what the RED/AMBER chips above already
               say, so the phone drops them rather than spending a line. */}

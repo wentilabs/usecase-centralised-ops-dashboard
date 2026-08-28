@@ -24,6 +24,7 @@ import {
   widestRingM,
   windowMs,
 } from "../lib/lightning-map";
+import { MIN_ZOOM, SG_BOUNDS, clampCentre } from "../lib/slippy-map";
 import type { ProjectConfigRow } from "../lib/services";
 
 const project = (over: Record<string, unknown> = {}) =>
@@ -379,4 +380,66 @@ test("boxContains only skips a refetch when the held box really covers the new o
   // Touching edges count as covered: the viewport padding means an exact match
   // is common, and refetching an identical box is pure latency.
   assert.equal(boxContains(outer, { south: 1.2, west: 103.6, north: 1.5, east: 104.0 }), true);
+});
+
+test("the map is held inside the area OneMap actually serves", () => {
+  const W = 1280;
+  const H = 620;
+
+  // At the default zoom the viewport is wider than Singapore, so both axes lock
+  // to the middle: there is nothing to drag, and dragging anywhere lands in the
+  // same place. This is what "fixed to the Singapore map" means at that zoom.
+  const wide = clampCentre({ latitude: 1.35, longitude: 103.8 }, MIN_ZOOM, W, H);
+  const wideFromElsewhere = clampCentre({ latitude: 5, longitude: 99 }, MIN_ZOOM, W, H);
+  assert.ok(
+    Math.abs(wide.latitude - wideFromElsewhere.latitude) < 1e-9 &&
+      Math.abs(wide.longitude - wideFromElsewhere.longitude) < 1e-9,
+    "a locked axis ignores where the drag went",
+  );
+  assert.ok(
+    wide.longitude > SG_BOUNDS.west && wide.longitude < SG_BOUNDS.east,
+    "and it sits inside the coverage",
+  );
+
+  // Zoomed in, panning works — but the viewport edge stops at the coverage
+  // rather than the centre doing so, which is what left three quarters of the
+  // screen empty and tiled with broken-image icons.
+  const zoom = 15;
+  const pushed = clampCentre({ latitude: 3, longitude: 106 }, zoom, W, H);
+  const view = viewportBounds(pushed, zoom, W, H, 0);
+  assert.ok(view.north <= SG_BOUNDS.north + 1e-9, `north edge escaped to ${view.north}`);
+  assert.ok(view.east <= SG_BOUNDS.east + 1e-9, `east edge escaped to ${view.east}`);
+
+  const pulled = clampCentre({ latitude: 0, longitude: 100 }, zoom, W, H);
+  const view2 = viewportBounds(pulled, zoom, W, H, 0);
+  assert.ok(view2.south >= SG_BOUNDS.south - 1e-9, `south edge escaped to ${view2.south}`);
+  assert.ok(view2.west >= SG_BOUNDS.west - 1e-9, `west edge escaped to ${view2.west}`);
+
+  // A centre well inside is left alone — the clamp must not drag a legitimate
+  // view towards the middle every time the map moves.
+  const inside = { latitude: 1.35, longitude: 103.85 };
+  const kept = clampCentre(inside, zoom, W, H);
+  assert.ok(
+    Math.abs(kept.latitude - inside.latitude) < 1e-9 && Math.abs(kept.longitude - inside.longitude) < 1e-9,
+    "an interior view is untouched",
+  );
+
+  // Every corner of Singapore must still be reachable at a working zoom, or the
+  // clamp would fight the projects it exists to show.
+  for (const [name, point] of [
+    ["Tuas", { latitude: 1.32, longitude: 103.62 }],
+    ["Changi", { latitude: 1.39, longitude: 104.0 }],
+    ["Woodlands", { latitude: 1.44, longitude: 103.79 }],
+    ["Sentosa", { latitude: 1.25, longitude: 103.82 }],
+  ] as const) {
+    const at = clampCentre(point, 16, 600, 400);
+    assert.ok(
+      Math.abs(at.latitude - point.latitude) < 0.01 && Math.abs(at.longitude - point.longitude) < 0.01,
+      `${name} must be reachable, got ${at.latitude},${at.longitude}`,
+    );
+  }
+
+  // An unmeasured container has no viewport to fit, and must not be clamped to
+  // a nonsense centre before the first layout pass.
+  assert.deepEqual(clampCentre(inside, zoom, 0, 0), inside);
 });

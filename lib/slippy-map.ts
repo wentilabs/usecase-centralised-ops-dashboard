@@ -143,3 +143,66 @@ export function tileSrc({ x, y, z }: Tile): string {
 export function formatCoordinate(value: number): string {
   return value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
+
+/**
+ * The area OneMap actually serves tiles for.
+ *
+ * Outside it every tile request 404s and the browser draws its own broken-image
+ * placeholder, which tiled across the empty half of the screen. Singapore's
+ * extent including the outlying islands, padded slightly so the coastline is
+ * never flush against the edge.
+ *
+ * This is a real limit of the basemap, not a policy choice: the projects are all
+ * inside Singapore by CHECK constraint, so there is nothing to see beyond it.
+ */
+export const SG_BOUNDS = { south: 1.13, west: 103.56, north: 1.51, east: 104.15 };
+
+/**
+ * Hold the *viewport* inside the tiled area, not merely its centre.
+ *
+ * Clamping the centre alone still let the island be dragged into a corner with
+ * three quarters of the screen empty. This keeps the visible edges against the
+ * coverage instead, so Singapore cannot leave the view — and when the viewport
+ * is wider than the coverage (which it is at the default zoom on a desktop),
+ * the axis is locked to the middle, so there is nothing to drag at all.
+ *
+ * Done in tile space because Mercator latitude is not linear: averaging two
+ * latitudes would put "the middle" slightly north of where it renders.
+ */
+export function clampCentre(
+  centre: { latitude: number; longitude: number },
+  zoom: number,
+  width: number,
+  height: number,
+  bounds = SG_BOUNDS,
+): { latitude: number; longitude: number } {
+  // Before the container is measured there is no viewport to fit.
+  if (!(width > 0) || !(height > 0)) return centre;
+
+  const halfX = width / 2 / TILE_SIZE;
+  const halfY = height / 2 / TILE_SIZE;
+  const west = lonToTileX(bounds.west, zoom);
+  const east = lonToTileX(bounds.east, zoom);
+  // Tile Y grows southward, so the northern edge is the smaller number.
+  const north = latToTileY(bounds.north, zoom);
+  const south = latToTileY(bounds.south, zoom);
+
+  const fit = (value: number, low: number, high: number, half: number) =>
+    high - low <= half * 2 ? (low + high) / 2 : Math.min(high - half, Math.max(low + half, value));
+
+  return {
+    latitude: tileYToLat(fit(latToTileY(centre.latitude, zoom), north, south, halfY), zoom),
+    longitude: tileXToLon(fit(lonToTileX(centre.longitude, zoom), west, east, halfX), zoom),
+  };
+}
+
+/**
+ * How much wheel travel one zoom level costs.
+ *
+ * A step per wheel event made the map unusable on a trackpad, which fires a
+ * stream of small deltas per gesture: one flick crossed four zoom levels and
+ * overshot whatever you were aiming at. Each level is roughly a doubling, so
+ * the threshold is deliberately high — a level should feel like a decision, not
+ * something a stray scroll can do.
+ */
+export const WHEEL_PER_ZOOM = 600;

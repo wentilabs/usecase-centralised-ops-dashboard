@@ -278,5 +278,42 @@ export function fitZoom(width: number, height: number, bounds = SG_BOUNDS): numb
   const spanX = (lonToTileX(bounds.east, 0) - lonToTileX(bounds.west, 0)) * TILE_SIZE;
   const spanY = (latToTileY(bounds.south, 0) - latToTileY(bounds.north, 0)) * TILE_SIZE;
   const scale = Math.min(width / spanX, height / spanY);
-  return Math.min(MAX_ZOOM, Math.max(0, Math.floor(Math.log2(scale))));
+  // Fractional on purpose. Zoom is continuous here — tiles render at the
+  // nearest whole level and the layer is scaled to meet it — so the floor can
+  // be the exact fit rather than the whole level below it, and the island
+  // fills its box precisely instead of sitting in a ring of water.
+  return Math.min(MAX_ZOOM, Math.max(0, Math.log2(scale)));
+}
+
+/**
+ * The zoom a pinch has reached, from how far the fingers have spread.
+ *
+ * Zoom levels are powers of two, so doubling the distance between the fingers
+ * is exactly one level — which is why this is a log and not a ratio applied to
+ * the level number. Anchored on where the gesture started rather than
+ * integrated frame by frame, so rounding cannot accumulate across a long pinch
+ * and leave the map at a different zoom than the fingers describe.
+ */
+export function pinchZoom(startZoom: number, startDistance: number, distance: number): number {
+  if (!(startDistance > 0) || !(distance > 0)) return startZoom;
+  return startZoom + Math.log2(distance / startDistance);
+}
+
+/**
+ * How many zoom levels a wheel event is worth.
+ *
+ * Continuous, rather than banking travel until it buys a whole level. The
+ * threshold approach was the only way to damp a per-event level jump, but it
+ * made zoom feel like it was ignoring you until it suddenly wasn't; scaling
+ * smoothly is both calmer and finer.
+ *
+ * A pinch reports small continuous deltas and gets a much larger factor than a
+ * mouse wheel's 100-pixel notches — roughly three notches to a level, which is
+ * the "way less sensitive" this needed without being unusable.
+ */
+export function wheelZoomLevels(event: { deltaY: number; ctrlKey?: boolean; metaKey?: boolean }): number {
+  const perPixel = event.ctrlKey || event.metaKey ? 0.02 : 0.0035;
+  // Clamped so one violent flick, or a browser reporting an outlier delta,
+  // cannot cross the whole zoom range in a single event.
+  return Math.max(-1, Math.min(1, -event.deltaY * perPixel));
 }

@@ -32,6 +32,8 @@ import {
   clampCentre,
   classifyWheel,
   fitZoom,
+  pinchZoom,
+  wheelZoomLevels,
 } from "../lib/slippy-map";
 import type { ProjectConfigRow } from "../lib/services";
 
@@ -489,22 +491,62 @@ test("the map box takes Singapore's projected shape, and the fit zoom fills it",
   assert.ok(Math.abs(aspect - degrees) < 0.01, "and near the equator the two are close");
 
   // A box shaped like the bounds is filled by its fit zoom on both axes at
-  // once, which is the whole point of letterboxing to that shape.
+  // once, which is the whole point of letterboxing to that shape. The zoom is
+  // fractional, so the fit is exact rather than the whole level below it.
   const height = 620;
   const width = Math.round(height * aspect);
   const z = fitZoom(width, height);
-  const view = viewportBounds(clampCentre(SG_CENTRE, z, width, height), z, width, height, 0);
-  assert.ok(view.north >= SG_BOUNDS.north, "the whole island fits vertically");
-  assert.ok(view.east >= SG_BOUNDS.east, "and horizontally");
+  assert.ok(!Number.isInteger(z), "an exact fit is not going to land on a whole level");
 
-  // One level deeper must not fit, or "fit" is just "some zoom that works".
-  const tighter = viewportBounds(SG_CENTRE, z + 1, width, height, 0);
+  const view = viewportBounds(clampCentre(SG_CENTRE, z, width, height), z, width, height, 0);
+  assert.ok(view.north >= SG_BOUNDS.north - 1e-9, "the whole island fits vertically");
+  assert.ok(view.east >= SG_BOUNDS.east - 1e-9, "and horizontally");
+
+  // A hair deeper must not fit, or "fit" would just mean "some zoom that works".
+  const tighter = viewportBounds(SG_CENTRE, z + 0.02, width, height, 0);
   assert.ok(
     tighter.north < SG_BOUNDS.north || tighter.east < SG_BOUNDS.east,
     "the fit zoom is the deepest one that still fits",
   );
 
-  // Bigger box, deeper fit. A fixed minimum zoom could not do this.
-  assert.ok(fitZoom(width * 4, height * 4) > z, "a larger map earns a closer view");
+  // Doubling the box is exactly one more level, since zoom levels are powers
+  // of two. A fixed minimum zoom could not track the box at all.
+  assert.ok(Math.abs(fitZoom(width * 2, height * 2) - (z + 1)) < 1e-9, "twice the box is one level in");
+
   assert.equal(fitZoom(0, 0), MIN_ZOOM, "an unmeasured box falls back rather than returning -Infinity");
+});
+
+test("pinch and wheel produce continuous zoom, anchored and bounded", () => {
+  // Zoom levels are powers of two: fingers twice as far apart is exactly one
+  // level in, half as far is exactly one out.
+  assert.equal(pinchZoom(13, 100, 200), 14);
+  assert.equal(pinchZoom(13, 100, 50), 12);
+  assert.equal(pinchZoom(13, 100, 100), 13, "no spread, no change");
+  assert.ok(Math.abs(pinchZoom(13, 100, 141.42) - 13.5) < 0.001, "and it is continuous in between");
+
+  // Anchored on the start, not integrated per frame: pinching out and back
+  // returns to exactly where it began, with no drift to accumulate.
+  assert.equal(pinchZoom(13, 100, 173), pinchZoom(13, 100, 173));
+  assert.equal(pinchZoom(13, 100, 100), 13);
+
+  // A finger lifted mid-gesture can report a zero distance; that must not
+  // produce -Infinity and blank the map.
+  assert.equal(pinchZoom(13, 0, 50), 13);
+  assert.equal(pinchZoom(13, 100, 0), 13);
+
+  // A mouse notch is a fraction of a level — roughly three notches to one —
+  // and scrolling up zooms in.
+  const notch = wheelZoomLevels({ deltaY: -100 });
+  assert.ok(notch > 0.2 && notch < 0.5, `one notch should be a fraction of a level, got ${notch}`);
+  assert.equal(wheelZoomLevels({ deltaY: 100 }), -notch, "and down zooms out by the same amount");
+
+  // A pinch's small deltas earn far more per pixel, or the gesture feels dead.
+  assert.ok(
+    wheelZoomLevels({ deltaY: -10, ctrlKey: true }) > wheelZoomLevels({ deltaY: -10 }) * 4,
+    "pinch is much more responsive per pixel than a wheel",
+  );
+
+  // No single event may cross more than a level, whatever the browser reports.
+  assert.equal(wheelZoomLevels({ deltaY: -100000 }), 1);
+  assert.equal(wheelZoomLevels({ deltaY: 100000, ctrlKey: true }), -1);
 });

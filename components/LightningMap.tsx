@@ -40,6 +40,8 @@ import {
   clampCentre,
   classifyWheel,
   fitZoom,
+  pinchZoom,
+  wheelZoomLevels,
   panCentre,
   pointAtOffset,
   tileSrc,
@@ -197,8 +199,8 @@ export function LightningMap({
    * was right for one screen size and arbitrary on every other.
    */
   const minZoom = fitZoom(size.width, size.height);
-  const hold = (value: number) =>
-    Math.min(MAX_ZOOM, Math.max(minZoom, Math.round(value)));
+  /** Zoom is continuous; this only keeps it inside the usable range. */
+  const hold = (value: number) => Math.min(MAX_ZOOM, Math.max(minZoom, value));
 
   const [view, setView] = useState<Payload | null>(null);
   const [evidence, setEvidence] = useState<{
@@ -253,8 +255,14 @@ export function LightningMap({
       // has to come off or the map is sized to overflow the box it sits in.
       const style = getComputedStyle(element);
       const available = {
-        width: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-        height: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+        width:
+          element.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight),
+        height:
+          element.clientHeight -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
       };
       const next = {
         width: Math.floor(Math.min(available.width, available.height * aspect)),
@@ -721,42 +729,127 @@ export function LightningMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detections, sited, centre, zoom, size.width, size.height, focus, view]);
 
-  const drag = useRef<{
-    id: number;
+  /**
+   * Every pointer currently down, by id.
+   *
+   * Two fingers on a phone is a pinch, and pinch is the gesture people reach
+   * for first on a map. Tracking pointers rather than handling a single drag is
+   * what makes that possible — the previous version simply ignored the second
+   * finger, so a phone could pan and nothing else.
+   */
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+
+  /**
+   * The gesture in progress, anchored on the state it started from.
+   *
+   * Anchored rather than integrated frame by frame for the same reason
+   * throughout this file: reading back the rendered value loses every event
+   * that arrives before React re-renders, which during a fast gesture is most
+   * of them. It also means a pinch out and back lands exactly where it began.
+   */
+  const gesture = useRef<{
+    kind: "drag" | "pinch";
     origin: { latitude: number; longitude: number };
-    startX: number;
-    startY: number;
+    startZoom: number;
+    /** Screen point the gesture is anchored on: the finger, or the midpoint. */
+    anchorX: number;
+    anchorY: number;
+    /** Pinch only: how far apart the fingers started. */
+    spread: number;
     moved: boolean;
   } | null>(null);
 
-  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    drag.current = {
-      id: event.pointerId,
-      // Anchored on the centre at drag start, not the rendered centre: reading
-      // the rendered one loses every move that arrives before React re-renders,
-      // and the map follows the pointer at about half speed.
+  const midpoint = () => {
+    const points = [...touches.current.values()];
+    const x = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const y = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    const spread =
+      points.length < 2
+        ? 0
+        : Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    return { x, y, spread };
+  };
+
+  const beginGesture = () => {
+    const { x, y, spread } = midpoint();
+    gesture.current = {
+      kind: touches.current.size >= 2 ? "pinch" : "drag",
       origin: centre,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
+      startZoom: zoom,
+      anchorX: x,
+      anchorY: y,
+      spread,
+      moved: touches.current.size >= 2,
     };
+  };
+
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    touches.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    // Re-anchored whenever the number of fingers changes, so putting a second
+    // finger down starts a pinch from where the drag had got to rather than
+    // snapping back to where the drag began.
+    beginGesture();
     setHover(null);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Throws if the pointer has already ended — which a second finger lifted
+    // between the event and this call really can do. Losing capture only means
+    // the gesture ends when the finger leaves the element, which is survivable;
+    // an exception here would abort the handler and strand the gesture state.
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* the pointer is gone; the gesture will end on its own */
+    }
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
-    const state = drag.current;
 
-    if (state && state.id === event.pointerId) {
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
+    if (touches.current.has(event.pointerId)) {
+      touches.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const state = gesture.current;
+      if (!state) return;
+      const now = midpoint();
+
+      if (state.kind === "pinch" && touches.current.size >= 2) {
+        const next = hold(pinchZoom(state.startZoom, state.spread, now.spread));
+        // The point under the fingers when the pinch started stays under them:
+        // one gesture zooms and pans at once, as it does on a phone's own maps.
+        const from = {
+          dx: state.anchorX - rect.left - rect.width / 2,
+          dy: state.anchorY - rect.top - rect.height / 2,
+        };
+        const to = {
+          dx: now.x - rect.left - rect.width / 2,
+          dy: now.y - rect.top - rect.height / 2,
+        };
+        const under = pointAtOffset(state.origin, from, state.startZoom);
+        setCentre(
+          clampCentre(
+            panCentre(under, { dx: -to.dx, dy: -to.dy }, next),
+            next,
+            size.width,
+            size.height,
+          ),
+        );
+        setZoom(next);
+        return;
+      }
+
+      const dx = now.x - state.anchorX;
+      const dy = now.y - state.anchorY;
+      // A few pixels is a shaky hand, not a drag.
       if (!state.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
       state.moved = true;
       setCentre(
         clampCentre(
-          panCentre(state.origin, { dx: -dx, dy: -dy }, zoom),
-          zoom,
+          panCentre(state.origin, { dx: -dx, dy: -dy }, state.startZoom),
+          state.startZoom,
           size.width,
           size.height,
         ),
@@ -770,14 +863,13 @@ export function LightningMap({
     setHover(index === -1 ? null : { index, x, y });
   }
 
-  /**
-   * Accumulated wheel travel, reset each time it buys a zoom level.
-   *
-   * A trackpad emits a stream of small deltas per gesture, so stepping a level
-   * per event sent one flick through four levels and past whatever you were
-   * trying to look at.
-   */
-  const wheelTravel = useRef(0);
+  function onPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    touches.current.delete(event.pointerId);
+    // Lifting one finger of a pinch leaves the other one dragging, from where
+    // the map is now — without re-anchoring, the map would jump.
+    if (touches.current.size > 0) beginGesture();
+    else gesture.current = null;
+  }
 
   /**
    * The wheel handler is bound natively, not through `onWheel`.
@@ -806,11 +898,7 @@ export function LightningMap({
   wheelRef.current = function onWheel(event: WheelEvent) {
     if (classifyWheel(event) === "pan") {
       // Two-finger scroll. Straight through, no threshold: a pan should track
-      // the fingers, and this is the gesture that previously did nothing at all.
-      wheelTravel.current = 0;
-      // Read off the event now, not inside the updater: React runs that
-      // callback during a later render, and reaching into the synthetic event
-      // from there is asynchronous access to a live object.
+      // the fingers, and this is the gesture that once did nothing at all.
       const { deltaX, deltaY } = event;
       setCentre((point) =>
         clampCentre(
@@ -823,28 +911,18 @@ export function LightningMap({
       return;
     }
 
-    // A reversal starts a fresh count. Otherwise scrolling back up first has to
-    // pay off the travel banked going down, and the map ignores you.
-    if (Math.sign(event.deltaY) !== Math.sign(wheelTravel.current))
-      wheelTravel.current = 0;
-    wheelTravel.current += event.deltaY;
-    // Pinch deltas are small and continuous, so they get a much lower bar than
-    // a mouse wheel — a pinch that needed six hundred pixels of travel would
-    // read as broken.
-    const threshold =
-      event.ctrlKey || event.metaKey ? WHEEL_PER_ZOOM / 8 : WHEEL_PER_ZOOM;
-    if (Math.abs(wheelTravel.current) < threshold) return;
-    const direction = wheelTravel.current < 0 ? 1 : -1;
-    wheelTravel.current = 0;
-
-    const next = hold(zoom + direction);
+    // A fraction of a level per event, rather than banking travel until it buys
+    // a whole one. Tiles draw at the nearest whole level and the layer is scaled
+    // to meet the fractional one, so this reads as smooth rather than as a jump
+    // per notch — and it is finer to control, which banking never was.
+    const next = hold(zoom + wheelZoomLevels(event));
     if (next === zoom) return;
     const rect = box.current?.getBoundingClientRect();
     if (!rect) return;
     const dx = event.clientX - rect.left - rect.width / 2;
     const dy = event.clientY - rect.top - rect.height / 2;
     // Keep whatever is under the cursor under the cursor, so zooming towards a
-    // project does not require a pan afterwards.
+    // project does not need a pan afterwards.
     const under = pointAtOffset(centre, { dx, dy }, zoom);
     setCentre(
       clampCentre(
@@ -872,9 +950,29 @@ export function LightningMap({
     setZoom(14);
   }, []);
 
+  /**
+   * Tiles exist only at whole zoom levels, but zoom here is continuous.
+   *
+   * So the grid is built for the nearest whole level and the layer is then
+   * scaled by the difference. During a pinch that means the pixels already on
+   * screen stretch under the fingers immediately, and a fresh tile set is only
+   * fetched when the gesture crosses into a new level — which is what makes
+   * this feel like a map rather than a slideshow.
+   *
+   * `tileScale` stays within [1/√2, √2] because the level is rounded, so the
+   * stretch is never visible enough to look soft.
+   */
+  const tileZoom = Math.max(0, Math.min(MAX_ZOOM, Math.round(zoom)));
+  const tileScale = 2 ** (zoom - tileZoom);
+  // The layer is laid out at its own unscaled size and then scaled up to fill
+  // the box, so the grid still has to cover the whole viewport afterwards.
+  const layer = {
+    width: size.width / tileScale,
+    height: size.height / tileScale,
+  };
   const tiles =
     size.width > 0
-      ? tilesForViewport(centre, zoom, size.width, size.height)
+      ? tilesForViewport(centre, tileZoom, layer.width, layer.height)
       : [];
   // `ordered` in the draw pass is what `plotted` indexes, so the tooltip has to
   // read from the same ordering or it would describe a different strike.
@@ -999,7 +1097,7 @@ export function LightningMap({
               disabled={zoom <= minZoom}
               onClick={() =>
                 setZoom((current) => {
-                  const next = hold(current - 1);
+                  const next = hold(Math.round(current) - 1);
                   setCentre((point) =>
                     clampCentre(point, next, size.width, size.height),
                   );
@@ -1016,7 +1114,7 @@ export function LightningMap({
               disabled={zoom >= MAX_ZOOM}
               onClick={() =>
                 setZoom((current) => {
-                  const next = hold(current + 1);
+                  const next = hold(Math.round(current) + 1);
                   setCentre((point) =>
                     clampCentre(point, next, size.width, size.height),
                   );
@@ -1052,12 +1150,8 @@ export function LightningMap({
           ref={box}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
-          onPointerUp={() => {
-            drag.current = null;
-          }}
-          onPointerCancel={() => {
-            drag.current = null;
-          }}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
           onPointerLeave={() => setHover(null)}
           className="relative cursor-grab overflow-hidden rounded-lg border border-border shadow-soft active:cursor-grabbing"
           style={{
@@ -1072,29 +1166,41 @@ export function LightningMap({
             height: size.height || undefined,
           }}
         >
-          {tiles.map((tile) => (
-            <img
-              key={`${tile.z}/${tile.x}/${tile.y}`}
-              src={tileSrc(tile)}
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-              width={256}
-              height={256}
-              // OneMap serves Singapore and nothing else, so a tile beyond the
-              // coastline 404s and the browser paints its own broken-image icon.
-              // Hiding the element is the whole fix; the map is clamped to the
-              // covered area anyway, and this catches the edges of it.
-              onError={(event) => {
-                event.currentTarget.style.visibility = "hidden";
-              }}
-              onLoad={(event) => {
-                event.currentTarget.style.visibility = "visible";
-              }}
-              className="pointer-events-none absolute select-none"
-              style={{ left: tile.left, top: tile.top }}
-            />
-          ))}
+          {/* Scaled about the centre, which is the same point the projection
+              measures from, so tiles and canvas stay registered mid-gesture. */}
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2"
+            style={{
+              width: layer.width,
+              height: layer.height,
+              transform: `translate(-50%, -50%) scale(${tileScale})`,
+              transformOrigin: "center",
+            }}
+          >
+            {tiles.map((tile) => (
+              <img
+                key={`${tile.z}/${tile.x}/${tile.y}`}
+                src={tileSrc(tile)}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                width={256}
+                height={256}
+                // OneMap serves Singapore and nothing else, so a tile beyond the
+                // coastline 404s and the browser paints its own broken-image icon.
+                // Hiding the element is the whole fix; the map is clamped to the
+                // covered area anyway, and this catches the edges of it.
+                onError={(event) => {
+                  event.currentTarget.style.visibility = "hidden";
+                }}
+                onLoad={(event) => {
+                  event.currentTarget.style.visibility = "visible";
+                }}
+                className="pointer-events-none absolute select-none"
+                style={{ left: tile.left, top: tile.top }}
+              />
+            ))}
+          </div>
 
           <canvas
             ref={canvas}

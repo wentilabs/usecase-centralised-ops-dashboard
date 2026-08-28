@@ -507,6 +507,21 @@ untrue to a client:
   2,130 rows to 15. This is what keeps the evidence query under the cap, and the
   cap is what keeps the claim true — see trap 14.
 
+**Zoom is continuous, tiles are not.** The projection helpers all take a numeric
+zoom and work fine with a fractional one, so `zoom` is a float; tiles render at
+`Math.round(zoom)` and the layer is CSS-scaled by the difference, which stays
+within [1/√2, √2]. That is what makes a pinch stretch the pixels already on
+screen instead of waiting for a tile fetch — a new tile set is only pulled when
+the gesture crosses a half-level. The canvas needs no transform at all, because
+it draws from the fractional zoom directly and therefore stays registered with
+the tiles mid-gesture.
+
+Gestures: one finger drags, two pinch (anchored on the start, so out-and-back
+returns exactly), a trackpad two-finger scroll pans, and a mouse wheel zooms
+about a third of a level per notch. The wheel listener is bound natively with
+`{ passive: false }` — React registers wheel handlers as passive, where
+`preventDefault` is ignored, and without it a pinch zooms the whole browser.
+
 `lightning.lightning_detections` holds **every** NEA detection unfiltered and is
 never pruned; the ingest path deliberately does not clip to a bounding box, so an
 empty result means NEA reported nothing rather than that something was discarded.

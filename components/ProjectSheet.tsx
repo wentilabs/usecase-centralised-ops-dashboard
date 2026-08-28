@@ -24,6 +24,7 @@ export function ProjectSheet({
   onClose,
   groupNames = {},
   visoUrl = null,
+  onOpenMap,
 }: {
   service: ServiceKey;
   label: string;
@@ -34,6 +35,8 @@ export function ProjectSheet({
   onClose: () => void;
   groupNames?: Record<string, string>;
   visoUrl?: string | null;
+  /** Opens the in-app lightning evidence map focused on this project. */
+  onOpenMap?: () => void;
 }) {
   useBodyScrollLock(true);
   useEscapeKey(true, onClose);
@@ -172,6 +175,19 @@ export function ProjectSheet({
                     href={link.href}
                     target="_blank"
                     rel="noopener"
+                    onClick={
+                      // The lightning map is in-app; see the same handler in
+                      // ProjectCard. On a phone the sheet closes first, or the
+                      // map would open behind it.
+                      link.internal === "lightning-map" && onOpenMap
+                        ? (event) => {
+                            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                            event.preventDefault();
+                            onClose();
+                            onOpenMap();
+                          }
+                        : undefined
+                    }
                     className="rounded-xl border border-primary/35 bg-primary/5 px-3 py-2.5 text-sm font-medium text-primary active:bg-primary/15"
                   >
                     {link.label}

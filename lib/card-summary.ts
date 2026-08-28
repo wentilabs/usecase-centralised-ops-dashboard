@@ -492,9 +492,20 @@ export function matchesQuery(service: ServiceKey, config: ProjectConfigRow, quer
   return searchTokens(service, config).some((token) => token.includes(needle));
 }
 
-export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { label: string; href: string }[] {
+/**
+ * A card's outbound links.
+ *
+ * `internal` marks the one link that is not a URL: a lightning project's map
+ * opens the in-app evidence view rather than Google Maps, because a pin on
+ * Google Maps says where the site is and nothing about whether a strike
+ * qualified. Every other service keeps Google Maps — there is nothing in-app to
+ * send them to.
+ */
+export type CardLink = { label: string; href: string; internal?: "lightning-map" };
+
+export function autoLinks(service: ServiceKey, config: ProjectConfigRow): CardLink[] {
   const sheet = (id: unknown) => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(id))}/edit`;
-  const links: { label: string; href: string }[] = [];
+  const links: CardLink[] = [];
   if (config.monthly_sheet_id) links.push({ label: "📗 Monthly sheet", href: sheet(config.monthly_sheet_id) });
   if (config.google_sheet_id) links.push({ label: "📗 Analysis sheet", href: sheet(config.google_sheet_id) });
   if (config.spreadsheet_id) {
@@ -512,10 +523,15 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): { labe
     links.push({ label: "📗 Safety workbook", href: sheet(config.safety_sheet_id) });
   }
   if (config.latitude && config.longitude) {
-    links.push({
-      label: "📍 Map",
-      href: `https://www.google.com/maps?q=${encodeURIComponent(`${config.latitude},${config.longitude}`)}`,
-    });
+    const external = `https://www.google.com/maps?q=${encodeURIComponent(`${config.latitude},${config.longitude}`)}`;
+    links.push(
+      service === "lightning"
+        ? // `href` is kept as the Google Maps URL so a middle-click or a
+          // right-click "open in new tab" still lands somewhere sensible; the
+          // click handler takes precedence and opens the evidence map.
+          { label: "⚡ Lightning map", href: external, internal: "lightning-map" }
+        : { label: "📍 Map", href: external },
+    );
   }
   return links;
 }

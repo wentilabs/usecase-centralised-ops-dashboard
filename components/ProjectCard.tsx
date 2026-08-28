@@ -106,6 +106,7 @@ export function ProjectCard({
   onOpen,
   groupNames = {},
   visoUrl = null,
+  onOpenMap,
 }: {
   service: ServiceKey;
   config: ProjectConfigRow;
@@ -118,6 +119,8 @@ export function ProjectCard({
   groupNames?: Record<string, string>;
   /** Base URL of Viso; when set, chips link to the mirrored thread. */
   visoUrl?: string | null;
+  /** Opens the in-app lightning evidence map focused on this project. */
+  onOpenMap?: () => void;
 }) {
   const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
@@ -339,6 +342,20 @@ export function ProjectCard({
               href={link.href}
               target="_blank"
               rel="noopener"
+              onClick={
+                // An internal link keeps a real href for middle-click, but a
+                // plain left click opens the in-app map instead of leaving for
+                // Google Maps. Modified clicks are left alone so "open in new
+                // tab" still works.
+                link.internal === "lightning-map" && onOpenMap
+                  ? (event) => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onOpenMap();
+                    }
+                  : undefined
+              }
               className="relative z-10 rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
             >
               {link.label}

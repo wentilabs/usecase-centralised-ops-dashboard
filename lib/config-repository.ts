@@ -45,17 +45,101 @@ async function request(path: string, init: RequestInit & { schema: string }) {
       },
     });
     const text = await res.text();
-    return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, text };
+    // `headers` is returned for the one caller that needs Content-Range — a
+    // `count=exact` query reports the size of the whole match there, which is how
+    // a capped list can say what it left out.
+    return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, text, headers: res.headers };
   } finally {
     clearTimeout(timer);
   }
 }
+
+export type LightningDetection = {
+  occurred_at: number;
+  published_at: number | null;
+  latitude: number;
+  longitude: number;
+  detection_type: "G" | "C";
+};
 
 export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow[]> {
   const { table, schema } = SERVICES[service];
   const res = await request(`${table}?select=*&order=project_code.asc`, { schema });
   if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
   return res.body as ProjectConfigRow[];
+}
+
+/**
+ * Lightning detections in a published-time window, for the evidence map.
+ *
+ * Filtered on `published_at`, not `occurred_at`, and that is the whole point: the
+ * map answers "could we have acted on this", and a strike NEA published at 23:58
+ * could not have fired an alert at 23:52. Each row still carries `occurred_at`
+ * so the lag is visible rather than hidden by the choice of filter.
+ *
+ * `lightning.lightning_detections` holds EVERY detection NEA reports, island-wide
+ * and beyond — the ingest path applies no geographic filter, deliberately, since
+ * a ring on a northern site legitimately reaches into Johor. That is what makes
+ * absence provable: an empty map means NEA reported nothing, not that we dropped
+ * something.
+ *
+ * `bbox` narrows to the viewport so zooming in shows more of a busy hour rather
+ * than the same island-wide sample. The cap is applied by the database, ordered
+ * by published time descending, so a truncated result is the most recent slice
+ * rather than an arbitrary one — and `total` reports what was truncated.
+ */
+export async function listLightningDetections({
+  fromMs,
+  toMs,
+  bbox,
+  types,
+  limit,
+}: {
+  fromMs: number;
+  toMs: number;
+  bbox?: { south: number; north: number; west: number; east: number };
+  /** Restrict to these detection types. Omit for every type. */
+  types?: string[];
+  limit: number;
+}): Promise<{ rows: LightningDetection[]; total: number }> {
+  const filters = [
+    `published_at=gte.${Math.floor(fromMs)}`,
+    `published_at=lte.${Math.floor(toMs)}`,
+    "published_at=not.is.null",
+  ];
+  if (bbox) {
+    filters.push(
+      `latitude=gte.${bbox.south}`,
+      `latitude=lte.${bbox.north}`,
+      `longitude=gte.${bbox.west}`,
+      `longitude=lte.${bbox.east}`,
+    );
+  }
+  if (types?.length) {
+    // Only the types a tier counts can ever qualify, and a storm is
+    // overwhelmingly intra-cloud — filtering to G took one project's evidence
+    // query from 2,130 rows to 15, which is the difference between a truncated
+    // answer and a certain one.
+    filters.push(`detection_type=in.(${types.map((type) => encodeURIComponent(type)).join(",")})`);
+  }
+  const query = filters.join("&");
+  const select = "select=occurred_at,published_at,latitude,longitude,detection_type";
+
+  const res = await request(
+    `lightning_detections?${query}&${select}&order=published_at.desc&limit=${Math.max(1, Math.floor(limit))}`,
+    { schema: "lightning", headers: { Prefer: "count=exact" } },
+  );
+  if (!res.ok) throw new Error(`lightning detections: ${res.status} ${res.text.slice(0, 200)}`);
+
+  // `count=exact` reports the size of the whole match in Content-Range, so the
+  // map can say "500 of 3,120" instead of implying it drew everything.
+  const range = res.headers?.get?.("content-range") ?? "";
+  const total = Number(range.split("/")[1]);
+
+  return {
+    rows: res.body as LightningDetection[],
+    total: Number.isFinite(total) ? total : (res.body as unknown[]).length,
+  };
 }
 
 /**

@@ -33,6 +33,7 @@
     "lib/api-tokens.ts",
     "lib/derive.ts",
     "lib/slippy-map.ts",
+    "lib/lightning-map.ts",
     "lib/search-hotkey.ts",
     "lib/chat-intent.ts",
     "lib/chat-provider.ts",

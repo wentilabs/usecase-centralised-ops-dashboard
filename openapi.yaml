@@ -162,6 +162,65 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/lightning/detections:
+    get:
+      operationId: listLightningDetections
+      tags:
+        - configuration
+      summary: Lightning detections in a published-time window
+      description: Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 500) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. Reads only.
+      parameters:
+        - name: at
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: End of the window, epoch milliseconds. Defaults to now.
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - 15m
+              - 1h
+              - 3h
+          description: How far back from `at` to look. Defaults to 1h.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: How many rows to return, default 500. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.
+        - name: types
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated detection types to keep, G and/or C. Restricting to the types a project's tiers actually count is what keeps a busy hour under the row cap; a storm is overwhelmingly intra-cloud.
+        - name: bbox
+          in: query
+          required: false
+          schema:
+            type: string
+          description: south,west,north,east — restricts the result to a viewport.
+      responses:
+        "200":
+          description: The detections, plus the window and what was truncated.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": *a3
+        "401": *a1
+        "502":
+          description: The detections could not be read.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /api/projects:
     get:
       operationId: listProjects

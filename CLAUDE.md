@@ -28,6 +28,16 @@ file only adds notes specific to working here interactively.
   missing, add or read a boolean that reveals which side is blind — that is how
   the allow-list problem was finally isolated.
 
+## The lightning map
+
+The ⚡ button on the lightning actions row opens an evidence map: NEA detections
+against each project's real trigger rings, at a chosen time. It is read-only and
+open to read-only accounts. Before changing anything in it, read the
+**Singapore lightning map** section of AGENTS.md — the four load-bearing
+decisions there (publish time, widened rings, a separate evidence query, and the
+detection-type filter) are each the fix for a specific way the map can lie to a
+client, and trap 14 records the one that actually happened.
+
 ## Giving an agent access
 
 **[AGENT_ACCESS.md](./AGENT_ACCESS.md)** — the OpenAPI contract at

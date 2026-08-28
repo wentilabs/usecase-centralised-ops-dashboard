@@ -378,10 +378,15 @@ test("the phone gets the chat, and thumb-sized actions on a rail", async () => {
   // One handler for both instances, so the two cannot drift apart.
   assert.equal((shell.match(/onProposal=\{proposeChange\}/g) ?? []).length, 2);
 
-  // Action buttons are thumb-sized on the phone and unchanged on the desktop.
-  const actionButtons = [...shell.matchAll(/className="shrink-0 whitespace-nowrap rounded-lg[^"]*"/g)].map((m) => m[0]);
-  assert.equal(actionButtons.length, 3, "add-project, jobs and exports");
-  for (const cls of actionButtons) {
+  // Every button in the actions rail is thumb-sized on the phone and unchanged
+  // on the desktop. Asserted over the rail itself rather than against a count,
+  // so adding an action fails only if it forgets the treatment — the count was
+  // pinned at three and went stale the moment a fourth was added.
+  const rail = shell.slice(shell.indexOf("{active.label} actions"), shell.indexOf("<main"));
+  const railButtons = [...rail.matchAll(/className="([^"]*rounded-lg[^"]*)"/g)].map((match) => match[1]);
+  assert.ok(railButtons.length >= 4, `expected the rail's action buttons, found ${railButtons.length}`);
+  for (const cls of railButtons) {
+    assert.match(cls, /shrink-0 whitespace-nowrap/, "a wrapping button breaks the rail");
     assert.match(cls, /py-2\.5/, "40px on a phone, not the 30px it was");
     assert.match(cls, /md:py-1\.5/, "and the desktop row stays compact");
   }

@@ -7,6 +7,7 @@ import { ConfigEditor } from "./ConfigEditor";
 import { SmartChat } from "./SmartChat";
 import { shouldFocusSearch } from "@/lib/search-hotkey";
 import { ExportDialog } from "./ExportDialog";
+import { LightningMap } from "./LightningMap";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
@@ -86,6 +87,11 @@ export function DashboardShell({
   const [job, setJob] = useState<JobDefinition | null>(null);
   const [exporter, setExporter] = useState<ExportDefinition | null>(null);
   const [onboarding, setOnboarding] = useState(false);
+  /**
+   * The lightning map. `null` is closed; a string is open, focused on that
+   * project code, and `""` is open on the whole island.
+   */
+  const [lightningMap, setLightningMap] = useState<string | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -361,7 +367,11 @@ export function DashboardShell({
           away and the cards where they were. */}
       {jobsForService(active.key).length ||
       exportsForService(active.key).length ||
-      onboardingFor(active.key) ? (
+      onboardingFor(active.key) ||
+      // Named explicitly rather than relying on lightning also having an
+      // onboarding form: removing that form must not silently take the map
+      // button with it.
+      active.key === "lightning" ? (
         <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-3 py-2.5 [scrollbar-width:none] md:flex-wrap md:overflow-visible md:px-5 md:py-2">
           <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground">
             {active.label} actions
@@ -393,6 +403,19 @@ export function DashboardShell({
                 </button>
               ))
             : null}
+          {/* Evidence, not a job: it only reads, so a read-only account gets it
+              too — the person answering "why was there no alert" is often not
+              the person who may change a configuration. */}
+          {active.key === "lightning" ? (
+            <button
+              type="button"
+              onClick={() => setLightningMap("")}
+              title="NEA lightning detections against every project's trigger rings, at a time you choose"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-violet-400/40 bg-violet-400/10 px-3 py-2.5 text-xs font-medium text-violet-300 hover:bg-violet-400/20 md:py-1.5"
+            >
+              ⚡ Singapore lightning map
+            </button>
+          ) : null}
           {exportsForService(active.key).map((definition) => (
             <button
               key={definition.key}
@@ -425,6 +448,7 @@ export function DashboardShell({
               canEdit={session.canEdit && Boolean(active.spec)}
               onEdit={() => setEditing({ service: active, row })}
               onOpen={() => setViewing({ service: active, row })}
+              onOpenMap={() => setLightningMap(String(row.project_code ?? ""))}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />
@@ -479,6 +503,7 @@ export function DashboardShell({
             setViewing(null);
           }}
           onClose={() => setViewing(null)}
+          onOpenMap={() => setLightningMap(String(viewing.row.project_code ?? ""))}
           groupNames={groupNames}
           visoUrl={visoUrl}
         />
@@ -491,6 +516,16 @@ export function DashboardShell({
           groupNames={groupNames}
           onClose={() => setOnboarding(false)}
           onCreated={() => void refreshData()}
+        />
+      ) : null}
+
+      {/* Rows come from `rows.lightning` rather than the active tab, so the map
+          still has every project when it was opened from somewhere else. */}
+      {lightningMap !== null ? (
+        <LightningMap
+          projects={rows.lightning ?? []}
+          initialFocus={lightningMap || null}
+          onClose={() => setLightningMap(null)}
         />
       ) : null}
 

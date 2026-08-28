@@ -476,6 +476,40 @@ found sitting unlabelled in the "Other" bucket:
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 ```
 
+## The Singapore lightning map
+
+`components/LightningMap.tsx`, opened from the ⚡ button on the lightning
+actions row or from a lightning card's own `⚡ Lightning map` link. It exists to
+settle one conversation: a client says there was lightning overhead and asks why
+no alert came. Read-only, and available to read-only accounts — the person
+fielding that question is often not the person who may change a configuration.
+
+Four things about it are load-bearing, and all four are in `lib/lightning-map.ts`
+with tests, because a map that draws the wrong circle would prove something
+untrue to a client:
+
+- **The window filters on `published_at`, not `occurred_at`.** A strike NEA told
+  us about at 23:58 could not have fired a 23:52 alert. Real lag is two to four
+  minutes; the tooltip shows both stamps and the difference.
+- **The drawn radius is not `red_radius_m`.** The engine tests
+  `haversine − site_extent − uncertainty(type) ≤ radius`, so the qualifying
+  circle is `radius + site_extent + uncertainty` (INV-LTG-02 — the margins
+  *widen* the ring). `ringsFor` does this; every project runs zero margins today,
+  which is exactly why drawing the raw column would look correct until it wasn't.
+  Amber is omitted entirely when `amber_enabled` is false (INV-LTG-13).
+- **The counts come from their own query, not from what is drawn.** The map
+  layer follows the viewport and is capped, so counting hits from it would give a
+  number that changes when you pan. `evidenceFor` reads a separate, tight box
+  around the focused project.
+- **That query asks only for the types a tier counts.** A storm is
+  overwhelmingly intra-cloud: filtering to `G` took one site's worst hour from
+  2,130 rows to 15. This is what keeps the evidence query under the cap, and the
+  cap is what keeps the claim true — see trap 14.
+
+`lightning.lightning_detections` holds **every** NEA detection unfiltered and is
+never pruned; the ingest path deliberately does not clip to a bounding box, so an
+empty result means NEA reported nothing rather than that something was discarded.
+
 ## The agent-facing API
 
 **[AGENT_ACCESS.md](./AGENT_ACCESS.md)** is the practical guide: minting a token,
@@ -643,3 +677,12 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
     parameter names the handlers never read. The habit that catches all four:
     after writing an assertion, break the code deliberately and confirm the test
     fails. If it still passes, the test is decoration.
+
+14. A truncated evidence query is a **false** all-clear, not a
+   hedged one. The lightning map once reported "no qualifying strike" for a
+   window that contained a ground strike 1.8 km inside a 3 km ring: the 500 most
+   recently published detections in the box did not reach back far enough.
+   PostgREST also caps any result at 1000 rows and returns 1000 for a larger
+   request without complaining, so raising `limit` is not a fix. The fixes are
+   the type filter and a tight box; if the cap is still hit, the UI refuses to
+   make the claim rather than shading it.

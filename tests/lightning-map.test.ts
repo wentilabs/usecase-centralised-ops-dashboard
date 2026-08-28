@@ -24,7 +24,15 @@ import {
   widestRingM,
   windowMs,
 } from "../lib/lightning-map";
-import { MIN_ZOOM, SG_BOUNDS, clampCentre, classifyWheel } from "../lib/slippy-map";
+import {
+  MIN_ZOOM,
+  SG_BOUNDS,
+  SG_CENTRE,
+  boundsAspect,
+  clampCentre,
+  classifyWheel,
+  fitZoom,
+} from "../lib/slippy-map";
 import type { ProjectConfigRow } from "../lib/services";
 
 const project = (over: Record<string, unknown> = {}) =>
@@ -465,4 +473,38 @@ test("a wheel event is read as pan or zoom by gesture, not treated as always zoo
   // deliberately biases away from.
   assert.equal(classifyWheel({ deltaX: 0, deltaY: 143.7 }), "pan");
   assert.equal(classifyWheel({ deltaX: 2, deltaY: 100 }), "pan", "sideways drift means a trackpad");
+});
+
+test("the map box takes Singapore's projected shape, and the fit zoom fills it", () => {
+  // Roughly 1.55:1 — wider than tall, which is what makes a full-width map box
+  // waste so much space on a desktop.
+  const aspect = boundsAspect();
+  assert.ok(aspect > 1.4 && aspect < 1.7, `unexpected aspect ${aspect}`);
+
+  // It must be the *projected* ratio, not the degree ratio. Near the equator
+  // they nearly agree, so the check is that the two are not identical — a
+  // degree-ratio implementation would pass every Singapore-shaped assertion.
+  const degrees = (SG_BOUNDS.east - SG_BOUNDS.west) / (SG_BOUNDS.north - SG_BOUNDS.south);
+  assert.notEqual(aspect, degrees, "must go through the projection, not divide degrees");
+  assert.ok(Math.abs(aspect - degrees) < 0.01, "and near the equator the two are close");
+
+  // A box shaped like the bounds is filled by its fit zoom on both axes at
+  // once, which is the whole point of letterboxing to that shape.
+  const height = 620;
+  const width = Math.round(height * aspect);
+  const z = fitZoom(width, height);
+  const view = viewportBounds(clampCentre(SG_CENTRE, z, width, height), z, width, height, 0);
+  assert.ok(view.north >= SG_BOUNDS.north, "the whole island fits vertically");
+  assert.ok(view.east >= SG_BOUNDS.east, "and horizontally");
+
+  // One level deeper must not fit, or "fit" is just "some zoom that works".
+  const tighter = viewportBounds(SG_CENTRE, z + 1, width, height, 0);
+  assert.ok(
+    tighter.north < SG_BOUNDS.north || tighter.east < SG_BOUNDS.east,
+    "the fit zoom is the deepest one that still fits",
+  );
+
+  // Bigger box, deeper fit. A fixed minimum zoom could not do this.
+  assert.ok(fitZoom(width * 4, height * 4) > z, "a larger map earns a closer view");
+  assert.equal(fitZoom(0, 0), MIN_ZOOM, "an unmeasured box falls back rather than returning -Infinity");
 });

@@ -251,3 +251,32 @@ export function classifyWheel(event: {
   const clean = (step === 100 || step === 120) && event.deltaX === 0;
   return clean ? "zoom" : "pan";
 }
+
+/**
+ * The width-to-height ratio of a bounding box *as projected*, not as degrees.
+ *
+ * Mercator stretches latitude, so dividing the degree spans would be wrong
+ * everywhere except the equator — and near-enough-right in Singapore, which is
+ * the worst kind of wrong: it would look correct here and quietly not be.
+ * Independent of zoom, because every zoom scales both axes equally.
+ */
+export function boundsAspect(bounds = SG_BOUNDS): number {
+  const spanX = lonToTileX(bounds.east, 0) - lonToTileX(bounds.west, 0);
+  const spanY = latToTileY(bounds.south, 0) - latToTileY(bounds.north, 0);
+  return spanX / spanY;
+}
+
+/**
+ * The deepest zoom at which the whole box still fits in a viewport.
+ *
+ * Used instead of a hardcoded minimum so the default view is "all of Singapore,
+ * as large as it goes" for whatever space the map has, rather than a fixed
+ * level that happens to suit one screen.
+ */
+export function fitZoom(width: number, height: number, bounds = SG_BOUNDS): number {
+  if (!(width > 0) || !(height > 0)) return MIN_ZOOM;
+  const spanX = (lonToTileX(bounds.east, 0) - lonToTileX(bounds.west, 0)) * TILE_SIZE;
+  const spanY = (latToTileY(bounds.south, 0) - latToTileY(bounds.north, 0)) * TILE_SIZE;
+  const scale = Math.min(width / spanX, height / spanY);
+  return Math.min(MAX_ZOOM, Math.max(0, Math.floor(Math.log2(scale))));
+}

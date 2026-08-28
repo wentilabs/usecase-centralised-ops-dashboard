@@ -36,9 +36,10 @@ import {
   TILE_ATTRIBUTION,
   TILE_WATER,
   WHEEL_PER_ZOOM,
+  boundsAspect,
   clampCentre,
   classifyWheel,
-  clampZoom,
+  fitZoom,
   panCentre,
   pointAtOffset,
   tileSrc,
@@ -103,16 +104,25 @@ async function fetchDetections(params: {
   limit?: number;
   signal: AbortSignal;
 }): Promise<Payload> {
-  const query = new URLSearchParams({ at: String(params.at), window: params.window });
+  const query = new URLSearchParams({
+    at: String(params.at),
+    window: params.window,
+  });
   if (params.limit) query.set("limit", String(params.limit));
   if (params.types?.length) query.set("types", params.types.join(","));
   if (params.bbox) {
     const { south, west, north, east } = params.bbox;
-    query.set("bbox", [south, west, north, east].map((value) => value.toFixed(5)).join(","));
+    query.set(
+      "bbox",
+      [south, west, north, east].map((value) => value.toFixed(5)).join(","),
+    );
   }
-  const response = await fetch(`/api/lightning/detections?${query}`, { signal: params.signal });
+  const response = await fetch(`/api/lightning/detections?${query}`, {
+    signal: params.signal,
+  });
   const body = await response.json();
-  if (!response.ok) throw new Error(body?.error ?? `Request failed (${response.status})`);
+  if (!response.ok)
+    throw new Error(body?.error ?? `Request failed (${response.status})`);
   return body as Payload;
 }
 
@@ -134,11 +144,18 @@ export function LightningMap({
   // Only sited projects can be drawn. A lightning project without coordinates is
   // a configuration problem, but it is not this screen's problem to report.
   const sited = useMemo(
-    () => projects.filter((row) => Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude))),
+    () =>
+      projects.filter(
+        (row) =>
+          Number.isFinite(Number(row.latitude)) &&
+          Number.isFinite(Number(row.longitude)),
+      ),
     [projects],
   );
 
-  const [focusCode, setFocusCode] = useState<string | null>(initialFocus ?? null);
+  const [focusCode, setFocusCode] = useState<string | null>(
+    initialFocus ?? null,
+  );
   const focus = useMemo(
     () => sited.find((row) => row.project_code === focusCode) ?? null,
     [sited, focusCode],
@@ -163,7 +180,9 @@ export function LightningMap({
   const at = anchor ?? liveAt;
 
   const [centre, setCentre] = useState(() => {
-    const start = initialFocus ? projects.find((row) => row.project_code === initialFocus) : null;
+    const start = initialFocus
+      ? projects.find((row) => row.project_code === initialFocus)
+      : null;
     return start && Number.isFinite(Number(start.latitude))
       ? { latitude: Number(start.latitude), longitude: Number(start.longitude) }
       : SG_CENTRE;
@@ -171,16 +190,39 @@ export function LightningMap({
   const [zoom, setZoom] = useState(initialFocus ? 14 : MIN_ZOOM);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
+  /**
+   * The map box is cut to Singapore's own proportions, so the whole island
+   * fills it exactly at this zoom — there is no view worth showing further out,
+   * and allowing one would only add water. Replaces the fixed MIN_ZOOM, which
+   * was right for one screen size and arbitrary on every other.
+   */
+  const minZoom = fitZoom(size.width, size.height);
+  const hold = (value: number) =>
+    Math.min(MAX_ZOOM, Math.max(minZoom, Math.round(value)));
+
   const [view, setView] = useState<Payload | null>(null);
-  const [evidence, setEvidence] = useState<{ payload: Payload; code: string } | null>(null);
+  const [evidence, setEvidence] = useState<{
+    payload: Payload;
+    code: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{
+    index: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const box = useRef<HTMLDivElement | null>(null);
-  /** Read by the resize handler, which must not re-subscribe on every zoom. */
+  /** The space the map is centred in. The map itself is cut to fit it. */
+  const frame = useRef<HTMLDivElement | null>(null);
+  /** Read by handlers that must not re-subscribe on every render. */
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const centreRef = useRef(centre);
+  centreRef.current = centre;
   const canvas = useRef<HTMLCanvasElement | null>(null);
   /** Where each drawn strike landed, so the pointer can be matched to one. */
   const plotted = useRef<{ x: number; y: number }[]>([]);
@@ -191,12 +233,38 @@ export function LightningMap({
   const held = useRef<{ box: Box; window: WindowKey; at: number } | null>(null);
 
   useEffect(() => {
-    const element = box.current;
+    const element = frame.current;
     if (!element) return;
     const measure = () => {
-      const next = { width: element.clientWidth, height: element.clientHeight };
+      // The map is cut to Singapore's shape, but only by capping its *width*.
+      //
+      // A desktop window is nearer 2:1 and the island about 1.55:1, so filling
+      // the width left wide bands of open water; the cap letterboxes those away.
+      // A phone is the other way round, and applying the same ratio to a tall
+      // frame would have given a 375×241 map with two thirds of the screen
+      // empty — so the height always takes what it is given, and the surplus is
+      // sea, which is seamless now the ground is painted in OneMap's water.
+      //
+      // Computed here rather than left to CSS `aspect-ratio`, which a sibling
+      // `h-full` silently overrides, and because the projection needs these as
+      // numbers anyway — CSS would only be a second source of truth.
+      const aspect = boundsAspect();
+      // `clientWidth`/`clientHeight` include padding, so the frame's own inset
+      // has to come off or the map is sized to overflow the box it sits in.
+      const style = getComputedStyle(element);
+      const available = {
+        width: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        height: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+      };
+      const next = {
+        width: Math.floor(Math.min(available.width, available.height * aspect)),
+        height: Math.floor(available.height),
+      };
       setSize(next);
-      setCentre((point) => clampCentre(point, zoomRef.current, next.width, next.height));
+      const floor = fitZoom(next.width, next.height);
+      const z = Math.max(floor, zoomRef.current);
+      if (z !== zoomRef.current) setZoom(z);
+      setCentre((point) => clampCentre(point, z, next.width, next.height));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -250,7 +318,9 @@ export function LightningMap({
         .then((payload) => {
           // Only an untruncated result covers its box; a capped one is a
           // sample, and reusing it while panning would quietly lose strikes.
-          held.current = payload.truncated ? null : { box: bbox, window: windowKey, at };
+          held.current = payload.truncated
+            ? null
+            : { box: bbox, window: windowKey, at };
           setView(payload);
           setError(null);
         })
@@ -294,7 +364,10 @@ export function LightningMap({
       // not, and the panel then declared an all-clear over a strike it had
       // simply not fetched.
       bbox: boundsAround(
-        { latitude: Number(focus.latitude), longitude: Number(focus.longitude) },
+        {
+          latitude: Number(focus.latitude),
+          longitude: Number(focus.longitude),
+        },
         radius * EVIDENCE_BOX_FACTOR,
       ),
       // Only the types this project's tiers count. Everything else is noise
@@ -303,7 +376,9 @@ export function LightningMap({
       limit: EVIDENCE_CAP,
       signal: controller.signal,
     })
-      .then((payload) => setEvidence({ payload, code: String(focus.project_code) }))
+      .then((payload) =>
+        setEvidence({ payload, code: String(focus.project_code) }),
+      )
       .catch(() => {
         if (!controller.signal.aborted) setEvidence(null);
       });
@@ -363,7 +438,9 @@ export function LightningMap({
           size.width,
           size.height,
         );
-        for (const ring of ringsFor(project).filter((entry) => entry.tier === tier)) {
+        for (const ring of ringsFor(project).filter(
+          (entry) => entry.tier === tier,
+        )) {
           const pixels = radiusPixels(ring.radiusM, latitude, zoom);
           if (
             point.x + pixels < 0 ||
@@ -416,7 +493,13 @@ export function LightningMap({
     for (const project of sited) {
       const latitude = Number(project.latitude);
       const longitude = Number(project.longitude);
-      const point = screenPoint({ latitude, longitude }, centre, zoom, size.width, size.height);
+      const point = screenPoint(
+        { latitude, longitude },
+        centre,
+        zoom,
+        size.width,
+        size.height,
+      );
       const isFocus = !focus || project.project_code === focus.project_code;
       const rings = ringsFor(project);
 
@@ -444,7 +527,11 @@ export function LightningMap({
           // The types a ring governs are labelled on the ring itself, and only
           // for the focused project: a circle that ignores intra-cloud strikes
           // must not be mistaken for one that catches them.
-          if (focus && project.project_code === focus.project_code && pixels > 34) {
+          if (
+            focus &&
+            project.project_code === focus.project_code &&
+            pixels > 34
+          ) {
             const text = `${tier.toUpperCase()} ${(ring.radiusM / 1000).toFixed(ring.radiusM % 1000 ? 1 : 0)}km · ${ring.types}`;
             ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif";
             const width = ctx.measureText(text).width;
@@ -463,11 +550,15 @@ export function LightningMap({
               if (across <= 0) continue;
               labelX = point.x + Math.sqrt(across);
             }
-            labelX = Math.min(Math.max(labelX, width / 2 + 6), size.width - width / 2 - 6);
+            labelX = Math.min(
+              Math.max(labelX, width / 2 + 6),
+              size.width - width / 2 - 6,
+            );
             while (
               labelled.some(
                 (placed) =>
-                  Math.abs(placed.y - labelY) < 15 && Math.abs(placed.x - labelX) < (placed.w + width) / 2 + 6,
+                  Math.abs(placed.y - labelY) < 15 &&
+                  Math.abs(placed.x - labelX) < (placed.w + width) / 2 + 6,
               )
             ) {
               labelY += 16;
@@ -489,13 +580,22 @@ export function LightningMap({
     // Project pins, drawn after every ring so no ring fill washes one out.
     for (const project of sited) {
       const point = screenPoint(
-        { latitude: Number(project.latitude), longitude: Number(project.longitude) },
+        {
+          latitude: Number(project.latitude),
+          longitude: Number(project.longitude),
+        },
         centre,
         zoom,
         size.width,
         size.height,
       );
-      if (point.x < -60 || point.x > size.width + 60 || point.y < -30 || point.y > size.height + 30) continue;
+      if (
+        point.x < -60 ||
+        point.x > size.width + 60 ||
+        point.y < -30 ||
+        point.y > size.height + 30
+      )
+        continue;
       const isFocus = !focus || project.project_code === focus.project_code;
 
       ctx.beginPath();
@@ -506,7 +606,10 @@ export function LightningMap({
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      if (zoom >= LABEL_ZOOM || (focus && project.project_code === focus.project_code)) {
+      if (
+        zoom >= LABEL_ZOOM ||
+        (focus && project.project_code === focus.project_code)
+      ) {
         const text = String(project.project_code ?? "");
         ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
         const width = ctx.measureText(text).width;
@@ -532,28 +635,45 @@ export function LightningMap({
     const span = view ? Math.max(1, view.to - view.from) : 1;
     const positions: { x: number; y: number }[] = [];
     const ordered = [...detections].sort(
-      (a, b) => (a.published_at ?? a.occurred_at) - (b.published_at ?? b.occurred_at),
+      (a, b) =>
+        (a.published_at ?? a.occurred_at) - (b.published_at ?? b.occurred_at),
     );
 
     for (const detection of ordered) {
-      const point = screenPoint(detection, centre, zoom, size.width, size.height);
+      const point = screenPoint(
+        detection,
+        centre,
+        zoom,
+        size.width,
+        size.height,
+      );
       // The pin's tip marks the strike; its head sits above. Hit-testing uses
       // the head, because that is the part the pointer can actually land on.
       const head = { x: point.x, y: point.y - PIN_LIFT };
       positions.push(head);
-      if (point.x < -20 || point.x > size.width + 20 || point.y < -30 || point.y > size.height + 20) continue;
+      if (
+        point.x < -20 ||
+        point.x > size.width + 20 ||
+        point.y < -30 ||
+        point.y > size.height + 20
+      )
+        continue;
 
       // Older strikes fade, so a storm crossing the island reads as a direction
       // of travel. The floor is high enough that an old pin is still legible —
       // it is evidence, not decoration.
-      const age = view ? ((detection.published_at ?? detection.occurred_at) - view.from) / span : 1;
+      const age = view
+        ? ((detection.published_at ?? detection.occurred_at) - view.from) / span
+        : 1;
       const alpha = 0.55 + 0.45 * Math.min(1, Math.max(0, age));
 
       const ground = detection.detection_type === "G";
       const skin = ground ? PIN_G : PIN_C;
 
       const fired =
-        focus && (qualifies(focus, detection, "red") || qualifies(focus, detection, "amber"));
+        focus &&
+        (qualifies(focus, detection, "red") ||
+          qualifies(focus, detection, "amber"));
       if (fired) {
         // A strike that would have fired gets a halo in its tier's colour, so
         // the exceptions are findable without reading every pin.
@@ -571,7 +691,14 @@ export function LightningMap({
       // tip, so the pin reads as pointing at one exact spot.
       const spread = Math.asin(Math.min(1, PIN_R / PIN_LIFT));
       ctx.beginPath();
-      ctx.arc(head.x, head.y, PIN_R, Math.PI / 2 - spread, Math.PI / 2 + spread, true);
+      ctx.arc(
+        head.x,
+        head.y,
+        PIN_R,
+        Math.PI / 2 - spread,
+        Math.PI / 2 + spread,
+        true,
+      );
       ctx.lineTo(point.x, point.y);
       ctx.closePath();
       ctx.fillStyle = skin.fill;
@@ -626,7 +753,14 @@ export function LightningMap({
       const dy = event.clientY - state.startY;
       if (!state.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
       state.moved = true;
-      setCentre(clampCentre(panCentre(state.origin, { dx: -dx, dy: -dy }, zoom), zoom, size.width, size.height));
+      setCentre(
+        clampCentre(
+          panCentre(state.origin, { dx: -dx, dy: -dy }, zoom),
+          zoom,
+          size.width,
+          size.height,
+        ),
+      );
       return;
     }
 
@@ -645,7 +779,31 @@ export function LightningMap({
    */
   const wheelTravel = useRef(0);
 
-  function onWheel(event: React.WheelEvent<HTMLDivElement>) {
+  /**
+   * The wheel handler is bound natively, not through `onWheel`.
+   *
+   * React registers wheel listeners as **passive**, where `preventDefault` is
+   * ignored — so a pinch over the map zoomed the whole browser and took the
+   * header and footer off screen with it. A non-passive listener is the only
+   * way to keep the gesture inside the canvas. Kept in a ref so the listener is
+   * bound once while still seeing current state.
+   */
+  const wheelRef = useRef<(event: WheelEvent) => void>(() => {});
+
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const handler = (event: WheelEvent) => {
+      // Every wheel event over the map belongs to the map: pinch must not zoom
+      // the page, and a two-finger scroll must not scroll it either.
+      event.preventDefault();
+      wheelRef.current(event);
+    };
+    element.addEventListener("wheel", handler, { passive: false });
+    return () => element.removeEventListener("wheel", handler);
+  }, []);
+
+  wheelRef.current = function onWheel(event: WheelEvent) {
     if (classifyWheel(event) === "pan") {
       // Two-finger scroll. Straight through, no threshold: a pan should track
       // the fingers, and this is the gesture that previously did nothing at all.
@@ -655,56 +813,77 @@ export function LightningMap({
       // from there is asynchronous access to a live object.
       const { deltaX, deltaY } = event;
       setCentre((point) =>
-        clampCentre(panCentre(point, { dx: deltaX, dy: deltaY }, zoom), zoom, size.width, size.height),
+        clampCentre(
+          panCentre(point, { dx: deltaX, dy: deltaY }, zoom),
+          zoom,
+          size.width,
+          size.height,
+        ),
       );
       return;
     }
 
     // A reversal starts a fresh count. Otherwise scrolling back up first has to
     // pay off the travel banked going down, and the map ignores you.
-    if (Math.sign(event.deltaY) !== Math.sign(wheelTravel.current)) wheelTravel.current = 0;
+    if (Math.sign(event.deltaY) !== Math.sign(wheelTravel.current))
+      wheelTravel.current = 0;
     wheelTravel.current += event.deltaY;
     // Pinch deltas are small and continuous, so they get a much lower bar than
     // a mouse wheel — a pinch that needed six hundred pixels of travel would
     // read as broken.
-    const threshold = event.ctrlKey || event.metaKey ? WHEEL_PER_ZOOM / 8 : WHEEL_PER_ZOOM;
+    const threshold =
+      event.ctrlKey || event.metaKey ? WHEEL_PER_ZOOM / 8 : WHEEL_PER_ZOOM;
     if (Math.abs(wheelTravel.current) < threshold) return;
     const direction = wheelTravel.current < 0 ? 1 : -1;
     wheelTravel.current = 0;
 
-    const next = clampZoom(zoom + direction);
+    const next = hold(zoom + direction);
     if (next === zoom) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = box.current?.getBoundingClientRect();
+    if (!rect) return;
     const dx = event.clientX - rect.left - rect.width / 2;
     const dy = event.clientY - rect.top - rect.height / 2;
     // Keep whatever is under the cursor under the cursor, so zooming towards a
     // project does not require a pan afterwards.
     const under = pointAtOffset(centre, { dx, dy }, zoom);
-    setCentre(clampCentre(panCentre(under, { dx: -dx, dy: -dy }, next), next, size.width, size.height));
+    setCentre(
+      clampCentre(
+        panCentre(under, { dx: -dx, dy: -dy }, next),
+        next,
+        size.width,
+        size.height,
+      ),
+    );
     setZoom(next);
-  }
+  };
 
-  const focusOn = useCallback(
-    (project: ProjectConfigRow | null) => {
-      setFocusCode(project ? String(project.project_code) : null);
-      setHover(null);
-      if (!project) {
-        setCentre(SG_CENTRE);
-        setZoom(MIN_ZOOM);
-        return;
-      }
-      setCentre({ latitude: Number(project.latitude), longitude: Number(project.longitude) });
-      setZoom(14);
-    },
-    [],
-  );
+  const focusOn = useCallback((project: ProjectConfigRow | null) => {
+    setFocusCode(project ? String(project.project_code) : null);
+    setHover(null);
+    if (!project) {
+      setCentre(SG_CENTRE);
+      setZoom(fitZoom(sizeRef.current.width, sizeRef.current.height));
+      return;
+    }
+    setCentre({
+      latitude: Number(project.latitude),
+      longitude: Number(project.longitude),
+    });
+    setZoom(14);
+  }, []);
 
-  const tiles = size.width > 0 ? tilesForViewport(centre, zoom, size.width, size.height) : [];
+  const tiles =
+    size.width > 0
+      ? tilesForViewport(centre, zoom, size.width, size.height)
+      : [];
   // `ordered` in the draw pass is what `plotted` indexes, so the tooltip has to
   // read from the same ordering or it would describe a different strike.
   const orderedForHover = useMemo(
     () =>
-      [...detections].sort((a, b) => (a.published_at ?? a.occurred_at) - (b.published_at ?? b.occurred_at)),
+      [...detections].sort(
+        (a, b) =>
+          (a.published_at ?? a.occurred_at) - (b.published_at ?? b.occurred_at),
+      ),
     [detections],
   );
   const hovered = hover ? orderedForHover[hover.index] : null;
@@ -725,7 +904,9 @@ export function LightningMap({
    *
    * Built from the same expression as the query, so the two cannot disagree.
    */
-  const searchRadiusM = focus ? Math.max(1000, widestRingM(focus)) * EVIDENCE_BOX_FACTOR : 0;
+  const searchRadiusM = focus
+    ? Math.max(1000, widestRingM(focus)) * EVIDENCE_BOX_FACTOR
+    : 0;
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
@@ -742,95 +923,111 @@ export function LightningMap({
         </div>
 
         <div className="order-3 flex w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] md:order-2 md:w-auto md:overflow-visible">
-        <select
-          value={focusCode ?? ""}
-          onChange={(event) => {
-            const code = event.target.value;
-            focusOn(code ? (sited.find((row) => row.project_code === code) ?? null) : null);
-          }}
-          className="h-8 rounded-lg border border-border bg-card px-2 text-xs shrink-0"
-        >
-          <option value="">All {sited.length} projects</option>
-          {sited.map((row) => (
-            <option key={String(row.project_code)} value={String(row.project_code)}>
-              {String(row.project_code)}
-            </option>
-          ))}
-        </select>
+          <select
+            value={focusCode ?? ""}
+            onChange={(event) => {
+              const code = event.target.value;
+              focusOn(
+                code
+                  ? (sited.find((row) => row.project_code === code) ?? null)
+                  : null,
+              );
+            }}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs shrink-0"
+          >
+            <option value="">All {sited.length} projects</option>
+            {sited.map((row) => (
+              <option
+                key={String(row.project_code)}
+                value={String(row.project_code)}
+              >
+                {String(row.project_code)}
+              </option>
+            ))}
+          </select>
 
-        <div className="flex overflow-hidden rounded-lg border border-border shrink-0">
-          {WINDOWS.map((entry) => (
-            <button
-              key={entry.key}
-              type="button"
-              onClick={() => setWindowKey(entry.key)}
-              className={`px-2.5 py-1.5 text-xs ${
-                windowKey === entry.key ? "bg-primary/20 text-primary" : "hover:bg-muted/40"
-              }`}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
+          <div className="flex overflow-hidden rounded-lg border border-border shrink-0">
+            {WINDOWS.map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                onClick={() => setWindowKey(entry.key)}
+                className={`px-2.5 py-1.5 text-xs ${
+                  windowKey === entry.key
+                    ? "bg-primary/20 text-primary"
+                    : "hover:bg-muted/40"
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
 
-        {/* The anchor is the END of the window, in Singapore time whatever the
+          {/* The anchor is the END of the window, in Singapore time whatever the
             laptop is set to — see `sgtInputToMs`. */}
-        <input
-          type="datetime-local"
-          value={sgtInputValue(anchor ?? view?.to ?? Date.now())}
-          onChange={(event) => setAnchor(sgtInputToMs(event.target.value))}
-          className="h-8 shrink-0 rounded-lg border border-border bg-card px-2 text-xs"
-          aria-label="End of window, Singapore time"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            setAnchor(null);
-            setTick((value) => value + 1);
-          }}
-          className={`h-8 shrink-0 rounded-lg border px-2.5 text-xs ${
-            anchor === null
-              ? "border-on/40 bg-on/10 text-on"
-              : "border-border bg-card hover:border-primary hover:text-primary"
-          }`}
-          title={anchor === null ? "Following the clock, refreshing every minute" : "Jump back to now"}
-        >
-          {anchor === null ? "● Live" : "Now"}
-        </button>
-
-        <div className="flex shrink-0 items-center gap-1">
+          <input
+            type="datetime-local"
+            value={sgtInputValue(anchor ?? view?.to ?? Date.now())}
+            onChange={(event) => setAnchor(sgtInputToMs(event.target.value))}
+            className="h-8 shrink-0 rounded-lg border border-border bg-card px-2 text-xs"
+            aria-label="End of window, Singapore time"
+          />
           <button
             type="button"
-            aria-label="Zoom out"
-            disabled={zoom <= MIN_ZOOM}
-            onClick={() =>
-              setZoom((current) => {
-                const next = clampZoom(current - 1);
-                setCentre((point) => clampCentre(point, next, size.width, size.height));
-                return next;
-              })
+            onClick={() => {
+              setAnchor(null);
+              setTick((value) => value + 1);
+            }}
+            className={`h-8 shrink-0 rounded-lg border px-2.5 text-xs ${
+              anchor === null
+                ? "border-on/40 bg-on/10 text-on"
+                : "border-border bg-card hover:border-primary hover:text-primary"
+            }`}
+            title={
+              anchor === null
+                ? "Following the clock, refreshing every minute"
+                : "Jump back to now"
             }
-            className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
           >
-            −
+            {anchor === null ? "● Live" : "Now"}
           </button>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            disabled={zoom >= MAX_ZOOM}
-            onClick={() =>
-              setZoom((current) => {
-                const next = clampZoom(current + 1);
-                setCentre((point) => clampCentre(point, next, size.width, size.height));
-                return next;
-              })
-            }
-            className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
-          >
-            +
-          </button>
-        </div>
 
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              disabled={zoom <= minZoom}
+              onClick={() =>
+                setZoom((current) => {
+                  const next = hold(current - 1);
+                  setCentre((point) =>
+                    clampCentre(point, next, size.width, size.height),
+                  );
+                  return next;
+                })
+              }
+              className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              disabled={zoom >= MAX_ZOOM}
+              onClick={() =>
+                setZoom((current) => {
+                  const next = hold(current + 1);
+                  setCentre((point) =>
+                    clampCentre(point, next, size.width, size.height),
+                  );
+                  return next;
+                })
+              }
+              className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         <button
@@ -842,98 +1039,124 @@ export function LightningMap({
         </button>
       </header>
 
+      {/* The map is cut to Singapore's own proportions and centred, rather than
+          stretched to whatever shape the window is. The island is about 1.55:1,
+          a desktop window nearer 2:1, and filling the width left wide bands of
+          open water with nothing in them. Letterboxing to the real shape means
+          every pixel of the map is somewhere a project could be. */}
       <div
-        ref={box}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={() => {
-          drag.current = null;
-        }}
-        onPointerCancel={() => {
-          drag.current = null;
-        }}
-        onPointerLeave={() => setHover(null)}
-        onWheel={onWheel}
-        className="relative min-h-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
-        // OneMap's own water, so where its coverage stops the map simply keeps
-        // being sea rather than turning into a dark rectangle.
-        style={{ touchAction: "none", background: TILE_WATER }}
+        ref={frame}
+        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2 md:p-3"
       >
-        {tiles.map((tile) => (
-          <img
-            key={`${tile.z}/${tile.x}/${tile.y}`}
-            src={tileSrc(tile)}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            width={256}
-            height={256}
-            // OneMap serves Singapore and nothing else, so a tile beyond the
-            // coastline 404s and the browser paints its own broken-image icon.
-            // Hiding the element is the whole fix; the map is clamped to the
-            // covered area anyway, and this catches the edges of it.
-            onError={(event) => {
-              event.currentTarget.style.visibility = "hidden";
-            }}
-            onLoad={(event) => {
-              event.currentTarget.style.visibility = "visible";
-            }}
-            className="pointer-events-none absolute select-none"
-            style={{ left: tile.left, top: tile.top }}
+        <div
+          ref={box}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={() => {
+            drag.current = null;
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+          }}
+          onPointerLeave={() => setHover(null)}
+          className="relative cursor-grab overflow-hidden rounded-lg border border-border shadow-soft active:cursor-grabbing"
+          style={{
+            // `touchAction: none` also stops the browser claiming the gesture on
+            // a touchscreen, which is the same problem the non-passive wheel
+            // listener solves for a trackpad.
+            touchAction: "none",
+            // OneMap's own water, so where its coverage stops the map simply
+            // keeps being sea rather than turning into a dark rectangle.
+            background: TILE_WATER,
+            width: size.width || undefined,
+            height: size.height || undefined,
+          }}
+        >
+          {tiles.map((tile) => (
+            <img
+              key={`${tile.z}/${tile.x}/${tile.y}`}
+              src={tileSrc(tile)}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              width={256}
+              height={256}
+              // OneMap serves Singapore and nothing else, so a tile beyond the
+              // coastline 404s and the browser paints its own broken-image icon.
+              // Hiding the element is the whole fix; the map is clamped to the
+              // covered area anyway, and this catches the edges of it.
+              onError={(event) => {
+                event.currentTarget.style.visibility = "hidden";
+              }}
+              onLoad={(event) => {
+                event.currentTarget.style.visibility = "visible";
+              }}
+              className="pointer-events-none absolute select-none"
+              style={{ left: tile.left, top: tile.top }}
+            />
+          ))}
+
+          <canvas
+            ref={canvas}
+            className="pointer-events-none absolute inset-0"
+            style={{ width: size.width, height: size.height }}
           />
-        ))}
 
-        <canvas
-          ref={canvas}
-          className="pointer-events-none absolute inset-0"
-          style={{ width: size.width, height: size.height }}
-        />
-
-        {hovered && hover ? (
-          <div
-            className="pointer-events-none absolute z-10 w-[200px] rounded-lg border border-border bg-card/95 p-2 text-[11px] shadow-soft"
-            // Flipped to the other side near the right or bottom edge, so a
-            // strike at the edge of the map is still readable.
-            style={{
-              left: Math.min(hover.x + 12, size.width - 210),
-              top: hover.y > size.height - 130 ? hover.y - 122 : hover.y + 12,
-            }}
-          >
-            <div className="font-semibold">
-              {hovered.detection_type === "G" ? "⚡ Cloud-to-ground (G)" : "○ Intra-cloud (C)"}
-            </div>
-            <dl className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
-              <div className="flex justify-between gap-2">
-                <dt>struck</dt>
-                <dd>{formatSgtClock(hovered.occurred_at)}</dd>
+          {hovered && hover ? (
+            <div
+              className="pointer-events-none absolute z-10 w-[200px] rounded-lg border border-border bg-card/95 p-2 text-[11px] shadow-soft"
+              // Flipped to the other side near the right or bottom edge, so a
+              // strike at the edge of the map is still readable.
+              style={{
+                left: Math.min(hover.x + 12, size.width - 210),
+                top: hover.y > size.height - 130 ? hover.y - 122 : hover.y + 12,
+              }}
+            >
+              <div className="font-semibold">
+                {hovered.detection_type === "G"
+                  ? "⚡ Cloud-to-ground (G)"
+                  : "○ Intra-cloud (C)"}
               </div>
-              <div className="flex justify-between gap-2">
-                <dt>published</dt>
-                <dd>{formatSgtClock(hovered.published_at)}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt>lag</dt>
-                <dd>{publishLagSeconds(hovered) === null ? "—" : `${publishLagSeconds(hovered)}s`}</dd>
-              </div>
-              {focus ? (
-                <div className="flex justify-between gap-2 text-foreground">
-                  <dt>from {String(focus.project_code)}</dt>
+              <dl className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                <div className="flex justify-between gap-2">
+                  <dt>struck</dt>
+                  <dd>{formatSgtClock(hovered.occurred_at)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt>published</dt>
+                  <dd>{formatSgtClock(hovered.published_at)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt>lag</dt>
                   <dd>
-                    {formatDistance(
-                      haversineMetres(
-                        { lat: Number(focus.latitude), lon: Number(focus.longitude) },
-                        { lat: hovered.latitude, lon: hovered.longitude },
-                      ),
-                    )}
+                    {publishLagSeconds(hovered) === null
+                      ? "—"
+                      : `${publishLagSeconds(hovered)}s`}
                   </dd>
                 </div>
-              ) : null}
-            </dl>
-          </div>
-        ) : null}
+                {focus ? (
+                  <div className="flex justify-between gap-2 text-foreground">
+                    <dt>from {String(focus.project_code)}</dt>
+                    <dd>
+                      {formatDistance(
+                        haversineMetres(
+                          {
+                            lat: Number(focus.latitude),
+                            lon: Number(focus.longitude),
+                          },
+                          { lat: hovered.latitude, lon: hovered.longitude },
+                        ),
+                      )}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          ) : null}
 
-        <div className="pointer-events-none absolute bottom-0 right-0 bg-card/80 px-1 text-[9px] text-muted-foreground">
-          {TILE_ATTRIBUTION}
+          <div className="pointer-events-none absolute bottom-0 right-0 bg-card/80 px-1 text-[9px] text-muted-foreground">
+            {TILE_ATTRIBUTION}
+          </div>
         </div>
       </div>
 
@@ -943,34 +1166,47 @@ export function LightningMap({
         {summary && focus ? (
           <p className="text-xs">
             {/* The claim, in one sentence, phrased so it can be read out. */}
-            <span className="font-semibold">{String(focus.project_code)}</span>{" "}
+            <span className="font-semibold">
+              {String(focus.project_code)}
+            </span>{" "}
             {evidence?.payload.truncated ? (
               // An all-clear from a truncated read is a false statement, not a
               // hedged one. When the query hit its cap the panel says only what
               // it actually saw, and asks for a narrower window.
               <span className="text-warn">
-                cannot be cleared for this window — the query hit its {EVIDENCE_CAP}-row cap with{" "}
-                {evidence.payload.total} detections nearby, so anything earlier in the window was not
-                read. Narrow the window and check again.
+                cannot be cleared for this window — the query hit its{" "}
+                {EVIDENCE_CAP}-row cap with {evidence.payload.total} detections
+                nearby, so anything earlier in the window was not read. Narrow
+                the window and check again.
                 {summary.red + summary.amber > 0
                   ? ` (${summary.red} red and ${summary.amber} amber already found in what was read.)`
                   : ""}
               </span>
             ) : summary.red === 0 && summary.amber === 0 ? (
               <span className="text-on">
-                had no qualifying strike in this window — {summary.total === 0 ? "no" : summary.total}{" "}
-                {countedTypes(focus).join("/")} detection{summary.total > 1 ? "s" : ""}{" "}
+                had no qualifying strike in this window —{" "}
+                {summary.total === 0 ? "no" : summary.total}{" "}
+                {countedTypes(focus).join("/")} detection
+                {summary.total > 1 ? "s" : ""}{" "}
                 {summary.total > 1 ? "were" : "was"} published anywhere in the{" "}
                 {formatDistance(searchRadiusM)} searched around the site
-                {summary.nearestM === null ? "" : `, closest ${formatDistance(summary.nearestM)}`}.
+                {summary.nearestM === null
+                  ? ""
+                  : `, closest ${formatDistance(summary.nearestM)}`}
+                .
               </span>
             ) : (
               <span>
                 had{" "}
-                <span className="font-semibold text-danger">{summary.red} red</span> and{" "}
-                <span className="font-semibold text-warn">{summary.amber} amber</span> qualifying
-                strike{summary.red + summary.amber === 1 ? "" : "s"}, closest{" "}
-                {formatDistance(summary.nearestM)}.
+                <span className="font-semibold text-danger">
+                  {summary.red} red
+                </span>{" "}
+                and{" "}
+                <span className="font-semibold text-warn">
+                  {summary.amber} amber
+                </span>{" "}
+                qualifying strike{summary.red + summary.amber === 1 ? "" : "s"},
+                closest {formatDistance(summary.nearestM)}.
               </span>
             )}
           </p>
@@ -990,32 +1226,46 @@ export function LightningMap({
                       : "bg-warn/10 text-warn"
                   }`}
                 >
-                  {ring.tier.toUpperCase()} {(ring.radiusM / 1000).toFixed(ring.radiusM % 1000 ? 2 : 0)} km · {ring.types}
+                  {ring.tier.toUpperCase()}{" "}
+                  {(ring.radiusM / 1000).toFixed(ring.radiusM % 1000 ? 2 : 0)}{" "}
+                  km · {ring.types}
                 </span>
               ))
             : null}
           {focus && !ringsFor(focus).length ? (
-            <span className="text-warn">No ring is being evaluated for this project.</span>
+            <span className="text-warn">
+              No ring is being evaluated for this project.
+            </span>
           ) : null}
           <span className="inline-flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded-full border border-[#5c3c05] bg-[#c8860d]" /> G — cloud-to-ground
+            <span className="h-2.5 w-2.5 rounded-full border border-[#5c3c05] bg-[#c8860d]" />{" "}
+            G — cloud-to-ground
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded-full border border-[#1e40af] bg-[#93c5fd]" /> C — intra-cloud
+            <span className="h-2.5 w-2.5 rounded-full border border-[#1e40af] bg-[#93c5fd]" />{" "}
+            C — intra-cloud
           </span>
           {/* The ring swatches restate what the RED/AMBER chips above already
               say, so the phone drops them rather than spending a line. */}
           <span className="hidden items-center gap-1 md:inline-flex">
-            <span className="h-2 w-3 rounded-sm border border-[#f87171] bg-[#f87171]/20" /> red ring
+            <span className="h-2 w-3 rounded-sm border border-[#f87171] bg-[#f87171]/20" />{" "}
+            red ring
           </span>
           <span className="hidden items-center gap-1 md:inline-flex">
-            <span className="h-2 w-3 rounded-sm border border-[#fbbf24] bg-[#fbbf24]/20" /> amber ring
+            <span className="h-2 w-3 rounded-sm border border-[#fbbf24] bg-[#fbbf24]/20" />{" "}
+            amber ring
           </span>
-          <span className="hidden md:inline">faded = earlier in the window</span>
+          <span className="hidden md:inline">
+            faded = earlier in the window
+          </span>
           <span className="ml-auto font-mono">
             {loading ? "loading…" : `${detections.length} shown`}
-            {view && view.total > detections.length ? ` of ${view.total} (cap ${DETECTION_CAP} — zoom in)` : ""}
-            {view ? ` · ${formatSgtClock(view.from)} → ${formatSgtClock(view.to)} SGT` : ""}
+            {view && view.total > detections.length
+              ? ` of ${view.total} (cap ${DETECTION_CAP} — zoom in)`
+              : ""}
+            {view
+              ? ` · ${formatSgtClock(view.from)} → ${formatSgtClock(view.to)} SGT`
+              : ""}
           </span>
         </div>
 
@@ -1023,8 +1273,9 @@ export function LightningMap({
             difference is invisible today — every project runs zero margins — and
             would otherwise look like a bug the first time someone sets one. */}
         <p className="hidden text-[10px] text-muted-foreground md:block">
-          Windows filter on when NEA published a detection, not when it struck. Rings include site extent and type
-          uncertainty, so they are the distances that actually trigger an alert.
+          Windows filter on when NEA published a detection, not when it struck.
+          Rings include site extent and type uncertainty, so they are the
+          distances that actually trigger an alert.
         </p>
       </footer>
     </div>

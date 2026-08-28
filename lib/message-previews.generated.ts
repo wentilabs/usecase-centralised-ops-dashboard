@@ -140,6 +140,21 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
   },
   {
     "service": "noise",
+    "column": "half_hourly_formatter",
+    "value": "loc_name_estimated_Leq1hr",
+    "summary": "One line per meter with its full location name, estimated Leq1hr, limit, and Reduce / Stop guidance when over.",
+    "kind": "message",
+    "bubbles": [
+      {
+        "caption": null,
+        "text": "🕒 19:30 (ZRA) estimated Leq1hr\n\nNM01 Tribeca, 60 Kim Seng Rd (RT): 67.9 (limit 67) 🟠 - Reduce, stay below 65.9 dBA\n\nNM02 Zion Road: 62.2 (limit 67) ✅\n\nNM03 Copthorne: data unavailable"
+      }
+    ],
+    "isFallback": false,
+    "source": "noise MESSAGE_SHAPES.md §8"
+  },
+  {
+    "service": "noise",
     "column": "hourly_formatter",
     "value": "12h_complete_list",
     "summary": "Per meter: every 5-minute reading of the completed hour, the Leq1hr result, and the running Leq12hr for the active 12-hour band.",
@@ -155,7 +170,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": false,
-    "source": "noise MESSAGE_SHAPES.md §8"
+    "source": "noise MESSAGE_SHAPES.md §9"
   },
   {
     "service": "noise",
@@ -170,7 +185,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": false,
-    "source": "noise MESSAGE_SHAPES.md §9"
+    "source": "noise MESSAGE_SHAPES.md §10"
   },
   {
     "service": "noise",
@@ -185,7 +200,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": false,
-    "source": "noise MESSAGE_SHAPES.md §10"
+    "source": "noise MESSAGE_SHAPES.md §11"
   },
   {
     "service": "noise",
@@ -200,7 +215,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": true,
-    "source": "noise MESSAGE_SHAPES.md §11"
+    "source": "noise MESSAGE_SHAPES.md §12"
   },
   {
     "service": "noise",
@@ -219,7 +234,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": false,
-    "source": "noise MESSAGE_SHAPES.md §12"
+    "source": "noise MESSAGE_SHAPES.md §13"
   },
   {
     "service": "noise",
@@ -238,7 +253,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": false,
-    "source": "noise MESSAGE_SHAPES.md §13"
+    "source": "noise MESSAGE_SHAPES.md §14"
   },
   {
     "service": "noise",
@@ -257,7 +272,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": true,
-    "source": "noise MESSAGE_SHAPES.md §14"
+    "source": "noise MESSAGE_SHAPES.md §15"
   },
   {
     "service": "noise",
@@ -276,7 +291,7 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": true,
-    "source": "noise MESSAGE_SHAPES.md §15"
+    "source": "noise MESSAGE_SHAPES.md §16"
   },
   {
     "service": "noise",
@@ -291,6 +306,6 @@ export const NOISE_PREVIEWS: FormatterPreview[] = [
       }
     ],
     "isFallback": true,
-    "source": "noise MESSAGE_SHAPES.md §16"
+    "source": "noise MESSAGE_SHAPES.md §17"
   }
 ];

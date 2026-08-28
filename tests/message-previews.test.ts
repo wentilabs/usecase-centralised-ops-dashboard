@@ -29,7 +29,13 @@ const EXPECTED: Record<string, string[]> = {
     "summary_without_limits",
     "summary_and_exceedance",
   ],
-  "noise:half_hourly_formatter": ["estimated_Leq1hr", "all_5mins_list_Leq1hr"],
+  "noise:half_hourly_formatter": [
+    "estimated_Leq1hr",
+    "all_5mins_list_Leq1hr",
+    // Added by the noise repo alongside half-hourly exceedance routing; the
+    // enum on the live table already carries it.
+    "loc_name_estimated_Leq1hr",
+  ],
   "noise:hourly_formatter": [
     "12h_complete_list",
     "complete_list",

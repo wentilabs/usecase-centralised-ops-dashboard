@@ -303,8 +303,9 @@ order:
 5. `components/ProjectCard.tsx` — `TAG_TONE`.
 6. `lib/onboarding.ts` — an `ONBOARDING` definition, if the service should offer
    `＋ Add project`. A test asserts every registered service has one.
-7. `app/page.tsx` — add any new group-id column to the chat-name resolver list,
-   or the cards show raw ids.
+7. Nothing, for chat-name resolution: `app/page.tsx` feeds the alias store from
+   `chatIdsIn`, which derives its columns from `GROUP_COLUMNS`. Step 4 is the
+   only place a new group-id column has to be named.
 8. `supabase/config_audit_setup.sql` — attach the audit trigger to the new
    table, naming its identity column, then re-run the file.
 9. `supabase/migrate_company_column.sql` in the service's own repo, so the table

@@ -29,7 +29,13 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string; single?
     // Marked here so the card can say which group actually receives a reminder.
     { column: "water_parade_outbound_group_id", role: "water parade", single: true },
   ],
-  noise: [{ column: "whatsapp_group_id" }],
+  noise: [
+    { column: "whatsapp_group_id" },
+    // Opt-in second destination, and only for messages carrying a 🟠 or 🔴 —
+    // the role says so, because a chip that just read as another recipient
+    // would imply these groups get the whole half-hourly stream.
+    { column: "exceedance_half_hourly_wa_groups", role: "half-hourly warnings only" },
+  ],
   haze: [{ column: "wa_group_ids" }],
   lightning: [{ column: "whatsapp_group_id" }],
   ailytics: [{ column: "whatsapp_group_ids" }],
@@ -175,7 +181,10 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
         .split(",")
         .map((m) => m.trim().padStart(2, "0"))
         .join(" :");
-      parts.push(`half-hourly @ :${marks}${window(config.half_hourly_start_hhmm, config.half_hourly_end_hhmm)}`);
+      const relay = config.half_hourly_send_if_exceed ? ", warnings relayed" : "";
+      parts.push(
+        `half-hourly @ :${marks}${window(config.half_hourly_start_hhmm, config.half_hourly_end_hhmm)}${relay}`,
+      );
     }
     if (config.enable_hourly) parts.push(`hourly${window(config.hourly_start_hhmm, config.hourly_end_hhmm)}`);
     if (config.enable_three_hour_summary) parts.push("3-hr summary");
@@ -350,6 +359,13 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
         { label: "mute PH", on: on(config.remove_ph_notifications) },
         { label: "expiry alerts", on: on(config.allow_expiry_alert) },
+        // Shown only when set. It is opt-in and off nearly everywhere, so a
+        // struck-through pill would take a slot on every card to say nothing —
+        // the same reasoning as the meter filter below. Info-toned because it
+        // is a routing choice, not a cadence.
+        ...(config.half_hourly_send_if_exceed
+          ? [{ label: "warning relay", on: true, tone: "info" as const }]
+          : []),
         // Only when a filter is actually set. Blank is the norm on every
         // project, so a pill saying so would be noise on 30 cards; a filter is
         // the notable state, and it is a caution rather than a feature being on.

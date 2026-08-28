@@ -276,6 +276,21 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "Minutes past the hour the half-hourly assessment fires, e.g. 35,45,55.",
       showIf: { field: "enable_half_hourly", equals: true },
     },
+    // Routing, not a cadence. The message forwarded is the same one the
+    // ordinary groups already received; there is no second scrape and no extra
+    // run, which is why it sits with the half-hourly settings rather than among
+    // the cadence toggles where it would read as another thing that fires.
+    half_hourly_send_if_exceed: {
+      label: "Relay warnings to extra groups",
+      help: "Only when the half-hourly message carries a 🟠 or 🔴. Clean all-✅ messages are not relayed, and the ordinary groups still receive every message either way.",
+      showIf: { field: "enable_half_hourly", equals: true },
+    },
+    exceedance_half_hourly_wa_groups: {
+      label: "Warning relay groups",
+      widget: "groups",
+      help: "Extra recipients for warning-bearing half-hourly messages only. A group already on the ordinary list is not sent to twice.",
+      showIf: { field: "half_hourly_send_if_exceed", equals: true },
+    },
 
     // --- Hourly cadence
     enable_hourly: { label: "Hourly messages" },
@@ -718,6 +733,13 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "half_hourly_start_hhmm",
         "half_hourly_end_hhmm",
         'assessment_readings_mm_array("35,45,55")',
+        // The relay belongs to this cadence, not to Delivery: it forwards this
+        // message and no other. Listed here in the order they are set, because
+        // a field absent from every group falls into the catch-all "OTHER"
+        // section at the bottom of the form, where it reads as unrelated to the
+        // cadence it governs.
+        "half_hourly_send_if_exceed",
+        "exceedance_half_hourly_wa_groups",
       ],
     },
     {

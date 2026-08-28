@@ -1313,3 +1313,58 @@ test("every API route authenticates and gates on an allowed session", async () =
     );
   }
 });
+
+test("the half-hourly warning relay reads as routing, not as another cadence", () => {
+  const base = { enable_half_hourly: true, whatsapp_group_id: "main@g.us" };
+
+  // The relay list is a delivery column, so its groups become chips — and the
+  // role has to say the groups only get warnings. A bare chip would read as
+  // another recipient of the whole half-hourly stream, which is the one thing
+  // it is not.
+  const groups = deliveryGroups("noise", {
+    ...base,
+    half_hourly_send_if_exceed: true,
+    exceedance_half_hourly_wa_groups: "ops@g.us, super@g.us",
+  });
+  assert.deepEqual(groups, [
+    { chatId: "main@g.us", role: undefined },
+    { chatId: "ops@g.us", role: "half-hourly warnings only" },
+    { chatId: "super@g.us", role: "half-hourly warnings only" },
+  ]);
+
+  // A group on both lists is one chip carrying the relay role, not two — the
+  // service de-duplicates before sending, so showing it twice would claim a
+  // second message that never goes out.
+  assert.deepEqual(
+    deliveryGroups("noise", {
+      ...base,
+      half_hourly_send_if_exceed: true,
+      exceedance_half_hourly_wa_groups: "main@g.us",
+    }),
+    [{ chatId: "main@g.us", role: "half-hourly warnings only" }],
+  );
+
+  // The pill appears only when the relay is on. It is opt-in and off nearly
+  // everywhere, so an always-present struck-through pill would spend a slot on
+  // every noise card to say nothing.
+  const labels = (config: Record<string, unknown>) =>
+    pillsFor("noise", config).map((pill) => pill.label);
+  assert.ok(!labels(base).includes("warning relay"), "off projects carry no pill at all");
+  const relayPill = pillsFor("noise", { ...base, half_hourly_send_if_exceed: true }).find(
+    (pill) => pill.label === "warning relay",
+  );
+  assert.ok(relayPill?.on, "the pill is only ever shown in its on state");
+  assert.equal(relayPill?.tone, "info", "routing, not a cadence");
+
+  // And it is searchable, because the search box reads the switched-on pills.
+  assert.equal(matchesQuery("noise", { ...base, half_hourly_send_if_exceed: true }, "warning relay"), true);
+  assert.equal(matchesQuery("noise", base, "warning relay"), false);
+
+  // The cadence sentence says the half-hourly message has a second destination,
+  // since that is a delivery fact someone reads that line for.
+  assert.match(
+    firesAt("noise", { ...base, half_hourly_send_if_exceed: true }),
+    /half-hourly.*warnings relayed/,
+  );
+  assert.doesNotMatch(firesAt("noise", base), /relayed/);
+});

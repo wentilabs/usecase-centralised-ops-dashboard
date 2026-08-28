@@ -1260,3 +1260,56 @@ test("the Woh Hup roster filter appears only where the Manpower tab is read", ()
     );
   }
 });
+
+/**
+ * Every API route authenticates, swept from disk rather than from a list.
+ *
+ * A hand-kept list of routes to check is a list someone forgets to add to, and
+ * the thing they forget is by definition the new one. So this walks
+ * `app/api` itself: a route file that appears without a guard fails here on the
+ * commit that adds it, which is the only moment the omission is cheap.
+ */
+test("every API route authenticates and gates on an allowed session", async () => {
+  const { readdir } = await import("node:fs/promises");
+
+  const walk = async (dir: string): Promise<string[]> => {
+    const entries = await readdir(resolve(process.cwd(), dir), { withFileTypes: true });
+    const found: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) found.push(...(await walk(`${dir}/${entry.name}`)));
+      else if (entry.name === "route.ts") found.push(`${dir}/${entry.name}`);
+    }
+    return found;
+  };
+
+  const routes = await walk("app/api");
+  assert.ok(routes.length >= 14, `expected the API routes, found ${routes.length}`);
+  // The map's own route must be in the sweep — the sweep is worthless if the
+  // walk quietly misses a subdirectory.
+  assert.ok(
+    routes.includes("app/api/lightning/detections/route.ts"),
+    "the walk must reach nested routes",
+  );
+
+  /**
+   * `/api/session` answers "who am I, and can the server see the allow-list".
+   * Gating it on being allowed would make it useless to exactly the person who
+   * needs it: someone who has been refused and is trying to find out why.
+   */
+  const ANSWERS_BEFORE_ALLOWED = new Set(["app/api/session/route.ts"]);
+
+  for (const route of routes) {
+    const source = await readFile(resolve(process.cwd(), route), "utf8");
+    // Comments are stripped first: a route whose only mention of the guard is a
+    // note explaining it is a route with no guard.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+    assert.match(code, /getDashboardSession\(\)/, `${route} does not establish a session`);
+    if (ANSWERS_BEFORE_ALLOWED.has(route)) continue;
+    assert.match(
+      code,
+      /session\.allowed/,
+      `${route} establishes a session but never checks whether it is allowed`,
+    );
+  }
+});

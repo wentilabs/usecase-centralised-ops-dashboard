@@ -24,7 +24,7 @@ import {
   widestRingM,
   windowMs,
 } from "../lib/lightning-map";
-import { MIN_ZOOM, SG_BOUNDS, clampCentre } from "../lib/slippy-map";
+import { MIN_ZOOM, SG_BOUNDS, clampCentre, classifyWheel } from "../lib/slippy-map";
 import type { ProjectConfigRow } from "../lib/services";
 
 const project = (over: Record<string, unknown> = {}) =>
@@ -442,4 +442,27 @@ test("the map is held inside the area OneMap actually serves", () => {
   // An unmeasured container has no viewport to fit, and must not be clamped to
   // a nonsense centre before the first layout pass.
   assert.deepEqual(clampCentre(inside, zoom, 0, 0), inside);
+});
+
+test("a wheel event is read as pan or zoom by gesture, not treated as always zoom", () => {
+  // Pinch. The browser synthesises ctrlKey for it, so this is a zoom even
+  // though nobody touched Ctrl.
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: -8, ctrlKey: true }), "zoom");
+  assert.equal(classifyWheel({ deltaX: 3, deltaY: 12.5, ctrlKey: true }), "zoom");
+
+  // A mouse wheel: whole lines, or one clean pixel step with no sideways drift.
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: -3, deltaMode: 1 }), "zoom", "line mode is a mouse");
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: 100 }), "zoom");
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: -120 }), "zoom");
+
+  // A two-finger scroll: small, fractional, and usually on both axes. This is
+  // the case that previously had nowhere to go, so the trackpad could not pan.
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: 4 }), "pan");
+  assert.equal(classifyWheel({ deltaX: -12, deltaY: 3 }), "pan");
+  assert.equal(classifyWheel({ deltaX: 0.5, deltaY: -1.25 }), "pan");
+  // Momentum can push a trackpad past 100, but never to exactly 100 with no
+  // horizontal component — and if it did, a stray zoom is the failure this
+  // deliberately biases away from.
+  assert.equal(classifyWheel({ deltaX: 0, deltaY: 143.7 }), "pan");
+  assert.equal(classifyWheel({ deltaX: 2, deltaY: 100 }), "pan", "sideways drift means a trackpad");
 });

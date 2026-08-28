@@ -19,6 +19,19 @@ export const TILE_ATTRIBUTION = "OneMap © Singapore Land Authority";
 export const TILE_SIZE = 256;
 
 /**
+ * The colour OneMap paints open water, sampled from one of its own sea tiles.
+ *
+ * Used as the ground behind the tile layer. Outside its coverage OneMap answers
+ * **200 with a zero-byte body** rather than 404 — the browser fails to decode
+ * it, which is what the tiles' `onError` catches — so past the coastline there
+ * is simply nothing drawn, and the container showed through as a dark band that
+ * read as a broken panel. Painting the ground in OneMap's own water colour
+ * makes the edge of the data invisible: the sea just continues, which where
+ * Singapore is concerned it does.
+ */
+export const TILE_WATER = "#6da8e4";
+
+/**
  * Zoom bounds.
  *
  * 11 shows the whole island, which is the widest view that is ever useful for a
@@ -206,3 +219,35 @@ export function clampCentre(
  * something a stray scroll can do.
  */
 export const WHEEL_PER_ZOOM = 600;
+
+/**
+ * What a wheel event means on a map: pan or zoom.
+ *
+ * A trackpad has two gestures and both arrive as `wheel`. Treating every wheel
+ * event as zoom left a trackpad with no way to pan at all, and made zoom itself
+ * feel dead once the per-level threshold went up.
+ *
+ * - **Pinch** sets `ctrlKey`. Browsers synthesise that for the pinch gesture,
+ *   and no real Ctrl press is involved. Always a zoom.
+ * - **A mouse wheel** reports whole lines or pages (`deltaMode` non-zero), or in
+ *   Chrome one clean step of 100 or 120 pixels with no horizontal component.
+ *   Zoom, which is what a mouse user expects from a map.
+ * - **Everything else** is a two-finger scroll: many small, often fractional,
+ *   frequently two-axis deltas. Pan.
+ *
+ * Ambiguous cases fall to pan deliberately. A wrong pan is a nudge the next
+ * gesture undoes; a wrong zoom throws away the view you had lined up.
+ */
+export function classifyWheel(event: {
+  deltaX: number;
+  deltaY: number;
+  deltaMode?: number;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}): "zoom" | "pan" {
+  if (event.ctrlKey || event.metaKey) return "zoom";
+  if (event.deltaMode !== undefined && event.deltaMode !== 0) return "zoom";
+  const step = Math.abs(event.deltaY);
+  const clean = (step === 100 || step === 120) && event.deltaX === 0;
+  return clean ? "zoom" : "pan";
+}

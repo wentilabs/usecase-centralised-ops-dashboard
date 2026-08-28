@@ -34,8 +34,10 @@ import {
   MIN_ZOOM,
   SG_CENTRE,
   TILE_ATTRIBUTION,
+  TILE_WATER,
   WHEEL_PER_ZOOM,
   clampCentre,
+  classifyWheel,
   clampZoom,
   panCentre,
   pointAtOffset,
@@ -397,14 +399,17 @@ export function LightningMap({
     const others = (project: ProjectConfigRow) => !isFocused(project);
 
     if (focus) {
-      // Context, kept faint so it cannot compete with the project in question.
-      shade("amber", 0.06, others);
-      shade("red", 0.07, others);
-      shade("amber", 0.13, isFocused);
-      shade("red", 0.15, isFocused);
+      // The unfocused rings drop to almost nothing. Their job is to say "other
+      // sites exist here", and any more than that competes with the one being
+      // asked about — which is what makes the selected area obvious, more than
+      // darkening the selection would.
+      shade("amber", 0.03, others);
+      shade("red", 0.035, others);
+      shade("amber", 0.09, isFocused);
+      shade("red", 0.1, isFocused);
     } else {
-      shade("amber", 0.12);
-      shade("red", 0.14);
+      shade("amber", 0.09);
+      shade("red", 0.11);
     }
 
     // Outlines and labels on top of the shading.
@@ -429,8 +434,11 @@ export function LightningMap({
           const colour = tier === "red" ? RED : AMBER;
           ctx.beginPath();
           ctx.arc(point.x, point.y, pixels, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(${colour.stroke}, ${focus ? (isFocus ? 0.9 : 0.2) : 0.5})`;
-          ctx.lineWidth = focus && isFocus ? 1.8 : 1;
+          // The edge carries the meaning — inside it an alert fires, outside it
+          // does not — so it is the part that gets weight, and the fill can stay
+          // light enough to read the streets underneath.
+          ctx.strokeStyle = `rgba(${colour.stroke}, ${focus ? (isFocus ? 0.95 : 0.28) : 0.7})`;
+          ctx.lineWidth = focus && isFocus ? 3 : 1.6;
           ctx.stroke();
 
           // The types a ring governs are labelled on the ring itself, and only
@@ -638,11 +646,29 @@ export function LightningMap({
   const wheelTravel = useRef(0);
 
   function onWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (classifyWheel(event) === "pan") {
+      // Two-finger scroll. Straight through, no threshold: a pan should track
+      // the fingers, and this is the gesture that previously did nothing at all.
+      wheelTravel.current = 0;
+      // Read off the event now, not inside the updater: React runs that
+      // callback during a later render, and reaching into the synthetic event
+      // from there is asynchronous access to a live object.
+      const { deltaX, deltaY } = event;
+      setCentre((point) =>
+        clampCentre(panCentre(point, { dx: deltaX, dy: deltaY }, zoom), zoom, size.width, size.height),
+      );
+      return;
+    }
+
     // A reversal starts a fresh count. Otherwise scrolling back up first has to
     // pay off the travel banked going down, and the map ignores you.
     if (Math.sign(event.deltaY) !== Math.sign(wheelTravel.current)) wheelTravel.current = 0;
     wheelTravel.current += event.deltaY;
-    if (Math.abs(wheelTravel.current) < WHEEL_PER_ZOOM) return;
+    // Pinch deltas are small and continuous, so they get a much lower bar than
+    // a mouse wheel — a pinch that needed six hundred pixels of travel would
+    // read as broken.
+    const threshold = event.ctrlKey || event.metaKey ? WHEEL_PER_ZOOM / 8 : WHEEL_PER_ZOOM;
+    if (Math.abs(wheelTravel.current) < threshold) return;
     const direction = wheelTravel.current < 0 ? 1 : -1;
     wheelTravel.current = 0;
 
@@ -687,8 +713,18 @@ export function LightningMap({
     evidence && focus && evidence.code === focus.project_code
       ? evidenceFor(focus, evidence.payload.detections)
       : null;
-  // The same expression the evidence query is built from, so the radius quoted
-  // to a client is the radius that was actually searched.
+  /**
+   * How far out the evidence query actually looked.
+   *
+   * Not a threshold — it is the widest ring the project runs, times
+   * `EVIDENCE_BOX_FACTOR`. A 6 km amber ring searches 7.5 km, and the margin
+   * exists so "closest strike" still has something to report when nothing came
+   * near the ring itself. Quoted in the sentence because a distance with no
+   * stated origin invites exactly the question of where it came from, and
+   * because it is the honest bound on the claim: nothing beyond it was checked.
+   *
+   * Built from the same expression as the query, so the two cannot disagree.
+   */
   const searchRadiusM = focus ? Math.max(1000, widestRingM(focus)) * EVIDENCE_BOX_FACTOR : 0;
 
   return (
@@ -818,8 +854,10 @@ export function LightningMap({
         }}
         onPointerLeave={() => setHover(null)}
         onWheel={onWheel}
-        className="relative min-h-0 flex-1 cursor-grab overflow-hidden bg-muted active:cursor-grabbing"
-        style={{ touchAction: "none" }}
+        className="relative min-h-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+        // OneMap's own water, so where its coverage stops the map simply keeps
+        // being sea rather than turning into a dark rectangle.
+        style={{ touchAction: "none", background: TILE_WATER }}
       >
         {tiles.map((tile) => (
           <img
@@ -922,8 +960,8 @@ export function LightningMap({
               <span className="text-on">
                 had no qualifying strike in this window — {summary.total === 0 ? "no" : summary.total}{" "}
                 {countedTypes(focus).join("/")} detection{summary.total > 1 ? "s" : ""}{" "}
-                {summary.total > 1 ? "were" : "was"} published within {formatDistance(searchRadiusM)}{" "}
-                of the site
+                {summary.total > 1 ? "were" : "was"} published anywhere in the{" "}
+                {formatDistance(searchRadiusM)} searched around the site
                 {summary.nearestM === null ? "" : `, closest ${formatDistance(summary.nearestM)}`}.
               </span>
             ) : (

@@ -1006,21 +1006,82 @@ export function LightningMap({
     ? Math.max(1000, widestRingM(focus)) * EVIDENCE_BOX_FACTOR
     : 0;
 
+  /**
+   * Zoom in/out, defined once and placed twice: in the header on a desktop,
+   * floated over the map on a phone. Two copies of this JSX would drift, and
+   * the phone's copy is the one nobody would remember to update.
+   */
+  const step = (direction: 1 | -1) =>
+    setZoom((current) => {
+      // Whole levels from wherever a gesture left off, so a button press stays
+      // a predictable step even after a pinch has landed on 14.6.
+      const next = hold(Math.round(current) + direction);
+      setCentre((point) => clampCentre(point, next, size.width, size.height));
+      return next;
+    });
+
+  const zoomControl = (
+    <>
+      <button
+        type="button"
+        aria-label="Zoom out"
+        disabled={zoom <= minZoom}
+        onClick={() => step(-1)}
+        className="h-9 w-9 rounded-lg border border-border bg-card/90 text-base shadow-soft backdrop-blur disabled:opacity-40 md:h-8 md:w-8 md:bg-transparent md:text-sm md:shadow-none md:backdrop-blur-none"
+      >
+        −
+      </button>
+      <button
+        type="button"
+        aria-label="Zoom in"
+        disabled={zoom >= MAX_ZOOM}
+        onClick={() => step(1)}
+        className="h-9 w-9 rounded-lg border border-border bg-card/90 text-base shadow-soft backdrop-blur disabled:opacity-40 md:h-8 md:w-8 md:bg-transparent md:text-sm md:shadow-none md:backdrop-blur-none"
+      >
+        +
+      </button>
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       {/* One row on a desktop. On a phone the controls take their own line and
           scroll sideways: stacked, they cost 320px of an 812px screen and left
           the map a strip. `order` keeps Close beside the title there without a
           second copy of the button. */}
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 md:px-4">
-        <div className="order-1 mr-auto flex items-baseline gap-2">
-          <h2 className="text-sm font-semibold">Singapore lightning map</h2>
-          <span className="hidden text-[11px] text-muted-foreground sm:inline">
-            NEA detections, by the time they reached us
-          </span>
+      {/*
+        One row on a desktop; two proper rows on a phone.
+
+        The phone used to get the desktop row squeezed into a sideways-scrolling
+        rail, which put Close under the iPhone status bar and left the date
+        control half off the right edge with nothing to say it was there. Rows
+        that fit are better than a rail nobody knows to scroll.
+
+        `pt-safe` is why the status bar no longer eats the Close button: the
+        overlay is `fixed inset-0`, so without it the first row starts at the
+        physical top of the screen, behind the notch. Every other overlay in the
+        app already used this helper — this one had simply never been told.
+      */}
+      <header className="shrink-0 border-b border-border px-3 pb-2 pt-safe md:flex md:flex-wrap md:items-center md:gap-2 md:px-4 md:py-2">
+        <div className="flex items-center gap-2 md:mr-auto md:contents">
+          <div className="mr-auto flex items-baseline gap-2 md:mr-auto">
+            <h2 className="text-sm font-semibold">Singapore lightning map</h2>
+            <span className="hidden text-[11px] text-muted-foreground lg:inline">
+              NEA detections, by the time they reached us
+            </span>
+          </div>
+          {/* Thumb-sized on a phone, and first in the DOM so it is also the
+              first thing a screen reader reaches after the title. */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 shrink-0 rounded-lg border border-border px-3 text-xs hover:border-danger hover:text-danger md:order-last md:h-8"
+          >
+            Close
+          </button>
         </div>
 
-        <div className="order-3 flex w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] md:order-2 md:w-auto md:overflow-visible">
+        <div className="mt-2 flex items-center gap-2 md:mt-0 md:contents">
           <select
             value={focusCode ?? ""}
             onChange={(event) => {
@@ -1031,7 +1092,7 @@ export function LightningMap({
                   : null,
               );
             }}
-            className="h-8 rounded-lg border border-border bg-card px-2 text-xs shrink-0"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-xs md:h-8 md:flex-none"
           >
             <option value="">All {sited.length} projects</option>
             {sited.map((row) => (
@@ -1044,13 +1105,25 @@ export function LightningMap({
             ))}
           </select>
 
-          <div className="flex overflow-hidden rounded-lg border border-border shrink-0">
+          {/* The anchor is the END of the window, in Singapore time whatever the
+              phone is set to — see `sgtInputToMs`. */}
+          <input
+            type="datetime-local"
+            value={sgtInputValue(anchor ?? view?.to ?? Date.now())}
+            onChange={(event) => setAnchor(sgtInputToMs(event.target.value))}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-xs md:h-8 md:flex-none"
+            aria-label="End of window, Singapore time"
+          />
+        </div>
+
+        <div className="mt-2 flex items-center gap-2 md:mt-0 md:contents">
+          <div className="flex flex-1 overflow-hidden rounded-lg border border-border md:flex-none">
             {WINDOWS.map((entry) => (
               <button
                 key={entry.key}
                 type="button"
                 onClick={() => setWindowKey(entry.key)}
-                className={`px-2.5 py-1.5 text-xs ${
+                className={`flex-1 px-2.5 py-2 text-xs md:flex-none md:py-1.5 ${
                   windowKey === entry.key
                     ? "bg-primary/20 text-primary"
                     : "hover:bg-muted/40"
@@ -1061,22 +1134,13 @@ export function LightningMap({
             ))}
           </div>
 
-          {/* The anchor is the END of the window, in Singapore time whatever the
-            laptop is set to — see `sgtInputToMs`. */}
-          <input
-            type="datetime-local"
-            value={sgtInputValue(anchor ?? view?.to ?? Date.now())}
-            onChange={(event) => setAnchor(sgtInputToMs(event.target.value))}
-            className="h-8 shrink-0 rounded-lg border border-border bg-card px-2 text-xs"
-            aria-label="End of window, Singapore time"
-          />
           <button
             type="button"
             onClick={() => {
               setAnchor(null);
               setTick((value) => value + 1);
             }}
-            className={`h-8 shrink-0 rounded-lg border px-2.5 text-xs ${
+            className={`h-9 shrink-0 rounded-lg border px-3 text-xs md:h-8 md:px-2.5 ${
               anchor === null
                 ? "border-on/40 bg-on/10 text-on"
                 : "border-border bg-card hover:border-primary hover:text-primary"
@@ -1090,51 +1154,14 @@ export function LightningMap({
             {anchor === null ? "● Live" : "Now"}
           </button>
 
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              aria-label="Zoom out"
-              disabled={zoom <= minZoom}
-              onClick={() =>
-                setZoom((current) => {
-                  const next = hold(Math.round(current) - 1);
-                  setCentre((point) =>
-                    clampCentre(point, next, size.width, size.height),
-                  );
-                  return next;
-                })
-              }
-              className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom in"
-              disabled={zoom >= MAX_ZOOM}
-              onClick={() =>
-                setZoom((current) => {
-                  const next = hold(Math.round(current) + 1);
-                  setCentre((point) =>
-                    clampCentre(point, next, size.width, size.height),
-                  );
-                  return next;
-                })
-              }
-              className="h-8 w-8 rounded-lg border border-border text-sm disabled:opacity-40"
-            >
-              +
-            </button>
+          {/* Desktop keeps its zoom buttons in the header, where there is room
+              for them. A phone gets them floated on the map instead — see
+              below — because a phone pinches, and a header row spent on two
+              small buttons is a row not spent on the map. */}
+          <div className="hidden shrink-0 items-center gap-1 md:flex">
+            {zoomControl}
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="order-2 h-8 shrink-0 rounded-lg border border-border px-3 text-xs hover:border-danger hover:text-danger md:order-3"
-        >
-          Close
-        </button>
       </header>
 
       {/* The map is cut to Singapore's own proportions and centred, rather than
@@ -1260,13 +1287,19 @@ export function LightningMap({
             </div>
           ) : null}
 
+          {/* Phone-only, over the map in the corner a thumb reaches. Pinch is
+              the main gesture there; these are for the last small adjustment. */}
+          <div className="absolute bottom-7 right-2 flex flex-col gap-1.5 md:hidden">
+            {zoomControl}
+          </div>
+
           <div className="pointer-events-none absolute bottom-0 right-0 bg-card/80 px-1 text-[9px] text-muted-foreground">
             {TILE_ATTRIBUTION}
           </div>
         </div>
       </div>
 
-      <footer className="shrink-0 space-y-1.5 border-t border-border px-3 py-2 text-[11px] md:px-4">
+      <footer className="shrink-0 space-y-1.5 border-t border-border px-3 pt-2 text-[11px] pb-safe md:px-4 md:py-2">
         {error ? <p className="text-danger">{error}</p> : null}
 
         {summary && focus ? (

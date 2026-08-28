@@ -396,3 +396,69 @@ test("the phone gets the chat, and thumb-sized actions on a rail", async () => {
   // screen; the page itself must never scroll sideways.
   assert.match(shell, /overflow-x-auto[^"]*md:flex-wrap[^"]*md:overflow-visible/);
 });
+
+/**
+ * Every overlay clears whichever screen edge it actually reaches.
+ *
+ * The failure is silent and only visible on hardware: a panel that reaches the
+ * top without `pt-safe` puts its first row of controls under the iPhone status
+ * bar, where it can be seen but not tapped. The lightning map shipped exactly
+ * that — the one overlay nobody had told about the helpers.
+ *
+ * Which edges each panel touches is stated here rather than parsed, but it is
+ * not taken on trust: each claim is checked against the panel's own positioning
+ * classes below, so a sheet that grows into a full-screen panel fails here
+ * rather than quietly needing an inset it does not declare.
+ */
+const OVERLAYS = [
+  { file: "components/LightningMap.tsx", top: true, bottom: true },
+  { file: "components/ConfigEditor.tsx", top: true, bottom: true },
+  { file: "components/ServiceDrawer.tsx", top: true, bottom: true },
+  // A bottom sheet, capped at 90vh, so its top never comes near the notch.
+  { file: "components/ProjectSheet.tsx", top: false, bottom: true },
+];
+
+test("an overlay clears whichever screen edge it reaches", async () => {
+  for (const { file, top, bottom } of OVERLAYS) {
+    const text = await source(file);
+    // Comments stripped: a note explaining the helper is not the helper.
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+    // The claim, verified against the panel's own positioning. Scrims are
+    // skipped: they are all `fixed inset-0` and would make every overlay look
+    // full-height, including the bottom sheet that is not.
+    const panels = [...code.matchAll(/className="([^"]*\bfixed\b[^"]*)"/g)]
+      .map((match) => match[1])
+      .filter((cls) => !/\bbg-black\//.test(cls));
+    assert.ok(panels.length > 0, `${file}: no positioned panel found`);
+    const reaches = (edge: "top" | "bottom") =>
+      panels.some((cls) =>
+        new RegExp(`\\binset-0\\b|\\binset-y-0\\b|\\b${edge}-0\\b`).test(cls),
+      );
+    assert.equal(reaches("top"), top, `${file}: positioning disagrees with the table above`);
+    assert.equal(reaches("bottom"), bottom, `${file}: positioning disagrees with the table above`);
+
+    assert.equal(
+      /className="[^"]*\bpt-safe\b/.test(code),
+      top,
+      top
+        ? `${file} reaches the status bar but nothing clears it`
+        : `${file} does not reach the status bar and should not pad for it`,
+    );
+    if (bottom) {
+      assert.ok(
+        /className="[^"]*\bpb-safe\b/.test(code),
+        `${file} reaches the home indicator but nothing clears it`,
+      );
+    }
+  }
+
+  // And the helpers only mean anything with `viewport-fit=cover`; without it
+  // `env(safe-area-inset-*)` is zero on iOS and every `pt-safe` above is inert.
+  const layout = await source("app/layout.tsx");
+  const declaration = layout.slice(
+    layout.indexOf("export const viewport: Viewport"),
+    layout.indexOf("};", layout.indexOf("export const viewport: Viewport")),
+  );
+  assert.match(declaration, /viewportFit:\s*"cover"/, "safe-area insets are zero without it");
+});

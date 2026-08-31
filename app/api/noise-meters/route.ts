@@ -7,6 +7,8 @@ import { getDashboardSession } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
+ * `GET /api/noise-meters` — `listNoiseMeters` in the OpenAPI contract.
+ *
  * Active noise meters for one project, so the editor can label RecIDs.
  *
  * Fetched on demand rather than shipped with the dashboard: the meter list is

@@ -8,6 +8,8 @@ import { getDashboardSession } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
+ * `GET /api/lightning/detections` — `listLightningDetections` in the contract.
+ *
  * Lightning detections for the evidence map.
  *
  * Read-only, and available to any signed-in reader rather than editors only: the

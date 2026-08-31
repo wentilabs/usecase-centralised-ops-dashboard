@@ -5,6 +5,18 @@ import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `GET /api/session` — `getSession` in the OpenAPI contract.
+ *
+ * Who the caller is and what they may do, plus booleans saying whether the server
+ * can see its own allow-list and how many field specs are cached. Takes no
+ * parameters.
+ *
+ * The only route that answers before the allow-list check, deliberately: it is
+ * most useful to someone who has just been refused and is trying to find out
+ * which side is blind. Values are never returned, only whether they are set.
+ */
+
 export async function GET() {
   const session = await getDashboardSession();
   return NextResponse.json(

@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 const TIMEOUT_MS = 90_000;
 
 /**
+ * `POST /api/exports/{export}` — `runExport` in the OpenAPI contract.
+ *
  * Proxy for the alert services' xlsx export endpoints.
  *
  * Two modes:

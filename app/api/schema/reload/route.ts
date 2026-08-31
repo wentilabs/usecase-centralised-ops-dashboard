@@ -6,7 +6,11 @@ import { SERVICE_KEYS } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
 
-/** Picks up columns added to Supabase without a redeploy. */
+/**
+ * `POST /api/schema/reload` — `reloadSchema` in the OpenAPI contract.
+ *
+ * Picks up columns added to Supabase without a redeploy. Takes no parameters.
+ */
 export async function POST() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

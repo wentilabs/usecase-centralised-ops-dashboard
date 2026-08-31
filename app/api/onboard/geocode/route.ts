@@ -10,6 +10,8 @@ const ONEMAP_SEARCH_URL = "https://www.onemap.gov.sg/api/common/elastic/search";
 const TIMEOUT_MS = 20_000;
 
 /**
+ * `GET /api/onboard/geocode` — `geocodeAddress` in the OpenAPI contract.
+ *
  * Address → coordinates, via OneMap.
  *
  * Proxied rather than called from the browser so the optional `ONEMAP_TOKEN`

@@ -15,6 +15,10 @@ import { getDashboardSession } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
+ * `GET`/`POST /api/mcp` — the MCP endpoint itself, deliberately NOT in the
+ * OpenAPI contract: it serves the tools that document is generated into, so
+ * listing it as one of them would be circular.
+ *
  * MCP over Streamable HTTP, stateless.
  *
  * Only the JSON response mode is implemented — no SSE, no session ids. That is a

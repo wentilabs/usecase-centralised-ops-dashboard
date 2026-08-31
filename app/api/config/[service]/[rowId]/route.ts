@@ -13,6 +13,28 @@ import { SERVICES, isServiceKey } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `PATCH /api/config/{service}/{rowId}` — `updateProjectConfig` in the contract.
+ *
+ * **The only route in HALO that writes a project configuration.** Everything that
+ * changes a live service's behaviour comes through here: the editor's save, a
+ * chat proposal the operator confirmed, and every row of a bulk change. Keeping
+ * it the single write path is why none of those needed a write surface of their
+ * own to secure.
+ *
+ * Four gates, in order, and each is here rather than in a caller because a caller
+ * can be bypassed:
+ *   1. signed in, and `canEdit` — a reader cannot write even with a valid body;
+ *   2. `validateChanges` against the LIVE introspected schema, so an unknown
+ *      column or a value outside a CHECK is a 400 before the database is touched;
+ *   3. `baseUpdatedAt` optimistic concurrency — a stale write is a 409, not a
+ *      silent overwrite of whoever edited the row in between;
+ *   4. an audit row, annotated with the caller and the optional `note`.
+ *
+ * Parameters and the body shape are declared in `lib/openapi.ts` and served at
+ * `/openapi.json`; they are not repeated here, so there is one copy to keep true.
+ */
+
 type Params = { params: Promise<{ service: string; rowId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {

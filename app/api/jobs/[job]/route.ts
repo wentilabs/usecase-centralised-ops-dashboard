@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 const TIMEOUT_MS = 60_000;
 
 /**
+ * `POST /api/jobs/{job}` — `runJob` in the OpenAPI contract.
+ *
  * Proxy for the alert services' sheet endpoints.
  *
  * HALO forwards rather than letting the browser call the Lambda directly: the

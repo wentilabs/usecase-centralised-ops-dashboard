@@ -542,3 +542,37 @@ test("a bulk chat change writes through the ordinary per-row endpoint, not a new
     `no bulk write route may exist, found ${routes.filter((r) => /batch|bulk/i.test(r)).join(", ")}`,
   );
 });
+
+test("every API route file says what it is, and names its contract operation", async () => {
+  // The service repos keep a per-file header documenting each route's payload.
+  // HALO cannot copy that literally — its parameters live in `lib/openapi.ts`,
+  // generated to `/openapi.json` and already covered by the contract tests, so a
+  // second copy in a comment is one copy that goes stale. What it CAN keep is the
+  // half a generated document does not carry: what the route is for, and where
+  // its parameters are declared.
+  const { readdir } = await import("node:fs/promises");
+  const walk = async (dir: string): Promise<string[]> => {
+    const entries = await readdir(resolve(process.cwd(), dir), { withFileTypes: true });
+    const found: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) found.push(...(await walk(`${dir}/${entry.name}`)));
+      else if (entry.name === "route.ts") found.push(`${dir}/${entry.name}`);
+    }
+    return found;
+  };
+
+  const routes = await walk("app/api");
+  assert.ok(routes.length >= 15, `expected the API routes, found ${routes.length}`);
+
+  for (const route of routes) {
+    const text = await source(route);
+    // The header is whatever block comment sits above the first handler.
+    const handler = text.search(/^export async function (GET|POST|PATCH|PUT|DELETE)/m);
+    assert.notEqual(handler, -1, `${route} exports no handler`);
+    const header = (text.slice(0, handler).match(/\/\*[\s\S]*?\*\//g) ?? []).join("\n");
+    assert.ok(header.trim(), `${route} has no header comment saying what it is`);
+    // And it names an HTTP method, so the reader knows what they are looking at
+    // without reading the exports.
+    assert.match(header, /\b(GET|POST|PATCH|PUT|DELETE)\b/, `${route}'s header names no method`);
+  }
+});

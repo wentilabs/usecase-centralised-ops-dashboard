@@ -6,6 +6,17 @@ import { SERVICE_KEYS } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `GET /api/schema` — `getSchema` in the OpenAPI contract.
+ *
+ * The introspected field spec for every service: each column with the label, help
+ * text, widget, options and default the editor renders from. Takes no parameters.
+ * Reads only.
+ *
+ * This is the endpoint the nightly audit sweeps to catch a column that arrived in
+ * Supabase without a label or a group — see AGENTS.md, "Editing the field spec".
+ */
+
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

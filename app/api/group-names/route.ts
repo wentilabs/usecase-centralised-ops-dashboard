@@ -11,6 +11,8 @@ import type { ProjectConfigRow } from "@/lib/services";
 export const dynamic = "force-dynamic";
 
 /**
+ * `GET /api/group-names` — `getGroupNames` in the OpenAPI contract.
+ *
  * Chat id → group name for the whole dashboard.
  *
  * `?refresh=1` walks back through the recent listener log and re-reads every

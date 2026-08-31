@@ -7,6 +7,7 @@ import { ConfigEditor } from "./ConfigEditor";
 import { SmartChat } from "./SmartChat";
 import { shouldFocusSearch } from "@/lib/search-hotkey";
 import { ExportDialog } from "./ExportDialog";
+import { BatchProposal, type Batch } from "./BatchProposal";
 import { LightningMap } from "./LightningMap";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
@@ -92,6 +93,8 @@ export function DashboardShell({
    * project code, and `""` is open on the whole island.
    */
   const [lightningMap, setLightningMap] = useState<string | null>(null);
+  /** A chat request covering several projects, awaiting review. */
+  const [batch, setBatch] = useState<{ batch: Batch; note: string } | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -190,6 +193,13 @@ export function DashboardShell({
     [rows, services],
   );
 
+  const proposeBatch = useCallback(
+    (incoming: { scope: string; summary: string; matchedGroups?: unknown[]; edits: unknown[] }, prompt: string) => {
+      setBatch({ batch: incoming as Batch, note: prompt });
+    },
+    [],
+  );
+
   const active = services.find((service) => service.key === tab) ?? services[0];
 
   const visible = useMemo(() => {
@@ -259,7 +269,7 @@ export function DashboardShell({
           full-width row rather than being squeezed into the header beside the
           menu, the filter and refresh. */}
       <div className="border-b border-border px-3 py-2 md:hidden">
-        <SmartChat fullWidth onProposal={proposeChange} />
+        <SmartChat fullWidth onProposal={proposeChange} onBatch={proposeBatch} />
       </div>
 
       {/* ---------------------------------------------------------------------
@@ -303,7 +313,7 @@ export function DashboardShell({
         {/* Desktop only for now: the proposal opens the editor, which is itself a
             desktop surface. */}
         <div className="hidden md:block">
-          <SmartChat onProposal={proposeChange} />
+          <SmartChat onProposal={proposeChange} onBatch={proposeBatch} />
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
@@ -516,6 +526,21 @@ export function DashboardShell({
           groupNames={groupNames}
           onClose={() => setOnboarding(false)}
           onCreated={() => void refreshData()}
+        />
+      ) : null}
+
+      {batch ? (
+        <BatchProposal
+          batch={batch.batch}
+          note={batch.note}
+          // Looked up live rather than carried in the payload, so the diff and
+          // the concurrency check read the row as it is now.
+          rowFor={(service, projectCode) =>
+            (rows[service] ?? []).find((row) => String(row.project_code ?? "") === projectCode)
+          }
+          groupNames={groupNames}
+          onClose={() => setBatch(null)}
+          onApplied={() => void refreshData()}
         />
       ) : null}
 

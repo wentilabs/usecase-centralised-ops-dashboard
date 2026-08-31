@@ -36,6 +36,7 @@
     "lib/lightning-map.ts",
     "lib/search-hotkey.ts",
     "lib/chat-intent.ts",
+    "lib/chat-scope.ts",
     "lib/chat-provider.ts",
     "lib/onboarding.ts",
     "lib/message-previews.ts",

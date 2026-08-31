@@ -17,10 +17,17 @@ import { useState } from "react";
  */
 export function SmartChat({
   onProposal,
+  onBatch,
   fullWidth = false,
 }: {
   /** Stretch to the container. The mobile row is full width; the header is not. */
   fullWidth?: boolean;
+  /**
+   * A change covering several projects, which cannot open the single-row editor
+   * and gets its own review list instead. The sentence travels with it for the
+   * same reason it travels with a single proposal — every row's audit note.
+   */
+  onBatch: (batch: { scope: string; summary: string; matchedGroups?: unknown[]; edits: unknown[] }, prompt: string) => void;
   onProposal: (proposal: {
     service: string;
     projectCode: string;
@@ -46,6 +53,11 @@ export function SmartChat({
         body: JSON.stringify({ prompt: asked }),
       });
       const body = await res.json();
+      if (body.batch) {
+        onBatch(body.batch, asked);
+        setMessage(null);
+        return;
+      }
       if (body.proposal) {
         // The sentence travels with the proposal and lands in the audit note, so
         // the trail records what was asked for, not just what changed.

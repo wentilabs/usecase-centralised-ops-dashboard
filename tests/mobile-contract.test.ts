@@ -500,3 +500,45 @@ test("group columns are reviewed as chat names, in both places a change is shown
   // column names — a new group column should need no change here at all.
   assert.match(flat, /spec\.fields\[column\]\?\.widget !== "groups"/);
 });
+
+test("a bulk chat change writes through the ordinary per-row endpoint, not a new one", async () => {
+  // The security property of the whole bulk feature. One sentence can now touch
+  // fifty live projects, and the thing that keeps that safe is that it is still
+  // fifty ordinary PATCHes: each validated against the live schema, each with
+  // its own optimistic-concurrency check, each leaving its own audit row. A bulk
+  // write endpoint would be a second write surface to secure, and the first
+  // thing anyone would reach for.
+  const batch = await source("components/BatchProposal.tsx");
+  assert.match(
+    batch,
+    /fetch\(\s*\n?\s*`\/api\/config\/\$\{edit\.service\}\/\$\{encodeURIComponent\(edit\.rowId\)\}`/,
+    "the review dialog must call the per-row config endpoint",
+  );
+  assert.match(batch, /method: "PATCH"/);
+  // Per row, or one stale project silently overwrites another's edit.
+  assert.match(batch, /baseUpdatedAt: row\?\.updated_at \?\? null/);
+  // The sentence reaches every row's audit note, so the trail says why.
+  assert.match(batch, /\bnote,/);
+
+  // Sequential, not parallel: a partial failure has to be attributable, and
+  // fifty concurrent PATCHes make the report a race.
+  assert.match(batch, /for \(const \[index, edit\] of chosen\.entries\(\)\)/);
+  assert.doesNotMatch(batch, /Promise\.all\(/, "a bulk apply must not fan out");
+
+  // And no bulk write route was added anywhere.
+  const { readdir } = await import("node:fs/promises");
+  const walk = async (dir: string): Promise<string[]> => {
+    const entries = await readdir(resolve(process.cwd(), dir), { withFileTypes: true });
+    const found: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) found.push(...(await walk(`${dir}/${entry.name}`)));
+      else if (entry.name === "route.ts") found.push(`${dir}/${entry.name}`);
+    }
+    return found;
+  };
+  const routes = await walk("app/api");
+  assert.ok(
+    !routes.some((route) => /batch|bulk/i.test(route)),
+    `no bulk write route may exist, found ${routes.filter((r) => /batch|bulk/i.test(r)).join(", ")}`,
+  );
+});

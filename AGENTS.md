@@ -477,6 +477,50 @@ found sitting unlabelled in the "Other" bucket:
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 ```
 
+## The smart chat, and bulk changes
+
+`lib/chat-intent.ts` turns a sentence into a change to ONE project;
+`lib/chat-scope.ts` is the half that handles several. `app/api/chat/route.ts`
+picks between them. Both files share one rule, and it is the rule to defend:
+
+**Which projects a sentence will change is decided in code, never by the model.**
+One project resolved wrongly is a wrong site getting a message; fifty resolved
+wrongly is fifty. So project codes, company names, service names and the
+"all projects" phrasing are all parsed against closed sets HALO already holds.
+The model is left with the job only it can do — mapping an outcome onto columns
+and values.
+
+The scope precedence in `resolveScope` is safety-critical and written out in its
+doc comment. The part worth repeating here: **a service name alone is not a bulk
+scope.** "noise projects should mute Sundays" reads as bulk to a person and as an
+unfinished sentence to a machine, so it comes back asking for the word "all"
+rather than writing to every noise site.
+
+Four things follow from the same caution:
+
+- **`set` is refused across services.** The same outcome is different columns on
+  different services, so a cross-service `set` would need per-service column
+  mapping that nothing validates. It asks for one service instead. Group removal
+  and `defaults` have no such problem — both resolve their columns per service,
+  in code.
+- **A group removal carries a phrase, never chat ids.** `parseBulkOp` drops any
+  ids the model volunteers. Which groups a phrase means is `matchGroupNames` over
+  the real alias store, and the operator sees the match list before anything is
+  written.
+- **`defaults` skips columns whose default is null.** Every column has a default
+  and for a delivery-group column that default is blank, so the naive reading
+  would empty a live site's WhatsApp list — a project that then runs its cadences
+  and sends to nobody. See `defaultsFor`.
+- **Writes are still one PATCH per row**, through the same endpoint the editor
+  uses, so each keeps its own validation, its own optimistic-concurrency check
+  and its own audit row carrying the sentence. There is deliberately no bulk
+  write endpoint; a test asserts none exists.
+
+`matchGroupNames` requires **every** identity token of the phrase to appear —
+fuzzy means tolerant of how a name is written, not of words missing from it. At
+half-coverage, "X WL coordinations" matched 92 unrelated groups including
+"AE - Site Coordination All Vendors". See trap 15.
+
 ## The Singapore lightning map
 
 `components/LightningMap.tsx`, opened from the ⚡ button on the lightning
@@ -702,3 +746,14 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    request without complaining, so raising `limit` is not a fix. The fixes are
    the type filter and a tight box; if the cap is still hit, the UI refuses to
    make the claim rather than shading it.
+
+15. **Fuzzy matching that tolerates missing words is not fuzzy, it is
+   broad.** `matchGroupNames` first scored a name by how many of the phrase's
+   tokens it contained and accepted half. For the two-token phrase
+   "X WL coordinations" that means "any one token", and it matched 92 of 118
+   groups in the estate — "AE - Site Coordination All Vendors" on the word
+   coordination, "[Wen] Meeting Notes" on a three-letter prefix. Requiring every
+   token, with a three-character floor on prefix matches, took it to the 25 real
+   WL/Wentilabs coordination groups. Tolerance belongs in how a token may be
+   SPELLED — synonym, inflection, one word or two — never in how many of them
+   have to be there.

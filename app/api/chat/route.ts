@@ -8,8 +8,23 @@ import {
   describeAmbiguity,
   parseModelJson,
   resolveTarget,
+  type ChatTarget,
   type Proposal,
 } from "@/lib/chat-intent";
+import {
+  BULK_SYSTEM_PROMPT,
+  applyToAll,
+  defaultsFor,
+  describeScope,
+  matchGroupNames,
+  parseBulkOp,
+  removeGroupsFrom,
+  resolveScope,
+  type RowEdit,
+  type Scope,
+} from "@/lib/chat-scope";
+import { getGroupNames } from "@/lib/group-names";
+import { chatIdsIn } from "@/lib/card-summary";
 import {
   buildRequest,
   chooseProvider,
@@ -18,7 +33,7 @@ import {
   shouldFallBack,
 } from "@/lib/chat-provider";
 import { getConfig, getFieldSpec, listConfigs } from "@/lib/config-repository";
-import { SERVICES, SERVICE_KEYS, type ProjectConfigRow } from "@/lib/services";
+import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +67,206 @@ type ChatReply = {
     /** Columns the model asked for that this refused, with the reason. */
     rejected: { column: string; reason: string }[];
   };
+  /**
+   * A change covering several projects.
+   *
+   * Sent instead of `proposal` when the sentence resolved to more than one row.
+   * It carries every row that will change, so the review list the operator reads
+   * is the exact set of writes — not a count to be trusted.
+   */
+  batch?: {
+    scope: string;
+    /** How many projects the scope covers, which is not how many will change. */
+    inScope: number;
+    summary: string;
+    /** For a group removal: which groups matched the phrase, for confirmation. */
+    matchedGroups?: { chatId: string; name: string; score: number }[];
+    edits: {
+      service: string;
+      serviceLabel: string;
+      projectCode: string;
+      rowId: string;
+      changes: Record<string, unknown>;
+      detail?: string;
+    }[];
+  };
 };
 
 function reply(body: ChatReply, status = 200) {
   return NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
+}
+
+
+/**
+ * One HTTP call to the model. Hoisted so the single-project and bulk paths share
+ * it rather than each keeping a copy that could drift on retry behaviour.
+ */
+async function askModel(
+  choice: Parameters<typeof buildRequest>[0],
+  turn: { system: string; user: string },
+  override?: ReturnType<typeof buildRequest> | null,
+) {
+  const request = override ?? buildRequest(choice, turn);
+  const response = await fetch(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+    cache: "no-store",
+  });
+  return { ok: response.ok, status: response.status, text: await response.text() };
+}
+
+/**
+ * Ask the model what to do to a set of rows, then do it in code.
+ *
+ * The division of labour is the same as the single-project path and matters more
+ * here: the model classifies the request and supplies values or a phrase, and
+ * this function decides which rows and which chat ids. Nothing the model says
+ * selects a project or a group.
+ *
+ * A `set` is refused across several services on purpose. The same outcome is
+ * different columns on different services — muting public holidays is
+ * `remove_ph_notifications` on some and absent on others — so a cross-service
+ * `set` would need per-service column mapping that nothing here validates. The
+ * operator is asked to name a service instead. Group removal and defaults have
+ * no such problem: both resolve their columns per service, in code.
+ */
+async function bulkReply({
+  prompt,
+  scope,
+  rows,
+}: {
+  prompt: string;
+  scope: Extract<Scope, { targets: ChatTarget[] }>;
+  rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
+}) {
+  const services: ServiceKey[] = [...new Set(scope.targets.map((entry) => entry.service))];
+  const scopeLine = describeScope(scope, (key) => SERVICES[key].label);
+  const rowFor = ({ service, projectCode }: ChatTarget) =>
+    (rows[service] ?? []).find((row) => String(row.project_code ?? "") === projectCode);
+
+  const choice = chooseProvider(process.env);
+  if (!choice.provider) {
+    return reply({ message: `Understood ${scopeLine}, but ${choice.reason}, so the change cannot be worked out.` });
+  }
+
+  // Columns are offered to the model only when the scope is one service, since
+  // that is the only case where `set` is allowed.
+  let columnBlock = "Several services are in scope, so no column list is given: `set` is not available here.";
+  if (services.length === 1) {
+    const service = services[0];
+    const spec = await getFieldSpec(service);
+    const sample = rowFor(scope.targets[0]);
+    if (sample) {
+      columnBlock = ["Editable columns (values shown are one project's, as an example):",
+        JSON.stringify(briefFor(service, spec, sample), null, 1)].join("\n");
+    }
+  }
+
+  const turn = {
+    system: BULK_SYSTEM_PROMPT,
+    user: [
+      `Scope (already decided, ${scope.targets.length} projects): ${scopeLine}`,
+      `Services in scope: ${services.map((key) => SERVICES[key].label).join(", ")}`,
+      "",
+      columnBlock,
+      "",
+      `Request: ${prompt}`,
+    ].join("\n"),
+  };
+
+  let text = "";
+  try {
+    let result = await askModel(choice, turn);
+    if (!result.ok && shouldFallBack(result.status, result.text)) {
+      const second = fallbackRequest(choice, turn);
+      if (second) result = await askModel(choice, turn, second);
+    }
+    if (!result.ok) {
+      return reply({ message: `${choice.model} returned ${result.status}. ${result.text.slice(0, 300)}` }, 502);
+    }
+    text = extractText(JSON.parse(result.text));
+    if (!text) return reply({ message: `${choice.model} answered with nothing this could read.` }, 502);
+  } catch (error) {
+    return reply({ message: `Could not reach ${choice.model}: ${error instanceof Error ? error.message : error}` }, 502);
+  }
+
+  const op = parseBulkOp(parseModelJson(text) as Record<string, unknown> | null);
+  if (!op) return reply({ message: "The model did not answer in a shape this could use. Try rewording it." });
+  if (op.kind === "question") return reply({ message: op.question });
+
+  let edits: RowEdit[] = [];
+  let matchedGroups: { chatId: string; name: string; score: number }[] | undefined;
+
+  if (op.kind === "remove-groups") {
+    // The alias store is the only source for what a group is called, so a phrase
+    // is matched against it rather than against anything the model produced.
+    const aliases = await getGroupNames(chatIdsIn(Object.values(rows).flat() as ProjectConfigRow[]));
+    matchedGroups = matchGroupNames(op.phrase, aliases.map);
+    if (!matchedGroups.length) {
+      return reply({ message: `No delivery group matches “${op.phrase}”. Check the name, or open Chat aliases to refresh them.` });
+    }
+    edits = removeGroupsFrom(
+      scope.targets,
+      rowFor,
+      matchedGroups.map((match) => match.chatId),
+      (chatId) => aliases.map[chatId] || chatId,
+    );
+  } else if (op.kind === "defaults") {
+    for (const service of services) {
+      const spec = await getFieldSpec(service);
+      for (const target of scope.targets.filter((entry) => entry.service === service)) {
+        const row = rowFor(target);
+        if (!row) continue;
+        const changes = defaultsFor(spec.fields as never, row);
+        if (Object.keys(changes).length) edits.push({ ...target, changes });
+      }
+    }
+  } else {
+    if (services.length > 1) {
+      return reply({
+        message:
+          `That change covers ${services.map((key) => SERVICES[key].label).join(", ")}, and the columns differ ` +
+          "between them. Name one service — for example “all noise projects…”.",
+      });
+    }
+    const spec = await getFieldSpec(services[0]);
+    // Validated against the spec once, using one row, before being applied to
+    // all of them — a bad column name should fail as a sentence, not 30 times.
+    const probe = rowFor(scope.targets[0]);
+    if (probe) {
+      const { problems } = checkProposal(spec, probe, { changes: op.changes, summary: op.summary });
+      if (problems.length && !Object.keys(op.changes).some((column) => spec.fields[column])) {
+        return reply({
+          message: `No change to propose. It asked for ${problems
+            .map((problem) => `${problem.column} (${problem.reason})`)
+            .join(", ")}.`,
+        });
+      }
+    }
+    edits = applyToAll(scope.targets, rowFor, op.changes);
+  }
+
+  if (!edits.length) {
+    return reply({ message: `Nothing to change — every project in ${scopeLine} already reads that way.` });
+  }
+
+  return reply({
+    batch: {
+      scope: scopeLine,
+      inScope: scope.targets.length,
+      summary: op.summary || "Proposed bulk change",
+      ...(matchedGroups ? { matchedGroups } : {}),
+      edits: edits.map((edit) => ({
+        service: edit.service,
+        serviceLabel: SERVICES[edit.service].label,
+        projectCode: edit.projectCode,
+        rowId: edit.rowId,
+        changes: edit.changes,
+        ...(edit.detail ? { detail: edit.detail } : {}),
+      })),
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -84,8 +295,39 @@ export async function POST(request: NextRequest) {
     if (result.status === "fulfilled") rows[key] = result.value as never[];
   });
 
+  /**
+   * Scope first, then the old single-project path.
+   *
+   * `resolveScope` is a superset of `resolveTarget`: it returns the same set of
+   * rows for a sentence naming one code, and additionally understands a company,
+   * a service plus "all", and the whole estate. Both are still pure and both
+   * still decide the affected rows in code — see `lib/chat-scope.ts` for why
+   * that line does not move for bulk requests.
+   */
+  const scope = resolveScope(prompt, rows as never, (service) => SERVICES[service].idColumn);
+  const distinctCodes = new Set(
+    "targets" in scope ? scope.targets.map((entry) => entry.projectCode) : [],
+  );
+
+  // A bulk scope is anything covering rows this route cannot hand to the
+  // single-project editor: a company, a service, the estate, or several codes
+  // named at once. One code that exists under several services is NOT bulk — it
+  // is the old ambiguity, and it still comes back as a question.
+  const isBulk =
+    scope.kind === "company" ||
+    scope.kind === "service" ||
+    scope.kind === "estate" ||
+    (scope.kind === "projects" && distinctCodes.size > 1);
+
+  if (isBulk && "targets" in scope) {
+    return bulkReply({ prompt, scope, rows: rows as never });
+  }
+
   const target = resolveTarget(prompt, rows as never, (service) => SERVICES[service].idColumn);
   if (target.kind === "none") {
+    // A scope that refused for a stated reason says so — "name the code, or say
+    // all projects" is more useful than the generic prompt below.
+    if (scope.kind === "none" && scope.why) return reply({ message: scope.why });
     const named = target.hinted.map((key) => SERVICES[key].label).join(" / ");
     return reply({
       message: named
@@ -146,26 +388,16 @@ export async function POST(request: NextRequest) {
     ].join("\n"),
   };
 
-  async function ask(request: ReturnType<typeof buildRequest>) {
-    const response = await fetch(request.url, {
-      method: "POST",
-      headers: request.headers,
-      body: JSON.stringify(request.body),
-      cache: "no-store",
-    });
-    return { ok: response.ok, status: response.status, text: await response.text() };
-  }
-
   let text = "";
   try {
-    let result = await ask(buildRequest(choice, turn));
+    let result = await askModel(choice, turn);
 
     // Some model ids are served by one OpenAI endpoint and not the other, and
     // which is which is not knowable from the name. Trying the second is cheaper
     // than making whoever set HALO_CHAT_MODEL find out by reading an error.
     if (!result.ok && shouldFallBack(result.status, result.text)) {
       const second = fallbackRequest(choice, turn);
-      if (second) result = await ask(second);
+      if (second) result = await askModel(choice, turn, second);
     }
 
     if (!result.ok) {

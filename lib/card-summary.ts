@@ -57,6 +57,18 @@ export type DeliveryGroup = { chatId: string; role?: string };
  * onto a single entry rather than repeating the chat id — which would also
  * collide as a React key.
  */
+/**
+ * Which columns of a service hold chat ids, and what each is for.
+ *
+ * Exposed so the bulk-edit path in `chat-scope.ts` reads the same registry the
+ * cards render delivery chips from. A second list of group columns would drift,
+ * and the way it would drift is by missing one — leaving a group in place on a
+ * column nobody remembered.
+ */
+export function groupColumnsFor(service: ServiceKey): { column: string; role?: string; single?: boolean }[] {
+  return GROUP_COLUMNS[service] ?? [];
+}
+
 export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): DeliveryGroup[] {
   const roles = new Map<string, string[]>();
   for (const { column, role, single } of GROUP_COLUMNS[service] ?? []) {

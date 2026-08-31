@@ -672,7 +672,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "P1 every 3 hours, P2 daily, P3 weekly. Each pair of window columns below gates its own priorities; leave a window unset for round-the-clock eligibility, which is now the default — the old fixed 07:00–19:00 hours were retired when the windows became configurable. A due time outside a set window waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
+      help: "P1 every 3 hours, P2 daily, P3 weekly — all round the clock by default. The old fixed 07:00–19:00 hours were retired when per-priority send windows became configurable; where those columns exist they appear here, and a due time outside a set window waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
@@ -716,22 +716,16 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "P1 escalation digest",
       help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours. Cannot be turned on until Project enabled is on.",
     },
-    include_issue_images: { label: "Include issue images", help: "Sends the sheet's `Image` for each issue." },
-    mention_sender_fallback: {
-      label: "Mention the sender",
-      help: "Tags the issue's `Sender Phone` when no PIC phone is available.",
-    },
-    pic_mentions_enabled: {
-      label: "Mention the PIC",
-      help: "Resolves each issue's `PIC` name against a `Novade Name List` tab in the same workbook and tags the phones it finds. Off, no PIC is ever tagged whatever the sheet holds. If that tab is missing or unreadable the run continues with no PIC mentions and only a warning in the log.",
-    },
+    // include_issue_images, mention_sender_fallback, pic_mentions_enabled and
+    // require_origin_chat_identity were REMOVED from issue_chaser.project_configs
+    // by 412256d ("harden reminder routing and mentions"): PIC resolution and
+    // image delivery are built in now, reporter mentions are the final PIC
+    // fallback rather than a setting, and the single configured-group origin
+    // fallback is unconditional. `deliveryConfig` in that repo's config/index.js
+    // explicitly deletes all four, so they are behaviour, not configuration.
     send_to_originating_groups: {
       label: "Reply in the originating group",
-      help: "Recovers the group from the sheet's `Message Id Serialized`, so no per-project group is needed. Off — or when that column is missing — delivery falls back to the group list below.",
-    },
-    require_origin_chat_identity: {
-      label: "Only reply in the originating group",
-      help: "Strict mode: an issue whose row has no recoverable origin chat is DROPPED rather than falling back to the group list below. It also suppresses the P1 empty-state message, which would otherwise go to the group list. Use it where a chase must never reach the wrong site; expect silence on rows the sheet cannot identify.",
+      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required.",
     },
     whatsapp_group_ids: {
       label: "WhatsApp group IDs",
@@ -948,14 +942,9 @@ const GROUPS: Record<string, FieldGroup[]> = {
       ],
     },
     {
-      title: "Message content",
-      fields: ["include_issue_images", "mention_sender_fallback", "pic_mentions_enabled"],
-    },
-    {
       title: "Delivery",
       fields: [
         "send_to_originating_groups",
-        "require_origin_chat_identity",
         "whatsapp_group_ids",
         "instance_name",
         "client_id",

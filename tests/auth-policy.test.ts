@@ -1215,23 +1215,25 @@ test("a card tag uses the short service name where one exists", () => {
 });
 
 test("Issue Chaser's two new switches are on the card, both off by default", () => {
-  // Both arrived with the chaser upgrade and default to false, and both fail
-  // quietly: strict origin routing DROPS an issue whose row has no recoverable
-  // origin chat instead of falling back to the group list, and PIC mentions
-  // need a `Novade Name List` tab that the code warns about and carries on
-  // without. Silence is the symptom for each, so the card has to say.
+  // `origin required`, `images` and `PIC mentions` were asserted here until
+  // their columns were retired from the service by 412256d — PIC resolution and
+  // image delivery are built in now, and the single configured-group origin
+  // fallback is unconditional. The assertion is therefore that they are GONE: a
+  // pill for a setting that no longer exists sends someone hunting for a switch.
   const bare = pillsFor("issueChaser", {});
-  assert.ok(bare.some((p) => p.label === "origin required" && !p.on));
-  assert.ok(bare.some((p) => p.label === "PIC mentions" && !p.on));
+  const labels = bare.map((pill) => pill.label);
+  for (const retired of ["origin required", "images", "PIC mentions"]) {
+    assert.ok(!labels.includes(retired), `${retired} is no longer a setting and must not be a pill`);
+  }
 
-  const strict = pillsFor("issueChaser", { require_origin_chat_identity: true, pic_mentions_enabled: true });
-  assert.ok(strict.some((p) => p.label === "origin required" && p.on));
-  assert.ok(strict.some((p) => p.label === "PIC mentions" && p.on));
-
-  // Each sits beside the switch it qualifies, so the pair reads as one decision.
-  const labels = bare.map((p) => p.label);
-  assert.equal(labels.indexOf("origin required"), labels.indexOf("reply in origin group") + 1);
-  assert.equal(labels.indexOf("PIC mentions"), labels.indexOf("images") + 1);
+  // What remains is the one delivery switch the table still has.
+  assert.ok(labels.includes("reply in origin group"));
+  assert.equal(
+    pillsFor("issueChaser", { send_to_originating_groups: false }).find(
+      (pill) => pill.label === "reply in origin group",
+    )?.on,
+    false,
+  );
 });
 
 test("the Woh Hup roster filter appears only where the Manpower tab is read", () => {

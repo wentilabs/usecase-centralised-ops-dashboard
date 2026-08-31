@@ -120,7 +120,14 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
     company: [...COMPANIES],},
   subcon: {
     company: [...COMPANIES],},
-  issueChaser: { company: [...COMPANIES] },
+  issueChaser: {
+    company: [...COMPANIES],
+    // `check (timezone = 'Asia/Singapore')` — a single-valued CHECK. Rendered as
+    // a one-option select rather than free text so it cannot be typed into a
+    // rejected save; it stays editable rather than readonly, so relaxing the
+    // constraint upstream needs no change here beyond this list.
+    timezone: ["Asia/Singapore"],
+  },
 };
 
 // Field-level hints:
@@ -577,32 +584,52 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // classification and the Manpower/Machines tabs.
     enable_housekeeping: {
       label: "Housekeeping intake",
-      help: "Off means forwarded housekeeping messages are ignored. Independent of Enabled, which governs the outbound morning report.",
+      help: "Off means forwarded housekeeping messages are ignored. Independent of Morning report — neither implies the other, and there is no master switch (INV-HK-01).",
     },
     enabled: {
       label: "Morning report",
-      help: "Governs outbound delivery of the daily activity + manpower summary. Intake continues either way.",
+      help: "Governs outbound delivery of the daily activity + manpower summary. Intake continues either way; this is not a master switch (INV-HK-01).",
     },
     safety_group_ids: {
       label: "Source group IDs",
       widget: "groups",
-      help: "Inbound only, and the only thing that routes a message to this project. Comma-separated; messages from these groups are accepted as this project's. Empty means nothing arrives.",
+      help: "Inbound only, and the only thing that routes a message to this project — there is no client-identifier fallback, and several project codes may share a listener client (INV-HK-10). Comma-separated. Empty means nothing arrives, which is the default on a fresh row.",
     },
     spreadsheet_id: {
       label: "Manpower workbook",
       widget: "sheet",
-      help: "This service writes the `Daily Activity` tab, and the summary route also maintains `Activity and Manpower Daily`. The `Manpower` and `Machines` tabs belong to the base template.",
+      help: "Required, and must be shared with the service account as Editor. It initialises the housekeeping roster once per project per SGT date and remains the morning report's input (INV-HK-05, INV-HK-12). This service writes the `Daily Activity` tab; `Manpower` and `Machines` belong to the base template.",
     },
     manpower_activity_outbound_group_id: {
       label: "Morning report group",
       widget: "groups",
-      help: "Where the daily summary is sent. Empty means the report has nowhere to go even with Morning report on.",
+      help: "Where the daily summary is sent. Empty by default while Morning report defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
     },
-    instance_name: { label: "WhatsApp instance", row: "wa_identity" },
-    client_id: { label: "Client ID", row: "wa_identity" },
-    lambda_url: { label: "Send-message proxy URL" },
+    // The delivery trio, on every service. Named here because a blank one is
+    // silent: the report is generated, the send fails, and the card looks fine.
+    instance_name: {
+      label: "WhatsApp instance",
+      row: "wa_identity",
+      help: "Listener instance behind the proxy. Blank means the morning report cannot be delivered.",
+    },
+    client_id: {
+      label: "Client ID",
+      row: "wa_identity",
+      help: "Selects the sending account on that instance.",
+    },
+    lambda_url: {
+      label: "Send-message proxy URL",
+      help: "The project listener's /send-message endpoint. Blank means nothing is delivered, however the toggles read.",
+    },
 
-    project_code: { label: "Project code" },
+    // Editable here, unlike every sibling service, because `id` is the primary
+    // key and HALO edits by it — so renaming the code does not orphan the row.
+    // It is still how a forwarded message resolves to this project, so a rename
+    // moves the routing with it.
+    project_code: {
+      label: "Project code",
+      help: "How a forwarded message resolves to this project. Unique, and not the primary key here — HALO edits by `id`, so this can be corrected without recreating the row.",
+    },
     id: { hidden: true },
     created_at: { hidden: true },
     updated_at: { hidden: true },
@@ -628,17 +655,23 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       widget: "sheet",
       help: "Source of all issue state. The service finds the `Safety` tab and any `Safety-MMM YYYY` archives, reads rows by header name, and never writes to it.",
     },
+    // Each style says it needs `enabled` first, on the style itself. Saying it
+    // only on `enabled` was not enough: the operator toggling a style is looking
+    // at the style, and the database refuses the save
+    // (issue_chaser_feature_requires_enabled_check) with a constraint name, not
+    // a sentence. This is the inverse of every sibling service, where you
+    // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "P1 every 3 hours round the clock; P2 daily and P3 weekly, both 07:00–19:00 SGT. A due time in quiet hours waits for the next in-window tick.",
+      help: "P1 every 3 hours round the clock; P2 daily and P3 weekly, both 07:00–19:00 SGT. A due time in quiet hours waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
-      help: "09:00 and 21:00 SGT. Issues opened today and still open — deliberately does not chase older ones.",
+      help: "09:00 and 21:00 SGT. Issues opened today and still open — deliberately does not chase older ones. Cannot be turned on until Project enabled is on.",
     },
     priority_one_escalation_enabled: {
       label: "P1 escalation digest",
-      help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours.",
+      help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours. Cannot be turned on until Project enabled is on.",
     },
     include_issue_images: { label: "Include issue images", help: "Sends the sheet's `Image` for each issue." },
     mention_sender_fallback: {
@@ -662,10 +695,28 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       widget: "groups",
       help: "Fallback destinations. Required to enable the project unless Reply in the originating group is on.",
     },
-    instance_name: { label: "WhatsApp instance", row: "wa_identity" },
-    client_id: { label: "Client ID", row: "wa_identity" },
-    lambda_url: { label: "Send-message proxy URL" },
-    timezone: { label: "Timezone", help: "Pinned to Asia/Singapore by a CHECK." },
+    // All three are part of issue_chaser_enabled_delivery_check, so a blank one
+    // is not a missing nicety — it makes `enabled` unsavable. The URL's shape is
+    // checked by the database too, which is worth saying before a save fails on
+    // a trailing slash.
+    instance_name: {
+      label: "WhatsApp instance",
+      row: "wa_identity",
+      help: "Required before the project can be enabled.",
+    },
+    client_id: {
+      label: "Client ID",
+      row: "wa_identity",
+      help: "Required before the project can be enabled.",
+    },
+    lambda_url: {
+      label: "Send-message proxy URL",
+      help: "Must be https and end in /send-message — the database checks the shape, so a trailing slash or an http URL makes Project enabled unsavable.",
+    },
+    timezone: {
+      label: "Timezone",
+      help: "Pinned to Asia/Singapore by a CHECK; the reference projects are all SGT and nothing else will save.",
+    },
 
     project_code: { hidden: true },
     created_at: { hidden: true },

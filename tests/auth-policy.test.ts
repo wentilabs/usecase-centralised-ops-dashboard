@@ -22,7 +22,7 @@ import {
   serializeSelection,
   toggleMeter,
 } from "../lib/meter-selection";
-import { SERVICE_KEYS, SERVICES, tagLabel } from "../lib/services";
+import { SERVICE_KEYS, SERVICES, tagLabel, type ServiceKey } from "../lib/services";
 import {
   autoLinks,
   cardEmphasis,
@@ -1413,4 +1413,89 @@ test("a group-list change is reviewed as names, not as chat ids", () => {
     "added",
     "kept",
   ]);
+});
+
+test("an invariant id cited in help text names a real invariant in that service's repo", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+
+  // Help text that cites an invariant is only worth more than help text that
+  // does not if the id resolves. A cited id that no longer exists sends the
+  // reader to the service's AGENTS.md to look for something that is not there —
+  // worse than saying nothing, and ids do get renumbered.
+  //
+  // Keyed on the id's own PREFIX rather than on which service block the help
+  // sits in: the prefix already names the owning repo, so a citation copied into
+  // the wrong service's field is caught too.
+  const OWNER: Record<string, string> = {
+    "INV-WBGT": "usecase-wohhup-wbgt-alerts",
+    "INV-NOISE": "usecase-wohhup-noise-meter-alerts",
+    "INV-HAZE": "usecase-haze-alerts",
+    "INV-LTG": "usecase-lightning-alerts",
+    "INV-AIL": "mdw-lambda-ailytics",
+    "INV-HK": "usecase-wohhup-coy-housekeeping-waterparade",
+    "INV-ICH": "usecase-issue-chaser",
+  };
+
+  const source = await readFile(resolve(process.cwd(), "lib/field-spec.ts"), "utf8");
+  const cited = [...new Set(source.match(/INV-[A-Z]+-\d+/g) ?? [])];
+  assert.ok(cited.length >= 5, `expected the spec to cite some invariants, found ${cited.length}`);
+
+  const agents = new Map<string, string>();
+  for (const id of cited) {
+    const prefix = id.replace(/-\d+$/, "");
+    const repo = OWNER[prefix];
+    assert.ok(repo, `${id} has no known owning repo — add its prefix to OWNER`);
+
+    if (!agents.has(repo)) {
+      // A partial checkout is not a failure; the assertion is about ids that can
+      // be checked at all.
+      try {
+        agents.set(repo, await readFile(resolve(process.cwd(), "..", repo, "AGENTS.md"), "utf8"));
+      } catch {
+        agents.set(repo, "");
+      }
+    }
+    const text = agents.get(repo)!;
+    if (!text) continue;
+    assert.ok(text.includes(id), `field-spec.ts cites ${id}, which is not in ${repo}/AGENTS.md`);
+  }
+
+  // And the citation has to sit on the service it belongs to. Existence alone
+  // let INV-LTG-10 be cited on a subcon field and pass, because that id is real
+  // — just not lightning's business to explain a housekeeping column. Attributed
+  // by slicing the FIELDS blocks, which are the service keys at two-space indent.
+  const PREFIX: Record<string, string> = Object.fromEntries(
+    Object.entries(OWNER).map(([prefix, repo]) => [repo, prefix]),
+  );
+  const SERVICE_REPO: Record<string, string> = {
+    wbgt: "usecase-wohhup-wbgt-alerts",
+    noise: "usecase-wohhup-noise-meter-alerts",
+    haze: "usecase-haze-alerts",
+    lightning: "usecase-lightning-alerts",
+    ailytics: "mdw-lambda-ailytics",
+    subcon: "usecase-wohhup-coy-housekeeping-waterparade",
+    issueChaser: "usecase-issue-chaser",
+  };
+
+  const fieldsStart = source.indexOf("const FIELDS:");
+  assert.notEqual(fieldsStart, -1, "FIELDS block not found — was it renamed?");
+  const fieldsBody = source.slice(fieldsStart);
+  const blocks = [...fieldsBody.matchAll(/^ {2}(\w+): \{$/gm)];
+  assert.ok(blocks.length >= 7, `expected a FIELDS block per service, found ${blocks.length}`);
+
+  for (const [index, block] of blocks.entries()) {
+    const service = block[1];
+    const repo = SERVICE_REPO[service];
+    if (!repo) continue;
+    const body = fieldsBody.slice(block.index!, blocks[index + 1]?.index ?? fieldsBody.length);
+    const expected = PREFIX[repo];
+    for (const id of new Set(body.match(/INV-[A-Z]+-\d+/g) ?? [])) {
+      assert.equal(
+        id.replace(/-\d+$/, ""),
+        expected,
+        `${service} help cites ${id}, which belongs to another service`,
+      );
+    }
+  }
 });

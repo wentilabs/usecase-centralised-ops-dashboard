@@ -605,6 +605,15 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       widget: "groups",
       help: "Where the daily summary is sent. Empty by default while Morning report defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
     },
+    // Same column name as WBGT's, and a DIFFERENT filter: this one governs the
+    // housekeeping roster and the manpower summary, WBGT's governs the Water
+    // Parade roster. Both default on, and both exist because Woh Hup is the main
+    // contractor rather than a participant.
+    exclude_wohhup_from_manpower: {
+      label: "Exclude Woh Hup from the roster",
+      help: "On by default, which is the historical behaviour: Woh Hup, Wohhup and WHPL rows are dropped when the central `Manpower` tab is read. Applies to the plain report, the activity + manpower summary, and the first housekeeping-roster capture of the day (INV-HK-12). Off only where those rows are genuine participants.",
+    },
+
     // The delivery trio, on every service. Named here because a blank one is
     // silent: the report is generated, the send fails, and the card looks fine.
     instance_name: {
@@ -663,11 +672,45 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "P1 every 3 hours round the clock; P2 daily and P3 weekly, both 07:00–19:00 SGT. A due time in quiet hours waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
+      help: "P1 every 3 hours, P2 daily, P3 weekly. Each pair of window columns below gates its own priorities; leave a window unset for round-the-clock eligibility, which is now the default — the old fixed 07:00–19:00 hours were retired when the windows became configurable. A due time outside a set window waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
       help: "09:00 and 21:00 SGT. Issues opened today and still open — deliberately does not chase older ones. Cannot be turned on until Project enabled is on.",
+    },
+    // Each style's own settings sit directly under it and are hidden until the
+    // style is on, so the group reads as three cadences rather than eleven
+    // switches. `time` columns get the default text widget deliberately: the
+    // `hhmm` widget caps input at four characters, which would silently truncate
+    // the `07:00:00` Postgres hands back.
+    include_days_before_snapshot: {
+      label: "Snapshot lookback (days)",
+      help: "How many earlier SGT dates the snapshot also covers. 0 — the default — is today only. A request may override it per call with `include_days_before`; this is the standing value. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
+      showIf: { field: "same_day_open_snapshot_enabled", equals: true },
+    },
+    severity_p1_window_start: {
+      label: "P1 window start",
+      row: "p1_window",
+      help: "Optional SGT gate for the P1 cadence, which otherwise runs round the clock. Set BOTH ends or neither, and they must differ — the database refuses one alone or two the same (issue_chaser_p1_window_check). Format HH:MM.",
+      showIf: { field: "severity_cadence_chaser_enabled", equals: true },
+    },
+    severity_p1_window_end: {
+      label: "P1 window end",
+      row: "p1_window",
+      showIf: { field: "severity_cadence_chaser_enabled", equals: true },
+      help: "Leave both ends empty for 24-hour eligibility.",
+    },
+    severity_p2_p3_window_start: {
+      label: "P2/P3 window start",
+      row: "p2p3_window",
+      help: "Optional SGT gate shared by the P2 and P3 cadences. Same rule as P1: both ends or neither, and they must differ (issue_chaser_p2_p3_window_check). Format HH:MM.",
+      showIf: { field: "severity_cadence_chaser_enabled", equals: true },
+    },
+    severity_p2_p3_window_end: {
+      label: "P2/P3 window end",
+      row: "p2p3_window",
+      showIf: { field: "severity_cadence_chaser_enabled", equals: true },
+      help: "Leave both ends empty for 24-hour eligibility.",
     },
     priority_one_escalation_enabled: {
       label: "P1 escalation digest",
@@ -879,7 +922,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
   subcon: [
     { title: "Project", fields: ["company", "project_code"] },
     { title: "Intake", fields: ["enable_housekeeping", "safety_group_ids"] },
-    { title: "Google Sheets", fields: ["spreadsheet_id"] },
+    // The Woh Hup filter sits with the workbook it filters, not with the report,
+    // because it also shapes the first roster capture of the day — which happens
+    // whether or not the morning report is switched on.
+    { title: "Google Sheets", fields: ["spreadsheet_id", "exclude_wohhup_from_manpower"] },
     {
       title: "Morning report",
       fields: ["enabled", "manpower_activity_outbound_group_id", "instance_name", "client_id", "lambda_url"],
@@ -892,7 +938,12 @@ const GROUPS: Record<string, FieldGroup[]> = {
       title: "Chaser styles",
       fields: [
         "severity_cadence_chaser_enabled",
+        "severity_p1_window_start",
+        "severity_p1_window_end",
+        "severity_p2_p3_window_start",
+        "severity_p2_p3_window_end",
         "same_day_open_snapshot_enabled",
+        "include_days_before_snapshot",
         "priority_one_escalation_enabled",
       ],
     },

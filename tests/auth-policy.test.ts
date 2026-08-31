@@ -1499,3 +1499,56 @@ test("an invariant id cited in help text names a real invariant in that service'
     }
   }
 });
+
+test("the issue-chaser card reads its configured cadence windows, not the retired fixed hours", () => {
+  const base = { severity_cadence_chaser_enabled: true, send_to_originating_groups: true };
+
+  // Unset is ROUND THE CLOCK. This is the reversal worth pinning: the card used
+  // to state a fixed 07:00–19:00 for P2/P3, and when the window columns landed
+  // `configuredWindow` began returning null for an unset pair — which
+  // `isInSendWindow` treats as eligible. The old text became the opposite of the
+  // truth for every project that had not set a window, which is all of them.
+  const open = firesAt("issueChaser", base);
+  assert.match(open, /P1 every 3h round the clock/);
+  assert.match(open, /P2 daily and P3 weekly round the clock/);
+  assert.doesNotMatch(open, /07:00–19:00/, "the retired fixed hours must not be claimed");
+
+  // A configured window is shown, with the seconds Postgres appends trimmed off.
+  const gated = firesAt("issueChaser", {
+    ...base,
+    severity_p1_window_start: "08:00:00",
+    severity_p1_window_end: "20:00:00",
+    severity_p2_p3_window_start: "07:30:00",
+    severity_p2_p3_window_end: "19:00:00",
+  });
+  assert.match(gated, /P1 every 3h within 08:00–20:00/);
+  assert.match(gated, /P2 daily and P3 weekly within 07:30–19:00/);
+
+  // A half-set window is refused by a CHECK, but the service ALSO treats it as
+  // never-due, so the card says that rather than rendering a blank range.
+  const half = firesAt("issueChaser", { ...base, severity_p1_window_start: "08:00:00" });
+  assert.match(half, /half-set window — nothing is due/);
+
+  // The snapshot lookback only shows when it is doing something.
+  const snap = (days: unknown) =>
+    firesAt("issueChaser", { same_day_open_snapshot_enabled: true, include_days_before_snapshot: days });
+  assert.doesNotMatch(snap(0), /previous/, "the default of 0 is today only, and says nothing extra");
+  assert.match(snap(1), /covering the previous 1 day too/);
+  assert.match(snap(3), /covering the previous 3 days too/);
+});
+
+test("subcon shows whether the roster excludes the main contractor", () => {
+  const labels = (config: Record<string, unknown>) => pillsFor("subcon", config).map((pill) => pill.label);
+  assert.ok(labels({}).includes("excl. Woh Hup"), "shown even at its default");
+
+  // Default is exclude, so an absent column reads as on — matching the database,
+  // where the column is `not null default true`.
+  const dflt = pillsFor("subcon", {}).find((pill) => pill.label === "excl. Woh Hup");
+  assert.equal(dflt?.on, true);
+  assert.equal(dflt?.tone, "info");
+
+  const included = pillsFor("subcon", { exclude_wohhup_from_manpower: false }).find(
+    (pill) => pill.label === "excl. Woh Hup",
+  );
+  assert.equal(included?.on, false, "off means Woh Hup rows count towards the roster");
+});

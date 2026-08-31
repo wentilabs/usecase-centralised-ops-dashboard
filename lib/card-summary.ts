@@ -266,9 +266,26 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   if (service === "issueChaser") {
     const parts: string[] = [];
     if (config.severity_cadence_chaser_enabled) {
-      parts.push("P1 every 3h round the clock, P2 daily and P3 weekly within 07:00–19:00");
+      // The windows are configuration now, not constants. This line used to say
+      // "P2 daily and P3 weekly within 07:00–19:00" and that became wrong the
+      // moment the columns landed: `configuredWindow` returns null when neither
+      // end is set and `isInSendWindow` then returns true, so an unset window is
+      // round the clock — the opposite of the old fixed hours. lib/cadence.js
+      // still exports DAY_WINDOW_START/END but no longer reads them.
+      parts.push(
+        `P1 every 3h ${severityWindow(config, "severity_p1_window_start", "severity_p1_window_end")}` +
+          `, P2 daily and P3 weekly ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}`,
+      );
     }
-    if (config.same_day_open_snapshot_enabled) parts.push("same-day open snapshot at 09:00 and 21:00");
+    if (config.same_day_open_snapshot_enabled) {
+      const lookback = Number(config.include_days_before_snapshot ?? 0);
+      parts.push(
+        "same-day open snapshot at 09:00 and 21:00" +
+          (Number.isFinite(lookback) && lookback > 0
+            ? ` covering the previous ${lookback} day${lookback === 1 ? "" : "s"} too`
+            : ""),
+      );
+    }
     if (config.priority_one_escalation_enabled) parts.push("P1 digest every 2h, 09:00–18:00");
     if (!parts.length) return "No chaser style enabled — nothing is sent";
     const line = `Reads the Safety workbook — ${parts.join(" · ")}`;
@@ -435,6 +452,16 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "housekeeping intake", on: config.enable_housekeeping !== false },
         { label: "morning report", on: config.enabled !== false },
         { label: "manpower workbook", on: on(config.spreadsheet_id) },
+        // Same wording as WBGT's pill and a different filter behind it: this one
+        // shapes the housekeeping roster and the manpower summary. Info-toned
+        // because it is a scoping choice, not a cadence, and shown always rather
+        // than only when off — a roster that silently includes or excludes the
+        // main contractor changes every headcount on the report.
+        {
+          label: "excl. Woh Hup",
+          on: config.exclude_wohhup_from_manpower !== false,
+          tone: "info" as const,
+        },
         {
           // What it answers: does anything reach this project at all? Only
           // `safety_group_ids` answers it. Project routing is group-based; the
@@ -511,6 +538,24 @@ export function searchTokens(service: ServiceKey, config: ProjectConfigRow): str
   ]
     .map((token) => token.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/**
+ * How one severity cadence's send window reads on a card.
+ *
+ * Postgres hands a `time` column back as `HH:MM:SS`; the seconds are noise on a
+ * card. Unset means round the clock — see `isInSendWindow` in the chaser's
+ * lib/cadence.js, which returns true when no window is configured. A half-set
+ * window is refused by a CHECK, but the service also treats it as never-due, so
+ * it is worth saying rather than rendering as a blank.
+ */
+function severityWindow(config: ProjectConfigRow, startColumn: string, endColumn: string): string {
+  const clip = (value: unknown) => String(value ?? "").trim().slice(0, 5);
+  const start = clip((config as Record<string, unknown>)[startColumn]);
+  const end = clip((config as Record<string, unknown>)[endColumn]);
+  if (!start && !end) return "round the clock";
+  if (!start || !end) return "on a half-set window — nothing is due until both ends are set";
+  return `within ${start}–${end}`;
 }
 
 /** Whether a card matches a free-text query. An empty query matches everything. */

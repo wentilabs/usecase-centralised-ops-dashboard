@@ -161,7 +161,7 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
           : ":30 if Moderate+, :15/:45 if High",
       );
     }
-    if (config.enable_5min_alerts) parts.push("5-min on 32/33°C crossings");
+    if (config.enable_5min_alerts) parts.push(`5-min on ${fiveMinCrossings(config)} crossings`);
     if (config.water_parade_enabled) {
       // The cooldown changes how often a site is asked, which is the part an
       // operator is answering questions about — worth a clause, not just a pill.
@@ -252,7 +252,10 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     // the old single-switch wording lost.
     const parts: string[] = [];
     if (config.enable_housekeeping !== false) {
-      parts.push("housekeeping events appended to the Daily Activity tab");
+      // Supabase, not a sheet tab. The service stopped writing the Daily
+      // Activity projection when Supabase became canonical, so naming the tab
+      // here would send someone to a document that no longer updates.
+      parts.push("housekeeping events recorded in Supabase");
     }
     if (config.enabled !== false) parts.push("morning activity + manpower summary");
     if (!parts.length) return "Both routes off — nothing is accepted and nothing is sent";
@@ -287,12 +290,38 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (config.priority_one_escalation_enabled) parts.push("P1 digest every 2h, 09:00–18:00");
-    if (!parts.length) return "No chaser style enabled — nothing is sent";
-    const line = `Reads the Safety workbook — ${parts.join(" · ")}`;
-    // Worth stating: the destination is usually not a configured group at all.
-    return config.send_to_originating_groups === false
-      ? `${line} — replies to the configured groups`
-      : `${line} — replies in each issue's originating group`;
+
+    // Said separately from the chasers, not folded into them. A summary chases
+    // nobody and never uses an issue's origin group — it carries the opposite
+    // routing, so sharing the chasers' suffix would state the wrong destination.
+    const summaries: string[] = [];
+    if (config.daily_safety_summary_enabled) summaries.push("past-days safety summary");
+    if (config.daily_safety_company_summary_enabled) {
+      summaries.push(summaries.length ? "the same split by company" : "past-days summary by company");
+    }
+
+    if (!parts.length && !summaries.length) return "No chaser style enabled — nothing is sent";
+
+    const clauses: string[] = [];
+    if (parts.length) {
+      // Worth stating: the destination is usually not a configured group at all.
+      clauses.push(
+        `${parts.join(" · ")} — ${
+          config.send_to_originating_groups === false
+            ? "replies to the configured groups"
+            : "replies in each issue's originating group"
+        }`,
+      );
+    }
+    if (summaries.length) {
+      const days = Number(config.summary_days ?? 5);
+      const span = Number.isFinite(days) && days > 0 ? days : 5;
+      clauses.push(
+        `${summaries.join(" and ")} at 08:00 over ${span} day${span === 1 ? "" : "s"}` +
+          ", always to the configured groups",
+      );
+    }
+    return `Reads the Safety workbook — ${clauses.join("; ")}`;
   }
 
   return "Event-driven — fires when the CCTV bot posts.";
@@ -351,6 +380,22 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "hourly", on: on(config.enable_hourly) },
         { label: "intermittent", on: on(config.enable_intermittent_reports) },
         { label: "5-min alerts", on: on(config.enable_5min_alerts) },
+        // Only when it is not the default. A pill saying "min orange" on every
+        // card would be noise — the whole point is to spot the two projects
+        // that differ. Blue for the same reason as `cooldown 2h`: it modifies a
+        // feature rather than switching one on.
+        ...(config.enable_5min_alerts &&
+        ["yellow", "red"].includes(String(config.five_min_alert_threshold ?? "").trim().toLowerCase())
+          ? [
+              {
+                label: `min ${String(config.five_min_alert_threshold).toLowerCase()} ${
+                  String(config.five_min_alert_threshold).toLowerCase() === "yellow" ? "31" : "33"
+                }°C`,
+                on: true,
+                tone: "info" as const,
+              },
+            ]
+          : []),
         { label: "scrape", on: config.enable_scrape !== false },
         { label: "skip lunch", on: on(config.skip_lunch_hour) },
         { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
@@ -481,6 +526,15 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         { label: "severity cadence", on: on(config.severity_cadence_chaser_enabled) },
         { label: "same-day snapshot", on: on(config.same_day_open_snapshot_enabled) },
         { label: "P1 escalation", on: on(config.priority_one_escalation_enabled) },
+        // Reports rather than chasers, and blue for it — the same reasoning as
+        // the WBGT Water Parade pills: tone separates "a different kind of
+        // thing" from "another switch in the same row".
+        ...(config.daily_safety_summary_enabled
+          ? [{ label: "daily summary", on: true, tone: "info" as const }]
+          : []),
+        ...(config.daily_safety_company_summary_enabled
+          ? [{ label: "summary by company", on: true, tone: "info" as const }]
+          : []),
         { label: "reply in origin group", on: config.send_to_originating_groups !== false },
         // "origin required", "images" and "PIC mentions" were dropped here when
         // their columns were retired from the service (412256d). Each is now
@@ -579,9 +633,10 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): CardLi
   if (config.google_sheet_id) links.push({ label: "📗 Analysis sheet", href: sheet(config.google_sheet_id) });
   if (config.spreadsheet_id) {
     // Same column, different documents: ailytics keeps its safety log there,
-    // subcon its manpower workbook.
+    // subcon its manpower workbook. Named for the document, not for a tab —
+    // subcon reads `Manpower` and no longer writes `Daily Activity` at all.
     links.push({
-      label: service === "subcon" ? "📗 Daily Activity" : "📗 Safety sheet",
+      label: service === "subcon" ? "📗 Manpower workbook" : "📗 Safety sheet",
       href: sheet(config.spreadsheet_id),
     });
   }
@@ -642,6 +697,24 @@ export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): num
   return order[cardEmphasis(service, config)];
 }
 
+/**
+ * Which 5-minute crossings actually send, given the configured minimum.
+ *
+ * A blank column is not "unset" — it is the orange-only behaviour every project
+ * had before `five_min_alert_threshold` existed, so it reads the same as an
+ * explicit orange rather than as a gap.
+ */
+export function fiveMinCrossings(config: ProjectConfigRow): string {
+  switch (String(config.five_min_alert_threshold ?? "").trim().toLowerCase()) {
+    case "yellow":
+      return "31/32/33°C";
+    case "red":
+      return "33°C";
+    default:
+      return "32/33°C";
+  }
+}
+
 /** Cards with nothing scheduled sink to the bottom of the grid. */
 export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boolean {
   if (service === "wbgt") {
@@ -676,7 +749,12 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     return Boolean(
       config.severity_cadence_chaser_enabled ||
         config.same_day_open_snapshot_enabled ||
-        config.priority_one_escalation_enabled,
+        config.priority_one_escalation_enabled ||
+        // A summary is scheduled work too. Without these, a project running
+        // only the 08:00 report would sink to the bottom as "nothing
+        // scheduled" while it is messaging a site every morning.
+        config.daily_safety_summary_enabled ||
+        config.daily_safety_company_summary_enabled,
     );
   }
   return config.enabled !== false;

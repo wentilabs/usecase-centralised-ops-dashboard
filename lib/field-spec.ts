@@ -16,6 +16,16 @@ export type FieldWidget =
   // name. Also stored exactly like "csv".
   | "meters";
 
+/**
+ * A visibility condition. `anyOf` is an OR — needed where one setting belongs to
+ * several toggles at once, as `summary_days` does to both issue-chaser summary
+ * flags. Hiding it behind just one of them would leave it unreachable for a
+ * project running only the other.
+ */
+export type ShowIf =
+  | { field: string; equals: unknown }
+  | { anyOf: { field: string; equals: unknown }[] };
+
 export type FieldSpec = {
   name: string;
   label: string;
@@ -26,7 +36,7 @@ export type FieldSpec = {
   default: unknown;
   readonly: boolean;
   hidden: boolean;
-  showIf: { field: string; equals: unknown } | null;
+  showIf: ShowIf | null;
   row: string | null;
 };
 
@@ -95,6 +105,12 @@ const READONLY: Record<string, string[]> = {
 const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
   wbgt: {
     company: [...COMPANIES],
+    // A real pg enum (`wbgts.wbgt_5min_alert_threshold`), so introspection
+    // normally supplies these and `col.enum` wins. Listed anyway because
+    // migrate_five_min_alert_threshold.sql adds the column as plain text before
+    // converting it — a half-applied migration would otherwise render free text
+    // on a column the database will reject.
+    five_min_alert_threshold: ["yellow", "orange", "red"],
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
     source_type: ["default", "whgd", "svs", "pentaocean"],
@@ -165,7 +181,18 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "red15 → :30 on Moderate+, :15/:45 on High. red30 → :30 on High only.",
       showIf: { field: "enable_intermittent_reports", equals: true },
     },
-    enable_5min_alerts: { label: "5-min exceedance alerts", help: "🟠 >32°C, 🔴 >33°C, 🟢 recovery <31°C." },
+    enable_5min_alerts: {
+      label: "5-min exceedance alerts",
+      help: "🟠 >32°C, 🔴 >33°C, 🟢 recovery <31°C. Which of those actually send is set by the minimum severity below.",
+    },
+    // Nullable on purpose: blank is not "unset pending a choice", it is the
+    // historical orange-only behaviour every project had before the column
+    // existed. Saying so here stops a blank reading as a misconfiguration.
+    five_min_alert_threshold: {
+      label: "5-min minimum severity",
+      help: "Lowest crossing that sends. Blank = orange, the long-standing behaviour. yellow also alerts on entering 31–<32°C, the band that is otherwise silent; red waits for 33°C. A filtered crossing still records its zone, so a later move into a higher zone alerts, and recovery is sent only on leaving a zone that met this threshold.",
+      showIf: { field: "enable_5min_alerts", equals: true },
+    },
     five_min_alert_formatter: {
       label: "5-min alert format",
       help: "short → one line per crossing. full → the whole hourly advisory, in whichever Hourly wording the project uses.",
@@ -598,7 +625,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     spreadsheet_id: {
       label: "Manpower workbook",
       widget: "sheet",
-      help: "Required, and must be shared with the service account as Editor. It initialises the housekeeping roster once per project per SGT date and remains the morning report's input (INV-HK-05, INV-HK-12). This service writes the `Daily Activity` tab; `Manpower` and `Machines` belong to the base template.",
+      help: "Required, and must be shared with the service account — read access is enough. It initialises the housekeeping roster once per project per SGT date and remains the morning report's input (INV-HK-05, INV-HK-12). Read-only since Supabase became canonical: the service no longer creates or writes any tab, including the `Daily Activity` projection it used to maintain. It reads `Manpower`, and `Machines` when present; both belong to the base template.",
     },
     manpower_activity_outbound_group_id: {
       label: "Morning report group",
@@ -716,6 +743,30 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "P1 escalation digest",
       help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours. Cannot be turned on until Project enabled is on.",
     },
+    // Summaries are informational reports, not chasers: they read the workbook,
+    // never touch delivery_events, and never chase anyone. Two CHECKs bite on
+    // save — issue_chaser_feature_requires_enabled_check (needs `enabled`) and
+    // issue_chaser_summary_destination_check (needs a group), and the second is
+    // the surprising one, because it holds even when the project otherwise
+    // replies in each issue's originating group.
+    daily_safety_summary_enabled: {
+      label: "Past-days safety summary",
+      help: "08:00 SGT daily. Read-only report: total, open and closed plus P1/P2/P3 counts across the last few SGT dates, and each date's open count. Needs Project enabled and at least one WhatsApp group ID — a summary is a project-level report, so it always goes to the group list even when Reply in the originating group is on.",
+    },
+    daily_safety_company_summary_enabled: {
+      label: "Past-days summary by company",
+      help: "The same 08:00 SGT report with an Open issues by company section under each date. A separate route and flag, so it can run instead of, or alongside, the plain summary. A row naming several companies counts once for each, so company totals can exceed the project total; blank cells show as Unknown company, and a workbook with no Company column produces the plain report.",
+    },
+    summary_days: {
+      label: "Summary window (days)",
+      help: "How many consecutive SGT dates each summary covers, counting the end date itself — so 5, the default, is today plus the four before it. Shared by both summaries. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
+      showIf: {
+        anyOf: [
+          { field: "daily_safety_summary_enabled", equals: true },
+          { field: "daily_safety_company_summary_enabled", equals: true },
+        ],
+      },
+    },
     // include_issue_images, mention_sender_fallback, pic_mentions_enabled and
     // require_origin_chat_identity were REMOVED from issue_chaser.project_configs
     // by 412256d ("harden reminder routing and mentions"): PIC resolution and
@@ -725,12 +776,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // explicitly deletes all four, so they are behaviour, not configuration.
     send_to_originating_groups: {
       label: "Reply in the originating group",
-      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required.",
+      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required. Applies to reminders only: the daily summaries ignore this and always use the group list, so one project report is never copied into every issue's origin group.",
     },
     whatsapp_group_ids: {
       label: "WhatsApp group IDs",
       widget: "groups",
-      help: "Fallback destinations. Required to enable the project unless Reply in the originating group is on.",
+      help: "Fallback destinations for reminders, and the only destination for the daily summaries. Required to enable the project unless Reply in the originating group is on — and required outright, regardless of that setting, before either summary can be turned on (issue_chaser_summary_destination_check).",
     },
     // All three are part of issue_chaser_enabled_delivery_check, so a blank one
     // is not a missing nicety — it makes `enabled` unsavable. The URL's shape is
@@ -774,6 +825,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "enable_intermittent_reports",
         "intermittent_reports_formatter",
         "enable_5min_alerts",
+        "five_min_alert_threshold",
         "five_min_alert_formatter",
       ],
     },
@@ -939,6 +991,14 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "same_day_open_snapshot_enabled",
         "include_days_before_snapshot",
         "priority_one_escalation_enabled",
+      ],
+    },
+    {
+      title: "Daily summaries",
+      fields: [
+        "daily_safety_summary_enabled",
+        "daily_safety_company_summary_enabled",
+        "summary_days",
       ],
     },
     {

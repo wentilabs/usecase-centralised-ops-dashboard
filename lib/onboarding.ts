@@ -739,7 +739,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     description:
       "Creates one row in manpower_activity.project_configs. Two routes: housekeeping intake, and the outbound morning activity + manpower summary.",
     outsideHalo: [
-      "Share the manpower workbook with the service account as Editor. This service writes the `Daily Activity` tab and maintains `Activity and Manpower Daily`; the `Manpower` and `Machines` tabs belong to the base template.",
+      "Share the manpower workbook with the service account — read access is enough. This service never creates or writes a tab: it reads `Manpower`, and `Machines` when present, both owned by the base template, and keeps its own record in Supabase.",
       "Fill in the source group IDs. They are the only thing that routes a message to this project. With no groups, intake is switched on and nothing arrives.",
       "Point the base template's forwarder at this service, and confirm the groups it forwards from are the ones listed here.",
       "The morning report needs a destination group as well as the send URL. With the group blank it stays switched on and delivers nothing.",
@@ -771,7 +771,7 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         kind: "sheet",
         required: true,
         notNull: true,
-        help: "Must already exist and be shared with the service account as Editor.",
+        help: "Must already exist and be shared with the service account. Read access is enough — this service never writes to it.",
       },
       {
         column: "safety_group_ids",

@@ -26,12 +26,16 @@ function display(value: unknown): string {
   return String(value);
 }
 
-/** A field is shown only while its controlling toggle holds the required value. */
+/**
+ * A field is shown only while its controlling toggle holds the required value.
+ * `anyOf` is an OR, for a setting that belongs to several toggles at once.
+ */
 function isVisible(field: FieldSpec, values: Record<string, unknown>): boolean {
   if (!field.showIf) return true;
-  return (
-    JSON.stringify(values[field.showIf.field] ?? null) ===
-    JSON.stringify(field.showIf.equals)
+  const conditions = "anyOf" in field.showIf ? field.showIf.anyOf : [field.showIf];
+  return conditions.some(
+    (condition) =>
+      JSON.stringify(values[condition.field] ?? null) === JSON.stringify(condition.equals),
   );
 }
 

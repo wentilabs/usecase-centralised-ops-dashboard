@@ -334,7 +334,10 @@ listing it in `GROUPS[service]` in `lib/field-spec.ts`. Useful keys:
 - `hidden` — never render (identity, audit stamps, job-owned runtime state)
 - `showIf: { field, equals }` — render only while another field holds a value;
   a hidden field's pending edit is discarded so what you cannot see cannot be
-  saved
+  saved. `showIf: { anyOf: [{ field, equals }, …] }` is an OR, for a setting
+  owned by several toggles at once — issue-chaser's `summary_days` belongs to
+  both summary flags, and hiding it behind one would strand it for a project
+  running only the other
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
 

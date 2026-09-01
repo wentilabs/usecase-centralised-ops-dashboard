@@ -239,10 +239,14 @@ test("subcon fires-at describes both of its routes", () => {
   // and /daily-activity-manpower-summary sends the morning report. Both default
   // on in Postgres, so an empty row is doing both.
   const both = firesAt("subcon", {});
-  assert.match(both, /Daily Activity tab/);
+  // Supabase, not a sheet tab: the service stopped writing the Daily Activity
+  // projection when Supabase became canonical (9b45234), so naming the tab here
+  // would point an operator at a document that no longer updates.
+  assert.match(both, /recorded in Supabase/);
+  assert.doesNotMatch(both, /Daily Activity/);
   assert.match(both, /morning activity \+ manpower summary/);
 
-  assert.doesNotMatch(firesAt("subcon", { enable_housekeeping: false }), /Daily Activity tab/);
+  assert.doesNotMatch(firesAt("subcon", { enable_housekeeping: false }), /recorded in Supabase/);
   assert.doesNotMatch(firesAt("subcon", { enabled: false }), /morning summary|manpower summary/);
   assert.match(firesAt("subcon", { enabled: false, enable_housekeeping: false }), /Both routes off/);
 
@@ -308,11 +312,12 @@ test("delivery groups keep each service's columns", () => {
   );
 });
 test("the same spreadsheet_id column is labelled per service", () => {
-  // Subcon writes only the Daily Activity tab of the manpower workbook, so
-  // "Manpower sheet" over-claimed what this service touches.
+  // Named for the document rather than a tab. It used to read "Daily Activity"
+  // because that was the one tab this service wrote; since 9b45234 it writes
+  // nothing and only reads `Manpower`, so a tab name would be doubly wrong.
   assert.deepEqual(
     autoLinks("subcon", { spreadsheet_id: "S1" }).map((l) => l.label),
-    ["📗 Daily Activity"],
+    ["📗 Manpower workbook"],
   );
   assert.match(autoLinks("subcon", { spreadsheet_id: "S1" })[0].href, /spreadsheets\/d\/S1\/edit$/);
 
@@ -1553,4 +1558,154 @@ test("subcon shows whether the roster excludes the main contractor", () => {
     (pill) => pill.label === "excl. Woh Hup",
   );
   assert.equal(included?.on, false, "off means Woh Hup rows count towards the roster");
+});
+
+// ---------------------------------------------------------------------------
+// Columns added to the service repos on 1 Sep 2026, not yet migrated into
+// Supabase. HALO builds fields from live introspection, so the editor entries
+// stay dormant until the migrations run — which makes "absent behaves exactly
+// as today" the assertion that matters most here.
+// ---------------------------------------------------------------------------
+
+test("wbgt 5-min severity: a missing column reads as the historical orange", () => {
+  // The live state right now. A blank is not "unset pending a choice", it is
+  // the orange-only behaviour every project had before the column existed.
+  assert.match(firesAt("wbgt", { enable_5min_alerts: true }), /5-min on 32\/33°C crossings/);
+  assert.match(
+    firesAt("wbgt", { enable_5min_alerts: true, five_min_alert_threshold: "orange" }),
+    /5-min on 32\/33°C crossings/,
+  );
+});
+
+test("wbgt 5-min severity changes which crossings the card claims", () => {
+  assert.match(
+    firesAt("wbgt", { enable_5min_alerts: true, five_min_alert_threshold: "yellow" }),
+    /5-min on 31\/32\/33°C crossings/,
+  );
+  const red = firesAt("wbgt", { enable_5min_alerts: true, five_min_alert_threshold: "red" });
+  assert.match(red, /5-min on 33°C crossings/);
+  // The point of `red` is that 32 no longer sends; still saying so would be the
+  // card telling an operator the opposite of what the site will receive.
+  assert.doesNotMatch(red, /32/);
+});
+
+test("the 5-min severity pill shows only when it differs from the default", () => {
+  const labels = (config: Record<string, unknown>) => pillsFor("wbgt", config).map((p) => p.label);
+  const hasMin = (config: Record<string, unknown>) => labels(config).some((l) => l.startsWith("min "));
+
+  // "min orange" on every card is noise — the pill exists to spot the odd one.
+  assert.equal(hasMin({ enable_5min_alerts: true }), false);
+  assert.equal(hasMin({ enable_5min_alerts: true, five_min_alert_threshold: "orange" }), false);
+
+  assert.ok(labels({ enable_5min_alerts: true, five_min_alert_threshold: "yellow" }).includes("min yellow 31°C"));
+  assert.ok(labels({ enable_5min_alerts: true, five_min_alert_threshold: "red" }).includes("min red 33°C"));
+
+  // A threshold on a project with 5-min off governs nothing, so it is not shown.
+  assert.equal(hasMin({ enable_5min_alerts: false, five_min_alert_threshold: "red" }), false);
+});
+
+test("an issue-chaser project running only a summary is not idle", () => {
+  // Without this the card sinks to the bottom as "nothing scheduled" while it
+  // messages a site at 08:00 every morning.
+  assert.equal(hasCadence("issueChaser", {}), false);
+  assert.equal(hasCadence("issueChaser", { daily_safety_summary_enabled: true }), true);
+  assert.equal(hasCadence("issueChaser", { daily_safety_company_summary_enabled: true }), true);
+});
+
+test("summaries carry their own routing, never the chasers'", () => {
+  const summaryOnly = firesAt("issueChaser", { daily_safety_summary_enabled: true });
+  assert.match(summaryOnly, /past-days safety summary/);
+  assert.match(summaryOnly, /always to the configured groups/);
+  // A summary is never copied into an issue's origin group. Inheriting the
+  // chaser suffix would name a destination the service does not use.
+  assert.doesNotMatch(summaryOnly, /originating group/);
+
+  // And the chaser keeps its own routing when both are on.
+  const both = firesAt("issueChaser", {
+    severity_cadence_chaser_enabled: true,
+    daily_safety_summary_enabled: true,
+  });
+  assert.match(both, /replies in each issue's originating group/);
+  assert.match(both, /always to the configured groups/);
+});
+
+test("the summary window is read from summary_days and defaults to five", () => {
+  const line = (extra: Record<string, unknown>) =>
+    firesAt("issueChaser", { daily_safety_summary_enabled: true, ...extra });
+  assert.match(line({}), /over 5 days/);
+  assert.match(line({ summary_days: 1 }), /over 1 day\b/);
+  assert.match(line({ summary_days: 14 }), /over 14 days/);
+  // The database refuses 0 (issue_chaser_summary_days_check); the card should
+  // fall back rather than print a window that cannot exist.
+  assert.match(line({ summary_days: 0 }), /over 5 days/);
+});
+
+test("both summary flags produce their own pills", () => {
+  const labels = (config: Record<string, unknown>) => pillsFor("issueChaser", config).map((p) => p.label);
+  assert.ok(!labels({}).includes("daily summary"));
+  assert.ok(labels({ daily_safety_summary_enabled: true }).includes("daily summary"));
+  assert.ok(labels({ daily_safety_company_summary_enabled: true }).includes("summary by company"));
+});
+
+test("summary_days stays reachable from either summary flag", () => {
+  // Hiding it behind just one flag would leave it unreachable for a project
+  // running only the other — the reason `showIf` grew an `anyOf` at all.
+  const column = { type: "boolean", format: "boolean", enum: null, default: null };
+  const spec = buildFieldSpec("issueChaser", {
+    daily_safety_summary_enabled: column,
+    daily_safety_company_summary_enabled: column,
+    summary_days: { type: "integer", format: "int4", enum: null, default: 5 },
+  });
+  const showIf = spec.fields.summary_days?.showIf;
+  assert.ok(showIf && "anyOf" in showIf, "summary_days must depend on either flag, not one");
+  assert.deepEqual(
+    showIf.anyOf.map((c) => c.field).sort(),
+    ["daily_safety_company_summary_enabled", "daily_safety_summary_enabled"],
+  );
+});
+
+test("the dormant columns render correctly once the migrations land", () => {
+  // These cannot be seen in the running app yet, so assert the shape the
+  // editor will build the moment introspection starts returning them.
+  const wbgt = buildFieldSpec("wbgt", {
+    enable_5min_alerts: { type: "boolean", format: "boolean", enum: null, default: false },
+    // As a pg enum, which is how migrate_five_min_alert_threshold.sql leaves it.
+    five_min_alert_threshold: {
+      type: "string",
+      format: "wbgt_5min_alert_threshold",
+      enum: ["yellow", "orange", "red"],
+      default: null,
+    },
+  });
+  const threshold = wbgt.fields.five_min_alert_threshold;
+  assert.equal(threshold.widget, "select");
+  assert.deepEqual(threshold.options, ["yellow", "orange", "red"]);
+  assert.equal(threshold.readonly, false);
+  // Hidden until 5-min alerts are on: it governs nothing otherwise.
+  assert.deepEqual(threshold.showIf, { field: "enable_5min_alerts", equals: true });
+  assert.ok(
+    wbgt.groups.some((g) => g.fields.includes("five_min_alert_threshold")),
+    "must be grouped, not stranded under Other",
+  );
+
+  // The same column half-migrated — still plain text, before the type swap.
+  // CHECK_ENUMS has to carry it or the editor offers free text on a column the
+  // database will reject.
+  const halfway = buildFieldSpec("wbgt", {
+    five_min_alert_threshold: { type: "string", format: "text", enum: null, default: null },
+  });
+  assert.deepEqual(halfway.fields.five_min_alert_threshold.options, ["yellow", "orange", "red"]);
+
+  const chaser = buildFieldSpec("issueChaser", {
+    daily_safety_summary_enabled: { type: "boolean", format: "boolean", enum: null, default: false },
+    daily_safety_company_summary_enabled: { type: "boolean", format: "boolean", enum: null, default: false },
+    summary_days: { type: "integer", format: "int4", enum: null, default: 5 },
+  });
+  assert.equal(chaser.fields.daily_safety_summary_enabled.widget, "toggle");
+  assert.equal(chaser.fields.summary_days.widget, "number");
+  // Their own group: a summary reads the workbook and chases nobody, so filing
+  // it under "Chaser styles" would misdescribe what it does.
+  const group = chaser.groups.find((g) => g.fields.includes("daily_safety_summary_enabled"));
+  assert.equal(group?.title, "Daily summaries");
+  assert.ok(!chaser.groups.some((g) => g.title === "Other"), "none may fall through to Other");
 });

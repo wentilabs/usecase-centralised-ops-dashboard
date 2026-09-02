@@ -246,10 +246,15 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "subcon") {
-    // Two independent routes: /housekeeping-intake accepts forwarded messages,
-    // /daily-activity-manpower-summary sends the morning report. `enabled`
-    // governs only the second — intake runs either way, which is the distinction
-    // the old single-switch wording lost.
+    // Three routes, not two: /housekeeping-intake accepts forwarded messages,
+    // /daily-activity-summary sends the activity + manpower message, and
+    // /daily-manpower-summary sends the plain per-company headcount. `enabled`
+    // governs the two reports and not intake, which runs either way.
+    //
+    // Naming both reports matters because they read different tabs and answer
+    // different questions, and until the per-report columns exist one switch
+    // sends both — so a card saying "morning report" left an operator unable to
+    // tell which of the two a site actually receives.
     const parts: string[] = [];
     if (config.enable_housekeeping !== false) {
       // Supabase, not a sheet tab. The service stopped writing the Daily
@@ -257,12 +262,21 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       // here would send someone to a document that no longer updates.
       parts.push("housekeeping events recorded in Supabase");
     }
-    if (config.enabled !== false) parts.push("morning activity + manpower summary");
-    if (!parts.length) return "Both routes off — nothing is accepted and nothing is sent";
+    // Absent per-report columns read as on, so this says exactly what `enabled`
+    // alone does today and keeps saying the truth once the columns land.
+    const reports = subconReports(config);
+    // Not joined with "+": each name already contains one, and "activity +
+    // manpower + manpower + machines" reads as one report with four parts.
+    if (reports.length === 2) {
+      parts.push("morning reports: activity + manpower, and manpower + machines");
+    } else if (reports.length === 1) {
+      parts.push(`only the ${reports[0]} morning report`);
+    }
+    if (!parts.length) return "Nothing is accepted and nothing is sent";
     let line = `Event-driven on forwarded WhatsApp — ${parts.join(" · ")}`;
     // A report with no destination is the quiet failure worth surfacing.
-    if (config.enabled !== false && !String(config.manpower_activity_outbound_group_id ?? "").trim()) {
-      line += " — no morning report group set, so nothing is delivered";
+    if (reports.length && !String(config.manpower_activity_outbound_group_id ?? "").trim()) {
+      line += " — no report group set, so nothing is delivered";
     }
     return line;
   }
@@ -494,7 +508,17 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
     case "subcon":
       return [
         { label: "housekeeping intake", on: config.enable_housekeeping !== false },
-        { label: "morning report", on: config.enabled !== false },
+        // One pill per report rather than a single "morning report". They read
+        // different tabs and answer different questions, and a project can end
+        // up with one and not the other once the columns exist.
+        {
+          label: "activity + manpower",
+          on: subconReports(config).includes("activity + manpower"),
+        },
+        {
+          label: "manpower + machines",
+          on: subconReports(config).includes("manpower + machines"),
+        },
         { label: "manpower workbook", on: on(config.spreadsheet_id) },
         // Same wording as WBGT's pill and a different filter behind it: this one
         // shapes the housekeeping roster and the manpower summary. Info-toned
@@ -699,6 +723,22 @@ export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): num
 }
 
 /**
+ * Which of subcon's two morning reports a project actually receives.
+ *
+ * `enabled` gates both, and until the service grows a column per report it is
+ * the only switch — so an absent `enable_*_summary` reads as on rather than as
+ * unset. That keeps the card honest today and correct the moment the columns
+ * land, without a second code path.
+ */
+export function subconReports(config: ProjectConfigRow): string[] {
+  if (config.enabled === false) return [];
+  const reports: string[] = [];
+  if (config.enable_activity_summary !== false) reports.push("activity + manpower");
+  if (config.enable_manpower_summary !== false) reports.push("manpower + machines");
+  return reports;
+}
+
+/**
  * Which 5-minute crossings actually send, given the configured minimum.
  *
  * A blank column is not "unset" — it is the orange-only behaviour every project
@@ -740,9 +780,10 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     );
   }
   if (service === "subcon") {
-    // Either route is work. `enabled` came back with the morning report, but it
-    // governs only that — a project with intake on is not idle.
-    return config.enable_housekeeping !== false || config.enabled !== false;
+    // Either route is work — a project with intake on is not idle. Reports are
+    // counted through `subconReports`, not `enabled`, so a project left enabled
+    // with both reports switched off reads as idle rather than as scheduled.
+    return config.enable_housekeeping !== false || subconReports(config).length > 0;
   }
   if (service === "issueChaser") {
     // `enabled` alone sends nothing — a chaser style has to be on too, and a

@@ -613,9 +613,28 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Housekeeping intake",
       help: "Off means forwarded housekeeping messages are ignored. Independent of Morning report — neither implies the other, and there is no master switch (INV-HK-01).",
     },
+    // `enabled` covers BOTH scheduled reports, which the old wording hid by
+    // naming only one of them. The service runs two routes off one flag:
+    // POST /daily-activity-summary and POST /daily-manpower-summary, each
+    // gated by `project.enabled !== false` and each falling back to the same
+    // outbound group.
     enabled: {
-      label: "Morning report",
-      help: "Governs outbound delivery of the daily activity + manpower summary. Intake continues either way; this is not a master switch (INV-HK-01).",
+      label: "Scheduled reports",
+      help: "Sends BOTH morning reports: the activity + manpower message, and the plain per-company manpower + machines summary. One switch for both today — the two below split them once the service reads them. Intake continues either way; this is not a master switch (INV-HK-01).",
+    },
+    // Dormant until the service grows the columns: HALO renders fields from
+    // live introspection, so these appear only once they exist. Written as
+    // "absent means on", matching what `enabled` alone does now, so the cards
+    // and the editor read the same before and after the migration.
+    enable_activity_summary: {
+      label: "Activity + manpower report",
+      help: "POST /daily-activity-summary — the morning activity/manpower message. Blank or absent means on, which is what Scheduled reports alone does today.",
+      showIf: { field: "enabled", equals: true },
+    },
+    enable_manpower_summary: {
+      label: "Manpower + machines report",
+      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Blank or absent means on. Turn this off and leave the one above on to send only the activity report, or the reverse for headcount only.",
+      showIf: { field: "enabled", equals: true },
     },
     safety_group_ids: {
       label: "Source group IDs",
@@ -630,7 +649,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     manpower_activity_outbound_group_id: {
       label: "Morning report group",
       widget: "groups",
-      help: "Where the daily summary is sent. Empty by default while Morning report defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
+      help: "Where BOTH morning reports are sent, and the housekeeping report's fallback destination — one column for all three. Empty by default while Scheduled reports defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
     },
     // Same column name as WBGT's, and a DIFFERENT filter: this one governs the
     // housekeeping roster and the manpower summary, WBGT's governs the Water
@@ -976,8 +995,16 @@ const GROUPS: Record<string, FieldGroup[]> = {
     // whether or not the morning report is switched on.
     { title: "Google Sheets", fields: ["spreadsheet_id", "exclude_wohhup_from_manpower"] },
     {
-      title: "Morning report",
-      fields: ["enabled", "manpower_activity_outbound_group_id", "instance_name", "client_id", "lambda_url"],
+      title: "Scheduled reports",
+      fields: [
+        "enabled",
+        "enable_activity_summary",
+        "enable_manpower_summary",
+        "manpower_activity_outbound_group_id",
+        "instance_name",
+        "client_id",
+        "lambda_url",
+      ],
     },
   ],
   issueChaser: [

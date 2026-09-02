@@ -234,27 +234,46 @@ test("lightning fires-at distinguishes red-only sites", () => {
 // Subcon Activities — the one service whose `enabled` flag is not a master
 // switch, and the first with several group columns that mean different things.
 // ---------------------------------------------------------------------------
-test("subcon fires-at describes both of its routes", () => {
-  // Two independent routes now: /housekeeping-intake accepts forwarded messages
-  // and /daily-activity-manpower-summary sends the morning report. Both default
-  // on in Postgres, so an empty row is doing both.
+test("subcon fires-at names both morning reports, not just one", () => {
+  // Three routes: /housekeeping-intake accepts forwarded messages, and
+  // /daily-activity-summary and /daily-manpower-summary each send a different
+  // morning report off the same `enabled` flag. The card used to name only the
+  // first, which left an operator unable to tell which of the two a site gets.
   const both = firesAt("subcon", {});
   // Supabase, not a sheet tab: the service stopped writing the Daily Activity
   // projection when Supabase became canonical (9b45234), so naming the tab here
   // would point an operator at a document that no longer updates.
   assert.match(both, /recorded in Supabase/);
   assert.doesNotMatch(both, /Daily Activity/);
-  assert.match(both, /morning activity \+ manpower summary/);
+  // Both named, and not glued into one phrase: each name already contains a
+  // "+", so joining them with another produced "activity + manpower + manpower
+  // + machines" — one report with four parts, as far as a reader could tell.
+  assert.match(both, /activity \+ manpower/);
+  assert.match(both, /manpower \+ machines/);
+  assert.doesNotMatch(both, /manpower \+ manpower/);
 
   assert.doesNotMatch(firesAt("subcon", { enable_housekeeping: false }), /recorded in Supabase/);
-  assert.doesNotMatch(firesAt("subcon", { enabled: false }), /morning summary|manpower summary/);
-  assert.match(firesAt("subcon", { enabled: false, enable_housekeeping: false }), /Both routes off/);
+  assert.doesNotMatch(firesAt("subcon", { enabled: false }), /activity|machines/);
+  assert.match(firesAt("subcon", { enabled: false, enable_housekeeping: false }), /nothing is sent/);
+
+  // The per-report columns do not exist yet, so an absent one must read as on —
+  // exactly what `enabled` alone does today — and each must be able to stand
+  // alone once they land.
+  const activityOnly = firesAt("subcon", { enable_manpower_summary: false });
+  assert.match(activityOnly, /only the activity \+ manpower morning report/);
+  const manpowerOnly = firesAt("subcon", { enable_activity_summary: false });
+  assert.match(manpowerOnly, /only the manpower \+ machines morning report/);
 
   // A report with nowhere to go is the quiet failure worth naming.
-  assert.match(firesAt("subcon", { enabled: true }), /no morning report group set/);
+  assert.match(firesAt("subcon", { enabled: true }), /no report group set/);
   assert.doesNotMatch(
     firesAt("subcon", { enabled: true, manpower_activity_outbound_group_id: "g@g.us" }),
-    /no morning report group/,
+    /no report group/,
+  );
+  // Both reports off leaves nothing to deliver, so the warning must go too.
+  assert.doesNotMatch(
+    firesAt("subcon", { enabled: true, enable_activity_summary: false, enable_manpower_summary: false }),
+    /no report group/,
   );
 });
 test("subcon's `enabled` governs only the morning report", () => {
@@ -350,7 +369,13 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   // Subcon has no outbound surface at all now, so there is no such pill to show.
   assert.ok(!subconPills.some((p) => p.label === "outbound WhatsApp"), "superseded by the named routes");
   assert.ok(subconPills.some((p) => p.label === "housekeeping intake"));
-  assert.ok(subconPills.some((p) => p.label === "morning report"), "the outbound route is its own pill");
+  // One pill per report, so which of the two a site receives is visible on the
+  // card rather than only in the editor.
+  for (const label of ["activity + manpower", "manpower + machines"]) {
+    const pill = subconPills.find((p) => p.label === label);
+    assert.ok(pill, `${label} must have its own pill`);
+    assert.equal(pill.on, false, `${label} must read off when Scheduled reports is off`);
+  }
   // Water Parade belongs to the WBGT service now, so subcon must not claim it.
   assert.ok(!subconPills.some((p) => /Water Parade/.test(p.label)));
   // enable_housekeeping defaults true in Postgres, so an absent flag reads as on.
@@ -1744,4 +1769,51 @@ test("the retired P1 escalation digest leaves no trace in the UI", () => {
   const home = spec.groups.find((g) => g.fields.includes("priority_one_escalation_enabled"));
   assert.equal(home?.title, "Other", "a resurfaced retired flag belongs in Other, not among the styles");
   assert.equal(spec.fields.priority_one_escalation_enabled?.help, "");
+});
+
+test("a subcon project enabled with both reports off is idle, not scheduled", () => {
+  // `enabled` used to stand in for "a report is scheduled". With per-report
+  // columns that stops being true, and a card claiming scheduled work while
+  // sending nothing is the failure worth catching.
+  assert.equal(hasCadence("subcon", {}), true);
+  assert.equal(
+    hasCadence("subcon", {
+      enable_housekeeping: false,
+      enabled: true,
+      enable_activity_summary: false,
+      enable_manpower_summary: false,
+    }),
+    false,
+  );
+  // Intake alone is still work.
+  assert.equal(
+    hasCadence("subcon", {
+      enable_housekeeping: true,
+      enabled: true,
+      enable_activity_summary: false,
+      enable_manpower_summary: false,
+    }),
+    true,
+  );
+});
+
+test("subcon's per-report switches render correctly once the columns land", () => {
+  // They cannot be seen in the running app yet — the service has no such
+  // columns — so assert the shape the editor will build when it does.
+  const boolean = { type: "boolean", format: "boolean", enum: null, default: true };
+  const spec = buildFieldSpec("subcon", {
+    enabled: boolean,
+    enable_activity_summary: boolean,
+    enable_manpower_summary: boolean,
+  });
+  for (const column of ["enable_activity_summary", "enable_manpower_summary"]) {
+    const field = spec.fields[column];
+    assert.equal(field.widget, "toggle");
+    assert.equal(field.readonly, false);
+    // Hidden while the master switch is off: neither governs anything then.
+    assert.deepEqual(field.showIf, { field: "enabled", equals: true });
+    const group = spec.groups.find((g) => g.fields.includes(column));
+    assert.equal(group?.title, "Scheduled reports", `${column} must sit with the reports`);
+  }
+  assert.ok(!spec.groups.some((g) => g.title === "Other"), "neither may fall through to Other");
 });

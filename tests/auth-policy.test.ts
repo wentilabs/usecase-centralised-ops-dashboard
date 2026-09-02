@@ -1176,7 +1176,7 @@ test("capability search works across every service", () => {
     { service: "lightning" as const, row: { enable_red_band_poc_mentions: true }, needle: "poc mentions" },
     { service: "ailytics" as const, row: { forward_pending_to_whatsapp: true }, needle: "forward pending" },
     { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping intake" },
-    { service: "issueChaser" as const, row: { priority_one_escalation_enabled: true }, needle: "p1 escalation" },
+    { service: "issueChaser" as const, row: { severity_cadence_chaser_enabled: true }, needle: "severity cadence" },
   ];
   for (const { service, row, needle } of cases) {
     assert.equal(matchesQuery(service, row, needle), true, `${service} should match "${needle}"`);
@@ -1708,4 +1708,40 @@ test("the dormant columns render correctly once the migrations land", () => {
   const group = chaser.groups.find((g) => g.fields.includes("daily_safety_summary_enabled"));
   assert.equal(group?.title, "Daily summaries");
   assert.ok(!chaser.groups.some((g) => g.title === "Other"), "none may fall through to Other");
+});
+
+test("the retired P1 escalation digest leaves no trace in the UI", () => {
+  // `migrate_issue_chaser_latest.sql` drops priority_one_escalation_enabled in
+  // the same statement as the other four retired flags, `setup.sql` never
+  // creates it, and no code in that repo reads it. It is gone, not off.
+  //
+  // The failure mode it caused is the one worth guarding: card pills read the
+  // row directly rather than the introspected schema, so an absent column
+  // produced a permanently-unlit "P1 escalation" pill on every issue-chaser
+  // card — advertising a switch nobody can find.
+  assert.ok(
+    !pillsFor("issueChaser", { priority_one_escalation_enabled: true }).some((p) =>
+      /p1 escalation/i.test(p.label),
+    ),
+    "no pill may describe the retired digest, even if the value is somehow present",
+  );
+  assert.doesNotMatch(
+    firesAt("issueChaser", { severity_cadence_chaser_enabled: true, priority_one_escalation_enabled: true }),
+    /P1 digest/,
+  );
+  // And a stray value must not make an otherwise-idle project look scheduled.
+  assert.equal(hasCadence("issueChaser", { priority_one_escalation_enabled: true }), false);
+
+  // The column is already absent from the live schema and the migration drops
+  // it, so deleting the spec entry is enough — unlike lightning's policy_note,
+  // which had to be hidden because its column still existed. If it ever did
+  // reappear it must arrive as an unknown column under "Other", never as a
+  // chaser style the editor presents as real.
+  const spec = buildFieldSpec("issueChaser", {
+    enabled: { type: "boolean", format: "boolean", enum: null, default: false },
+    priority_one_escalation_enabled: { type: "boolean", format: "boolean", enum: null, default: false },
+  });
+  const home = spec.groups.find((g) => g.fields.includes("priority_one_escalation_enabled"));
+  assert.equal(home?.title, "Other", "a resurfaced retired flag belongs in Other, not among the styles");
+  assert.equal(spec.fields.priority_one_escalation_enabled?.help, "");
 });

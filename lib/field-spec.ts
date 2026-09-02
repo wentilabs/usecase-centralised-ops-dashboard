@@ -739,10 +739,6 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
       help: "Leave both ends empty for 24-hour eligibility.",
     },
-    priority_one_escalation_enabled: {
-      label: "P1 escalation digest",
-      help: "Every 2 hours, 09:00–18:00 SGT. Today's P1 issues still open after 3 hours. Cannot be turned on until Project enabled is on.",
-    },
     // Summaries are informational reports, not chasers: they read the workbook,
     // never touch delivery_events, and never chase anyone. Two CHECKs bite on
     // save — issue_chaser_feature_requires_enabled_check (needs `enabled`) and
@@ -767,6 +763,13 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
         ],
       },
     },
+    // priority_one_escalation_enabled is retired too, and was the last one
+    // still described here. `migrate_issue_chaser_latest.sql` drops it in the
+    // same statement as the four below, `setup.sql` never creates it, and no
+    // code in that repo reads it — so the P1 escalation digest is gone, not
+    // merely off. It rendered as a permanently-unlit pill on every card, which
+    // is the exact trap the note below is about.
+    //
     // include_issue_images, mention_sender_fallback, pic_mentions_enabled and
     // require_origin_chat_identity were REMOVED from issue_chaser.project_configs
     // by 412256d ("harden reminder routing and mentions"): PIC resolution and
@@ -990,7 +993,6 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "severity_p2_p3_window_end",
         "same_day_open_snapshot_enabled",
         "include_days_before_snapshot",
-        "priority_one_escalation_enabled",
       ],
     },
     {

@@ -289,7 +289,6 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
             : ""),
       );
     }
-    if (config.priority_one_escalation_enabled) parts.push("P1 digest every 2h, 09:00–18:00");
 
     // Said separately from the chasers, not folded into them. A summary chases
     // nobody and never uses an issue's origin group — it carries the opposite
@@ -525,7 +524,9 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         // enabled project means nobody switched it on.
         { label: "severity cadence", on: on(config.severity_cadence_chaser_enabled) },
         { label: "same-day snapshot", on: on(config.same_day_open_snapshot_enabled) },
-        { label: "P1 escalation", on: on(config.priority_one_escalation_enabled) },
+        // "P1 escalation" was dropped here with the column: the digest is
+        // retired in the service, so an unlit pill for it only sent people
+        // looking for a switch that no longer exists.
         // Reports rather than chasers, and blue for it — the same reasoning as
         // the WBGT Water Parade pills: tone separates "a different kind of
         // thing" from "another switch in the same row".
@@ -749,7 +750,6 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     return Boolean(
       config.severity_cadence_chaser_enabled ||
         config.same_day_open_snapshot_enabled ||
-        config.priority_one_escalation_enabled ||
         // A summary is scheduled work too. Without these, a project running
         // only the 08:00 report would sink to the bottom as "nothing
         // scheduled" while it is messaging a site every morning.

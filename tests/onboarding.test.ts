@@ -463,11 +463,15 @@ test("every onboarding flow requires only what the table demands", () => {
 test("issue chaser cannot be created with a style already on", () => {
   // A CHECK refuses any style unless `enabled` is true, and rows are created
   // disabled — so a style must not be offered at creation time at all.
+  // priority_one_escalation_enabled dropped out of this list with the column
+  // itself; the two summary flags took its place, and the same CHECK
+  // (issue_chaser_feature_requires_enabled_check) covers them.
   const columns = issueChaser.fields.map((f) => f.column);
   for (const style of [
     "severity_cadence_chaser_enabled",
     "same_day_open_snapshot_enabled",
-    "priority_one_escalation_enabled",
+    "daily_safety_summary_enabled",
+    "daily_safety_company_summary_enabled",
   ]) {
     assert.equal(columns.includes(style), false, `${style} must not be settable at creation`);
   }

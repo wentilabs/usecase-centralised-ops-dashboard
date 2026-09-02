@@ -737,12 +737,13 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     label: "＋ Add project",
     title: "Add a new Subcon Activities project",
     description:
-      "Creates one row in manpower_activity.project_configs. Two routes: housekeeping intake, and the outbound morning activity + manpower summary.",
+      "Creates one row in manpower_activity.project_configs. Three routes: housekeeping intake, and two separate morning reports — activity + manpower, and manpower + machines.",
     outsideHalo: [
       "Share the manpower workbook with the service account — read access is enough. This service never creates or writes a tab: it reads `Manpower`, and `Machines` when present, both owned by the base template, and keeps its own record in Supabase.",
       "Fill in the source group IDs. They are the only thing that routes a message to this project. With no groups, intake is switched on and nothing arrives.",
       "Point the base template's forwarder at this service, and confirm the groups it forwards from are the ones listed here.",
-      "The morning report needs a destination group as well as the send URL. With the group blank it stays switched on and delivers nothing.",
+      "Opt the project into whichever morning reports it should get. They are two different messages and independent of each other, so both on is normal — but each is an explicit opt-in the service checks for `true`, and a project with neither switched on sends nothing however else it is configured.",
+      "Both reports need a destination group as well as the send URL. With the group blank they stay switched on and deliver nothing.",
     ],
     fields: [
       {

@@ -848,3 +848,17 @@ test("a select refuses a value its column would refuse", () => {
     `expected an advisory-format complaint, got ${JSON.stringify(problems)}`,
   );
 });
+
+test("subcon onboarding names both reports and their opt-in", () => {
+  // The description used to name one of the two, and the delivery step said the
+  // report "stays switched on" — which opt-in contradicts. A project onboarded
+  // on that reading would sit there sending nothing.
+  const subcon = onboardingFor("subcon")!;
+  assert.match(subcon.description, /activity \+ manpower/);
+  assert.match(subcon.description, /manpower \+ machines/);
+
+  const steps = subcon.outsideHalo.join(" ");
+  assert.match(steps, /opt/i, "the steps must say the reports are opted into");
+  assert.match(steps, /both on is normal/i, "two different messages, not alternatives");
+  assert.doesNotMatch(steps, /it stays switched on/, "the singular claim is gone");
+});

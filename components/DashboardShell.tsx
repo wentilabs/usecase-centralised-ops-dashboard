@@ -295,6 +295,16 @@ export function DashboardShell({
           ))}
         </nav>
 
+        {/* Not a service tab: a whole-estate view that cuts across all of them.
+            Kept visually apart from the tabs for that reason. */}
+        <a
+          href="/identity"
+          className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary"
+          title="Which project codes across the services are the same site"
+        >
+          Site identity
+        </a>
+
         <input
           ref={(element) => {
             searchInputs.current[1] = element;

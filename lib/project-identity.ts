@@ -53,6 +53,25 @@ const GROUP_COLUMNS = [
  */
 export const MAX_SHARED_CHAT_FANOUT = 3;
 
+/**
+ * Codes that are fixtures, not sites, and must never merge with anything.
+ *
+ * `TEST` is a fail-safe row the services keep for internal delivery checks —
+ * the noise repo's INV-NOISE-11 says outright that it "must never ... be
+ * treated as a real site". It is also pointed at whatever group someone is
+ * testing with, so on 2 Sep 2026 subcon's TEST row acquired ZRA's real group
+ * id and the shared-chat rule merged the two on a fanout of exactly two.
+ *
+ * That merge is worse than cosmetic. TEST exists in subcon and issue-chaser,
+ * so folding it into ZRA makes ZRA look already-onboarded in both — and a bulk
+ * onboarding reading this map would skip the one site it should have created.
+ *
+ * Excluded by name rather than by a `SPLITS` pair, because a fixture attracts a
+ * different group every time someone tests something; pairing them off would be
+ * a standing chore that fails silently the once it is forgotten.
+ */
+export const FIXTURE_CODES = new Set(["TEST"]);
+
 /** Placeholder values that appear in id columns and mean "nothing set". */
 const PLACEHOLDERS = new Set(["", "-", "n/a", "na", "none", "null"]);
 
@@ -171,8 +190,12 @@ export function clusterProjects(
   };
   const splitPairs = new Set(overrides.splits.map(([a, b]) => [fold(a), fold(b)].sort().join("|")));
   const isSplit = (a: string, b: string) => splitPairs.has([fold(a), fold(b)].sort().join("|"));
+  const isFixture = (code: string) => FIXTURE_CODES.has(code.trim().toUpperCase());
   const link = (a: string, b: string, item: Evidence) => {
     if (a === b || isSplit(a, b)) return;
+    // A fixture keeps its own row so it stays visible, but never absorbs or is
+    // absorbed by a real site.
+    if (isFixture(a) || isFixture(b)) return;
     union.join(a, b);
     keep(a, item);
     keep(b, item);
@@ -232,6 +255,7 @@ export function clusterProjects(
   // The human layer, last and strongest.
   const pinned = new Map<string, string>();
   for (const merge of overrides.merges) {
+    if (merge.codes.some(isFixture)) continue;
     if (merge.canonical) for (const code of merge.codes) pinned.set(code, merge.canonical);
     const [first, ...rest] = merge.codes;
     for (const other of rest) {

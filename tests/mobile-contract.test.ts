@@ -576,3 +576,22 @@ test("every API route file says what it is, and names its contract operation", a
     assert.match(header, /\b(GET|POST|PATCH|PUT|DELETE)\b/, `${route}'s header names no method`);
   }
 });
+
+test("the site identity matrix scrolls instead of overflowing a phone", async () => {
+  const matrix = await source("components/IdentityMatrix.tsx");
+
+  // Eight columns will never fit 375px. The table has to scroll inside its own
+  // container, or the whole page scrolls sideways and the header goes with it.
+  assert.match(matrix, /overflow-x-auto/, "the matrix must scroll in its own container");
+  // With horizontal scroll, an unpinned first column means you lose track of
+  // which row you are reading as soon as you scroll.
+  assert.match(matrix, /sticky left-0[^"]*bg-card/, "the site column must stay pinned while scrolling");
+
+  // House rule: unprefixed describes the phone, md: restores the desktop.
+  // A filter button at py-1 is a 24px target; it has to start larger.
+  assert.match(matrix, /py-1\.5[^"]*md:py-1/, "filter buttons must be thumb-sized before md");
+
+  // The drawer is the only mobile route to this page, so it must offer it.
+  const drawer = await source("components/ServiceDrawer.tsx");
+  assert.match(drawer, /href="\/identity"/, "the mobile drawer must link to the identity page");
+});

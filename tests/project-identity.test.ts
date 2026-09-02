@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   MAX_SHARED_CHAT_FANOUT,
+  FIXTURE_CODES,
   absentFrom,
   clusterProjects,
   fold,
@@ -237,4 +238,50 @@ test("the checked-in overrides are well formed", () => {
   for (const [a, b] of SPLITS) {
     assert.ok(!merged.has([fold(a), fold(b)].sort().join("|")), `["${a}","${b}"] is both merged and split`);
   }
+});
+
+test("a fixture never merges with a real site, however strong the evidence", () => {
+  // What actually happened on 2 Sep 2026: subcon's TEST row was pointed at
+  // ZRA's real WhatsApp group, and the shared-chat rule merged them on a
+  // fanout of exactly two. TEST exists in subcon and issue-chaser, so the
+  // merge made ZRA look already-onboarded in both — a bulk onboarding reading
+  // this map would have skipped the one site it should have created.
+  const rows = [
+    row("wbgt", "ZRA", { whatsapp_group_id: "120363410971872748@g.us" }),
+    row("noise", "ZRA", { whatsapp_group_id: "120363410971872748@g.us" }),
+    row("subcon", "TEST", { safety_group_ids: "120363410971872748@g.us" }),
+  ];
+  const clusters = clusterProjects(rows, NONE);
+  const zra = clusters.find((c) => c.codes.includes("ZRA"))!;
+  assert.deepEqual(zra.codes, ["ZRA"], "ZRA must not absorb the fixture");
+
+  // The fixture stays visible as its own row rather than disappearing — it is
+  // real configuration someone may need to find.
+  const test = clusters.find((c) => c.codes.includes("TEST"));
+  assert.ok(test, "TEST must still appear");
+  assert.deepEqual(test!.members.map((m) => m.service), ["subcon"]);
+
+  // And the consequence that matters: ZRA still reads as absent from subcon.
+  assert.ok(
+    absentFrom(clusters, "subcon").some((c) => c.codes.includes("ZRA")),
+    "ZRA must still count as missing from subcon",
+  );
+});
+
+test("an override cannot smuggle a fixture into a real site either", () => {
+  const rows = [row("wbgt", "ZRA"), row("subcon", "TEST")];
+  const clusters = clusterProjects(rows, {
+    merges: [{ codes: ["ZRA", "TEST"], note: "mistaken sign-off" }],
+    splits: [],
+  });
+  assert.equal(clusters.length, 2, "the fixture rule outranks a hand-written merge");
+});
+
+test("fixture matching ignores case and padding", () => {
+  assert.ok(FIXTURE_CODES.has("TEST"), "the fixture list is what upstream INV-NOISE-11 names");
+  const clusters = clusterProjects(
+    [row("wbgt", "ZRB", { whatsapp_group_id: "5@g.us" }), row("noise", " test ", { whatsapp_group_id: "5@g.us" })],
+    NONE,
+  );
+  assert.equal(clusters.length, 2);
 });

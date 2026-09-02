@@ -130,6 +130,19 @@ export function ServiceDrawer({
               </button>
             ) : null}
           </div>
+
+          {/* Cuts across every service, so it sits below the list rather than
+              inside it — it is not one more service to switch to. */}
+          <p className="mb-2 mt-4 px-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            Estate
+          </p>
+          <a
+            href="/identity"
+            className="flex w-full items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 text-left text-sm"
+          >
+            <span className="flex-1">Site identity</span>
+            <span className="text-xs text-muted-foreground">aliases</span>
+          </a>
         </nav>
 
         <footer className="shrink-0 border-t border-border px-4 pt-3 text-xs text-muted-foreground pb-safe">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { SmartChat } from "./SmartChat";
-import { shouldFocusSearch } from "@/lib/search-hotkey";
+import { shouldFocusPropose, shouldFocusSearch } from "@/lib/search-hotkey";
 import { ExportDialog } from "./ExportDialog";
 import { BatchProposal, type Batch } from "./BatchProposal";
 import { LightningMap } from "./LightningMap";
@@ -69,6 +69,8 @@ export function DashboardShell({
    */
   const searchInputs = useRef<(HTMLInputElement | null)[]>([]);
   const [searchFlash, setSearchFlash] = useState(false);
+  const proposeInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [proposeFlash, setProposeFlash] = useState(false);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
@@ -147,14 +149,30 @@ export function DashboardShell({
   }, [router]);
 
   useEffect(() => {
+    // Whichever copy is on screen: two of each are mounted, one for the phone
+    // row and one for the desktop header, and `offsetParent` is what separates
+    // them without sniffing the viewport.
+    const onScreen = (inputs: (HTMLInputElement | null)[]) =>
+      inputs.find((input) => input && input.offsetParent !== null) ?? null;
+
     function onKey(event: KeyboardEvent) {
-      const visible = searchInputs.current.find((input) => input && input.offsetParent !== null) ?? null;
-      if (!visible) return;
-      if (!shouldFocusSearch(event, document.activeElement === visible)) return;
-      event.preventDefault();
-      visible.focus();
-      visible.select();
-      setSearchFlash(true);
+      const search = onScreen(searchInputs.current);
+      if (search && shouldFocusSearch(event, document.activeElement === search)) {
+        event.preventDefault();
+        search.focus();
+        search.select();
+        setSearchFlash(true);
+        return;
+      }
+      const propose = onScreen(proposeInputs.current);
+      if (propose && shouldFocusPropose(event, document.activeElement === propose)) {
+        event.preventDefault();
+        propose.focus();
+        // Selected, not appended to: a proposal is usually reworded rather than
+        // extended, and the previous sentence is deliberately left in the box.
+        propose.select();
+        setProposeFlash(true);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -165,6 +183,12 @@ export function DashboardShell({
     const timer = window.setTimeout(() => setSearchFlash(false), 900);
     return () => window.clearTimeout(timer);
   }, [searchFlash]);
+
+  useEffect(() => {
+    if (!proposeFlash) return;
+    const timer = window.setTimeout(() => setProposeFlash(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [proposeFlash]);
 
   /**
    * Open the editor on a chat proposal. Shared by the mobile row and the desktop
@@ -269,7 +293,15 @@ export function DashboardShell({
           full-width row rather than being squeezed into the header beside the
           menu, the filter and refresh. */}
       <div className="border-b border-border px-3 py-2 md:hidden">
-        <SmartChat fullWidth onProposal={proposeChange} onBatch={proposeBatch} />
+        <SmartChat
+          fullWidth
+          onProposal={proposeChange}
+          onBatch={proposeBatch}
+          flash={proposeFlash}
+          registerInput={(element) => {
+            proposeInputs.current[0] = element;
+          }}
+        />
       </div>
 
       {/* ---------------------------------------------------------------------
@@ -323,7 +355,14 @@ export function DashboardShell({
         {/* Desktop only for now: the proposal opens the editor, which is itself a
             desktop surface. */}
         <div className="hidden md:block">
-          <SmartChat onProposal={proposeChange} onBatch={proposeBatch} />
+          <SmartChat
+            onProposal={proposeChange}
+            onBatch={proposeBatch}
+            flash={proposeFlash}
+            registerInput={(element) => {
+              proposeInputs.current[1] = element;
+            }}
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">

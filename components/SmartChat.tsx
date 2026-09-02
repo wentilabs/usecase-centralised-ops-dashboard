@@ -19,9 +19,20 @@ export function SmartChat({
   onProposal,
   onBatch,
   fullWidth = false,
+  registerInput,
+  flash = false,
 }: {
   /** Stretch to the container. The mobile row is full width; the header is not. */
   fullWidth?: boolean;
+  /**
+   * Hands the input up so ⌘P can focus whichever copy is on screen. Two are
+   * mounted — one in the phone row, one in the desktop header — and only the
+   * visible one should take the keypress, which the shell decides by
+   * `offsetParent`, exactly as it does for the search boxes.
+   */
+  registerInput?: (element: HTMLInputElement | null) => void;
+  /** Briefly ring the border, so a jump the keyboard caused is visible. */
+  flash?: boolean;
   /**
    * A change covering several projects, which cannot open the single-row editor
    * and gets its own review list instead. The sentence travels with it for the
@@ -81,6 +92,7 @@ export function SmartChat({
     <div className={`flex flex-col gap-1 ${fullWidth ? "w-full" : ""}`}>
       <div className="flex items-center gap-2">
         <input
+          ref={registerInput}
           value={prompt}
           disabled={busy}
           onChange={(event) => setPrompt(event.target.value)}
@@ -92,7 +104,9 @@ export function SmartChat({
           }}
           placeholder={fullWidth ? "Ask for a change — “TJR lightning, amber off”" : "Ask for a change — “CFC's WBGT alerts shouldn't go out on Sundays”"}
           aria-label="Ask for a configuration change"
-          className={`rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary disabled:opacity-60 ${
+          className={`rounded-lg border bg-card px-3 text-sm outline-none focus:border-primary disabled:opacity-60 ${
+            flash ? "border-primary ring-2 ring-primary/70" : "border-border"
+          } ${
             // Taller on the phone row, where it is a thumb target rather than one
             // control among many in a dense header.
             fullWidth ? "min-w-0 flex-1 py-2.5" : "w-[340px] py-1.5"

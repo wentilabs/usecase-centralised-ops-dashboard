@@ -377,7 +377,10 @@ test("the phone gets the chat, and thumb-sized actions on a rail", async () => {
   // into a header that already holds a menu, a filter and refresh. It is more
   // useful there than on a desktop: a sentence beats hunting one field in a
   // thirty-row form.
-  assert.match(shell, /md:hidden">\s*<SmartChat fullWidth/);
+  // Matched on the props rather than on one line of formatting: the previous
+  // regex required `<SmartChat fullWidth` to sit immediately after the wrapper
+  // on the same line, and broke the moment the call took a second prop.
+  assert.match(shell, /md:hidden">\s*<SmartChat\b[\s\S]{0,200}?\bfullWidth\b/);
   // One handler for both instances, so the two cannot drift apart.
   assert.equal((shell.match(/onProposal=\{proposeChange\}/g) ?? []).length, 2);
 

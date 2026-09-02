@@ -39,12 +39,14 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string; single?
   haze: [{ column: "wa_group_ids" }],
   lightning: [{ column: "whatsapp_group_id" }],
   ailytics: [{ column: "whatsapp_group_ids" }],
-  // Two directions again: safety_group_ids is where messages come FROM, and the
-  // morning report goes TO its own group. Labelled so the card cannot imply that
-  // an inbound group receives anything.
+  // Labelled because the two lists are not interchangeable and one of them is
+  // now BOTH directions: since 140b1e9 `safety_group_ids` is where forwarded
+  // messages come from AND where the nightly housekeeping report goes, while
+  // the summary destination carries only the two morning summaries. Calling it
+  // "inbound" told an operator it receives nothing, which is no longer true.
   subcon: [
-    { column: "manpower_activity_outbound_group_id", role: "morning report" },
-    { column: "safety_group_ids", role: "inbound" },
+    { column: "manpower_activity_outbound_group_id", role: "morning summaries" },
+    { column: "safety_group_ids", role: "housekeeping in/out" },
   ],
   issueChaser: [{ column: "whatsapp_group_ids" }],
 };
@@ -246,10 +248,11 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "subcon") {
-    // Three routes, not two: /housekeeping-intake accepts forwarded messages,
-    // /daily-activity-summary sends the activity + manpower message, and
-    // /daily-manpower-summary sends the plain per-company headcount. `enabled`
-    // governs the two reports and not intake, which runs either way.
+    // Four routes: /housekeeping-intake accepts forwarded messages,
+    // /daily-housekeeping-report sends the nightly checklist to the same groups
+    // it takes intake from, and /daily-activity-summary and
+    // /daily-manpower-summary send the two morning summaries. `enabled` governs
+    // the three outbound routes and not intake, which runs either way.
     //
     // Naming both reports matters because they read different tabs and answer
     // different questions, and until the per-report columns exist one switch
@@ -261,6 +264,13 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       // Activity projection when Supabase became canonical, so naming the tab
       // here would send someone to a document that no longer updates.
       parts.push("housekeeping events recorded in Supabase");
+    }
+    // A third outbound report, and the one HALO used to omit entirely. It is
+    // gated by `enabled` alone — not by Housekeeping intake, which is the
+    // inbound route — and since 140b1e9 it goes to the housekeeping groups
+    // rather than the summary destination.
+    if (config.enabled !== false && String(config.safety_group_ids ?? "").trim()) {
+      parts.push("nightly housekeeping report to the housekeeping groups");
     }
     // Each report is an explicit opt-in in the service, so a project can be
     // enabled and still send nothing.
@@ -531,14 +541,15 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
           tone: "info" as const,
         },
         {
-          // What it answers: does anything reach this project at all? Only
-          // `safety_group_ids` answers it. Project routing is group-based; the
-          // listener middleware owns any client-level gating upstream.
+          // What it answers: does anything reach this project, and does the
+          // nightly housekeeping report have anywhere to go? Since 140b1e9 one
+          // list answers both, so "message source" understated it — an empty
+          // list now means no intake AND no housekeeping report.
           //
-          // So this pill is lit by the group list alone. A project with a
-          // no groups is not routed, and showing it as configured would hide
-          // exactly the mistake worth seeing.
-          label: "message source",
+          // Lit by the group list alone. Project routing is group-based; the
+          // listener middleware owns any client-level gating upstream, and a
+          // project with no groups is not routed.
+          label: "housekeeping in/out",
           on: on(config.safety_group_ids),
         },
       ];
@@ -787,10 +798,15 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     );
   }
   if (service === "subcon") {
-    // Either route is work — a project with intake on is not idle. Reports are
-    // counted through `subconReports`, not `enabled`, so a project left enabled
-    // with both reports switched off reads as idle rather than as scheduled.
-    return config.enable_housekeeping !== false || subconReports(config).length > 0;
+    // Any of the three is work — a project with intake on is not idle. The
+    // summaries are counted through `subconReports` rather than `enabled`, so a
+    // project left enabled with both switched off is not called scheduled; the
+    // nightly housekeeping report needs only `enabled` and a group list.
+    return (
+      config.enable_housekeeping !== false ||
+      subconReports(config).length > 0 ||
+      (config.enabled !== false && Boolean(String(config.safety_group_ids ?? "").trim()))
+    );
   }
   if (service === "issueChaser") {
     // `enabled` alone sends nothing — a chaser style has to be on too, and a

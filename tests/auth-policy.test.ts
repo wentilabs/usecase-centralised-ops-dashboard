@@ -336,13 +336,15 @@ test("delivery groups keep each service's columns", () => {
     { chatId: "i@g.us", role: undefined },
   ]);
 
-  // Subcon runs in both directions, so its groups are labelled — a card must not
-  // imply that an inbound group receives the morning report.
+  // Subcon's two lists are not interchangeable, and one of them runs in both
+  // directions: since 140b1e9 `safety_group_ids` both receives forwarded
+  // messages and is where the nightly housekeeping report is sent, so labelling
+  // it "inbound" told an operator it receives nothing.
   assert.deepEqual(
     deliveryGroups("subcon", { manpower_activity_outbound_group_id: "out@g.us", safety_group_ids: "in@g.us" }),
     [
-      { chatId: "out@g.us", role: "morning report" },
-      { chatId: "in@g.us", role: "inbound" },
+      { chatId: "out@g.us", role: "morning summaries" },
+      { chatId: "in@g.us", role: "housekeeping in/out" },
     ],
   );
   assert.deepEqual(deliveryGroups("subcon", {}), []);
@@ -1864,4 +1866,35 @@ test("a subcon report sends only when its own switch is explicitly on", () => {
     reports({ enabled: false, enable_activity_summary: true, enable_manpower_summary: true }),
     [],
   );
+});
+
+test("subcon's housekeeping groups run in both directions", () => {
+  // 140b1e9 pointed the nightly housekeeping report at `safety_group_ids`, the
+  // same list that routes forwarded messages in. Before that it fell back to
+  // the summary destination, and HALO called the list inbound-only — so an
+  // operator editing it had no way to know they were moving a destination.
+  const withGroups = { safety_group_ids: "in@g.us" };
+
+  assert.match(firesAt("subcon", withGroups), /nightly housekeeping report/);
+  // Gated by `enabled`, not by intake: the two are independent routes.
+  assert.doesNotMatch(firesAt("subcon", { ...withGroups, enabled: false }), /nightly housekeeping/);
+  assert.match(
+    firesAt("subcon", { ...withGroups, enable_housekeeping: false }),
+    /nightly housekeeping report/,
+    "intake off does not stop the report going out",
+  );
+  // No groups means no destination, so there is no report to claim.
+  assert.doesNotMatch(firesAt("subcon", {}), /nightly housekeeping/);
+
+  // The pill says both directions now.
+  const labels = pillsFor("subcon", withGroups).map((p) => p.label);
+  assert.ok(labels.includes("housekeeping in/out"));
+  assert.ok(!labels.includes("message source"), "the inbound-only wording is gone");
+
+  // A project whose only scheduled work is that report is not idle.
+  assert.equal(
+    hasCadence("subcon", { enable_housekeeping: false, safety_group_ids: "in@g.us" }),
+    true,
+  );
+  assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false, "nothing configured");
 });

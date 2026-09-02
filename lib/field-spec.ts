@@ -611,7 +611,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // classification and the Manpower/Machines tabs.
     enable_housekeeping: {
       label: "Housekeeping intake",
-      help: "Off means forwarded housekeeping messages are ignored. Independent of Morning report — neither implies the other, and there is no master switch (INV-HK-01).",
+      help: "The INTAKE route only (INV-HK-01): off means forwarded housekeeping messages are ignored. It does not govern the nightly housekeeping report, which goes out whenever Scheduled reports is on and the groups above are set. Independent of the summaries — neither implies the other, and there is no master switch.",
     },
     // `enabled` covers BOTH scheduled reports, which the old wording hid by
     // naming only one of them. The service runs two routes off one flag:
@@ -636,10 +636,15 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Explicit opt-in, independent of the report above: either can run without the other, and with both off the project sends no morning report at all.",
       showIf: { field: "enabled", equals: true },
     },
+    // Both directions since 140b1e9: `housekeepingOutboundIds` now returns
+    // `safetyGroupIds`, so this one list routes forwarded messages IN and is
+    // where the nightly housekeeping report goes OUT. It used to be inbound
+    // only, and the old help said so in bold — worth being explicit that
+    // editing it now moves a destination as well as a source.
     safety_group_ids: {
-      label: "Source group IDs",
+      label: "Housekeeping groups (in and out)",
       widget: "groups",
-      help: "Inbound only, and the only thing that routes a message to this project — there is no client-identifier fallback, and several project codes may share a listener client (INV-HK-10). Comma-separated. Empty means nothing arrives, which is the default on a fresh row.",
+      help: "Both directions. Inbound: the only thing that routes a forwarded message to this project — no client-identifier fallback, and several project codes may share a listener client (INV-HK-10). Outbound: where the nightly housekeeping report is sent. Editing this list changes both at once. Comma-separated; empty means nothing arrives AND the housekeeping report has nowhere to go, which is the default on a fresh row.",
     },
     spreadsheet_id: {
       label: "Manpower workbook",
@@ -649,7 +654,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     manpower_activity_outbound_group_id: {
       label: "Morning report group",
       widget: "groups",
-      help: "Where BOTH morning reports are sent, and the housekeeping report's fallback destination — one column for all three. Empty by default while Scheduled reports defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
+      help: "Where the two morning summaries are sent — and only those. The nightly housekeeping report stopped falling back to this column in 140b1e9 and now uses the housekeeping groups instead. Empty by default while Scheduled reports defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
     },
     // Same column name as WBGT's, and a DIFFERENT filter: this one governs the
     // housekeeping roster and the manpower summary, WBGT's governs the Water
@@ -727,8 +732,9 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // Each style's own settings sit directly under it and are hidden until the
     // style is on, so the group reads as three cadences rather than eleven
     // switches. `time` columns get the default text widget deliberately: the
-    // `hhmm` widget caps input at four characters, which would silently truncate
-    // the `07:00:00` Postgres hands back.
+    // `hhmm` widget caps input at four characters, and while four digits are now
+    // the documented way to WRITE these, Postgres hands back `07:00:00` — so a
+    // four-character cap would silently truncate the value already stored.
     include_days_before_snapshot: {
       label: "Snapshot lookback (days)",
       help: "How many earlier SGT dates the snapshot also covers. 0 — the default — is today only. A request may override it per call with `include_days_before`; this is the standing value. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
@@ -737,7 +743,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     severity_p1_window_start: {
       label: "P1 window start",
       row: "p1_window",
-      help: "Optional SGT gate for the P1 cadence, which otherwise runs round the clock. Set BOTH ends or neither, and they must differ — the database refuses one alone or two the same (issue_chaser_p1_window_check). Format HH:MM.",
+      help: "Optional SGT gate for the P1 cadence, which otherwise runs round the clock. Enter it as four digits — 0700, 1900 — though Supabase shows the stored value back as 07:00:00 and the service reads either. The window is half-open [start, end), so 0700 is eligible and 1900 is not, and an overnight pair like 2200–0600 is supported. Set BOTH ends or neither, and they must differ: the database refuses one alone or two the same (issue_chaser_p1_window_check).",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p1_window_end: {
@@ -749,7 +755,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     severity_p2_p3_window_start: {
       label: "P2/P3 window start",
       row: "p2p3_window",
-      help: "Optional SGT gate shared by the P2 and P3 cadences. Same rule as P1: both ends or neither, and they must differ (issue_chaser_p2_p3_window_check). Format HH:MM.",
+      help: "Optional SGT gate shared by the P2 and P3 cadences. Same rules as P1 — four digits, half-open, overnight allowed, both ends or neither and they must differ (issue_chaser_p2_p3_window_check).",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p2_p3_window_end: {
@@ -989,7 +995,9 @@ const GROUPS: Record<string, FieldGroup[]> = {
 
   subcon: [
     { title: "Project", fields: ["company", "project_code"] },
-    { title: "Intake", fields: ["enable_housekeeping", "safety_group_ids"] },
+    // Renamed from "Intake": the group list in here is now a destination too,
+    // so filing it under intake alone understated what editing it does.
+    { title: "Housekeeping", fields: ["enable_housekeeping", "safety_group_ids"] },
     // The Woh Hup filter sits with the workbook it filters, not with the report,
     // because it also shapes the first roster capture of the day — which happens
     // whether or not the morning report is switched on.

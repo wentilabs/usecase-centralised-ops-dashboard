@@ -262,8 +262,8 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       // here would send someone to a document that no longer updates.
       parts.push("housekeeping events recorded in Supabase");
     }
-    // Absent per-report columns read as on, so this says exactly what `enabled`
-    // alone does today and keeps saying the truth once the columns land.
+    // Each report is an explicit opt-in in the service, so a project can be
+    // enabled and still send nothing.
     const reports = subconReports(config);
     // Not joined with "+": each name already contains one, and "activity +
     // manpower + manpower + machines" reads as one report with four parts.
@@ -725,16 +725,23 @@ export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): num
 /**
  * Which of subcon's two morning reports a project actually receives.
  *
- * `enabled` gates both, and until the service grows a column per report it is
- * the only switch — so an absent `enable_*_summary` reads as on rather than as
- * unset. That keeps the card honest today and correct the moment the columns
- * land, without a second code path.
+ * Two gates, in the service's own order. `isSummaryEnabled` in that repo is
+ * `config?.[column] === true`, so a report is sent only when its switch is
+ * explicitly on — the columns are an explicit opt-in, and the repo's migration
+ * says so outright ("Existing rows receive false so adding this migration
+ * cannot unexpectedly start new report sends"). `enabled` then gates outbound
+ * delivery for whichever survived.
+ *
+ * Matched to `=== true` rather than `!== false` deliberately: the card has to
+ * predict what the service will do, and the two differ for a null or missing
+ * value. The columns are NOT NULL so real rows cannot hit that, but a card
+ * built from a partial row should under-claim rather than promise a send.
  */
 export function subconReports(config: ProjectConfigRow): string[] {
   if (config.enabled === false) return [];
   const reports: string[] = [];
-  if (config.enable_activity_summary !== false) reports.push("activity + manpower");
-  if (config.enable_manpower_summary !== false) reports.push("manpower + machines");
+  if (config.enable_activity_summary === true) reports.push("activity + manpower");
+  if (config.enable_manpower_summary === true) reports.push("manpower + machines");
   return reports;
 }
 

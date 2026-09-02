@@ -620,20 +620,20 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // outbound group.
     enabled: {
       label: "Scheduled reports",
-      help: "Sends BOTH morning reports: the activity + manpower message, and the plain per-company manpower + machines summary. One switch for both today — the two below split them once the service reads them. Intake continues either way; this is not a master switch (INV-HK-01).",
+      help: "Gates outbound delivery of both morning reports, but does not select them — each is its own opt-in below, and with both off this being on sends nothing. Intake continues either way; this is not a master switch (INV-HK-01).",
     },
-    // Dormant until the service grows the columns: HALO renders fields from
-    // live introspection, so these appear only once they exist. Written as
-    // "absent means on", matching what `enabled` alone does now, so the cards
-    // and the editor read the same before and after the migration.
+    // Each report is an explicit opt-in: the service checks
+    // `config[column] === true`, so off is the safe state and a project can be
+    // enabled while sending nothing. Worth saying on the controls, because
+    // "Scheduled reports is on" no longer implies a report goes out.
     enable_activity_summary: {
       label: "Activity + manpower report",
-      help: "POST /daily-activity-summary — the morning activity/manpower message. Blank or absent means on, which is what Scheduled reports alone does today.",
+      help: "POST /daily-activity-summary — the morning activity/manpower message. Explicit opt-in: off means this report is not sent, whatever Scheduled reports says.",
       showIf: { field: "enabled", equals: true },
     },
     enable_manpower_summary: {
       label: "Manpower + machines report",
-      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Blank or absent means on. Turn this off and leave the one above on to send only the activity report, or the reverse for headcount only.",
+      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Explicit opt-in, independent of the report above: either can run without the other, and with both off the project sends no morning report at all.",
       showIf: { field: "enabled", equals: true },
     },
     safety_group_ids: {

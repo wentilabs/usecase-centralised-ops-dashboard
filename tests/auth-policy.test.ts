@@ -37,6 +37,7 @@ import {
   hasCadence,
   isManualIngestion,
   pillsFor,
+  subconReports,
 } from "../lib/card-summary";
 
 const field = (over: Partial<FieldSpec>): FieldSpec => ({
@@ -239,7 +240,9 @@ test("subcon fires-at names both morning reports, not just one", () => {
   // /daily-activity-summary and /daily-manpower-summary each send a different
   // morning report off the same `enabled` flag. The card used to name only the
   // first, which left an operator unable to tell which of the two a site gets.
-  const both = firesAt("subcon", {});
+  // Both switches on, because each report is an explicit opt-in in the service
+  // (`isSummaryEnabled` is `=== true`) — a bare row opts into neither.
+  const both = firesAt("subcon", { enable_activity_summary: true, enable_manpower_summary: true });
   // Supabase, not a sheet tab: the service stopped writing the Daily Activity
   // projection when Supabase became canonical (9b45234), so naming the tab here
   // would point an operator at a document that no longer updates.
@@ -252,22 +255,35 @@ test("subcon fires-at names both morning reports, not just one", () => {
   assert.match(both, /manpower \+ machines/);
   assert.doesNotMatch(both, /manpower \+ manpower/);
 
-  assert.doesNotMatch(firesAt("subcon", { enable_housekeeping: false }), /recorded in Supabase/);
-  assert.doesNotMatch(firesAt("subcon", { enabled: false }), /activity|machines/);
+  assert.doesNotMatch(
+    firesAt("subcon", { enable_housekeeping: false, enable_activity_summary: true }),
+    /recorded in Supabase/,
+  );
+  assert.doesNotMatch(
+    firesAt("subcon", { enabled: false, enable_activity_summary: true, enable_manpower_summary: true }),
+    /activity|machines/,
+  );
+  // Opting into neither is the safe default the service ships, and the card has
+  // to say so rather than implying a send.
+  assert.doesNotMatch(firesAt("subcon", {}), /activity \+ manpower|manpower \+ machines/);
   assert.match(firesAt("subcon", { enabled: false, enable_housekeeping: false }), /nothing is sent/);
 
   // The per-report columns do not exist yet, so an absent one must read as on —
   // exactly what `enabled` alone does today — and each must be able to stand
   // alone once they land.
-  const activityOnly = firesAt("subcon", { enable_manpower_summary: false });
+  const activityOnly = firesAt("subcon", { enable_activity_summary: true });
   assert.match(activityOnly, /only the activity \+ manpower morning report/);
-  const manpowerOnly = firesAt("subcon", { enable_activity_summary: false });
+  const manpowerOnly = firesAt("subcon", { enable_manpower_summary: true });
   assert.match(manpowerOnly, /only the manpower \+ machines morning report/);
 
   // A report with nowhere to go is the quiet failure worth naming.
-  assert.match(firesAt("subcon", { enabled: true }), /no report group set/);
+  assert.match(firesAt("subcon", { enabled: true, enable_activity_summary: true }), /no report group set/);
   assert.doesNotMatch(
-    firesAt("subcon", { enabled: true, manpower_activity_outbound_group_id: "g@g.us" }),
+    firesAt("subcon", {
+      enabled: true,
+      enable_activity_summary: true,
+      manpower_activity_outbound_group_id: "g@g.us",
+    }),
     /no report group/,
   );
   // Both reports off leaves nothing to deliver, so the warning must go too.
@@ -279,9 +295,16 @@ test("subcon fires-at names both morning reports, not just one", () => {
 test("subcon's `enabled` governs only the morning report", () => {
   // It came back with the outbound route, but it is NOT the master switch:
   // treating it as one would report a project doing live intake as idle.
-  assert.equal(hasCadence("subcon", {}), true, "both default on in Postgres");
+  assert.equal(hasCadence("subcon", {}), true, "intake defaults on in Postgres");
   assert.equal(hasCadence("subcon", { enabled: false }), true, "intake still runs");
-  assert.equal(hasCadence("subcon", { enable_housekeeping: false }), true, "the report still sends");
+  // A report needs its own opt-in, so intake off with no opt-in is idle — but
+  // intake off with a report opted in is still work.
+  assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false, "nothing opted in");
+  assert.equal(
+    hasCadence("subcon", { enable_housekeeping: false, enable_manpower_summary: true }),
+    true,
+    "an opted-in report is work",
+  );
   assert.equal(hasCadence("subcon", { enabled: false, enable_housekeeping: false }), false);
 });
 test("issue chaser needs a style on, not just enabled", () => {
@@ -1797,9 +1820,10 @@ test("a subcon project enabled with both reports off is idle, not scheduled", ()
   );
 });
 
-test("subcon's per-report switches render correctly once the columns land", () => {
-  // They cannot be seen in the running app yet — the service has no such
-  // columns — so assert the shape the editor will build when it does.
+test("subcon's per-report switches render as their own opt-ins", () => {
+  // Live since the 2 Sep migration. Introspection supplies the default, so the
+  // editor shows whatever the database actually defaults to rather than what
+  // this file guesses.
   const boolean = { type: "boolean", format: "boolean", enum: null, default: true };
   const spec = buildFieldSpec("subcon", {
     enabled: boolean,
@@ -1816,4 +1840,28 @@ test("subcon's per-report switches render correctly once the columns land", () =
     assert.equal(group?.title, "Scheduled reports", `${column} must sit with the reports`);
   }
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "neither may fall through to Other");
+});
+
+test("a subcon report sends only when its own switch is explicitly on", () => {
+  // Mirrors `isSummaryEnabled` in the service, which is `config[column] ===
+  // true`. Matching that exactly matters: the card predicts what the service
+  // will do, and `!== false` would promise a send for a null or missing value
+  // that the service refuses.
+  const reports = (config: Record<string, unknown>) => subconReports(config);
+
+  assert.deepEqual(reports({}), [], "nothing opted in");
+  assert.deepEqual(reports({ enable_activity_summary: null }), [], "null is not an opt-in");
+  assert.deepEqual(reports({ enable_activity_summary: true }), ["activity + manpower"]);
+  assert.deepEqual(reports({ enable_manpower_summary: true }), ["manpower + machines"]);
+  assert.deepEqual(
+    reports({ enable_activity_summary: true, enable_manpower_summary: true }),
+    ["activity + manpower", "manpower + machines"],
+  );
+
+  // `enabled` gates outbound delivery after the per-report opt-in, so it still
+  // silences both.
+  assert.deepEqual(
+    reports({ enabled: false, enable_activity_summary: true, enable_manpower_summary: true }),
+    [],
+  );
 });

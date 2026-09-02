@@ -12,6 +12,7 @@ import {
   type Overrides,
   type ServiceRow,
 } from "../lib/project-identity";
+import { MERGES, SPLITS } from "../lib/project-identity-overrides";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 
 const NONE: Overrides = { merges: [], splits: [] };
@@ -209,4 +210,31 @@ test("the abbreviation rule refuses coincidental matches", () => {
   assert.equal(isAbbreviationOf("abc", "aardvarkbureauconstructioncompanyx"), false);
   // Out of order is not an abbreviation.
   assert.equal(isAbbreviationOf("cba", "cliffordcentre"), false);
+});
+
+test("the checked-in overrides are well formed", () => {
+  // These are hand-edited, and a malformed entry fails silently: a one-code
+  // merge does nothing, and a code in two merges quietly chains two sites
+  // together. Cheap to assert, and the mistake is invisible otherwise.
+  const seen = new Map<string, string[]>();
+  for (const merge of MERGES) {
+    assert.ok(merge.codes.length >= 2, `merge needs 2+ codes: ${JSON.stringify(merge.codes)}`);
+    assert.ok(merge.note.trim().length > 0, `merge needs a note: ${merge.codes.join("/")}`);
+    assert.equal(new Set(merge.codes).size, merge.codes.length, `duplicate code in ${merge.codes.join("/")}`);
+    if (merge.canonical) {
+      assert.ok(merge.codes.includes(merge.canonical), `canonical "${merge.canonical}" must be one of its own codes`);
+    }
+    for (const code of merge.codes) {
+      const already = seen.get(code);
+      assert.equal(already, undefined, `"${code}" is in two merges (${already?.join("/")} and ${merge.codes.join("/")})`);
+      seen.set(code, merge.codes);
+    }
+  }
+  // A pair cannot be both merged and kept apart; the split would win silently.
+  const merged = new Set(
+    MERGES.flatMap((m) => m.codes.flatMap((a) => m.codes.map((b) => [fold(a), fold(b)].sort().join("|")))),
+  );
+  for (const [a, b] of SPLITS) {
+    assert.ok(!merged.has([fold(a), fold(b)].sort().join("|")), `["${a}","${b}"] is both merged and split`);
+  }
 });

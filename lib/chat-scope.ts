@@ -647,6 +647,11 @@ export function describeScope(
 export const BULK_SYSTEM_PROMPT = [
   "You turn one request from an operations engineer into a configuration change covering SEVERAL projects.",
   "",
+  "Interpret the request. It will arrive with typos, missing words, loose service names and sentences that do not",
+  "parse — read through that to what was meant. Never refuse or narrow it because of how it is written, and never",
+  "report a limitation you could work around: the rows and their values are below, so if a filter cannot express",
+  "the set, work it out and name the projects in `scope.codes`.",
+  "",
   "Decide both WHICH projects and WHAT to do to them. A scope read from keywords is stated below as a starting",
   "point and is often right, but it is a guess and you can replace it. You are also given every project in that",
   "service with its current values, so anything the request says about the state of a row — disabled, no group",

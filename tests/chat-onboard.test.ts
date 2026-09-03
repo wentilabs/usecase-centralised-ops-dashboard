@@ -8,6 +8,7 @@ import {
   planOnboarding,
   resolveGroupPattern,
   saysOnboard,
+  siteTableFor,
   switchesIn,
   type OnboardIntent,
 } from "../lib/chat-onboard";
@@ -34,6 +35,25 @@ const plan = (prompt: string, rows: ServiceRow[]) => {
     rows.filter((r) => r.service === service).map((r) => r.row);
   return planOnboarding({ prompt, clusters: clusterProjects(rows), existingFor: byService, env: ENV });
 };
+
+test("the router tolerates typos, because it decides whether anything reads the request", () => {
+  // The failure this fixes: "onbaord isue chaserr projcts for all wohup sits"
+  // is plainly an onboarding request, and a literal regex sent it to the
+  // single-project path where it died as "Which project?" — no model ever saw
+  // it. A router that fails on a slip is worse than a loose one, because the
+  // loose case ends in a preview and the strict case ends in a refusal.
+  assert.equal(saysOnboard("onbaord isue chaserr projcts for all wohup sits"), true);
+  assert.equal(saysOnboard("creat projcts in subcon"), true);
+  assert.equal(saysOnboard("onbording for subcon activites"), true);
+  // Two words reaching a one-word verb.
+  assert.equal(saysOnboard("set up a project in wbgt"), true);
+
+  // Tolerance must not blur the one distinction that matters: "add" is the verb
+  // for editing far more often than for creating.
+  assert.equal(saysOnboard("add these two groups to every Wohhup project"), false);
+  assert.equal(saysOnboard("set company to wohhup for all disabled subcon projects"), false);
+  assert.equal(saysOnboard("create a new group list for TRI"), false);
+});
 
 test("onboarding is recognised without stealing ordinary edits", () => {
   assert.equal(saysOnboard("onboard every Wohhup project into issue chaser"), true);
@@ -524,9 +544,35 @@ test("scope filters compose, and excludes win", () => {
     return [...result.services[0].ready, ...result.services[0].blocked].map((r) => r.projectCode).sort();
   };
 
-  // Two includes are OR-ed, not AND-ed.
+  // Two includes INTERSECT. "All Wohhup sites that are also already in Noise"
+  // was the first thing anyone asked for, and an OR-only list could not say it
+  // — the model correctly refused rather than quietly widening the request.
   assert.deepEqual(
-    codesOf(run({ include: [{ kind: "company", company: "Obayashi" }, { kind: "codes", codes: ["A"] }], exclude: [] })),
+    codesOf(run({ include: [{ kind: "company", company: "Wohhup" }, { kind: "in-service", service: "noise" }], exclude: [] })),
+    ["A", "D"],
+    "Wohhup AND in noise",
+  );
+  // A union is still available, explicitly.
+  assert.deepEqual(
+    codesOf(
+      run({
+        include: [{ kind: "any", of: [{ kind: "company", company: "Obayashi" }, { kind: "codes", codes: ["A"] }] }],
+        exclude: [],
+      }),
+    ),
+    ["A", "B"],
+  );
+  // And the two compose: (Obayashi or A) that is also in noise.
+  assert.deepEqual(
+    codesOf(
+      run({
+        include: [
+          { kind: "any", of: [{ kind: "company", company: "Obayashi" }, { kind: "codes", codes: ["A"] }] },
+          { kind: "in-service", service: "noise" },
+        ],
+        exclude: [],
+      }),
+    ),
     ["A", "B"],
   );
   // An exclude wins over an include — "every Wohhup site except the ones in WBGT".
@@ -644,4 +690,42 @@ test("the notes box means 'not applied', not 'mentioned'", () => {
   // reason the box exists.
   assert.match(ONBOARD_INTENT_PROMPT, /Not applied from your sentence/);
   assert.match(ONBOARD_INTENT_PROMPT, /was applied, not skipped/);
+});
+
+test("the model is handed the estate, not a filter vocabulary", () => {
+  // The point of the site table: with the estate in front of it, any selection
+  // the model can reason about is expressible as `codes`, so no new filter kind
+  // is ever needed. "Wohhup sites also already in Noise" was a missing AND;
+  // the next request would have been a missing something-else.
+  const rows = [
+    row("wbgt", "MBS", { company: "Wohhup", whatsapp_group_id: "9@g.us" }),
+    row("noise", "MBS IR2", { company: "Wohhup", whatsapp_group_id: "9@g.us" }),
+    row("haze", "ZRB", { company: "Obayashi" }),
+  ];
+  const table = siteTableFor(clusterProjects(rows), (service) =>
+    rows.filter((r) => r.service === service).map((r) => r.row),
+  );
+  // Per-service codes, so the model can see which services a site is missing
+  // from without being told the rule for it.
+  assert.match(table, /"site":"MBS"/);
+  assert.match(table, /"wbgt":"MBS"/);
+  assert.match(table, /"noise":"MBS IR2"/);
+  assert.match(table, /"company":"Wohhup"/);
+  // Aliases, so a code the operator used reaches the site it belongs to.
+  assert.match(table, /"aliases":\["MBS","MBS IR2"\]/);
+  // A site missing from a service simply has no entry for it, which is how the
+  // model works out where a row still needs creating.
+  assert.match(table, /"site":"ZRB","company":"Obayashi","in":\{"haze":"ZRB"\}/);
+  // And it says codes are always available, which is what makes the vocabulary
+  // non-limiting.
+  assert.match(table, /scope\.codes/);
+});
+
+test("the prompt tells the model to read through typos rather than refuse", () => {
+  assert.match(ONBOARD_INTENT_PROMPT, /typos/i);
+  assert.match(ONBOARD_INTENT_PROMPT, /Never refuse or narrow/i);
+  // The specific failure mode: reporting a limitation instead of working around it.
+  assert.match(ONBOARD_INTENT_PROMPT, /never report a limitation you could work around/i);
+  // And it must not still claim the scope is decided elsewhere.
+  assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /You do not decide WHICH projects/i);
 });

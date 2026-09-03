@@ -34,6 +34,7 @@ import {
   onboardIntentContext,
   parseOnboardIntent,
   planOnboarding,
+  siteTableFor,
   saysOnboard,
   type OnboardIntent,
 } from "@/lib/chat-onboard";
@@ -462,15 +463,28 @@ export async function POST(request: NextRequest) {
         switches: (definition?.fields ?? [])
           .filter((field) => field.kind === "toggle")
           .map((field) => ({ column: field.column, label: field.label })),
+        fields: (definition?.fields ?? []).map((field) => ({
+          column: field.column,
+          label: field.label,
+          kind: field.kind,
+          required: field.required,
+        })),
       };
     });
 
     let intent: OnboardIntent | undefined;
     const choice = chooseProvider(process.env);
     if (choice.provider) {
+      const clusters = clusterProjects(serviceRows);
       const turn = {
         system: ONBOARD_INTENT_PROMPT,
-        user: [onboardIntentContext(catalogue, COMPANIES), "", `Request: ${prompt}`].join("\n"),
+        user: [
+          onboardIntentContext(catalogue, COMPANIES),
+          "",
+          siteTableFor(clusters, (service) => (rows[service] ?? []) as ProjectConfigRow[]),
+          "",
+          `Request: ${prompt}`,
+        ].join("\n"),
       };
       try {
         let result = await askModel(choice, turn);

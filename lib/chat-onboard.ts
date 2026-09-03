@@ -101,13 +101,15 @@ export function onboardTargetsIn(prompt: string, hints: ServiceKey[]): ServiceKe
 
 /** The scope in one phrase, for the review list's heading. */
 function describeFilters(scope: OnboardIntent["scope"]): string {
-  const say = (filter: SiteFilter) =>
+  const say = (filter: SiteFilter): string =>
     filter.kind === "company"
       ? `${filter.company} sites`
       : filter.kind === "in-service"
         ? `sites configured in ${SERVICES[filter.service].label}`
-        : `${filter.codes.join(", ")}`;
-  const head = scope.include.length ? scope.include.map(say).join(" or ") : "Sites";
+        : filter.kind === "any"
+          ? `(${filter.of.map(say).join(" or ")})`
+          : `${filter.codes.join(", ")}`;
+  const head = scope.include.length ? scope.include.map(say).join(" that are also ") : "Sites";
   const tail = scope.exclude.length ? ` except ${scope.exclude.map(say).join(" or ")}` : "";
   return (head + tail).replace(/^./, (first) => first.toUpperCase());
 }
@@ -159,19 +161,56 @@ export function resolveGroupPattern(
 const ONBOARD = /\b(onboard(?:ed|ing)?|create|set\s+up|register)\b/i;
 const PROJECT_NOUN = /\b(project|projects|site|sites)\b/i;
 
+/** Edit distance, capped — only used to decide whether one word is another. */
+function withinEdits(a: string, b: string, budget: number): boolean {
+  if (Math.abs(a.length - b.length) > budget) return false;
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    if (Math.min(...current) > budget) return false;
+    previous = current;
+  }
+  return previous[b.length] <= budget;
+}
+
+/** Words meaning "make new projects", and the nouns that disambiguate `create`. */
+const ONBOARD_VERBS = ["onboard", "onboarded", "onboarding", "create", "register", "setup"];
+const PROJECT_NOUNS = ["project", "projects", "site", "sites"];
+
 /**
- * Whether a sentence is asking for projects to be created.
+ * Whether a request is asking for projects to be created.
  *
- * "add" is deliberately absent. It is the verb for both "add a project" and
- * "add this group to CFC", and the second is far more common — reading it as
- * onboarding would send ordinary edits down this path. "onboard", "create",
- * "set up" and "register" do not carry that ambiguity.
+ * Typo-tolerant, because this decides which path runs and therefore whether a
+ * model reads the request at all. "onbaord isue chaserr projcts" is plainly an
+ * onboarding request, and a literal regex sent it to the single-project path
+ * where it died as "Which project?" — the reading never happened. A router
+ * that fails on a slip is worse than a slightly loose one, because the loose
+ * case ends in a preview and the strict case ends in a refusal.
+ *
+ * "add" is still excluded on meaning rather than spelling: it is the verb for
+ * both "add a project" and "add this group to CFC", and the second is far more
+ * common.
  */
 export function saysOnboard(prompt: string): boolean {
-  if (!ONBOARD.test(prompt)) return false;
-  // `create` alone is not enough: "create a new group list" is an edit.
-  if (/\bonboard(?:ed|ing)?\b/i.test(prompt)) return true;
-  return PROJECT_NOUN.test(prompt);
+  const words = prompt.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  // Adjacent pairs joined too, so the two-word "set up" reaches "setup".
+  const tokens = [...words, ...words.slice(0, -1).map((word, index) => word + words[index + 1])];
+  const near = (targets: string[], budget = 2) =>
+    tokens.some((token) =>
+      targets.some((target) => token === target || withinEdits(token, target, token.length <= 5 ? 1 : budget)),
+    );
+  if (!near(ONBOARD_VERBS)) return false;
+  // A form of "onboard" is unambiguous; "create" needs a project noun, since
+  // "create a new group list" is an edit.
+  if (near(["onboard", "onboarded", "onboarding"])) return true;
+  return near(PROJECT_NOUNS, 1);
 }
 
 /**
@@ -278,10 +317,13 @@ export type OnboardIntent = {
   /**
    * Which sites, as composable filters rather than three fixed shapes.
    *
-   * `include` is OR'd and `exclude` wins, so "every Wohhup site on noise
-   * meters except the ones already in WBGT" is expressible without this file
-   * having anticipated that sentence. A site must match at least one include
-   * and no exclude; an empty `include` means every site.
+   * `include` is AND-ed and `exclude` wins. "All Wohhup sites that are also
+   * already in Noise" is an intersection, and it was the first thing anyone
+   * asked for — an OR-only list could not express it at all, and the model
+   * correctly refused rather than quietly widening the request.
+   *
+   * A union is still available, explicitly: `{kind:"any", of:[...]}`. An empty
+   * `include` means every site.
    *
    * `codes` is safe for the model to supply because a code here only SELECTS —
    * it is matched against sites that already exist, so an invented one matches
@@ -326,7 +368,9 @@ export type OnboardIntent = {
 export type SiteFilter =
   | { kind: "company"; company: string }
   | { kind: "in-service"; service: ServiceKey }
-  | { kind: "codes"; codes: string[] };
+  | { kind: "codes"; codes: string[] }
+  /** Matches when ANY of its members match. Nests, so filters compose freely. */
+  | { kind: "any"; of: SiteFilter[] };
 
 /** Read the model's answer, keeping only what it is entitled to decide. */
 export function parseOnboardIntent(
@@ -374,6 +418,10 @@ export function parseOnboardIntent(
       } else if (kind === "codes" && Array.isArray(entry?.codes)) {
         const codes = entry.codes.map((code) => String(code).trim()).filter(Boolean);
         if (codes.length) out.push({ kind: "codes", codes });
+      } else if (kind === "any") {
+        const of = readFilters(entry?.of, label);
+        if (of === null) return null;
+        if (of.length) out.push({ kind: "any", of });
       } else {
         notes.push(`could not read one ${label} filter, so it was ignored`);
       }
@@ -661,6 +709,7 @@ export function planOnboarding({
     if (filter.kind === "in-service") {
       return cluster.members.some((member) => member.service === filter.service);
     }
+    if (filter.kind === "any") return filter.of.some((inner) => matches(inner, cluster));
     // A code SELECTS a site by any of its spellings. An invented one matches
     // nothing, which is why the model is allowed to supply these.
     const wanted = new Set(filter.codes.map(fold));
@@ -668,13 +717,12 @@ export function planOnboarding({
   };
 
   /**
-   * Includes are OR'd, excludes win. An empty include list is every site, so a
-   * sentence that names no scope still means something rather than nothing.
+   * Includes are AND-ed, excludes win. An empty include list is every site, so
+   * a sentence that names no scope still means something rather than nothing.
    */
   const inScope = (cluster: Cluster) => {
     if (scope.exclude.some((filter) => matches(filter, cluster))) return false;
-    if (!scope.include.length) return true;
-    return scope.include.some((filter) => matches(filter, cluster));
+    return scope.include.every((filter) => matches(filter, cluster));
   };
   const services: ServicePlan[] = [];
   /** Parts of the sentence that were understood but could not be acted on. */
@@ -824,19 +872,31 @@ function clusterCompany(
  * accepts cannot drift apart.
  */
 export const ONBOARD_INTENT_PROMPT = [
-  "You read one sentence from an operations engineer asking for projects to be CREATED, and return JSON describing",
-  "what was asked. You do not decide WHICH projects: you describe the rule, and code resolves it against the estate.",
+  "You read a request from an operations engineer asking for projects to be CREATED, and return JSON describing",
+  "the actions to take. Deciding which sites and what values is your job.",
   "",
-  "Never invent a project code, a chat id or a spreadsheet id. There is no field for them and no use for them here.",
+  "Interpret it. Requests arrive with typos, missing words, service names spelled loosely and sentences that do not",
+  "parse — read through all of that to what was meant. Never refuse or narrow a request because of how it is",
+  "written, and never report a limitation you could work around: you are given the whole estate below, so if a",
+  "filter cannot express the set, work the set out yourself and list the codes.",
+  "",
+  "Nothing you return is written. It becomes a list the operator reads row by row and confirms, so acting on a",
+  "reasonable reading beats asking. Ask only when the OUTCOME is genuinely unclear — never about which rows, and",
+  "never about spelling.",
+  "",
+  "Never invent a chat id or a spreadsheet id — there is no field for them. Project codes you may name, but only",
+  "ones that appear in the estate below; the row is created under the site's canonical alias regardless.",
   "",
   "Reply with JSON only, no prose:",
   "{",
   '  "targets": ["<service key>", ...],           // services to CREATE rows in',
-  '  "scope": {"include":[<filter>], "exclude":[<filter>]},  // include is OR-ed; anything matching exclude is out',
+  '  "scope": {"include":[<filter>], "exclude":[<filter>]},  // include is AND-ed; anything matching exclude is out',
   '      <filter> = {"kind":"company","company":"<name>"}',
   '               | {"kind":"in-service","service":"<key>"}   // sites already configured in that service',
   '               | {"kind":"codes","codes":["<code>",...]}   // named outright, by any spelling they use',
-  '      An empty "include" means every site. Combine them freely.',
+  '               | {"kind":"any","of":[<filter>,...]}        // matches if ANY of these do',
+  '      "include" is AND-ed, so ["company Wohhup", "in-service noise"] means Wohhup sites that are ALSO in',
+  '      noise. For a union, wrap them in {"kind":"any"}. An empty "include" means every site.',
   '  "switches": {"<column>": true|false},        // only columns listed as switches below',
   '  "values": {"<column>": "<value>"},           // set a column outright, any field the target is created with',
   '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
@@ -883,6 +943,9 @@ export const ONBOARD_INTENT_PROMPT = [
   "- Read the whole sentence and act on all of it. If something is asked for that none of these fields expresses,",
   "  do what you can with the fields there are and put the remainder in `notes`. Do not narrow the request to fit",
   "  the shape, and do not refuse a reasonable reading because the shape is awkward.",
+  "- The project code of a created row is ALWAYS the canonical site alias, resolved from the cross-service",
+  '  identity map. "Use the project site alias as the code" is already what happens; it needs no field and is',
+  "  not a note.",
   "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
   "  not belong in `notes`.",
   "- Put anything you understood but could not express into `notes`. It is shown to the operator under",
@@ -891,15 +954,70 @@ export const ONBOARD_INTENT_PROMPT = [
   "  buries the parts that really were dropped.",
 ].join("\n");
 
+/**
+ * Every site, with the code each service uses for it and its company.
+ *
+ * The point of handing this over: with the estate in front of it, any selection
+ * the model can reason about is expressible as `codes`, and no new filter kind
+ * is ever needed. "Wohhup sites also already in Noise" was a missing AND;
+ * "everything except the three we discussed" would have been a missing
+ * something-else. Giving it the data ends that sequence rather than extending
+ * it one gate at a time.
+ *
+ * Codes are safe to receive back because they only SELECT — matched against
+ * sites that exist, so an invented one selects nothing, and the code a row is
+ * created with is the canonical alias either way.
+ */
+export function siteTableFor(
+  clusters: Cluster[],
+  existingFor: (service: ServiceKey) => ProjectConfigRow[],
+): string {
+  const rows = clusters.map((cluster) => {
+    const per: Record<string, string> = {};
+    for (const member of cluster.members) per[member.service] = member.projectCode;
+    return {
+      site: cluster.canonical,
+      company: clusterCompany(cluster, existingFor),
+      in: per,
+      ...(cluster.codes.length > 1 ? { aliases: cluster.codes } : {}),
+    };
+  });
+  return [
+    `All ${rows.length} sites in the estate. "in" lists the code each service uses; a service absent from it has`,
+    "no row for that site yet. Work out which sites the request means from this, and name them in",
+    '`scope.codes` when a filter cannot say it — that is always available and always exact.',
+    JSON.stringify(rows),
+  ].join("\n");
+}
+
 /** The facts the model needs about this estate, rendered for the prompt. */
 export function onboardIntentContext(
-  services: { key: ServiceKey; label: string; hasOnboarding: boolean; switches: { column: string; label: string }[] }[],
+  services: {
+    key: ServiceKey;
+    label: string;
+    hasOnboarding: boolean;
+    switches: { column: string; label: string }[];
+    /** Every column the service is created with, so a name is never guessed. */
+    fields?: { column: string; label: string; kind: string; required: boolean }[];
+  }[],
   companies: readonly string[],
 ): string {
   const lines = ["Services (key — label):"];
   for (const service of services) {
     lines.push(
       `  ${service.key} — ${service.label}${service.hasOnboarding ? "" : "  (no onboarding flow; cannot be a target)"}`,
+    );
+  }
+  // The exact column names, because without them a name gets guessed: a request
+  // to default the safety workbook came back as `safety_spreadsheet_id`, which
+  // does not exist — the column is `safety_sheet_id` — so the value was
+  // dropped and reported instead of being set.
+  lines.push("", "Columns each service is CREATED with. Use these names exactly in `values`/`fallbacks`:");
+  for (const service of services.filter((entry) => entry.fields?.length)) {
+    lines.push(
+      `  ${service.key}: ${service
+        .fields!.map((field) => `${field.column} (${field.kind}${field.required ? ", required" : ""})`)
+        .join(", ")}`,
     );
   }
   lines.push("", "Switches offered at creation, by service:");

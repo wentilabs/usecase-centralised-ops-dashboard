@@ -8,6 +8,7 @@ import { SmartChat } from "./SmartChat";
 import { shouldFocusPropose, shouldFocusSearch } from "@/lib/search-hotkey";
 import { ExportDialog } from "./ExportDialog";
 import { BatchProposal, type Batch } from "./BatchProposal";
+import { OnboardProposal, type OnboardPlanView } from "./OnboardProposal";
 import { LightningMap } from "./LightningMap";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
@@ -97,6 +98,7 @@ export function DashboardShell({
   const [lightningMap, setLightningMap] = useState<string | null>(null);
   /** A chat request covering several projects, awaiting review. */
   const [batch, setBatch] = useState<{ batch: Batch; note: string } | null>(null);
+  const [onboardPlan, setOnboardPlan] = useState<OnboardPlanView | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -224,6 +226,13 @@ export function DashboardShell({
     [],
   );
 
+  const proposeOnboard = useCallback(
+    (plan: { summary: string; company: string | null; services: unknown[] }) => {
+      setOnboardPlan(plan as OnboardPlanView);
+    },
+    [],
+  );
+
   const active = services.find((service) => service.key === tab) ?? services[0];
 
   const visible = useMemo(() => {
@@ -297,6 +306,7 @@ export function DashboardShell({
           fullWidth
           onProposal={proposeChange}
           onBatch={proposeBatch}
+          onOnboard={proposeOnboard}
           flash={proposeFlash}
           registerInput={(element) => {
             proposeInputs.current[0] = element;
@@ -358,6 +368,7 @@ export function DashboardShell({
           <SmartChat
             onProposal={proposeChange}
             onBatch={proposeBatch}
+            onOnboard={proposeOnboard}
             flash={proposeFlash}
             registerInput={(element) => {
               proposeInputs.current[1] = element;
@@ -589,6 +600,14 @@ export function DashboardShell({
           }
           groupNames={groupNames}
           onClose={() => setBatch(null)}
+          onApplied={() => void refreshData()}
+        />
+      ) : null}
+
+      {onboardPlan ? (
+        <OnboardProposal
+          plan={onboardPlan}
+          onClose={() => setOnboardPlan(null)}
           onApplied={() => void refreshData()}
         />
       ) : null}

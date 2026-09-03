@@ -18,6 +18,7 @@ import { useState } from "react";
 export function SmartChat({
   onProposal,
   onBatch,
+  onOnboard,
   fullWidth = false,
   registerInput,
   flash = false,
@@ -39,6 +40,12 @@ export function SmartChat({
    * same reason it travels with a single proposal — every row's audit note.
    */
   onBatch: (batch: { scope: string; summary: string; matchedGroups?: unknown[]; edits: unknown[] }, prompt: string) => void;
+  /**
+   * Projects to create. A separate surface from `onBatch` because a create has
+   * no before-state to diff and can be refused for a field nobody supplied —
+   * see OnboardProposal.
+   */
+  onOnboard: (plan: { summary: string; company: string | null; services: unknown[] }) => void;
   onProposal: (proposal: {
     service: string;
     projectCode: string;
@@ -64,6 +71,11 @@ export function SmartChat({
         body: JSON.stringify({ prompt: asked }),
       });
       const body = await res.json();
+      if (body.onboard) {
+        onOnboard(body.onboard);
+        setMessage(null);
+        return;
+      }
       if (body.batch) {
         onBatch(body.batch, asked);
         setMessage(null);
@@ -102,7 +114,11 @@ export function SmartChat({
               void send();
             }
           }}
-          placeholder={fullWidth ? "Ask for a change — “TJR lightning, amber off”" : "Ask for a change — “CFC's WBGT alerts shouldn't go out on Sundays”"}
+          placeholder={
+            fullWidth
+              ? "Ask for a change, or to onboard — “TJR lightning, amber off”"
+              : "Ask for a change, or to onboard — “onboard every Wohhup site into issue chaser”"
+          }
           aria-label="Ask for a configuration change"
           className={`rounded-lg border bg-card px-3 text-sm outline-none focus:border-primary disabled:opacity-60 ${
             flash ? "border-primary ring-2 ring-primary/70" : "border-border"

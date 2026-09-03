@@ -598,3 +598,19 @@ test("the site identity matrix scrolls instead of overflowing a phone", async ()
   const drawer = await source("components/ServiceDrawer.tsx");
   assert.match(drawer, /href="\/identity"/, "the mobile drawer must link to the identity page");
 });
+
+test("the onboarding review is a sheet on a phone and a dialog on desktop", async () => {
+  const proposal = await source("components/OnboardProposal.tsx");
+
+  // Same shape as the bulk review: bottom sheet on a phone, centred dialog from
+  // md up. A centred dialog at 375px leaves the list unreadable.
+  assert.match(proposal, /items-end[^"]*md:items-center/, "sheet on a phone, dialog on desktop");
+  assert.match(proposal, /rounded-t-2xl[^"]*md:[^"]*rounded-2xl/, "only the top corners round on a phone");
+  // The header and footer sit against the notch and the home bar.
+  assert.match(proposal, /pt-safe/, "header must clear the status bar");
+  assert.match(proposal, /pb-safe/, "footer must clear the home bar");
+  // Thumb-sized before md, compact after.
+  assert.match(proposal, /py-2\.5[^"]*md:py-1\.5/, "buttons must be thumb-sized on a phone");
+  // The list scrolls, not the page behind it.
+  assert.match(proposal, /overflow-y-auto overscroll-contain/, "the list scrolls inside the sheet");
+});

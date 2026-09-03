@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { planOnboarding, saysOnboard } from "../lib/chat-onboard";
+import { onboardingFor } from "../lib/onboarding";
 import { clusterProjects, type ServiceRow } from "../lib/project-identity";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 
@@ -30,6 +31,11 @@ test("onboarding is recognised without stealing ordinary edits", () => {
   // "add" is the verb for both onboarding and editing, and editing is far more
   // common — reading it as onboarding would divert real edits to this path.
   assert.equal(saysOnboard("add the WL coordination group to CFC"), false);
+  // The case that actually pins it: "add" alongside the word "project" is an
+  // ordinary edit far more often than it is onboarding, and reading it as
+  // onboarding would divert real edits into a create dialog.
+  assert.equal(saysOnboard("add the safety group to the TRI project"), false);
+  assert.equal(saysOnboard("add these two groups to every Wohhup project"), false);
   assert.equal(saysOnboard("add 120363@g.us to TRI's lightning groups"), false);
   assert.equal(saysOnboard("turn off Sunday alerts for CFC"), false);
   assert.equal(saysOnboard("remove all X WL groups from every project"), false);
@@ -135,4 +141,53 @@ test("the carried values are identity only, never a guessed workbook", () => {
     !Object.values(proposed.values).includes("SHEET-FROM-WBGT"),
     "a workbook id from another service must never be carried across",
   );
+});
+
+test("a service needing only a project code produces creatable rows", () => {
+  // Noise and WBGT require nothing but the code, so these are the rows that
+  // actually get written — the path the blocked-only tests never reach.
+  const rows = [
+    row("wbgt", "ZRB", { company: "Wohhup" }),
+    row("wbgt", "CFC", { company: "Wohhup" }),
+    row("noise", "CFC", { company: "Wohhup" }),
+  ];
+  const result = plan("onboard every Wohhup site into noise", rows);
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const noise = result.services[0];
+
+  assert.deepEqual(noise.ready.map((r) => r.projectCode), ["ZRB"]);
+  assert.deepEqual(noise.blocked, []);
+  // CFC is in noise already, so it is not offered again.
+  assert.deepEqual(noise.alreadyThere.map((entry) => entry.projectCode), ["CFC"]);
+
+  const draft = noise.ready[0].values;
+  assert.equal(draft.project_code, "ZRB");
+  assert.equal(draft.company, "Wohhup");
+  // "All given default options": the column defaults are filled in, which is
+  // what makes the row creatable without asking anyone anything.
+  assert.ok(
+    Object.keys(draft).length > 2,
+    `more than identity must be prefilled, got ${JSON.stringify(draft)}`,
+  );
+  // And nothing outside this service's own onboarding definition is invented.
+  const allowed = new Set(onboardingFor("noise")!.fields.map((field) => field.column));
+  for (const column of Object.keys(draft)) {
+    assert.ok(allowed.has(column), `${column} is not a noise onboarding field`);
+  }
+});
+
+test("the plan never proposes a code the target service would reject", () => {
+  // Haze and lightning CHECK `^[A-Z0-9][A-Z0-9-]{0,47}$`, and canonical site
+  // codes come from whatever the estate happens to spell them — "CR 106" has a
+  // space and "Clifford Centre" has two words. Those must surface as blocked
+  // rather than be sent to an insert Postgres will refuse.
+  const rows = [
+    row("wbgt", "CR 106", { company: "Wohhup", latitude: 1.3, longitude: 103.8 }),
+  ];
+  const result = plan("onboard every Wohhup site into haze", rows);
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const haze = result.services[0];
+  assert.deepEqual(haze.ready, [], "a code with a space cannot be created in haze");
+  assert.equal(haze.blocked.length, 1);
+  assert.match(haze.blocked[0].problems.join(" "), /Project code is not valid|required/i);
 });

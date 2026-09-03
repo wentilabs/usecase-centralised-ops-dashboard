@@ -23,6 +23,8 @@ import {
   type RowEdit,
   type Scope,
 } from "@/lib/chat-scope";
+import { planOnboarding, saysOnboard } from "@/lib/chat-onboard";
+import { clusterProjects, type ServiceRow } from "@/lib/project-identity";
 import { getGroupNames } from "@/lib/group-names";
 import { chatIdsIn } from "@/lib/card-summary";
 import {
@@ -88,6 +90,32 @@ type ChatReply = {
       rowId: string;
       changes: Record<string, unknown>;
       detail?: string;
+    }[];
+  };
+  /**
+   * Projects to CREATE, sent instead of the others when the sentence asks for
+   * onboarding.
+   *
+   * Every row is listed — the ones that can be created and the ones short a
+   * required field — because "34 of 36 need a Safety workbook id" is the answer
+   * to the request, and creating only the two that happen to be complete would
+   * answer a question nobody asked. Nothing here is written until the operator
+   * confirms the list.
+   */
+  onboard?: {
+    summary: string;
+    company: string | null;
+    services: {
+      service: string;
+      label: string;
+      ready: { projectCode: string; values: Record<string, string>; knownAs: string[] }[];
+      blocked: {
+        projectCode: string;
+        values: Record<string, string>;
+        knownAs: string[];
+        problems: string[];
+      }[];
+      alreadyThere: { projectCode: string; existingAs: string }[];
     }[];
   };
 };
@@ -294,6 +322,55 @@ export async function POST(request: NextRequest) {
     const result = settled[index];
     if (result.status === "fulfilled") rows[key] = result.value as never[];
   });
+
+  /**
+   * Onboarding is decided before scope, because scope is resolved from rows
+   * that EXIST and these do not yet.
+   *
+   * No model is consulted on this path at all — every part of the request is
+   * decidable in code, so there is no route by which a hallucinated project
+   * code reaches a create. See `lib/chat-onboard.ts`.
+   */
+  if (saysOnboard(prompt)) {
+    const serviceRows: ServiceRow[] = [];
+    for (const key of SERVICE_KEYS) {
+      for (const row of (rows[key] ?? []) as ProjectConfigRow[]) {
+        const code = String(row.project_code ?? "").trim();
+        if (code) serviceRows.push({ service: key, projectCode: code, row });
+      }
+    }
+    const plan = planOnboarding({
+      prompt,
+      clusters: clusterProjects(serviceRows),
+      existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
+      env: process.env,
+    });
+    if (plan.kind === "question") return reply({ message: plan.question });
+    const knownAs = (members: { service: ServiceKey; projectCode: string }[]) =>
+      members.map((member) => `${SERVICES[member.service].label}: ${member.projectCode}`);
+    return reply({
+      onboard: {
+        summary: plan.summary,
+        company: plan.company,
+        services: plan.services.map((entry) => ({
+          service: entry.service,
+          label: entry.label,
+          ready: entry.ready.map((row) => ({
+            projectCode: row.projectCode,
+            values: row.values,
+            knownAs: knownAs(row.knownAs),
+          })),
+          blocked: entry.blocked.map((row) => ({
+            projectCode: row.projectCode,
+            values: row.values,
+            knownAs: knownAs(row.knownAs),
+            problems: row.problems,
+          })),
+          alreadyThere: entry.alreadyThere,
+        })),
+      },
+    });
+  }
 
   /**
    * Scope first, then the old single-project path.

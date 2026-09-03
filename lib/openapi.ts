@@ -155,9 +155,15 @@ export const openapiDocument = {
       post: {
         operationId: "proposeConfigChange",
         tags: ["configuration"],
-        summary: "Turn one sentence into a proposed change for one project",
+        summary: "Turn one sentence into a proposed change, a bulk change, or an onboarding plan",
         description:
-          "PROPOSES ONLY — writes nothing. Resolves which project a sentence is about from the project codes this dashboard holds, asks a model to map the request onto that service's columns, validates the result against the field spec, and returns the change set. Applying it is a separate `updateProjectConfig` call, which is where validation, optimistic concurrency and the audit row happen. Ambiguity comes back as a question: no project named, two projects named, or an outcome no column covers. Requires an editor session and `ANTHROPIC_API_KEY` on the server; an agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip.",
+          "PROPOSES ONLY — writes nothing, on every path. Which rows a sentence affects is resolved HERE, in code, from the project codes this dashboard holds; the model is only ever asked what to do to them, never which they are. Returns exactly one of four shapes, and the response key says which:\n\n" +
+          "- `proposal` — one project. Apply with `updateProjectConfig`.\n" +
+          "- `batch` — several projects, each with its own change set. Apply one `updateProjectConfig` per entry; there is no bulk write endpoint, so each keeps its own validation, optimistic concurrency and audit row.\n" +
+          "- `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`.\n" +
+          "- `message` — a question or a refusal, when there is nothing to propose.\n\n" +
+          "The onboarding path consults no model at all: the company, the target services and the missing sites are all decided in code, so no project code can be invented. It counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code would create duplicates. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because \"34 of 36 need a Safety workbook id\" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.\n\n" +
+          "Requires an editor session, and `ANTHROPIC_API_KEY` for the two model-backed paths. An agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip; the onboarding path is worth calling even so, because the site-matching it does is not reproducible from the schema alone.",
         requestBody: {
           required: true,
           content: {
@@ -168,7 +174,8 @@ export const openapiDocument = {
                   prompt: {
                     type: "string",
                     maxLength: 2000,
-                    description: "One sentence naming the project and the outcome, e.g. \"CFC's WBGT alerts shouldn't go out on Sundays\".",
+                    description:
+                      "One sentence. Name the project and the outcome for a single change (\"CFC's WBGT alerts shouldn't go out on Sundays\"); name a company or \"all projects\" for a bulk one (\"remove the WL coordination groups from every project\"); or say onboard/create/set up/register with a target service for an onboarding plan (\"onboard every Wohhup site into issue chaser and subcon\"). The word \"add\" is deliberately NOT read as onboarding — it is the verb for editing far more often.",
                   },
                 },
                 required: ["prompt"],
@@ -178,8 +185,79 @@ export const openapiDocument = {
         },
         responses: {
           "200": {
-            description: "Either a `proposal` to apply, or a `message` explaining why there is nothing to propose.",
-            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+            description:
+              "Exactly one of `proposal`, `batch`, `onboard` or `message`. Nothing has been written; each carries the full set of rows it would affect, so the list IS the change rather than a count to be trusted.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", description: "A question or refusal. Present when nothing can be proposed." },
+                    proposal: { type: "object", additionalProperties: true, description: "One project's change set." },
+                    batch: { type: "object", additionalProperties: true, description: "Several projects, each with its own change set." },
+                    onboard: {
+                      type: "object",
+                      description: "Projects to create, grouped by target service.",
+                      properties: {
+                        summary: { type: "string" },
+                        company: { type: ["string", "null"], description: "The company the request scoped to, if any." },
+                        services: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              service: { type: "string" },
+                              label: { type: "string" },
+                              ready: {
+                                type: "array",
+                                description: "Creatable as they stand. Send each `values` to createProject as the `draft`.",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    projectCode: { type: "string" },
+                                    values: { type: "object", additionalProperties: { type: "string" } },
+                                    knownAs: {
+                                      type: "array",
+                                      items: { type: "string" },
+                                      description: "What this site is already called in other services.",
+                                    },
+                                  },
+                                },
+                              },
+                              blocked: {
+                                type: "array",
+                                description: "Short a required field. Do NOT send these to createProject; `problems` says what is missing.",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    projectCode: { type: "string" },
+                                    values: { type: "object", additionalProperties: { type: "string" } },
+                                    knownAs: { type: "array", items: { type: "string" } },
+                                    problems: { type: "array", items: { type: "string" } },
+                                  },
+                                },
+                              },
+                              alreadyThere: {
+                                type: "array",
+                                description: "Sites already onboarded here, possibly under a different code.",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    projectCode: { type: "string", description: "The canonical site code." },
+                                    existingAs: { type: "string", description: "The code this service actually uses." },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  additionalProperties: true,
+                },
+              },
+            },
           },
           "400": errorResponses["400"],
           "401": errorResponses["401"],

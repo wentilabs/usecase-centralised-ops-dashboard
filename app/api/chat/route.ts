@@ -392,6 +392,9 @@ export async function POST(request: NextRequest) {
             services: [...SERVICE_KEYS],
             switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
             carryColumns: SERVICE_KEYS.flatMap((key) => carryColumnsFor(key)),
+            valueColumns: SERVICE_KEYS.flatMap((key) =>
+              (onboardingFor(key)?.fields ?? []).map((field) => field.column),
+            ),
           });
           if (read && "question" in read) return reply({ message: read.question });
           if (read) intent = read;

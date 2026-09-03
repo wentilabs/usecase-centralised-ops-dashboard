@@ -8,6 +8,7 @@ import {
   resolveGroupPattern,
   saysOnboard,
   switchesIn,
+  type OnboardIntent,
 } from "../lib/chat-onboard";
 import { onboardingFor } from "../lib/onboarding";
 import { clusterProjects, type ServiceRow } from "../lib/project-identity";
@@ -15,6 +16,7 @@ import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 
 /** Real-shaped, because validateDraft checks the id looks like a Sheet id. */
 const SHEET_ID = "1fsbJ04eSqfaGUBTO_HN7d0s8aafjQEftRoXLEziDe40";
+const OTHER_SHEET_ID = "1LStoAHwBgdnXeTviMDgaPwV52gHm779YtzbgDUfQdvg";
 
 const ENV = {
   ISSUE_CHASER_LAMBDA_URL: "https://x/send-message",
@@ -343,6 +345,7 @@ const ALLOWED = {
   services: ["wbgt", "noise", "haze", "lightning", "ailytics", "subcon", "issueChaser"] as ServiceKey[],
   switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
   carryColumns: ["spreadsheet_id"],
+  valueColumns: ["spreadsheet_id", "safety_group_ids", "manpower_activity_outbound_group_id"],
 };
 
 test("the intent parser refuses what the model is not allowed to decide", () => {
@@ -415,6 +418,8 @@ test("in-service scope selects by membership, not by company", () => {
       targets: ["subcon"],
       scope: { kind: "in-service", service: "noise" },
       switches: {},
+      values: {},
+      fallbacks: {},
       carry: [],
       groupPattern: null,
       notes: [],
@@ -428,4 +433,57 @@ test("in-service scope selects by membership, not by company", () => {
   // Both noise sites regardless of company; the WBGT-only site is out of scope.
   assert.deepEqual(proposed.sort(), ["IN1", "IN2"]);
   assert.match(result.summary, /configured in Noise/i);
+});
+
+test("a fallback fills only the gap, and a value overrides the carry", () => {
+  // The instruction that had nowhere to go before: "if no applicable WBGT
+  // manpower workbook is configured, use X". It must not touch the workbook
+  // carried for the sites that DO have one.
+  const rows = [
+    row("wbgt", "HAS", { company: "Wohhup", manpower_spreadsheet_id: SHEET_ID }),
+    row("wbgt", "NONE", { company: "Wohhup" }),
+  ];
+  const base = {
+    targets: ["subcon"] as ServiceKey[],
+    scope: { kind: "company" as const, company: "Wohhup" },
+    switches: {},
+    carry: [],
+    groupPattern: null,
+    notes: [],
+  };
+  const run = (extra: Partial<OnboardIntent>) =>
+    planOnboarding({
+      prompt: "onboard wohhup sites into subcon",
+      intent: { ...base, values: {}, fallbacks: {}, ...extra } as OnboardIntent,
+      clusters: clusterProjects(rows),
+      existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+      env: ENV,
+    });
+
+  const withFallback = run({ fallbacks: { spreadsheet_id: OTHER_SHEET_ID } });
+  if (withFallback.kind !== "plan") return assert.fail("expected a plan");
+  const bySite = Object.fromEntries(
+    [...withFallback.services[0].ready, ...withFallback.services[0].blocked].map((r) => [
+      r.projectCode,
+      r.values.spreadsheet_id,
+    ]),
+  );
+  assert.equal(bySite.HAS, SHEET_ID, "the carried workbook must survive the fallback");
+  assert.equal(bySite.NONE, OTHER_SHEET_ID, "and the gap is filled");
+
+  // A plain value is an instruction, so it beats the carry.
+  const withValue = run({ values: { spreadsheet_id: OTHER_SHEET_ID } });
+  if (withValue.kind !== "plan") return assert.fail("expected a plan");
+  const all = [...withValue.services[0].ready, ...withValue.services[0].blocked];
+  for (const entry of all) assert.equal(entry.values.spreadsheet_id, OTHER_SHEET_ID);
+});
+
+test("a value for a column the service is not created with is reported", () => {
+  const read = parseOnboardIntent(
+    { targets: ["subcon"], scope: { kind: "all" }, values: { not_a_column: "x" } },
+    ALLOWED,
+  );
+  if (!read || "question" in read) return assert.fail("expected an intent");
+  assert.deepEqual(read.values, {});
+  assert.match(read.notes.join(" "), /not_a_column/);
 });

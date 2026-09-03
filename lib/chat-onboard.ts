@@ -260,6 +260,22 @@ export type OnboardIntent = {
     | { kind: "all" };
   /** Column → value, for switches the target offers at creation. */
   switches: Record<string, boolean>;
+  /**
+   * Literal values for any column the target's onboarding flow carries.
+   *
+   * The general case the switch map could not express: "set the outbound group
+   * to X", "timezone Asia/Singapore". An explicit value beats a carried one,
+   * because an instruction is more specific than an equivalence.
+   */
+  values: Record<string, string>;
+  /**
+   * Values used ONLY where the column is still empty after everything else.
+   *
+   * "If no applicable WBGT manpower workbook is configured, use X" is this, and
+   * it is a different thing from `values`: it must not overwrite the workbook
+   * that was carried for the seventeen sites that have one.
+   */
+  fallbacks: Record<string, string>;
   /** Columns to fill from another service's row for the same site. */
   carry: { column: string; from: ServiceKey }[];
   /**
@@ -274,7 +290,13 @@ export type OnboardIntent = {
 /** Read the model's answer, refusing anything it is not allowed to decide. */
 export function parseOnboardIntent(
   parsed: Record<string, unknown> | null,
-  allowed: { services: ServiceKey[]; switchColumns: string[]; carryColumns: string[] },
+  allowed: {
+    services: ServiceKey[];
+    switchColumns: string[];
+    carryColumns: string[];
+    /** Every column any target is created with, for `values` / `fallbacks`. */
+    valueColumns: string[];
+  },
 ): OnboardIntent | { question: string } | null {
   if (!parsed) return null;
   if (typeof parsed.question === "string" && parsed.question.trim()) {
@@ -308,6 +330,25 @@ export function parseOnboardIntent(
     scope = { kind: "in-service", service };
   }
 
+  const values: Record<string, string> = {};
+  const fallbacks: Record<string, string> = {};
+  for (const [field, target] of [
+    ["values", values],
+    ["fallbacks", fallbacks],
+  ] as const) {
+    for (const [column, value] of Object.entries((parsed[field] ?? {}) as Record<string, unknown>)) {
+      if (!allowed.valueColumns.includes(column)) {
+        notes.push(`"${column}" is not a field this service is created with, so it was not set`);
+        continue;
+      }
+      if (value === null || value === undefined || typeof value === "object") {
+        notes.push(`"${column}" was not given as a plain value, so it was left alone`);
+        continue;
+      }
+      target[column] = String(value);
+    }
+  }
+
   const switches: Record<string, boolean> = {};
   for (const [column, value] of Object.entries((parsed.switches ?? {}) as Record<string, unknown>)) {
     if (!allowed.switchColumns.includes(column)) {
@@ -338,7 +379,7 @@ export function parseOnboardIntent(
     };
   }
 
-  return { targets, scope, switches, carry, groupPattern, notes };
+  return { targets, scope, switches, values, fallbacks, carry, groupPattern, notes };
 }
 
 export type OnboardRow = {
@@ -396,6 +437,7 @@ function draftFor(
   env: Record<string, string | undefined>,
   existingFor: (service: ServiceKey) => ProjectConfigRow[],
   switches: Record<string, string>,
+  asked: { values: Record<string, string>; fallbacks: Record<string, string> },
 ): { draft: OnboardDraft; derived: OnboardRow["derived"] } {
   const draft: OnboardDraft = {
     ...prefillDefaults(definition, env),
@@ -408,6 +450,13 @@ function draftFor(
   // service.
   if (company && definition.fields.some((field) => field.column === "company")) {
     draft.company = company;
+  }
+
+  // An explicit instruction beats a carried equivalence, so these go on before
+  // the carry runs and the carry then skips a column that already has a value.
+  const columns = new Set(definition.fields.map((field) => field.column));
+  for (const [column, value] of Object.entries(asked.values)) {
+    if (columns.has(column)) draft[column] = value;
   }
 
   const derived: OnboardRow["derived"] = [];
@@ -429,6 +478,19 @@ function draftFor(
       from: `${SERVICES[source.from].label}: ${member.projectCode}.${source.column}`,
       value,
       why: source.why,
+    });
+  }
+
+  // Last, and only into a gap: "if no WBGT workbook is configured, use X" must
+  // not overwrite the workbook carried for the sites that have one.
+  for (const [column, value] of Object.entries(asked.fallbacks)) {
+    if (!columns.has(column) || String(draft[column] ?? "").trim()) continue;
+    draft[column] = value;
+    derived.push({
+      column,
+      from: "your sentence",
+      value,
+      why: "fallback, because nothing else supplied it",
     });
   }
   return { draft, derived };
@@ -458,6 +520,8 @@ export function intentFromPrompt(prompt: string): OnboardIntent | { question: st
     scope: company ? { kind: "company", company } : { kind: "all" },
     // Filled per target later, once the target's own switch columns are known.
     switches: {},
+    values: {},
+    fallbacks: {},
     carry: [],
     groupPattern: null,
     notes: [],
@@ -547,7 +611,10 @@ export function planOnboarding({
     const ready: OnboardRow[] = [];
     const blocked: OnboardRow[] = [];
     for (const cluster of missingSites) {
-      const { draft, derived } = draftFor(definition, cluster, company, env, existingFor, switches);
+      const { draft, derived } = draftFor(definition, cluster, company, env, existingFor, switches, {
+        values: read.values,
+        fallbacks: read.fallbacks,
+      });
 
       // "unless you can identify that it's a '<site> x WL coordination' chat".
       // Left empty where there is no match, which is what the request asked
@@ -661,6 +728,8 @@ export const ONBOARD_INTENT_PROMPT = [
   '        | {"kind":"in-service","service":"<key>"}  // sites already configured in that service',
   '        | {"kind":"all"},                          // every site in the estate',
   '  "switches": {"<column>": true|false},        // only columns listed as switches below',
+  '  "values": {"<column>": "<value>"},           // set a column outright, any field the target is created with',
+  '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
   '  "carry": [{"column":"<column>","from":"<service key>"}],  // only pairs listed below',
   '  "groupPattern": {"column":"<column>","pattern":"<site> x WL coordination"} | null,',
   '  "notes": ["anything asked for that this shape cannot express"]',
@@ -680,6 +749,9 @@ export const ONBOARD_INTENT_PROMPT = [
   '  "leave the groups empty unless you can identify a \'SITE x WL coordination\' chat" IS a groupPattern:',
   '  {"column":"safety_group_ids","pattern":"<site> x WL coordination"}. It is not a request to leave them empty —',
   "  empty is only what happens for the sites with no such chat, and code decides which those are, not you.",
+  '- `values` sets a column outright; `fallbacks` fills one only where nothing else did. "If no WBGT workbook is',
+  '  configured, use X" is a FALLBACK — as a `value` it would overwrite the workbook carried for every site that',
+  "  has one. Both are limited to columns the target is created with; anything else goes in `notes`.",
   "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
   "  not belong in `notes`.",
   "- Put anything you understood but could not express into `notes`. It is shown to the operator. Silence is worse.",

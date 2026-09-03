@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  BULK_SYSTEM_PROMPT,
   applyToAll,
   companyIn,
+  matchesConditions,
+  serviceKeyFor,
+  targetsForOverride,
   defaultsFor,
   describeScope,
   parseBulkOp,
@@ -286,8 +290,15 @@ test("the bulk parser accepts only shapes it can execute, and never takes chat i
     kind: "set",
     changes: { enable_hourly: true },
     summary: "s",
+    where: [],
+    scope: null,
   });
-  assert.deepEqual(parseBulkOp({ op: "defaults", summary: "s" }), { kind: "defaults", summary: "s" });
+  assert.deepEqual(parseBulkOp({ op: "defaults", summary: "s" }), {
+    kind: "defaults",
+    summary: "s",
+    where: [],
+    scope: null,
+  });
   assert.deepEqual(parseBulkOp({ question: "which service?" }), {
     kind: "question",
     question: "which service?",
@@ -303,7 +314,13 @@ test("the bulk parser accepts only shapes it can execute, and never takes chat i
     chatIds: ["definitely@g.us", "made-up@g.us"],
     summary: "s",
   });
-  assert.deepEqual(removal, { kind: "remove-groups", phrase: "X WL coordination", summary: "s" });
+  assert.deepEqual(removal, {
+    kind: "remove-groups",
+    phrase: "X WL coordination",
+    summary: "s",
+    where: [],
+    scope: null,
+  });
   assert.ok(removal && !("chatIds" in removal), "chat ids from the model are not carried through");
 
   // A removal with no phrase has nothing to match and is refused rather than
@@ -377,4 +394,137 @@ test("all of the phrase must appear, and the real spelling variants still match"
   const demo = new Set(matchGroupNames("Wenti Labs demo", names).map((m) => m.chatId));
   assert.ok(demo.has("g"), "the demo group");
   assert.ok(!demo.has("a"), "not the coordination groups");
+});
+
+test("a request can say WHICH of the rows in scope it means", () => {
+  // The gap this closes. `resolveScope` answers "which projects is this sentence
+  // about" from codes, a company, a service or the estate — none of which can
+  // express "the ones whose scheduled reports are off". Without a `where`, the
+  // model could only ask whether to change all of them, which is a question the
+  // operator had already answered.
+  const parsed = parseBulkOp({
+    op: "set",
+    changes: { company: "Wohhup" },
+    where: [{ column: "enabled", op: "is", value: false }],
+    summary: "s",
+  });
+  assert.deepEqual(parsed, {
+    kind: "set",
+    changes: { company: "Wohhup" },
+    summary: "s",
+    where: [{ column: "enabled", op: "is", value: false }],
+    scope: null,
+  });
+
+  // Conditions are AND-ed, and an empty list matches everything.
+  const off = { project_code: "A", enabled: false, safety_group_ids: "" };
+  const on = { project_code: "B", enabled: true, safety_group_ids: "g@g.us" };
+  assert.equal(matchesConditions(off, [{ column: "enabled", op: "is", value: false }]), true);
+  assert.equal(matchesConditions(on, [{ column: "enabled", op: "is", value: false }]), false);
+  assert.equal(matchesConditions(on, []), true, "no condition means every row");
+  assert.equal(
+    matchesConditions(off, [
+      { column: "enabled", op: "is", value: false },
+      { column: "safety_group_ids", op: "empty" },
+    ]),
+    true,
+  );
+  assert.equal(
+    matchesConditions(on, [
+      { column: "enabled", op: "is", value: false },
+      { column: "safety_group_ids", op: "empty" },
+    ]),
+    false,
+  );
+
+  // A boolean arrives as `false` from Postgres and often as "false" from the
+  // model. Treating those as different would change nothing and look broken.
+  assert.equal(matchesConditions(off, [{ column: "enabled", op: "is", value: "false" }]), true);
+  // And NULL is "off" to everyone but the schema.
+  assert.equal(matchesConditions({ project_code: "C" }, [{ column: "enabled", op: "is", value: false }]), true);
+
+  // The other operators.
+  assert.equal(matchesConditions(on, [{ column: "safety_group_ids", op: "not-empty" }]), true);
+  assert.equal(matchesConditions(on, [{ column: "project_code", op: "contains", value: "b" }]), true);
+  assert.equal(matchesConditions(on, [{ column: "enabled", op: "is-not", value: false }]), true);
+
+  // A condition the model malformed is dropped rather than guessed at.
+  const junk = parseBulkOp({ op: "defaults", summary: "s", where: [{ op: "is", value: 1 }, { column: "x", op: "??" }] });
+  assert.deepEqual(junk && "where" in junk ? junk.where : null, []);
+});
+
+test("the bulk prompt tells the model that `where` exists", () => {
+  // Same drift that bit the onboarding prompt: a field the parser reads and the
+  // prompt never mentions is a field the model will never send.
+  assert.match(BULK_SYSTEM_PROMPT, /"where"/);
+  assert.match(BULK_SYSTEM_PROMPT, /is-not/);
+  assert.match(BULK_SYSTEM_PROMPT, /not-empty/);
+  assert.match(BULK_SYSTEM_PROMPT, /instead of asking/i, "it must prefer a where over a clarifying question");
+});
+
+test("the model may replace the scope, and may name a service either way", () => {
+  // The failure this closes, end to end. "ALL projects whose scheduled reports
+  // are disabled in subcon activities, set company to wohhup" — keywords read
+  // "wohhup" as a filter when it is the VALUE being written, narrowing 30
+  // projects to the 3 that already had that company. The model can see the
+  // difference, so its reading of the set wins.
+  const parsed = parseBulkOp({
+    op: "set",
+    changes: { company: "Wohhup" },
+    where: [{ column: "enabled", op: "is", value: false }],
+    scope: { services: ["Subcon Activities"] },
+    summary: "s",
+  });
+  if (!parsed || parsed.kind !== "set") return assert.fail("expected a set");
+  // The LABEL is accepted, not just the key. The scope line shows the model
+  // labels, so it answers with one; accepting only keys dropped the whole
+  // correction and silently left the wrong scope in place.
+  assert.deepEqual(parsed.scope, { services: ["subcon"] });
+
+  assert.equal(serviceKeyFor("subcon"), "subcon");
+  assert.equal(serviceKeyFor("Subcon Activities"), "subcon");
+  assert.equal(serviceKeyFor("issue chaser"), "issueChaser");
+  assert.equal(serviceKeyFor("nothing real"), null);
+
+  // Resolved against the real rows, so a code the model invents selects nothing.
+  const rows = {
+    subcon: [
+      { project_code: "A", company: "Wohhup", id: "1" },
+      { project_code: "B", company: null, id: "2" },
+    ],
+    noise: [{ project_code: "C", company: "Wohhup", id: "3" }],
+  } as never;
+  const idColumn = () => "project_code";
+  assert.deepEqual(
+    targetsForOverride({ services: ["subcon"] }, rows, idColumn).map((t) => t.projectCode),
+    ["A", "B"],
+  );
+  assert.deepEqual(
+    targetsForOverride({ codes: ["B", "GHOST"] }, rows, idColumn).map((t) => t.projectCode),
+    ["B"],
+    "an invented code selects nothing",
+  );
+  assert.deepEqual(
+    targetsForOverride({ company: "Wohhup" }, rows, idColumn).map((t) => t.projectCode).sort(),
+    ["A", "C"],
+  );
+});
+
+test("the bulk prompt hands the model the decision, not a fixed scope", () => {
+  // It used to say the scope "has ALREADY been decided ... you cannot change
+  // it", which is what made the model ask whether a filtered request should
+  // really cover everything.
+  assert.doesNotMatch(BULK_SYSTEM_PROMPT, /cannot change it/i);
+  assert.match(BULK_SYSTEM_PROMPT, /may be wrong|CAN BE WRONG/, "the scope must be offered as a guess");
+  assert.match(BULK_SYSTEM_PROMPT, /current values/, "the model must be told it has the row data");
+  assert.match(BULK_SYSTEM_PROMPT, /Nothing you return is written/, "and that a preview follows");
+});
+
+test("nothing in the bulk prompt refuses a change spanning services", () => {
+  // It used to bail with "the columns differ between them. Name one service."
+  // They only differ per column — `company` means the same thing everywhere —
+  // so each service takes the part it has and the rest is reported.
+  assert.match(BULK_SYSTEM_PROMPT, /may span services/i);
+  assert.doesNotMatch(BULK_SYSTEM_PROMPT, /Name one service/i);
+  assert.doesNotMatch(BULK_SYSTEM_PROMPT, /`set` is not available/i);
 });

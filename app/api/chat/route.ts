@@ -17,7 +17,11 @@ import {
   defaultsFor,
   describeScope,
   matchGroupNames,
+  describeConditions,
+  describeOverride,
+  matchesConditions,
   parseBulkOp,
+  targetsForOverride,
   removeGroupsFrom,
   resolveScope,
   type RowEdit,
@@ -94,6 +98,8 @@ type ChatReply = {
     summary: string;
     /** For a group removal: which groups matched the phrase, for confirmation. */
     matchedGroups?: { chatId: string; name: string; score: number }[];
+    /** Parts of the change a service could not take. Shown, not swallowed. */
+    notes?: string[];
     edits: {
       service: string;
       serviceLabel: string;
@@ -197,24 +203,58 @@ async function bulkReply({
     return reply({ message: `Understood ${scopeLine}, but ${choice.reason}, so the change cannot be worked out.` });
   }
 
-  // Columns are offered to the model only when the scope is one service, since
-  // that is the only case where `set` is allowed.
-  let columnBlock = "Several services are in scope, so no column list is given: `set` is not available here.";
-  if (services.length === 1) {
-    const service = services[0];
+  /**
+   * The columns AND the live rows.
+   *
+   * One sample row used to be enough, because the model was only asked what to
+   * change and never which rows. Once it can name the rows, withholding their
+   * values is what forces it to ask — "which of these have scheduled reports
+   * off" is answerable from the data and not from a keyword. Every question
+   * this route asked that it should not have came from the model reasoning
+   * about rows it could not see.
+   *
+   * Editable columns only, and only for the projects already in scope, so the
+   * payload stays proportional to the request.
+   */
+  const blocks: string[] = [];
+  for (const service of services) {
     const spec = await getFieldSpec(service);
-    const sample = rowFor(scope.targets[0]);
-    if (sample) {
-      columnBlock = ["Editable columns (values shown are one project's, as an example):",
-        JSON.stringify(briefFor(service, spec, sample), null, 1)].join("\n");
-    }
+    const sample = (rows[service] ?? [])[0];
+    if (!sample) continue;
+    const editable = Object.values(spec.fields)
+      .filter((field) => !field.hidden && !field.readonly)
+      .map((field) => field.name);
+    const table = (rows[service] ?? []).map((row) =>
+      Object.fromEntries([
+        ["project_code", row.project_code],
+        ...editable.map((column) => [column, (row as Record<string, unknown>)[column] ?? null]),
+      ]),
+    );
+    blocks.push(
+      [
+        `### ${SERVICES[service].label} (key: ${service}) — editable columns:`,
+        JSON.stringify(briefFor(service, spec, sample), null, 1),
+        `All ${table.length} ${SERVICES[service].label} projects, with their current values:`,
+        JSON.stringify(table),
+      ].join("\n"),
+    );
   }
+  const columnBlock = blocks.length
+    ? [
+        blocks.join("\n\n"),
+        "",
+        "Read the values. If the request is about some of these rows rather than all, decide which and name them.",
+        "A column that exists on one service and not another is simply skipped there — say what you mean and each",
+        "service takes the part that applies to it.",
+      ].join("\n")
+    : "No project rows are available for the services in scope.";
 
   const turn = {
     system: BULK_SYSTEM_PROMPT,
     user: [
-      `Scope (already decided, ${scope.targets.length} projects): ${scopeLine}`,
-      `Services in scope: ${services.map((key) => SERVICES[key].label).join(", ")}`,
+      `Scope read from keywords (${scope.targets.length} projects, may be wrong): ${scopeLine}`,
+      `Services in scope: ${services.map((key) => `${SERVICES[key].label} (key: ${key})`).join(", ")}`,
+      `Service keys, for "scope": ${SERVICE_KEYS.map((key) => key).join(", ")}`,
       "",
       columnBlock,
       "",
@@ -243,7 +283,37 @@ async function bulkReply({
   if (op.kind === "question") return reply({ message: op.question });
 
   let edits: RowEdit[] = [];
+  /** Parts of the change one service could not take. Shown, not swallowed. */
+  const notes: string[] = [];
   let matchedGroups: { chatId: string; name: string; score: number }[] | undefined;
+
+  // The scope above was read with keywords, which cannot tell "for all Wohhup
+  // projects" from "set company to Wohhup" — the second is the value being
+  // written. When the model says the set is something else, its reading wins
+  // and the rows are resolved again here, from the real data.
+  const corrected = op.scope
+    ? targetsForOverride(op.scope, rows as never, (service) => SERVICES[service].idColumn)
+    : scope.targets;
+  const scopeLabel = op.scope
+    ? describeOverride(op.scope, corrected.length, (service) => SERVICES[service].label)
+    : scopeLine;
+
+  // And the sentence may name a condition no scope can express — "the ones
+  // whose scheduled reports are off". Applied against the live row, so the
+  // model names a column and a value and never decides which rows match.
+  const selected = op.where.length
+    ? corrected.filter((target) => {
+        const row = rowFor(target);
+        return row ? matchesConditions(row, op.where) : false;
+      })
+    : corrected;
+
+  if (op.where.length && !selected.length) {
+    return reply({
+      message:
+        `No project in ${scopeLabel} has ${describeConditions(op.where)}, so there is nothing to change.`,
+    });
+  }
 
   if (op.kind === "remove-groups") {
     // The alias store is the only source for what a group is called, so a phrase
@@ -254,7 +324,7 @@ async function bulkReply({
       return reply({ message: `No delivery group matches “${op.phrase}”. Check the name, or open Chat aliases to refresh them.` });
     }
     edits = removeGroupsFrom(
-      scope.targets,
+      selected,
       rowFor,
       matchedGroups.map((match) => match.chatId),
       (chatId) => aliases.map[chatId] || chatId,
@@ -262,7 +332,7 @@ async function bulkReply({
   } else if (op.kind === "defaults") {
     for (const service of services) {
       const spec = await getFieldSpec(service);
-      for (const target of scope.targets.filter((entry) => entry.service === service)) {
+      for (const target of selected.filter((entry) => entry.service === service)) {
         const row = rowFor(target);
         if (!row) continue;
         const changes = defaultsFor(spec.fields as never, row);
@@ -270,28 +340,43 @@ async function bulkReply({
       }
     }
   } else {
-    if (services.length > 1) {
-      return reply({
-        message:
-          `That change covers ${services.map((key) => SERVICES[key].label).join(", ")}, and the columns differ ` +
-          "between them. Name one service — for example “all noise projects…”.",
-      });
-    }
-    const spec = await getFieldSpec(services[0]);
-    // Validated against the spec once, using one row, before being applied to
-    // all of them — a bad column name should fail as a sentence, not 30 times.
-    const probe = rowFor(scope.targets[0]);
-    if (probe) {
-      const { problems } = checkProposal(spec, probe, { changes: op.changes, summary: op.summary });
-      if (problems.length && !Object.keys(op.changes).some((column) => spec.fields[column])) {
-        return reply({
-          message: `No change to propose. It asked for ${problems
-            .map((problem) => `${problem.column} (${problem.reason})`)
-            .join(", ")}.`,
-        });
+    // Across as many services as the request touches. This used to refuse
+    // anything spanning two, on the grounds that their columns differ — but
+    // they only differ per column, and `company` means the same thing
+    // everywhere. Each service takes the part of the change it has, and what it
+    // does not have is reported rather than making the whole request fail.
+    const skipped: string[] = [];
+    const touched = [...new Set(selected.map((target) => target.service))];
+    for (const service of touched) {
+      const spec = await getFieldSpec(service);
+      const mine = Object.fromEntries(
+        Object.entries(op.changes).filter(([column]) => spec.fields[column]),
+      );
+      const missing = Object.keys(op.changes).filter((column) => !spec.fields[column]);
+      if (missing.length) {
+        skipped.push(`${SERVICES[service].label} has no ${missing.join(", ")}`);
       }
+      if (!Object.keys(mine).length) continue;
+
+      // Validated once per service, on one of its rows: a bad value should fail
+      // as a sentence, not thirty times.
+      const forService = selected.filter((target) => target.service === service);
+      const probe = rowFor(forService[0]);
+      if (probe) {
+        const { problems } = checkProposal(spec, probe, { changes: mine, summary: op.summary });
+        if (problems.length && !Object.keys(mine).some((column) => spec.fields[column])) {
+          skipped.push(
+            `${SERVICES[service].label}: ${problems.map((p) => `${p.column} (${p.reason})`).join(", ")}`,
+          );
+          continue;
+        }
+      }
+      edits.push(...applyToAll(forService, rowFor, mine));
     }
-    edits = applyToAll(scope.targets, rowFor, op.changes);
+    if (!edits.length && skipped.length) {
+      return reply({ message: `No change to propose — ${skipped.join("; ")}.` });
+    }
+    if (skipped.length) notes.push(...skipped);
   }
 
   if (!edits.length) {
@@ -300,8 +385,8 @@ async function bulkReply({
 
   return reply({
     batch: {
-      scope: scopeLine,
-      inScope: scope.targets.length,
+      scope: op.where.length ? `${scopeLabel}, where ${describeConditions(op.where)}` : scopeLabel,
+      inScope: selected.length,
       summary: op.summary || "Proposed bulk change",
       ...(matchedGroups ? { matchedGroups } : {}),
       edits: edits.map((edit) => ({

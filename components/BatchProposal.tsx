@@ -43,6 +43,8 @@ export type Batch = {
   inScope: number;
   summary: string;
   matchedGroups?: { chatId: string; name: string; score: number }[];
+  /** Parts of the change a service could not take. */
+  notes?: string[];
   edits: BatchEdit[];
 };
 
@@ -158,6 +160,22 @@ export function BatchProposal({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+          {/* Anything a service could not take. A change that quietly applied
+              to four services out of five looks identical to one that applied
+              everywhere, so it has to be said. */}
+          {batch.notes?.length ? (
+            <div className="mb-3 rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-warn">
+                Not applied everywhere
+              </div>
+              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                {batch.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {/* Matched groups first: with fuzzy matching, "which groups did it
               think I meant" is the question to answer before "which projects". */}
           {batch.matchedGroups?.length ? (

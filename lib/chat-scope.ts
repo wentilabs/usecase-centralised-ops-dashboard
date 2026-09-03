@@ -1,5 +1,5 @@
 import { COMPANIES } from "./field-spec";
-import { SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "./services";
+import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "./services";
 import { groupColumnsFor, splitList } from "./card-summary";
 import { mentionsCode, serviceHintsIn, type ChatTarget } from "./chat-intent";
 
@@ -387,11 +387,91 @@ export function defaultsFor(
  * What the model is allowed to say about a bulk request
  * ------------------------------------------------------------------ */
 
+/**
+ * A condition on the rows in scope, so a request can say WHICH of them.
+ *
+ * `resolveScope` answers "which projects is this sentence about" from codes, a
+ * company, a service or the whole estate — none of which can express "the ones
+ * whose scheduled reports are off". That gap made the model ask a question it
+ * already knew the answer to, because the shape it replies in had no field for
+ * the condition it had understood.
+ *
+ * Applied in code against the live row, so the model names a column and a
+ * value and never decides which rows match.
+ */
+export type RowCondition = {
+  column: string;
+  op: "is" | "is-not" | "empty" | "not-empty" | "contains";
+  /** Absent for the `empty` / `not-empty` forms. */
+  value?: unknown;
+};
+
+/** Does one row satisfy every condition? An empty list matches everything. */
+export function matchesConditions(row: ProjectConfigRow, conditions: RowCondition[]): boolean {
+  return conditions.every((condition) => {
+    const raw = (row as Record<string, unknown>)[condition.column];
+    const text = String(raw ?? "").trim();
+    switch (condition.op) {
+      case "empty":
+        return text === "";
+      case "not-empty":
+        return text !== "";
+      case "contains":
+        return text.toLowerCase().includes(String(condition.value ?? "").toLowerCase());
+      case "is-not":
+        return !sameValue(raw, condition.value);
+      default:
+        return sameValue(raw, condition.value);
+    }
+  });
+}
+
+/**
+ * Loose equality, because a boolean column reaches here as `false` from the row
+ * and often as `"false"` from the model, and a request that turns on nothing
+ * because of that is worse than one that is slightly permissive.
+ */
+function sameValue(actual: unknown, wanted: unknown): boolean {
+  if (actual === wanted) return true;
+  const left = String(actual ?? "").trim().toLowerCase();
+  const right = String(wanted ?? "").trim().toLowerCase();
+  if (left === right) return true;
+  // A column that is NULL in Postgres and `false` in the sentence: for a
+  // boolean, "not set" and "off" are the same thing to everyone but the schema.
+  const falsey = new Set(["false", "null", "", "no", "off"]);
+  return falsey.has(left) && falsey.has(right);
+}
+
+/**
+ * The model's correction to the scope this file guessed.
+ *
+ * `resolveScope` reads the sentence with keywords, and keywords cannot tell
+ * "for all Wohhup projects" from "set company to Wohhup" — the second is the
+ * VALUE being written, and reading it as a filter narrowed a 30-project request
+ * to the 3 that already had that company. The model can see the difference, so
+ * when it says the set is something else, its reading wins.
+ */
+export type ScopeOverride = {
+  company?: string;
+  services?: ServiceKey[];
+  /**
+   * The projects, named outright.
+   *
+   * The most direct thing the model can say, and safe because a code is matched
+   * against rows that already exist — an invented one selects nothing. It is
+   * given every project's current values, so "the ones whose scheduled reports
+   * are off" is a question it can answer from the data rather than ask about.
+   */
+  codes?: string[];
+  /** Every project, in the named services or the whole estate. */
+  all?: boolean;
+};
+
 export type BulkOp =
-  | { kind: "set"; changes: Record<string, unknown>; summary: string }
+  | { kind: "set"; changes: Record<string, unknown>; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
   /** Remove delivery groups whose name matches `phrase`. Matching happens in code. */
-  | { kind: "remove-groups"; phrase: string; summary: string }
-  | { kind: "defaults"; summary: string }
+  | { kind: "remove-groups"; phrase: string; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
+  | { kind: "defaults"; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
   | { kind: "question"; question: string };
 
 /**
@@ -413,20 +493,130 @@ export function parseBulkOp(parsed: Record<string, unknown> | null): BulkOp | nu
   }
   const op = String(parsed.op ?? "").trim();
 
+  const where = readConditions(parsed.where);
+  const scope = readScopeOverride(parsed.scope);
+
   if (op === "remove-groups") {
     const phrase = String(parsed.phrase ?? "").trim();
     if (!phrase) return null;
-    return { kind: "remove-groups", phrase, summary };
+    return { kind: "remove-groups", phrase, summary, where, scope };
   }
-  if (op === "defaults") return { kind: "defaults", summary };
+  if (op === "defaults") return { kind: "defaults", summary, where, scope };
   if (op === "set") {
     const changes = parsed.changes;
     if (!changes || typeof changes !== "object" || Array.isArray(changes)) return null;
-    return { kind: "set", changes: changes as Record<string, unknown>, summary };
+    return { kind: "set", changes: changes as Record<string, unknown>, summary, where, scope };
   }
   // An op we do not recognise is not guessed at. `set` would be the tempting
   // default and the wrong one — it writes.
   return null;
+}
+
+/** A service key from either its key or its human label, case-insensitively. */
+export function serviceKeyFor(value: string): ServiceKey | null {
+  const wanted = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!wanted) return null;
+  return (
+    SERVICE_KEYS.find((key) => key.toLowerCase() === wanted) ??
+    SERVICE_KEYS.find((key) => SERVICES[key].label.toLowerCase().replace(/[^a-z0-9]/g, "") === wanted) ??
+    null
+  );
+}
+
+/** Read a scope correction, keeping only the parts that name real things. */
+function readScopeOverride(raw: unknown): ScopeOverride | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entry = raw as Record<string, unknown>;
+  const out: ScopeOverride = {};
+  const company = String(entry.company ?? "").trim();
+  if (company) out.company = company;
+  // Key or label. The model is shown labels in the scope line — "Subcon
+  // Activities" — and naturally answers with one; accepting only keys dropped
+  // the whole correction and left the wrong scope in place, silently.
+  const services = (Array.isArray(entry.services) ? entry.services : [])
+    .map((value) => serviceKeyFor(String(value)))
+    .filter((key): key is ServiceKey => Boolean(key));
+  if (services.length) out.services = services;
+  const codes = (Array.isArray(entry.codes) ? entry.codes : [])
+    .map((code) => String(code).trim())
+    .filter(Boolean);
+  if (codes.length) out.codes = codes;
+  if (entry.all === true) out.all = true;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Re-resolve the affected rows from the model's correction.
+ *
+ * Still code that decides which rows match — the correction names a company, a
+ * service or some codes, and this walks the real rows. A code that matches
+ * nothing simply selects nothing.
+ */
+export function targetsForOverride(
+  override: ScopeOverride,
+  rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>,
+  idColumnFor: (service: ServiceKey) => string,
+): ChatTarget[] {
+  const services = override.services?.length ? override.services : [...SERVICE_KEYS];
+  const wantedCodes = override.codes?.length
+    ? new Set(override.codes.map((code) => code.trim().toLowerCase()))
+    : null;
+  const targets: ChatTarget[] = [];
+  for (const service of services) {
+    for (const row of rows[service] ?? []) {
+      const code = String(row.project_code ?? "").trim();
+      if (!code) continue;
+      if (wantedCodes && !wantedCodes.has(code.toLowerCase())) continue;
+      if (override.company && String(row.company ?? "").trim() !== override.company) continue;
+      targets.push({
+        service,
+        projectCode: code,
+        rowId: String((row as Record<string, unknown>)[idColumnFor(service)] ?? code),
+      });
+    }
+  }
+  return targets;
+}
+
+/** Read the model's conditions, dropping any it did not express properly. */
+function readConditions(raw: unknown): RowCondition[] {
+  const out: RowCondition[] = [];
+  for (const entry of (Array.isArray(raw) ? raw : []) as Record<string, unknown>[]) {
+    const column = String(entry?.column ?? "").trim();
+    const op = String(entry?.op ?? "is").trim() as RowCondition["op"];
+    if (!column) continue;
+    if (!["is", "is-not", "empty", "not-empty", "contains"].includes(op)) continue;
+    out.push({ column, op, value: entry?.value });
+  }
+  return out;
+}
+
+/** How a condition reads in the review list's heading. */
+export function describeConditions(conditions: RowCondition[]): string {
+  return conditions
+    .map((condition) => {
+      if (condition.op === "empty") return `${condition.column} is empty`;
+      if (condition.op === "not-empty") return `${condition.column} is set`;
+      if (condition.op === "contains") return `${condition.column} contains "${condition.value}"`;
+      const negated = condition.op === "is-not" ? " not" : "";
+      return `${condition.column} is${negated} ${String(condition.value)}`;
+    })
+    .join(" and ");
+}
+
+/** How a corrected scope reads in one line. */
+export function describeOverride(
+  override: ScopeOverride,
+  count: number,
+  serviceLabelFor: (service: ServiceKey) => string,
+): string {
+  const plural = count === 1 ? "project" : "projects";
+  const where = override.services?.length
+    ? ` on ${override.services.map(serviceLabelFor).join(" / ")}`
+    : "";
+  if (override.codes?.length) return `${override.codes.join(", ")}${where}`;
+  if (override.company) return `all ${count} ${override.company} ${plural}${where}`;
+  return `all ${count} ${plural}${where || ", every service"}`;
 }
 
 /** How a scope reads in one line, for the review list's heading. */
@@ -455,20 +645,42 @@ export function describeScope(
 
 /** The instruction for a request covering more than one project. Read by a test. */
 export const BULK_SYSTEM_PROMPT = [
-  "You turn one sentence from an operations engineer into a configuration change covering SEVERAL projects.",
+  "You turn one request from an operations engineer into a configuration change covering SEVERAL projects.",
   "",
-  "Which projects are affected has ALREADY been decided, in code, and is stated below. That is not your job and",
-  "you cannot change it. Your job is to say what should be done to them.",
+  "Decide both WHICH projects and WHAT to do to them. A scope read from keywords is stated below as a starting",
+  "point and is often right, but it is a guess and you can replace it. You are also given every project in that",
+  "service with its current values, so anything the request says about the state of a row — disabled, no group",
+  "set, still on the default wording — is yours to work out rather than ask about.",
+  "",
+  "Nothing you return is written. It becomes a list the operator reads row by row and confirms, so an answer that",
+  "acts on a reasonable reading is more useful than a question. Ask only when the request is genuinely ambiguous",
+  "about the OUTCOME — not when it is merely specific about which rows.",
   "",
   "Reply with JSON only, no prose, in one of these shapes:",
-  '  {"op":"set","changes":{"<column>":<value>},"summary":"<one sentence>"}',
-  '  {"op":"remove-groups","phrase":"<the group name as the person described it>","summary":"<one sentence>"}',
-  '  {"op":"defaults","summary":"<one sentence>"}',
+  '  {"op":"set","changes":{"<column>":<value>},"where":[<condition>],"scope":<scope>,"summary":"<one sentence>"}',
+  '  {"op":"remove-groups","phrase":"<the group name as the person described it>","where":[<condition>],"summary":"<one sentence>"}',
+  '  {"op":"defaults","where":[<condition>],"summary":"<one sentence>"}',
+  "",
+  '  <condition> = {"column":"<column>","op":"is"|"is-not"|"empty"|"not-empty"|"contains","value":<value>}',
   '  {"question":"<what you need to know>"}',
   "",
   "Rules:",
-  "- `set` writes the same value to every project in scope. Use it only when the columns are listed below;",
-  "  a scope spanning several services does not list them, and there you must ask a question instead.",
+  "- You are given every project in scope with its current values. Use them. If the request is about some of",
+  '  those rows rather than all of them, decide which and name them: {"scope":{"codes":["A","B"]}}. Work it out',
+  "  from the values in front of you rather than asking which ones were meant — the sentence already said, and a",
+  "  question the data answers is a question that should not be asked.",
+  '- The scope stated below was read with keywords and CAN BE WRONG. It cannot tell "for all Wohhup projects"',
+  '  from "set company to Wohhup" — in the second, Wohhup is the value being written, not a filter. If the',
+  '  sentence means a different set, say so: {"scope":{"company":"<name>"}|{"services":["<key>"]}|',
+  '  {"codes":["<code>"]}|{"all":true}} and the rows are resolved again from it. Combine with "services" to',
+  "  stay inside one service.",
+  "- `where` narrows the scope to the rows the sentence actually means. The scope below is every project the",
+  "  sentence could be about; a request that says WHICH of them — \"the ones whose scheduled reports are off\",",
+  '  "any with no delivery group", "the ones still on the default wording" — is a `where`, and it is applied in',
+  "  code against the live row. Use it instead of asking whether the change should really cover everything: the",
+  "  operator told you which ones, and an empty `where` silently changes rows they excluded.",
+  "- `set` may span services. A column one service does not have is simply skipped there and reported, so say",
+  "  what you mean and let each service take the part that applies to it.",
   '- `remove-groups` is for "take that WhatsApp group off these projects". Give only the PHRASE the person used',
   "  to describe the group — never a chat id, and never a list of them. Matching the phrase to real groups is",
   "  done in code, and the operator reviews the matches before anything is written.",

@@ -105,15 +105,23 @@ type ChatReply = {
   onboard?: {
     summary: string;
     company: string | null;
+    /** Recognised but not applied — shown so nothing is silently dropped. */
+    unread: string[];
     services: {
       service: string;
       label: string;
-      ready: { projectCode: string; values: Record<string, string>; knownAs: string[] }[];
+      ready: {
+        projectCode: string;
+        values: Record<string, string>;
+        knownAs: string[];
+        derived: { column: string; from: string; value: string; why: string }[];
+      }[];
       blocked: {
         projectCode: string;
         values: Record<string, string>;
         knownAs: string[];
         problems: string[];
+        derived: { column: string; from: string; value: string; why: string }[];
       }[];
       alreadyThere: { projectCode: string; existingAs: string }[];
     }[];
@@ -352,6 +360,7 @@ export async function POST(request: NextRequest) {
       onboard: {
         summary: plan.summary,
         company: plan.company,
+        unread: plan.unread,
         services: plan.services.map((entry) => ({
           service: entry.service,
           label: entry.label,
@@ -359,12 +368,14 @@ export async function POST(request: NextRequest) {
             projectCode: row.projectCode,
             values: row.values,
             knownAs: knownAs(row.knownAs),
+            derived: row.derived,
           })),
           blocked: entry.blocked.map((row) => ({
             projectCode: row.projectCode,
             values: row.values,
             knownAs: knownAs(row.knownAs),
             problems: row.problems,
+            derived: row.derived,
           })),
           alreadyThere: entry.alreadyThere,
         })),

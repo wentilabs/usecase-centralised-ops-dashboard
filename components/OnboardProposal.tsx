@@ -30,6 +30,8 @@ export type OnboardRowView = {
   /** What this site is already called elsewhere, so a code can be recognised. */
   knownAs: string[];
   problems?: string[];
+  /** Values taken from another service's row for the same site. */
+  derived?: { column: string; from: string; value: string; why: string }[];
 };
 
 export type OnboardServiceView = {
@@ -44,6 +46,8 @@ export type OnboardPlanView = {
   summary: string;
   company: string | null;
   services: OnboardServiceView[];
+  /** Recognised but not applied. Surfaced rather than swallowed. */
+  unread?: string[];
 };
 
 type Outcome = { key: string; ok: boolean; error?: string };
@@ -144,6 +148,24 @@ export function OnboardProposal({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+          {/* Anything understood but not acted on. A switch defaulted quietly
+              is a daily message started or silenced without being asked for. */}
+          {plan.unread?.length ? (
+            <div className="mb-3 rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-warn">
+                Not applied from your sentence
+              </div>
+              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                {plan.unread.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                These keep their default. Say them again more plainly, or set them after creating.
+              </p>
+            </div>
+          ) : null}
+
           {plan.services.map((entry) => (
             <section key={entry.service} className="mb-4 last:mb-0">
               <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -198,6 +220,21 @@ export function OnboardProposal({
                             </span>
                           ) : null}
                         </div>
+                        {/* A derived workbook id is the one value here an
+                            operator most needs to check: it was read off
+                            another service's row for the same site, matched
+                            through the identity map rather than by code. */}
+                        {row.derived?.length ? (
+                          <ul className="mt-1 pl-6">
+                            {row.derived.map((item) => (
+                              <li key={item.column} className="text-[11px] text-muted-foreground">
+                                <code className="text-foreground">{item.column}</code> ={" "}
+                                <span className="font-mono">{item.value.slice(0, 18)}…</span> — {item.why},
+                                from <span className="font-mono">{item.from}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         {outcome?.error ? (
                           <div className="mt-1 pl-6 text-[11px] text-danger">{outcome.error}</div>
                         ) : null}

@@ -424,14 +424,22 @@ test("noise onboarding does not pretend to set up limits", () => {
   );
 });
 
-test("subcon onboarding matches the two-route service, and the house field order", () => {
+test("subcon onboarding offers the three switches, in the house field order", () => {
   // The delivery URL goes last, as it does for every other flow: prefilled from
   // env and rarely touched, so it should not interrupt what someone types.
+  //
+  // The three switches sit after the workbook and before the groups, because
+  // they decide what the project DOES and each is an explicit opt-in the
+  // service checks for `true` — onboarding without them leaves a project that
+  // runs intake and sends nothing.
   const columns = subcon.fields.map((f) => f.column);
   assert.deepEqual(columns, [
     "project_code",
     "company",
     "spreadsheet_id",
+    "enable_housekeeping",
+    "enable_manpower_summary",
+    "enable_activity_summary",
     "safety_group_ids",
     "manpower_activity_outbound_group_id",
     "instance_name",
@@ -861,4 +869,25 @@ test("subcon onboarding names both reports and their opt-in", () => {
   assert.match(steps, /opt/i, "the steps must say the reports are opted into");
   assert.match(steps, /both on is normal/i, "two different messages, not alternatives");
   assert.doesNotMatch(steps, /it stays switched on/, "the singular claim is gone");
+});
+
+test("subcon's onboarding switch defaults match what the service does", () => {
+  // Housekeeping intake defaults on in Postgres; both summaries are an explicit
+  // opt-in the service checks for `true`. A dialog that defaulted the summaries
+  // on would start sends the repo's own migration was written to prevent.
+  const fallback = (column: string) => subcon.fields.find((f) => f.column === column)?.fallback;
+  assert.equal(fallback("enable_housekeeping"), "true");
+  assert.equal(fallback("enable_manpower_summary"), "false");
+  assert.equal(fallback("enable_activity_summary"), "false");
+
+  const written = buildInsertRow(subcon, {
+    project_code: "ZRA",
+    enable_housekeeping: "false",
+    enable_manpower_summary: "true",
+  }, {});
+  assert.equal(written.enable_housekeeping, false);
+  assert.equal(written.enable_manpower_summary, true);
+  assert.equal(written.enable_activity_summary, false, "unset stays off");
+  // Still created disabled, whatever the switches say.
+  assert.equal(written.enabled, false);
 });

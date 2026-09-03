@@ -774,9 +774,40 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: true,
         help: "Must already exist and be shared with the service account. Read access is enough — this service never writes to it.",
       },
+      // The three switches that decide what a subcon project actually does,
+      // offered at creation because each is an explicit opt-in the service
+      // checks for `true` — a project onboarded without them runs intake and
+      // sends nothing, which is a confusing state to hand someone.
+      {
+        column: "enable_housekeeping",
+        label: "Housekeeping intake",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "The inbound route: forwarded housekeeping messages are accepted and recorded. Independent of the two summaries, and it does not gate the nightly housekeeping report.",
+      },
+      {
+        column: "enable_manpower_summary",
+        label: "Manpower + machines report",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab. Explicit opt-in: off means it is never sent.",
+      },
+      {
+        column: "enable_activity_summary",
+        label: "Activity + manpower report",
+        kind: "toggle",
+        required: false,
+        notNull: true,
+        fallback: "false",
+        help: "POST /daily-activity-summary — the morning activity/manpower message. Independent of the report above; either can run without the other.",
+      },
       {
         column: "safety_group_ids",
-        label: "Source group IDs",
+        label: "Housekeeping groups (in and out)",
         kind: "groups",
         // Not required, because the column is NOT NULL with a '' default and a
         // project is often drafted before its groups exist. The gap is called

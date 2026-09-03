@@ -885,7 +885,10 @@ export const ONBOARD_INTENT_PROMPT = [
   "  the shape, and do not refuse a reasonable reading because the shape is awkward.",
   "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
   "  not belong in `notes`.",
-  "- Put anything you understood but could not express into `notes`. It is shown to the operator. Silence is worse.",
+  "- Put anything you understood but could not express into `notes`. It is shown to the operator under",
+  '  "Not applied from your sentence", so it must mean exactly that. An instruction that matches what would',
+  "  happen anyway — leaving a column empty that is empty by default — was applied, not skipped, and noting it",
+  "  buries the parts that really were dropped.",
 ].join("\n");
 
 /** The facts the model needs about this estate, rendered for the prompt. */

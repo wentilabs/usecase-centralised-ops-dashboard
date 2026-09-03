@@ -173,9 +173,8 @@ export const openapiDocument = {
                 properties: {
                   prompt: {
                     type: "string",
-                    maxLength: 2000,
                     description:
-                      "One sentence. Name the project and the outcome for a single change (\"CFC's WBGT alerts shouldn't go out on Sundays\"); name a company or \"all projects\" for a bulk one (\"remove the WL coordination groups from every project\"); or say onboard/create/set up/register with a target service for an onboarding plan (\"onboard every Wohhup site into issue chaser and subcon\"). The word \"add\" is deliberately NOT read as onboarding — it is the verb for editing far more often.",
+                      "One request, of any length — there is no cap, and a well-specified onboarding request often runs to several paragraphs, all of which is read. Name the project and the outcome for a single change (\"CFC's WBGT alerts shouldn't go out on Sundays\"); name a company or \"all projects\" for a bulk one (\"remove the WL coordination groups from every project\"); or say onboard/create/set up/register with a target service for an onboarding plan (\"onboard every Wohhup site into issue chaser and subcon\"). The word \"add\" is deliberately NOT read as onboarding — it is the verb for editing far more often.",
                   },
                 },
                 required: ["prompt"],

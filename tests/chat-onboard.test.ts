@@ -636,3 +636,12 @@ test("the prompt promises the shape the parser accepts", () => {
   assert.equal(parsed.scope.exclude.length, 2, "both excludes in the example must survive");
   assert.equal(parsed.carry[0]?.declared, true, "the example's carry is a declared pair");
 });
+
+test("the notes box means 'not applied', not 'mentioned'", () => {
+  // It is rendered under "Not applied from your sentence". A note about
+  // something that WAS applied — leaving a column empty that is empty by
+  // default — buries the parts that really were dropped, which is the only
+  // reason the box exists.
+  assert.match(ONBOARD_INTENT_PROMPT, /Not applied from your sentence/);
+  assert.match(ONBOARD_INTENT_PROMPT, /was applied, not skipped/);
+});

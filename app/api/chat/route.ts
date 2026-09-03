@@ -332,7 +332,13 @@ export async function POST(request: NextRequest) {
     return reply({ message: "That request was not valid JSON." }, 400);
   }
   if (!prompt) return reply({ message: "Say what you want changed, and name the project." });
-  if (prompt.length > 2000) return reply({ message: "That is longer than this needs — one sentence is plenty." });
+  // No length cap. It used to stop at 2,000 characters with "one sentence is
+  // plenty", which was the same opinion the intent shape was making elsewhere:
+  // a well-specified onboarding request runs to paragraphs — scope, switches,
+  // where each value comes from, what to do when one is missing — and cutting
+  // it off produced a plan that quietly covered less than was asked for.
+  // Oversized input fails at the provider with its own message, which is more
+  // honest than a number guessed here.
 
   // Which project? Deterministic, and ambiguity comes back as a question.
   const settled = await Promise.allSettled(SERVICE_KEYS.map((key) => listConfigs(key)));

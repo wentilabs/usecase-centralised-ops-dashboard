@@ -7,7 +7,7 @@ import {
   type OnboardDefinition,
   type OnboardDraft,
 } from "./onboarding";
-import { absentFrom, type Cluster } from "./project-identity";
+import { absentFrom, fold, type Cluster } from "./project-identity";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -97,6 +97,40 @@ export function onboardTargetsIn(prompt: string, hints: ServiceKey[]): ServiceKe
     const window = text.slice(Math.max(0, needle - SOURCE_WINDOW), needle);
     return !SOURCE_CUES.test(window);
   });
+}
+
+/** The columns a service is allowed to fill from elsewhere. For validation. */
+export function carryColumnsFor(service: ServiceKey): string[] {
+  return Object.keys(CARRIED_FROM[service] ?? {});
+}
+
+/**
+ * Find the group a pattern names for one site.
+ *
+ * `<site>` stands for any of that site's codes, which is the part that has to
+ * go through the identity map: the chat is called "TBC x WL Coordination" and
+ * the noise row calls the same site "TBCA". Matching on the canonical code
+ * alone would miss it.
+ *
+ * Folded on both sides so case and spacing do not matter, and anchored at the
+ * start so "IR2 x WL coordination" cannot be claimed by a site called "R2".
+ */
+export function resolveGroupPattern(
+  pattern: string,
+  codes: string[],
+  groups: { chatId: string; name: string }[],
+): { chatId: string; name: string } | null {
+  const placeholder = /<\s*site\s*>|\bsite\b/i;
+  const tail = fold(pattern.replace(placeholder, "|").split("|").slice(1).join(" "));
+  if (!tail) return null;
+  const folded = codes.map(fold).filter(Boolean);
+  for (const group of groups) {
+    const name = fold(group.name);
+    for (const code of folded) {
+      if (name === code + tail) return group;
+    }
+  }
+  return null;
 }
 
 /** Onboarding words, as against the edit vocabulary the other paths handle. */
@@ -203,6 +237,110 @@ export function switchesIn(
   return { values, unread };
 }
 
+/**
+ * What a sentence is asking for, as shapes rather than data.
+ *
+ * This is the one thing a model is asked for on this path, and the split is the
+ * point: the model reads English — which service is the target and which is
+ * merely named as a source, whether "on noise meters" scopes or targets — and
+ * code turns that reading into rows. Nothing here can name a project, a chat id
+ * or a sheet id, so a misread intent produces the wrong SET of rows, visible in
+ * the review list, rather than a row full of invented values.
+ *
+ * Keyword matching did the reading before this, and it is what misread "sites
+ * that exist on noise meters" as an instruction to create noise projects.
+ */
+export type OnboardIntent = {
+  /** Services to create rows IN. */
+  targets: ServiceKey[];
+  /** Which sites, expressed as a rule rather than a list of codes. */
+  scope:
+    | { kind: "company"; company: string }
+    | { kind: "in-service"; service: ServiceKey }
+    | { kind: "all" };
+  /** Column → value, for switches the target offers at creation. */
+  switches: Record<string, boolean>;
+  /** Columns to fill from another service's row for the same site. */
+  carry: { column: string; from: ServiceKey }[];
+  /**
+   * A group to look up by name and write into a column, with `<site>` standing
+   * for any of the site's codes — "<site> x WL coordination".
+   */
+  groupPattern: { column: string; pattern: string } | null;
+  /** Anything recognised in the sentence that this shape cannot express. */
+  notes: string[];
+};
+
+/** Read the model's answer, refusing anything it is not allowed to decide. */
+export function parseOnboardIntent(
+  parsed: Record<string, unknown> | null,
+  allowed: { services: ServiceKey[]; switchColumns: string[]; carryColumns: string[] },
+): OnboardIntent | { question: string } | null {
+  if (!parsed) return null;
+  if (typeof parsed.question === "string" && parsed.question.trim()) {
+    return { question: parsed.question.trim() };
+  }
+
+  const notes: string[] = Array.isArray(parsed.notes)
+    ? parsed.notes.map((note) => String(note)).filter(Boolean)
+    : [];
+
+  const asService = (value: unknown): ServiceKey | null => {
+    const key = String(value ?? "").trim() as ServiceKey;
+    return allowed.services.includes(key) ? key : null;
+  };
+
+  const targets = (Array.isArray(parsed.targets) ? parsed.targets : [])
+    .map(asService)
+    .filter((key): key is ServiceKey => Boolean(key));
+  if (!targets.length) return null;
+
+  const rawScope = (parsed.scope ?? {}) as Record<string, unknown>;
+  let scope: OnboardIntent["scope"] = { kind: "all" };
+  const scopeKind = String(rawScope.kind ?? "").trim();
+  if (scopeKind === "company" && String(rawScope.company ?? "").trim()) {
+    scope = { kind: "company", company: String(rawScope.company).trim() };
+  } else if (scopeKind === "in-service") {
+    const service = asService(rawScope.service);
+    // An unknown source service is not silently widened to "all sites" — that
+    // would quietly onboard the whole estate.
+    if (!service) return null;
+    scope = { kind: "in-service", service };
+  }
+
+  const switches: Record<string, boolean> = {};
+  for (const [column, value] of Object.entries((parsed.switches ?? {}) as Record<string, unknown>)) {
+    if (!allowed.switchColumns.includes(column)) {
+      notes.push(`"${column}" is not a switch offered at creation, so it was not set`);
+      continue;
+    }
+    if (typeof value === "boolean") switches[column] = value;
+    else notes.push(`"${column}" was not given as true or false, so it was left at its default`);
+  }
+
+  const carry: OnboardIntent["carry"] = [];
+  for (const entry of (Array.isArray(parsed.carry) ? parsed.carry : []) as Record<string, unknown>[]) {
+    const column = String(entry?.column ?? "").trim();
+    const from = asService(entry?.from);
+    if (!from || !allowed.carryColumns.includes(column)) {
+      notes.push(`cannot copy "${column}" from ${String(entry?.from ?? "?")} — no such equivalence is declared`);
+      continue;
+    }
+    carry.push({ column, from });
+  }
+
+  const rawPattern = (parsed.groupPattern ?? null) as Record<string, unknown> | null;
+  let groupPattern: OnboardIntent["groupPattern"] = null;
+  if (rawPattern && String(rawPattern.pattern ?? "").trim()) {
+    groupPattern = {
+      column: String(rawPattern.column ?? "safety_group_ids").trim(),
+      pattern: String(rawPattern.pattern).trim(),
+    };
+  }
+
+  return { targets, scope, switches, carry, groupPattern, notes };
+}
+
 export type OnboardRow = {
   /** The canonical site code from the identity map — what gets created. */
   projectCode: string;
@@ -296,26 +434,57 @@ function draftFor(
   return { draft, derived };
 }
 
-export function planOnboarding({
-  prompt,
-  clusters,
-  existingFor,
-  env,
-}: {
-  prompt: string;
-  clusters: Cluster[];
-  existingFor: (service: ServiceKey) => ProjectConfigRow[];
-  env: Record<string, string | undefined>;
-}): OnboardPlan {
+/**
+ * The deterministic reading, used when no model is configured or reachable.
+ *
+ * Kept rather than deleted: it is worse at English than the model — it is what
+ * misread "on noise meters" — but it needs no key and no network, and a
+ * dashboard that cannot propose anything because a provider is down is worse
+ * than one that proposes the obvious cases.
+ */
+export function intentFromPrompt(prompt: string): OnboardIntent | { question: string } {
   const hinted = serviceHintsIn(prompt);
   const targets = onboardTargetsIn(prompt, hinted);
   if (hinted.length && !targets.length) {
     return {
-      kind: "question",
-      question:
-        `Every service named — ${hinted.map((key) => SERVICES[key].label).join(", ")} — reads as somewhere to copy FROM, not somewhere to create in. Name the target service plainly.`,
+      question: `Every service named — ${hinted
+        .map((key) => SERVICES[key].label)
+        .join(", ")} — reads as somewhere to copy FROM, not somewhere to create in. Name the target service plainly.`,
     };
   }
+  const company = companyIn(prompt);
+  return {
+    targets,
+    scope: company ? { kind: "company", company } : { kind: "all" },
+    // Filled per target later, once the target's own switch columns are known.
+    switches: {},
+    carry: [],
+    groupPattern: null,
+    notes: [],
+  };
+}
+
+export function planOnboarding({
+  prompt,
+  intent: given,
+  clusters,
+  existingFor,
+  env,
+  groupNames,
+}: {
+  prompt: string;
+  /** The model's reading. Omitted falls back to `intentFromPrompt`. */
+  intent?: OnboardIntent;
+  clusters: Cluster[];
+  existingFor: (service: ServiceKey) => ProjectConfigRow[];
+  env: Record<string, string | undefined>;
+  /** Every known chat, for resolving a `<site> x …` group pattern by name. */
+  groupNames?: { chatId: string; name: string }[];
+}): OnboardPlan {
+  const chats = groupNames ?? [];
+  const read = given ?? intentFromPrompt(prompt);
+  if ("question" in read) return { kind: "question", question: read.question };
+  const targets = read.targets;
   if (!targets.length) {
     return {
       kind: "question",
@@ -324,10 +493,20 @@ export function planOnboarding({
     };
   }
 
-  const company = companyIn(prompt);
+  const scope = read.scope;
+  const company = scope.kind === "company" ? scope.company : null;
+  /** Does this site fall inside the scope the sentence described? */
+  const inScope = (cluster: Cluster) => {
+    if (scope.kind === "company") return clusterCompany(cluster, existingFor) === scope.company;
+    // "every site that exists on noise meters" — membership, not company.
+    if (scope.kind === "in-service") {
+      return cluster.members.some((member) => member.service === scope.service);
+    }
+    return true;
+  };
   const services: ServicePlan[] = [];
   /** Parts of the sentence that were understood but could not be acted on. */
-  const unreadRequests: string[] = [];
+  const unreadRequests: string[] = [...read.notes];
 
   for (const service of targets) {
     const definition = onboardingFor(service);
@@ -341,9 +520,7 @@ export function planOnboarding({
     // Sites, not codes. `absentFrom` counts a site as present if ANY of its
     // aliases is in the service, which is what stops a second row being made
     // for a project that is already there under a different spelling.
-    const missingSites = absentFrom(clusters, service).filter(
-      (cluster) => !company || clusterCompany(cluster, existingFor) === company,
-    );
+    const missingSites = absentFrom(clusters, service).filter(inScope);
 
     // Only the switches this service actually offers at creation. A column the
     // onboarding flow does not carry cannot be set by an insert, so asking for
@@ -351,15 +528,42 @@ export function planOnboarding({
     const toggleColumns = definition.fields
       .filter((field) => field.kind === "toggle")
       .map((field) => field.column);
-    const { values: switches, unread } = switchesIn(prompt, toggleColumns);
-    for (const column of unread) {
-      unreadRequests.push(`${SERVICES[service].label}: could not tell whether "${column}" should be on or off`);
+    // The model's reading wins where it gave one; the keyword parser fills the
+    // rest, so a fallback run still sets what it can read.
+    const switches: Record<string, string> = {};
+    for (const [column, value] of Object.entries(read.switches)) {
+      if (toggleColumns.includes(column)) switches[column] = value ? "true" : "false";
+    }
+    if (!Object.keys(switches).length) {
+      const { values, unread } = switchesIn(prompt, toggleColumns);
+      Object.assign(switches, values);
+      for (const column of unread) {
+        unreadRequests.push(
+          `${SERVICES[service].label}: could not tell whether "${column}" should be on or off`,
+        );
+      }
     }
 
     const ready: OnboardRow[] = [];
     const blocked: OnboardRow[] = [];
     for (const cluster of missingSites) {
       const { draft, derived } = draftFor(definition, cluster, company, env, existingFor, switches);
+
+      // "unless you can identify that it's a '<site> x WL coordination' chat".
+      // Left empty where there is no match, which is what the request asked
+      // for — a wrong group is a report sent to the wrong people.
+      if (read.groupPattern && definition.fields.some((f) => f.column === read.groupPattern!.column)) {
+        const match = resolveGroupPattern(read.groupPattern.pattern, cluster.codes, chats);
+        if (match) {
+          draft[read.groupPattern.column] = match.chatId;
+          derived.push({
+            column: read.groupPattern.column,
+            from: `WhatsApp: ${match.name}`,
+            value: match.chatId,
+            why: `matched "${read.groupPattern.pattern}" for this site`,
+          });
+        }
+      }
       const problems = validateDraft(definition, draft, existingFor(service), env);
       const row: OnboardRow = {
         projectCode: cluster.canonical,
@@ -373,7 +577,7 @@ export function planOnboarding({
 
     const alreadyThere = clusters
       .filter((cluster) => cluster.members.some((member) => member.service === service))
-      .filter((cluster) => !company || clusterCompany(cluster, existingFor) === company)
+      .filter(inScope)
       .map((cluster) => ({
         projectCode: cluster.canonical,
         existingAs: cluster.members.find((member) => member.service === service)!.projectCode,
@@ -398,7 +602,13 @@ export function planOnboarding({
     unread: unreadRequests,
     company,
     summary:
-      `${company ? `${company} sites` : "Sites"} missing from ` +
+      `${
+        scope.kind === "company"
+          ? `${scope.company} sites`
+          : scope.kind === "in-service"
+            ? `Sites configured in ${SERVICES[scope.service].label}`
+            : "Sites"
+      } missing from ` +
       `${services.map((plan) => plan.label).join(" and ")}: ` +
       `${totalReady} ready to create, ${totalBlocked} short a required field.`,
     services,
@@ -425,4 +635,80 @@ function clusterCompany(
     if (company) return company;
   }
   return null;
+}
+
+/**
+ * What the model is asked, and the only thing it is asked on this path.
+ *
+ * It reads English and returns shapes. It never returns a project code, a chat
+ * id or a sheet id — those come from the estate, resolved after this. So the
+ * worst a misreading can do is select the wrong SET of rows, which the review
+ * list then shows before anything is written.
+ *
+ * Read by a test, so the shape it promises and the shape `parseOnboardIntent`
+ * accepts cannot drift apart.
+ */
+export const ONBOARD_INTENT_PROMPT = [
+  "You read one sentence from an operations engineer asking for projects to be CREATED, and return JSON describing",
+  "what was asked. You do not decide WHICH projects: you describe the rule, and code resolves it against the estate.",
+  "",
+  "Never invent a project code, a chat id or a spreadsheet id. There is no field for them and no use for them here.",
+  "",
+  "Reply with JSON only, no prose:",
+  "{",
+  '  "targets": ["<service key>", ...],           // services to CREATE rows in',
+  '  "scope": {"kind":"company","company":"<name>"}   // sites belonging to one company',
+  '        | {"kind":"in-service","service":"<key>"}  // sites already configured in that service',
+  '        | {"kind":"all"},                          // every site in the estate',
+  '  "switches": {"<column>": true|false},        // only columns listed as switches below',
+  '  "carry": [{"column":"<column>","from":"<service key>"}],  // only pairs listed below',
+  '  "groupPattern": {"column":"<column>","pattern":"<site> x WL coordination"} | null,',
+  '  "notes": ["anything asked for that this shape cannot express"]',
+  "}",
+  'Or, if the request cannot be understood: {"question":"<what you need to know>"}',
+  "",
+  "Rules that matter:",
+  "- A service can be named as a TARGET (create in it) or as a SOURCE (read values from it, or scope by it).",
+  '  "onboard subcon projects for every site on noise meters, sheet from WBGT" has ONE target — subcon.',
+  "  Noise is the scope; WBGT is a carry source. Putting a source in `targets` creates projects nobody asked for.",
+  "- `scope` is how the sites are chosen. If the sentence says which service they already exist in, that is",
+  '  `in-service`, NOT `company`. Use `all` only when the sentence really means every site.',
+  "- `switches` are only the columns listed below for the target. Anything else goes in `notes`.",
+  "- If a switch is mentioned but you cannot tell whether it should be on or off, leave it out and say so in `notes`.",
+  "  Guessing one starts or silences a daily message to a construction site.",
+  '- `groupPattern` is how a group is chosen BY NAME. Write `<site>` where the project code goes.',
+  '  "leave the groups empty unless you can identify a \'SITE x WL coordination\' chat" IS a groupPattern:',
+  '  {"column":"safety_group_ids","pattern":"<site> x WL coordination"}. It is not a request to leave them empty —',
+  "  empty is only what happens for the sites with no such chat, and code decides which those are, not you.",
+  "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
+  "  not belong in `notes`.",
+  "- Put anything you understood but could not express into `notes`. It is shown to the operator. Silence is worse.",
+].join("\n");
+
+/** The facts the model needs about this estate, rendered for the prompt. */
+export function onboardIntentContext(
+  services: { key: ServiceKey; label: string; hasOnboarding: boolean; switches: { column: string; label: string }[] }[],
+  companies: readonly string[],
+): string {
+  const lines = ["Services (key — label):"];
+  for (const service of services) {
+    lines.push(
+      `  ${service.key} — ${service.label}${service.hasOnboarding ? "" : "  (no onboarding flow; cannot be a target)"}`,
+    );
+  }
+  lines.push("", "Switches offered at creation, by service:");
+  for (const service of services.filter((entry) => entry.switches.length)) {
+    lines.push(`  ${service.key}: ${service.switches.map((s) => `${s.column} (${s.label})`).join(", ")}`);
+  }
+  lines.push("", "Values that can be carried from another service, by target service:");
+  for (const service of services) {
+    const columns = carryColumnsFor(service.key);
+    if (!columns.length) continue;
+    for (const column of columns) {
+      const source = CARRIED_FROM[service.key]![column];
+      lines.push(`  ${service.key}.${column} <- ${source.from}.${source.column} (${source.why})`);
+    }
+  }
+  lines.push("", `Companies: ${companies.join(", ")}`);
+  return lines.join("\n");
 }

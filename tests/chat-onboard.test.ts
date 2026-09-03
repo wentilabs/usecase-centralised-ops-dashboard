@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { onboardTargetsIn, planOnboarding, saysOnboard, switchesIn } from "../lib/chat-onboard";
+import {
+  onboardTargetsIn,
+  parseOnboardIntent,
+  planOnboarding,
+  resolveGroupPattern,
+  saysOnboard,
+  switchesIn,
+} from "../lib/chat-onboard";
 import { onboardingFor } from "../lib/onboarding";
 import { clusterProjects, type ServiceRow } from "../lib/project-identity";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
@@ -330,4 +337,95 @@ test("the full request plans one target, not two", () => {
     assert.equal(entry.values.enable_activity_summary, "false");
     assert.equal(entry.values.spreadsheet_id, SHEET_ID);
   }
+});
+
+const ALLOWED = {
+  services: ["wbgt", "noise", "haze", "lightning", "ailytics", "subcon", "issueChaser"] as ServiceKey[],
+  switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
+  carryColumns: ["spreadsheet_id"],
+};
+
+test("the intent parser refuses what the model is not allowed to decide", () => {
+  const base = { targets: ["subcon"], scope: { kind: "all" } };
+
+  // An unknown source service must NOT quietly widen to every site — that would
+  // onboard the whole estate off a typo.
+  assert.equal(
+    parseOnboardIntent({ ...base, scope: { kind: "in-service", service: "noize" } }, ALLOWED),
+    null,
+  );
+  // No recognisable target is a refusal, not a guess.
+  assert.equal(parseOnboardIntent({ targets: ["nonsense"], scope: { kind: "all" } }, ALLOWED), null);
+
+  // A switch the target does not offer is reported, not written.
+  const stray = parseOnboardIntent(
+    { ...base, switches: { enable_housekeeping: false, enable_teleport: true } },
+    ALLOWED,
+  );
+  assert.ok(stray && !("question" in stray));
+  if (!stray || "question" in stray) return;
+  assert.deepEqual(stray.switches, { enable_housekeeping: false });
+  assert.match(stray.notes.join(" "), /enable_teleport/);
+
+  // A carry the estate has not declared is reported, not performed.
+  const carry = parseOnboardIntent(
+    { ...base, carry: [{ column: "safety_sheet_id", from: "wbgt" }] },
+    ALLOWED,
+  );
+  if (!carry || "question" in carry) return assert.fail("expected an intent");
+  assert.deepEqual(carry.carry, []);
+  assert.match(carry.notes.join(" "), /no such equivalence/i);
+
+  // A non-boolean switch is left at its default rather than coerced.
+  const fuzzy = parseOnboardIntent({ ...base, switches: { enable_housekeeping: "maybe" } }, ALLOWED);
+  if (!fuzzy || "question" in fuzzy) return assert.fail("expected an intent");
+  assert.deepEqual(fuzzy.switches, {});
+  assert.match(fuzzy.notes.join(" "), /true or false/);
+});
+
+test("a group pattern is matched through the site's aliases", () => {
+  const groups = [
+    { chatId: "1@g.us", name: "CR106 x WL coordination" },
+    { chatId: "2@g.us", name: "TBC x WL Coordination" },
+    { chatId: "3@g.us", name: "Ailytics X Wenti (ZRA)" },
+  ];
+  // The chat is named for one alias and the source row uses another: TBC vs the
+  // noise spelling TBCA. Matching on the canonical code alone would miss it.
+  assert.equal(resolveGroupPattern("<site> x WL coordination", ["TBC", "TBCA"], groups)?.chatId, "2@g.us");
+  assert.equal(
+    resolveGroupPattern("<site> x WL coordination", ["CR 106", "CR106", "CR106-LOY"], groups)?.chatId,
+    "1@g.us",
+  );
+  // No match leaves it empty rather than picking something close — a wrong
+  // group is a report sent to the wrong people.
+  assert.equal(resolveGroupPattern("<site> x WL coordination", ["ZRB"], groups), null);
+  // Anchored at the start, so a short code cannot claim a longer site's chat.
+  assert.equal(resolveGroupPattern("<site> x WL coordination", ["106"], groups), null);
+});
+
+test("in-service scope selects by membership, not by company", () => {
+  const rows = [
+    row("noise", "IN1", { company: "Wohhup" }),
+    row("noise", "IN2", { company: "Obayashi" }),
+    row("wbgt", "OUT1", { company: "Wohhup" }),
+  ];
+  const result = planOnboarding({
+    prompt: "onboard subcon projects for every site on noise meters",
+    intent: {
+      targets: ["subcon"],
+      scope: { kind: "in-service", service: "noise" },
+      switches: {},
+      carry: [],
+      groupPattern: null,
+      notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const proposed = [...result.services[0].ready, ...result.services[0].blocked].map((r) => r.projectCode);
+  // Both noise sites regardless of company; the WBGT-only site is out of scope.
+  assert.deepEqual(proposed.sort(), ["IN1", "IN2"]);
+  assert.match(result.summary, /configured in Noise/i);
 });

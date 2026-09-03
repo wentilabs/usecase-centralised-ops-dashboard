@@ -23,7 +23,17 @@ import {
   type RowEdit,
   type Scope,
 } from "@/lib/chat-scope";
-import { planOnboarding, saysOnboard } from "@/lib/chat-onboard";
+import {
+  ONBOARD_INTENT_PROMPT,
+  carryColumnsFor,
+  onboardIntentContext,
+  parseOnboardIntent,
+  planOnboarding,
+  saysOnboard,
+  type OnboardIntent,
+} from "@/lib/chat-onboard";
+import { COMPANIES } from "@/lib/field-spec";
+import { onboardingFor } from "@/lib/onboarding";
 import { clusterProjects, type ServiceRow } from "@/lib/project-identity";
 import { getGroupNames } from "@/lib/group-names";
 import { chatIdsIn } from "@/lib/card-summary";
@@ -347,11 +357,72 @@ export async function POST(request: NextRequest) {
         if (code) serviceRows.push({ service: key, projectCode: code, row });
       }
     }
+    // The model reads the sentence into a shape; code resolves the shape into
+    // rows. It cannot name a project, a chat or a sheet — there is no field for
+    // one — so the worst a misreading does is select the wrong SET, which the
+    // review list shows before anything is written.
+    const catalogue = SERVICE_KEYS.map((key) => {
+      const definition = onboardingFor(key);
+      return {
+        key,
+        label: SERVICES[key].label,
+        hasOnboarding: Boolean(definition),
+        switches: (definition?.fields ?? [])
+          .filter((field) => field.kind === "toggle")
+          .map((field) => ({ column: field.column, label: field.label })),
+      };
+    });
+
+    let intent: OnboardIntent | undefined;
+    const choice = chooseProvider(process.env);
+    if (choice.provider) {
+      const turn = {
+        system: ONBOARD_INTENT_PROMPT,
+        user: [onboardIntentContext(catalogue, COMPANIES), "", `Request: ${prompt}`].join("\n"),
+      };
+      try {
+        let result = await askModel(choice, turn);
+        if (!result.ok && shouldFallBack(result.status, result.text)) {
+          const second = fallbackRequest(choice, turn);
+          if (second) result = await askModel(choice, turn, second);
+        }
+        if (result.ok) {
+          const text = extractText(JSON.parse(result.text));
+          const read = parseOnboardIntent(parseModelJson(text) as Record<string, unknown> | null, {
+            services: [...SERVICE_KEYS],
+            switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
+            carryColumns: SERVICE_KEYS.flatMap((key) => carryColumnsFor(key)),
+          });
+          if (read && "question" in read) return reply({ message: read.question });
+          if (read) intent = read;
+        }
+      } catch {
+        // Falls through to the deterministic reading rather than failing the
+        // request: a provider being down should not stop the obvious cases.
+      }
+    }
+
+    const { map: groupNameMap } = await getGroupNames(
+      chatIdsIn(Object.values(rows).flat() as never),
+    );
     const plan = planOnboarding({
       prompt,
+      intent,
       clusters: clusterProjects(serviceRows),
       existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
       env: process.env,
+      // `.map`, not the result object: getGroupNames returns
+      // { configured, storeReady, map, ... } and iterating the wrapper yields
+      // its own field names as if they were chat ids. It type-checks, because
+      // Object.entries accepts anything, and silently matches nothing.
+      //
+      // The store holds EVERY known chat, not just the ids some project already
+      // references — which is what lets a "<site> x WL coordination" chat be
+      // found for a project that has no groups yet.
+      groupNames: Object.entries(groupNameMap).map(([chatId, name]) => ({
+        chatId,
+        name: String(name),
+      })),
     });
     if (plan.kind === "question") return reply({ message: plan.question });
     const knownAs = (members: { service: ServiceKey; projectCode: string }[]) =>

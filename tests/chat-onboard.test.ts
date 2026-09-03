@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ONBOARD_INTENT_PROMPT,
   onboardTargetsIn,
   parseOnboardIntent,
   planOnboarding,
@@ -344,21 +345,23 @@ test("the full request plans one target, not two", () => {
 const ALLOWED = {
   services: ["wbgt", "noise", "haze", "lightning", "ailytics", "subcon", "issueChaser"] as ServiceKey[],
   switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
-  carryColumns: ["spreadsheet_id"],
   valueColumns: ["spreadsheet_id", "safety_group_ids", "manpower_activity_outbound_group_id"],
+  declaredCarry: {
+    spreadsheet_id: { from: "wbgt" as ServiceKey, column: "manpower_spreadsheet_id" },
+  },
 };
 
 test("the intent parser refuses what the model is not allowed to decide", () => {
-  const base = { targets: ["subcon"], scope: { kind: "all" } };
+  const base = { targets: ["subcon"], scope: { include: [], exclude: [] } };
 
   // An unknown source service must NOT quietly widen to every site — that would
   // onboard the whole estate off a typo.
   assert.equal(
-    parseOnboardIntent({ ...base, scope: { kind: "in-service", service: "noize" } }, ALLOWED),
+    parseOnboardIntent({ ...base, scope: { include: [{ kind: "in-service", service: "noize" }], exclude: [] } }, ALLOWED),
     null,
   );
   // No recognisable target is a refusal, not a guess.
-  assert.equal(parseOnboardIntent({ targets: ["nonsense"], scope: { kind: "all" } }, ALLOWED), null);
+  assert.equal(parseOnboardIntent({ targets: ["nonsense"], scope: { include: [], exclude: [] } }, ALLOWED), null);
 
   // A switch the target does not offer is reported, not written.
   const stray = parseOnboardIntent(
@@ -370,14 +373,23 @@ test("the intent parser refuses what the model is not allowed to decide", () => 
   assert.deepEqual(stray.switches, { enable_housekeeping: false });
   assert.match(stray.notes.join(" "), /enable_teleport/);
 
-  // A carry the estate has not declared is reported, not performed.
+  // A carry the estate has not declared is HONOURED and marked unverified,
+  // not refused. The preview is where a wrong document gets caught, and
+  // refusing only meant the request quietly did less than it said.
   const carry = parseOnboardIntent(
-    { ...base, carry: [{ column: "safety_sheet_id", from: "wbgt" }] },
+    { ...base, carry: [{ column: "safety_sheet_id", from: "wbgt", fromColumn: "monthly_sheet_id" }] },
     ALLOWED,
   );
   if (!carry || "question" in carry) return assert.fail("expected an intent");
-  assert.deepEqual(carry.carry, []);
-  assert.match(carry.notes.join(" "), /no such equivalence/i);
+  assert.equal(carry.carry.length, 1);
+  assert.equal(carry.carry[0].declared, false, "and it is flagged as unverified");
+  // The declared one is marked as such.
+  const declared = parseOnboardIntent(
+    { ...base, carry: [{ column: "spreadsheet_id", from: "wbgt", fromColumn: "manpower_spreadsheet_id" }] },
+    ALLOWED,
+  );
+  if (!declared || "question" in declared) return assert.fail("expected an intent");
+  assert.equal(declared.carry[0].declared, true);
 
   // A non-boolean switch is left at its default rather than coerced.
   const fuzzy = parseOnboardIntent({ ...base, switches: { enable_housekeeping: "maybe" } }, ALLOWED);
@@ -416,12 +428,12 @@ test("in-service scope selects by membership, not by company", () => {
     prompt: "onboard subcon projects for every site on noise meters",
     intent: {
       targets: ["subcon"],
-      scope: { kind: "in-service", service: "noise" },
+      scope: { include: [{ kind: "in-service", service: "noise" }], exclude: [] },
       switches: {},
       values: {},
       fallbacks: {},
       carry: [],
-      groupPattern: null,
+      groupPatterns: [],
       notes: [],
     },
     clusters: clusterProjects(rows),
@@ -445,10 +457,10 @@ test("a fallback fills only the gap, and a value overrides the carry", () => {
   ];
   const base = {
     targets: ["subcon"] as ServiceKey[],
-    scope: { kind: "company" as const, company: "Wohhup" },
+    scope: { include: [{ kind: "company" as const, company: "Wohhup" }], exclude: [] },
     switches: {},
     carry: [],
-    groupPattern: null,
+    groupPatterns: [],
     notes: [],
   };
   const run = (extra: Partial<OnboardIntent>) =>
@@ -480,10 +492,147 @@ test("a fallback fills only the gap, and a value overrides the carry", () => {
 
 test("a value for a column the service is not created with is reported", () => {
   const read = parseOnboardIntent(
-    { targets: ["subcon"], scope: { kind: "all" }, values: { not_a_column: "x" } },
+    { targets: ["subcon"], scope: { include: [], exclude: [] }, values: { not_a_column: "x" } },
     ALLOWED,
   );
   if (!read || "question" in read) return assert.fail("expected an intent");
   assert.deepEqual(read.values, {});
   assert.match(read.notes.join(" "), /not_a_column/);
+});
+
+test("scope filters compose, and excludes win", () => {
+  const rows = [
+    row("noise", "A", { company: "Wohhup" }),
+    row("noise", "B", { company: "Obayashi" }),
+    row("wbgt", "C", { company: "Wohhup" }),
+    row("noise", "D", { company: "Wohhup" }),
+    row("wbgt", "D", { company: "Wohhup" }),
+  ];
+  const run = (scope: OnboardIntent["scope"]) =>
+    planOnboarding({
+      prompt: "onboard into subcon",
+      intent: {
+        targets: ["subcon"], scope, switches: {}, values: {}, fallbacks: {},
+        carry: [], groupPatterns: [], notes: [],
+      },
+      clusters: clusterProjects(rows),
+      existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+      env: ENV,
+    });
+  const codesOf = (result: ReturnType<typeof run>) => {
+    if (result.kind !== "plan") return [];
+    return [...result.services[0].ready, ...result.services[0].blocked].map((r) => r.projectCode).sort();
+  };
+
+  // Two includes are OR-ed, not AND-ed.
+  assert.deepEqual(
+    codesOf(run({ include: [{ kind: "company", company: "Obayashi" }, { kind: "codes", codes: ["A"] }], exclude: [] })),
+    ["A", "B"],
+  );
+  // An exclude wins over an include — "every Wohhup site except the ones in WBGT".
+  assert.deepEqual(
+    codesOf(run({ include: [{ kind: "company", company: "Wohhup" }], exclude: [{ kind: "in-service", service: "wbgt" }] })),
+    ["A"],
+  );
+  // No includes means every site, so a sentence naming no scope still means something.
+  assert.deepEqual(codesOf(run({ include: [], exclude: [] })), ["A", "B", "C", "D"]);
+  // A code the estate does not have simply selects nothing — which is why the
+  // model is allowed to supply codes here at all.
+  assert.deepEqual(codesOf(run({ include: [{ kind: "codes", codes: ["NOPE"] }], exclude: [] })), []);
+});
+
+test("an undeclared copy is performed and flagged, not refused", () => {
+  const rows = [row("wbgt", "ZRB", { company: "Wohhup", monthly_sheet_id: OTHER_SHEET_ID })];
+  const result = planOnboarding({
+    prompt: "onboard into subcon, taking the workbook from WBGT's monthly sheet",
+    intent: {
+      targets: ["subcon"],
+      scope: { include: [], exclude: [] },
+      switches: {}, values: {}, fallbacks: {},
+      carry: [{ column: "spreadsheet_id", from: "wbgt", fromColumn: "monthly_sheet_id", declared: false }],
+      groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const created = [...result.services[0].ready, ...result.services[0].blocked][0];
+  assert.equal(created.values.spreadsheet_id, OTHER_SHEET_ID, "the copy is performed");
+  const note = created.derived.find((d) => d.column === "spreadsheet_id");
+  assert.match(note!.why, /not a declared equivalent/i, "and marked for checking");
+});
+
+test("several group patterns can be asked for at once", () => {
+  const rows = [row("wbgt", "ZRB", { company: "Wohhup", manpower_spreadsheet_id: SHEET_ID })];
+  const result = planOnboarding({
+    prompt: "onboard into subcon with both groups",
+    intent: {
+      targets: ["subcon"],
+      scope: { include: [], exclude: [] },
+      switches: {}, values: {}, fallbacks: {}, carry: [],
+      groupPatterns: [
+        { column: "safety_group_ids", pattern: "<site> x WL coordination" },
+        { column: "manpower_activity_outbound_group_id", pattern: "<site> reports" },
+      ],
+      notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+    groupNames: [
+      { chatId: "a@g.us", name: "ZRB x WL coordination" },
+      { chatId: "b@g.us", name: "ZRB reports" },
+    ],
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const created = result.services[0].ready[0];
+  assert.equal(created.values.safety_group_ids, "a@g.us");
+  assert.equal(created.values.manpower_activity_outbound_group_id, "b@g.us");
+});
+
+test("the prompt promises the shape the parser accepts", () => {
+  // The drift that actually happened: the intent shape grew composable scope
+  // filters, multiple group patterns and an open carry, and the prompt was
+  // left describing the old one. Everything type-checked, every test passed,
+  // and the model kept answering in a shape the parser silently ignored — so
+  // two excludes came back as prose notes and the plan covered 35 sites
+  // instead of 27. Nothing else catches this.
+  for (const field of ["targets", "scope", "switches", "values", "fallbacks", "carry", "groupPatterns", "notes"]) {
+    assert.match(ONBOARD_INTENT_PROMPT, new RegExp(`"${field}"`), `the prompt must document "${field}"`);
+  }
+  for (const kind of ["company", "in-service", "codes"]) {
+    assert.match(ONBOARD_INTENT_PROMPT, new RegExp(`"${kind}"`), `the prompt must document the ${kind} filter`);
+  }
+  assert.match(ONBOARD_INTENT_PROMPT, /"include"/, "scope must be documented as include/exclude");
+  assert.match(ONBOARD_INTENT_PROMPT, /"exclude"/);
+  assert.match(ONBOARD_INTENT_PROMPT, /"fromColumn"/, "carry must document the source column");
+
+  // And the shapes it no longer accepts must not still be promised.
+  assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /"kind":"all"/, "the old fixed scope is gone");
+  assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /"groupPattern":\s*\{/, "the single-pattern form is gone");
+
+  // The worked example must itself parse, or it is teaching a shape that fails.
+  const example = ONBOARD_INTENT_PROMPT.slice(ONBOARD_INTENT_PROMPT.indexOf("Worked example."));
+  // Brace-counted: the prompt continues past the example, so lastIndexOf swept
+  // up unrelated text and the extract would not parse.
+  const start = example.indexOf("{");
+  let depth = 0;
+  let end = start;
+  for (let at = start; at < example.length; at += 1) {
+    if (example[at] === "{") depth += 1;
+    if (example[at] === "}") depth -= 1;
+    if (depth === 0) { end = at; break; }
+  }
+  const json = example.slice(start, end + 1);
+  const parsed = parseOnboardIntent(JSON.parse(json), {
+    ...ALLOWED,
+    switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
+    valueColumns: ["spreadsheet_id"],
+  });
+  assert.ok(parsed && !("question" in parsed), "the worked example must parse");
+  if (!parsed || "question" in parsed) return;
+  assert.deepEqual(parsed.targets, ["subcon"]);
+  assert.equal(parsed.scope.exclude.length, 2, "both excludes in the example must survive");
+  assert.equal(parsed.carry[0]?.declared, true, "the example's carry is a declared pair");
 });

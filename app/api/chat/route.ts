@@ -26,6 +26,7 @@ import {
 import {
   ONBOARD_INTENT_PROMPT,
   carryColumnsFor,
+  declaredCarrySource,
   onboardIntentContext,
   parseOnboardIntent,
   planOnboarding,
@@ -391,9 +392,13 @@ export async function POST(request: NextRequest) {
           const read = parseOnboardIntent(parseModelJson(text) as Record<string, unknown> | null, {
             services: [...SERVICE_KEYS],
             switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
-            carryColumns: SERVICE_KEYS.flatMap((key) => carryColumnsFor(key)),
             valueColumns: SERVICE_KEYS.flatMap((key) =>
               (onboardingFor(key)?.fields ?? []).map((field) => field.column),
+            ),
+            declaredCarry: Object.fromEntries(
+              SERVICE_KEYS.flatMap((key) =>
+                carryColumnsFor(key).map((column) => [column, declaredCarrySource(key, column)!]),
+              ),
             ),
           });
           if (read && "question" in read) return reply({ message: read.question });

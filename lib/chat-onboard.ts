@@ -99,9 +99,31 @@ export function onboardTargetsIn(prompt: string, hints: ServiceKey[]): ServiceKe
   });
 }
 
-/** The columns a service is allowed to fill from elsewhere. For validation. */
+/** The scope in one phrase, for the review list's heading. */
+function describeFilters(scope: OnboardIntent["scope"]): string {
+  const say = (filter: SiteFilter) =>
+    filter.kind === "company"
+      ? `${filter.company} sites`
+      : filter.kind === "in-service"
+        ? `sites configured in ${SERVICES[filter.service].label}`
+        : `${filter.codes.join(", ")}`;
+  const head = scope.include.length ? scope.include.map(say).join(" or ") : "Sites";
+  const tail = scope.exclude.length ? ` except ${scope.exclude.map(say).join(" or ")}` : "";
+  return (head + tail).replace(/^./, (first) => first.toUpperCase());
+}
+
+/** The columns a service has a declared equivalence for. */
 export function carryColumnsFor(service: ServiceKey): string[] {
   return Object.keys(CARRIED_FROM[service] ?? {});
+}
+
+/** The equivalence this estate vouches for, if any, for one target column. */
+export function declaredCarrySource(
+  service: ServiceKey,
+  column: string,
+): { from: ServiceKey; column: string } | null {
+  const source = CARRIED_FROM[service]?.[column];
+  return source ? { from: source.from, column: source.column } : null;
 }
 
 /**
@@ -253,11 +275,20 @@ export function switchesIn(
 export type OnboardIntent = {
   /** Services to create rows IN. */
   targets: ServiceKey[];
-  /** Which sites, expressed as a rule rather than a list of codes. */
-  scope:
-    | { kind: "company"; company: string }
-    | { kind: "in-service"; service: ServiceKey }
-    | { kind: "all" };
+  /**
+   * Which sites, as composable filters rather than three fixed shapes.
+   *
+   * `include` is OR'd and `exclude` wins, so "every Wohhup site on noise
+   * meters except the ones already in WBGT" is expressible without this file
+   * having anticipated that sentence. A site must match at least one include
+   * and no exclude; an empty `include` means every site.
+   *
+   * `codes` is safe for the model to supply because a code here only SELECTS —
+   * it is matched against sites that already exist, so an invented one matches
+   * nothing. The code a row is CREATED with is always the canonical site code,
+   * which comes from the identity map and never from the model.
+   */
+  scope: { include: SiteFilter[]; exclude: SiteFilter[] };
   /** Column → value, for switches the target offers at creation. */
   switches: Record<string, boolean>;
   /**
@@ -276,26 +307,37 @@ export type OnboardIntent = {
    * that was carried for the seventeen sites that have one.
    */
   fallbacks: Record<string, string>;
-  /** Columns to fill from another service's row for the same site. */
-  carry: { column: string; from: ServiceKey }[];
   /**
-   * A group to look up by name and write into a column, with `<site>` standing
-   * for any of the site's codes — "<site> x WL coordination".
+   * Columns to fill from another service's row for the same site.
+   *
+   * Any pair the model asks for is honoured, not only the ones this file
+   * declares. `declared` says which — an undeclared copy is shown in the
+   * review list as unverified rather than refused, because the operator knows
+   * the sites and the preview is where a wrong document gets caught. Refusing
+   * it outright only meant the request silently did less than it said.
    */
-  groupPattern: { column: string; pattern: string } | null;
+  carry: { column: string; from: ServiceKey; fromColumn: string; declared: boolean }[];
+  /** Groups looked up by name, `<site>` standing for any of the site's codes. */
+  groupPatterns: { column: string; pattern: string }[];
   /** Anything recognised in the sentence that this shape cannot express. */
   notes: string[];
 };
 
-/** Read the model's answer, refusing anything it is not allowed to decide. */
+export type SiteFilter =
+  | { kind: "company"; company: string }
+  | { kind: "in-service"; service: ServiceKey }
+  | { kind: "codes"; codes: string[] };
+
+/** Read the model's answer, keeping only what it is entitled to decide. */
 export function parseOnboardIntent(
   parsed: Record<string, unknown> | null,
   allowed: {
     services: ServiceKey[];
     switchColumns: string[];
-    carryColumns: string[];
     /** Every column any target is created with, for `values` / `fallbacks`. */
     valueColumns: string[];
+    /** The equivalences this estate vouches for, keyed by target column. */
+    declaredCarry: Record<string, { from: ServiceKey; column: string }>;
   },
 ): OnboardIntent | { question: string } | null {
   if (!parsed) return null;
@@ -317,18 +359,33 @@ export function parseOnboardIntent(
     .filter((key): key is ServiceKey => Boolean(key));
   if (!targets.length) return null;
 
+  const readFilters = (raw: unknown, label: string): SiteFilter[] | null => {
+    const out: SiteFilter[] = [];
+    for (const entry of (Array.isArray(raw) ? raw : []) as Record<string, unknown>[]) {
+      const kind = String(entry?.kind ?? "").trim();
+      if (kind === "company" && String(entry?.company ?? "").trim()) {
+        out.push({ kind: "company", company: String(entry.company).trim() });
+      } else if (kind === "in-service") {
+        const service = asService(entry?.service);
+        // An unrecognised service is refused rather than dropped: dropping an
+        // INCLUDE silently widens the plan to the whole estate.
+        if (!service) return null;
+        out.push({ kind: "in-service", service });
+      } else if (kind === "codes" && Array.isArray(entry?.codes)) {
+        const codes = entry.codes.map((code) => String(code).trim()).filter(Boolean);
+        if (codes.length) out.push({ kind: "codes", codes });
+      } else {
+        notes.push(`could not read one ${label} filter, so it was ignored`);
+      }
+    }
+    return out;
+  };
+
   const rawScope = (parsed.scope ?? {}) as Record<string, unknown>;
-  let scope: OnboardIntent["scope"] = { kind: "all" };
-  const scopeKind = String(rawScope.kind ?? "").trim();
-  if (scopeKind === "company" && String(rawScope.company ?? "").trim()) {
-    scope = { kind: "company", company: String(rawScope.company).trim() };
-  } else if (scopeKind === "in-service") {
-    const service = asService(rawScope.service);
-    // An unknown source service is not silently widened to "all sites" — that
-    // would quietly onboard the whole estate.
-    if (!service) return null;
-    scope = { kind: "in-service", service };
-  }
+  const include = readFilters(rawScope.include, "include");
+  const exclude = readFilters(rawScope.exclude, "exclude");
+  if (!include || !exclude) return null;
+  const scope = { include, exclude };
 
   const values: Record<string, string> = {};
   const fallbacks: Record<string, string> = {};
@@ -363,23 +420,39 @@ export function parseOnboardIntent(
   for (const entry of (Array.isArray(parsed.carry) ? parsed.carry : []) as Record<string, unknown>[]) {
     const column = String(entry?.column ?? "").trim();
     const from = asService(entry?.from);
-    if (!from || !allowed.carryColumns.includes(column)) {
-      notes.push(`cannot copy "${column}" from ${String(entry?.from ?? "?")} — no such equivalence is declared`);
+    if (!from || !column) {
+      notes.push(`could not read a copy instruction for "${column || "?"}", so nothing was copied`);
       continue;
     }
-    carry.push({ column, from });
+    // Any pair is honoured. `declared` marks the ones this file vouches for;
+    // the rest are shown as unverified in the review list, which is where a
+    // wrong document actually gets caught.
+    const declaredSource = allowed.declaredCarry[column];
+    const fromColumn = String(entry?.fromColumn ?? "").trim() || declaredSource?.column || column;
+    carry.push({
+      column,
+      from,
+      fromColumn,
+      declared: declaredSource?.from === from && declaredSource?.column === fromColumn,
+    });
   }
 
-  const rawPattern = (parsed.groupPattern ?? null) as Record<string, unknown> | null;
-  let groupPattern: OnboardIntent["groupPattern"] = null;
-  if (rawPattern && String(rawPattern.pattern ?? "").trim()) {
-    groupPattern = {
-      column: String(rawPattern.column ?? "safety_group_ids").trim(),
-      pattern: String(rawPattern.pattern).trim(),
-    };
+  const groupPatterns: OnboardIntent["groupPatterns"] = [];
+  const rawPatterns = Array.isArray(parsed.groupPatterns)
+    ? parsed.groupPatterns
+    : parsed.groupPattern
+      ? [parsed.groupPattern]
+      : [];
+  for (const entry of rawPatterns as Record<string, unknown>[]) {
+    const pattern = String(entry?.pattern ?? "").trim();
+    if (!pattern) continue;
+    groupPatterns.push({
+      column: String(entry?.column ?? "safety_group_ids").trim(),
+      pattern,
+    });
   }
 
-  return { targets, scope, switches, values, fallbacks, carry, groupPattern, notes };
+  return { targets, scope, switches, values, fallbacks, carry, groupPatterns, notes };
 }
 
 export type OnboardRow = {
@@ -438,6 +511,7 @@ function draftFor(
   existingFor: (service: ServiceKey) => ProjectConfigRow[],
   switches: Record<string, string>,
   asked: { values: Record<string, string>; fallbacks: Record<string, string> },
+  requested: OnboardIntent["carry"],
 ): { draft: OnboardDraft; derived: OnboardRow["derived"] } {
   const draft: OnboardDraft = {
     ...prefillDefaults(definition, env),
@@ -459,8 +533,27 @@ function draftFor(
     if (columns.has(column)) draft[column] = value;
   }
 
-  const derived: OnboardRow["derived"] = [];
+  // The declared equivalences, plus whatever the sentence asked for. A request
+  // for a pair this file does not vouch for is performed and marked, not
+  // refused — the operator sees the value and its source in the review list.
+  const sources = new Map<string, { from: ServiceKey; column: string; why: string; declared: boolean }>();
   for (const [column, source] of Object.entries(CARRIED_FROM[definition.service] ?? {})) {
+    sources.set(column, { ...source, declared: true });
+  }
+  for (const asked of requested) {
+    sources.set(asked.column, {
+      from: asked.from,
+      column: asked.fromColumn,
+      why: asked.declared
+        ? (CARRIED_FROM[definition.service]?.[asked.column]?.why ?? "asked for in your sentence")
+        : `asked for in your sentence — ${SERVICES[asked.from].label}.${asked.fromColumn} is not a declared equivalent of this column, so check it`,
+      declared: asked.declared,
+    });
+  }
+
+  const derived: OnboardRow["derived"] = [];
+  for (const [column, source] of sources) {
+    if (!columns.has(column)) continue;
     if (String(draft[column] ?? "").trim()) continue;
     // The identity map is what makes this possible: the source row is found by
     // SITE, so a value written against `MBS` in WBGT reaches a subcon row being
@@ -517,13 +610,13 @@ export function intentFromPrompt(prompt: string): OnboardIntent | { question: st
   const company = companyIn(prompt);
   return {
     targets,
-    scope: company ? { kind: "company", company } : { kind: "all" },
+    scope: { include: company ? [{ kind: "company", company }] : [], exclude: [] },
     // Filled per target later, once the target's own switch columns are known.
     switches: {},
     values: {},
     fallbacks: {},
     carry: [],
-    groupPattern: null,
+    groupPatterns: [],
     notes: [],
   };
 }
@@ -558,15 +651,30 @@ export function planOnboarding({
   }
 
   const scope = read.scope;
-  const company = scope.kind === "company" ? scope.company : null;
-  /** Does this site fall inside the scope the sentence described? */
-  const inScope = (cluster: Cluster) => {
-    if (scope.kind === "company") return clusterCompany(cluster, existingFor) === scope.company;
-    // "every site that exists on noise meters" — membership, not company.
-    if (scope.kind === "in-service") {
-      return cluster.members.some((member) => member.service === scope.service);
+  const company =
+    scope.include.find((filter): filter is { kind: "company"; company: string } => filter.kind === "company")
+      ?.company ?? null;
+
+  const matches = (filter: SiteFilter, cluster: Cluster): boolean => {
+    if (filter.kind === "company") return clusterCompany(cluster, existingFor) === filter.company;
+    // Membership, not company: "every site that exists on noise meters".
+    if (filter.kind === "in-service") {
+      return cluster.members.some((member) => member.service === filter.service);
     }
-    return true;
+    // A code SELECTS a site by any of its spellings. An invented one matches
+    // nothing, which is why the model is allowed to supply these.
+    const wanted = new Set(filter.codes.map(fold));
+    return cluster.codes.some((code) => wanted.has(fold(code)));
+  };
+
+  /**
+   * Includes are OR'd, excludes win. An empty include list is every site, so a
+   * sentence that names no scope still means something rather than nothing.
+   */
+  const inScope = (cluster: Cluster) => {
+    if (scope.exclude.some((filter) => matches(filter, cluster))) return false;
+    if (!scope.include.length) return true;
+    return scope.include.some((filter) => matches(filter, cluster));
   };
   const services: ServicePlan[] = [];
   /** Parts of the sentence that were understood but could not be acted on. */
@@ -611,25 +719,31 @@ export function planOnboarding({
     const ready: OnboardRow[] = [];
     const blocked: OnboardRow[] = [];
     for (const cluster of missingSites) {
-      const { draft, derived } = draftFor(definition, cluster, company, env, existingFor, switches, {
-        values: read.values,
-        fallbacks: read.fallbacks,
-      });
+      const { draft, derived } = draftFor(
+        definition,
+        cluster,
+        company,
+        env,
+        existingFor,
+        switches,
+        { values: read.values, fallbacks: read.fallbacks },
+        read.carry,
+      );
 
       // "unless you can identify that it's a '<site> x WL coordination' chat".
       // Left empty where there is no match, which is what the request asked
       // for — a wrong group is a report sent to the wrong people.
-      if (read.groupPattern && definition.fields.some((f) => f.column === read.groupPattern!.column)) {
-        const match = resolveGroupPattern(read.groupPattern.pattern, cluster.codes, chats);
-        if (match) {
-          draft[read.groupPattern.column] = match.chatId;
-          derived.push({
-            column: read.groupPattern.column,
-            from: `WhatsApp: ${match.name}`,
-            value: match.chatId,
-            why: `matched "${read.groupPattern.pattern}" for this site`,
-          });
-        }
+      for (const wanted of read.groupPatterns) {
+        if (!definition.fields.some((field) => field.column === wanted.column)) continue;
+        const match = resolveGroupPattern(wanted.pattern, cluster.codes, chats);
+        if (!match) continue;
+        draft[wanted.column] = match.chatId;
+        derived.push({
+          column: wanted.column,
+          from: `WhatsApp: ${match.name}`,
+          value: match.chatId,
+          why: `matched "${wanted.pattern}" for this site`,
+        });
       }
       const problems = validateDraft(definition, draft, existingFor(service), env);
       const row: OnboardRow = {
@@ -669,13 +783,7 @@ export function planOnboarding({
     unread: unreadRequests,
     company,
     summary:
-      `${
-        scope.kind === "company"
-          ? `${scope.company} sites`
-          : scope.kind === "in-service"
-            ? `Sites configured in ${SERVICES[scope.service].label}`
-            : "Sites"
-      } missing from ` +
+      `${describeFilters(scope)} missing from ` +
       `${services.map((plan) => plan.label).join(" and ")}: ` +
       `${totalReady} ready to create, ${totalBlocked} short a required field.`,
     services,
@@ -724,14 +832,16 @@ export const ONBOARD_INTENT_PROMPT = [
   "Reply with JSON only, no prose:",
   "{",
   '  "targets": ["<service key>", ...],           // services to CREATE rows in',
-  '  "scope": {"kind":"company","company":"<name>"}   // sites belonging to one company',
-  '        | {"kind":"in-service","service":"<key>"}  // sites already configured in that service',
-  '        | {"kind":"all"},                          // every site in the estate',
+  '  "scope": {"include":[<filter>], "exclude":[<filter>]},  // include is OR-ed; anything matching exclude is out',
+  '      <filter> = {"kind":"company","company":"<name>"}',
+  '               | {"kind":"in-service","service":"<key>"}   // sites already configured in that service',
+  '               | {"kind":"codes","codes":["<code>",...]}   // named outright, by any spelling they use',
+  '      An empty "include" means every site. Combine them freely.',
   '  "switches": {"<column>": true|false},        // only columns listed as switches below',
   '  "values": {"<column>": "<value>"},           // set a column outright, any field the target is created with',
   '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
-  '  "carry": [{"column":"<column>","from":"<service key>"}],  // only pairs listed below',
-  '  "groupPattern": {"column":"<column>","pattern":"<site> x WL coordination"} | null,',
+  '  "carry": [{"column":"<col>","from":"<service key>","fromColumn":"<col on that service>"}],',
+  '  "groupPatterns": [{"column":"<column>","pattern":"<site> x WL coordination"}],',
   '  "notes": ["anything asked for that this shape cannot express"]',
   "}",
   'Or, if the request cannot be understood: {"question":"<what you need to know>"}',
@@ -745,13 +855,34 @@ export const ONBOARD_INTENT_PROMPT = [
   "- `switches` are only the columns listed below for the target. Anything else goes in `notes`.",
   "- If a switch is mentioned but you cannot tell whether it should be on or off, leave it out and say so in `notes`.",
   "  Guessing one starts or silences a daily message to a construction site.",
-  '- `groupPattern` is how a group is chosen BY NAME. Write `<site>` where the project code goes.',
+  '- `groupPatterns` choose groups BY NAME. Write `<site>` where the project code goes; give one per column.',
+  "- Put every part of the scope into `scope`. A sentence that says which sites to SKIP means an `exclude` filter,",
+  "  not a note — a note changes nothing, and the plan would silently cover more sites than were asked for.",
+  "",
+  "Worked example.",
+  '  "onboard into subcon every site with noise meters but not already in issue chaser, skip Obayashi,',
+  '   workbook from WBGT, housekeeping off, manpower summary only" becomes:',
+  '  {"targets":["subcon"],',
+  '   "scope":{"include":[{"kind":"in-service","service":"noise"}],',
+  '            "exclude":[{"kind":"in-service","service":"issueChaser"},{"kind":"company","company":"Obayashi"}]},',
+  '   "switches":{"enable_housekeeping":false,"enable_manpower_summary":true,"enable_activity_summary":false},',
+  '   "values":{},"fallbacks":{},',
+  '   "carry":[{"column":"spreadsheet_id","from":"wbgt","fromColumn":"manpower_spreadsheet_id"}],',
+  '   "groupPatterns":[],"notes":[]}',
+  "",
   '  "leave the groups empty unless you can identify a \'SITE x WL coordination\' chat" IS a groupPattern:',
   '  {"column":"safety_group_ids","pattern":"<site> x WL coordination"}. It is not a request to leave them empty —',
   "  empty is only what happens for the sites with no such chat, and code decides which those are, not you.",
   '- `values` sets a column outright; `fallbacks` fills one only where nothing else did. "If no WBGT workbook is',
   '  configured, use X" is a FALLBACK — as a `value` it would overwrite the workbook carried for every site that',
   "  has one. Both are limited to columns the target is created with; anything else goes in `notes`.",
+  "- `carry` may name ANY column on ANY service. Some pairs are listed below as known equivalents; those are the",
+  "  ones this dashboard vouches for. Asking for a pair that is not listed is allowed and WILL be performed — it",
+  "  is shown to the operator as unverified. Prefer a listed pair when one fits, and do not invent a copy the",
+  "  sentence did not ask for.",
+  "- Read the whole sentence and act on all of it. If something is asked for that none of these fields expresses,",
+  "  do what you can with the fields there are and put the remainder in `notes`. Do not narrow the request to fit",
+  "  the shape, and do not refuse a reasonable reading because the shape is awkward.",
   "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
   "  not belong in `notes`.",
   "- Put anything you understood but could not express into `notes`. It is shown to the operator. Silence is worse.",
@@ -772,7 +903,7 @@ export function onboardIntentContext(
   for (const service of services.filter((entry) => entry.switches.length)) {
     lines.push(`  ${service.key}: ${service.switches.map((s) => `${s.column} (${s.label})`).join(", ")}`);
   }
-  lines.push("", "Values that can be carried from another service, by target service:");
+  lines.push("", "Known equivalents — pairs this dashboard vouches for. Others are allowed but shown as unverified:");
   for (const service of services) {
     const columns = carryColumnsFor(service.key);
     if (!columns.length) continue;

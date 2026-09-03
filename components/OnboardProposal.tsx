@@ -226,13 +226,24 @@ export function OnboardProposal({
                             through the identity map rather than by code. */}
                         {row.derived?.length ? (
                           <ul className="mt-1 pl-6">
-                            {row.derived.map((item) => (
-                              <li key={item.column} className="text-[11px] text-muted-foreground">
-                                <code className="text-foreground">{item.column}</code> ={" "}
-                                <span className="font-mono">{item.value.slice(0, 18)}…</span> — {item.why},
-                                from <span className="font-mono">{item.from}</span>
-                              </li>
-                            ))}
+                            {row.derived.map((item) => {
+                              // A copy the estate does not vouch for is marked
+                              // rather than refused: the operator knows the
+                              // sites, and this is where a wrong document is
+                              // caught.
+                              const unverified = /not a declared equivalent/.test(item.why);
+                              return (
+                                <li
+                                  key={item.column}
+                                  className={`text-[11px] ${unverified ? "text-warn" : "text-muted-foreground"}`}
+                                >
+                                  {unverified ? <span aria-hidden>⚠ </span> : null}
+                                  <code className={unverified ? "" : "text-foreground"}>{item.column}</code> ={" "}
+                                  <span className="font-mono">{item.value.slice(0, 18)}…</span> — {item.why}, from{" "}
+                                  <span className="font-mono">{item.from}</span>
+                                </li>
+                              );
+                            })}
                           </ul>
                         ) : null}
                         {outcome?.error ? (

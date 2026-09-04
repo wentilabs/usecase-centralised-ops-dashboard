@@ -164,11 +164,12 @@ test("haze fires-at reflects the PSI alert gate", () => {
 });
 
 test("haze four-hourly reports the cadence it actually runs", () => {
-  // `four_hourly` used to mean "ONLY at those four hours", and this test used to
-  // assert the floor was not quoted. The service changed (INV-HAZE-01): every
-  // project runs hourly, and four-hourly is an override that at 08/12/16/20
-  // bypasses both the band floor and the working-hours window. Quoting the
-  // floor is now correct, because it governs every other hour of the day.
+  // Twice now the column name has outlived the behaviour. It first meant "ONLY
+  // at those four hours"; INV-HAZE-01 made it an override on top of the hourly
+  // run, which is why the floor is quoted — it governs every other hour. Then
+  // ca13cbd widened the slots to every TWO hours, 08 through 20, as an interim
+  // measure for periods of high haze frequency. The column is still called
+  // `four_hourly` and now fires seven times a day.
   const four = firesAt("haze", {
     four_hourly: true,
     working_hours_start_hhmm: "0800",
@@ -178,7 +179,8 @@ test("haze four-hourly reports the cadence it actually runs", () => {
   assert.match(four, /^hourly advisory/, "hourly is the cadence for every project now");
   assert.match(four, /08:00–19:00/, "the window governs the non-override hours");
   assert.match(four, /only when PSI ≥ unhealthy/, "and so does the floor");
-  assert.match(four, /08:00, 12:00, 16:00 and 20:00/);
+  assert.match(four, /every 2 hours from 08:00 to 20:00/, "seven slots, not the four the column is named for");
+  assert.doesNotMatch(four, /08:00, 12:00, 16:00 and 20:00/, "the old four-slot wording is gone");
   assert.match(four, /whatever the band/, "the override ignores the floor at those hours");
   assert.match(four, /outside those hours/, "and the working-hours window — 20:00 fires past a 19:00 close");
   assert.match(four, /no daily kickoff/, "four-hourly projects are skipped by the kickoff route");
@@ -211,10 +213,12 @@ test("the haze cadence and band pills say what is in force", () => {
     assert.ok(!pills.some((p) => /^(hourly|every hour)$/.test(p.label)), "no cadence pill");
   }
 
-  assert.ok(four.some((p) => p.label === "🕓 4-hourly override" && p.on));
-  assert.ok(plain.some((p) => p.label === "🕓 4-hourly override" && !p.on), "unlit without the flag");
+  // Labelled for what it does. A pill is read at a glance, and "4" for seven
+  // sends is simply wrong; the editor's help explains the column-name mismatch.
+  assert.ok(four.some((p) => p.label === "🕓 2-hourly override" && p.on));
+  assert.ok(plain.some((p) => p.label === "🕓 2-hourly override" && !p.on), "unlit without the flag");
   // The majority mode, so it must not be emphasised.
-  assert.equal(four.find((p) => p.label === "🕓 4-hourly override")?.tone, undefined);
+  assert.equal(four.find((p) => p.label === "🕓 2-hourly override")?.tone, undefined);
 
   // The floor is reported as stored either way: with the override on it still
   // governs the other twenty hours, so showing "every band" there would claim
@@ -1222,7 +1226,7 @@ test("capability search works across every service", () => {
   const cases = [
     { service: "wbgt" as const, row: { enable_5min_alerts: true }, needle: "5-min alerts" },
     { service: "noise" as const, row: { enable_morning_summary: true }, needle: "morning summary" },
-    { service: "haze" as const, row: { four_hourly: true }, needle: "4-hourly" },
+    { service: "haze" as const, row: { four_hourly: true }, needle: "2-hourly" },
     { service: "lightning" as const, row: { enable_red_band_poc_mentions: true }, needle: "poc mentions" },
     { service: "ailytics" as const, row: { forward_pending_to_whatsapp: true }, needle: "forward pending" },
     { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping intake" },

@@ -409,15 +409,19 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
+    // `four_hourly` is the column name and no longer the behaviour: ca13cbd
+    // widened it to every two hours as an interim measure for periods of high
+    // haze frequency. The name was left alone in the service, so the label
+    // still matches the column an operator sees, and the help carries the truth.
     four_hourly: {
-      label: "Four-hourly override",
+      label: "Four-hourly override (now every 2 hours)",
       help:
-        "Guarantees a send in the 08:00, 12:00, 16:00 and 20:00 SGT hours, on top of the hourly advisory. Those four ignore both the band gate below and the working-hours window — 20:00 fires even on a site that closes at 19:00. Every other hour follows the ordinary rules. The check is on the hour, not the minute, and the cron runs at :35, so the messages land at 08:35, 12:35, 16:35 and 20:35. The project is also left out of the once-a-day kickoff message.",
+        "Guarantees a send every two hours — 08:00, 10:00, 12:00, 14:00, 16:00, 18:00 and 20:00 SGT — on top of the hourly advisory. Seven slots, not four: the column is still called `four_hourly` but was widened as an interim measure for periods of high haze frequency. Those hours ignore both the band gate below and the working-hours window, so 20:00 fires even on a site that closes at 19:00. Every other hour follows the ordinary rules. The check is on the hour, not the minute, and the cron runs at :02, so the messages land at 08:02, 10:02 and so on. The project is also left out of the once-a-day kickoff message.",
     },
     alert_only_when_at_least: {
       label: "Alert only when at least",
       help:
-        "Suppress the hourly advisory unless the 24-hour PSI band reaches this level. Unset = send every hour. Still applies with Four-hourly override on — it is bypassed only at those four hours, not for the rest of the day.",
+        "Suppress the hourly advisory unless the 24-hour PSI band reaches this level. Unset = send every hour. Still applies with the two-hourly override on — it is bypassed only at those seven hours, not for the rest of the day.",
     },
     timezone: { label: "Timezone" },
 

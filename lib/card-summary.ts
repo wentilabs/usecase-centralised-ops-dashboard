@@ -226,12 +226,16 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       ? ` — only when PSI ≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
       : "";
     if (config.four_hourly) {
-      // The override sends at those four hours whatever the band AND outside the
+      // Every two hours since ca13cbd, not four — the column name did not
+      // change with the behaviour. Listed as a range rather than seven times,
+      // which is what an operator is actually checking.
+      //
+      // The override sends at those hours whatever the band AND outside the
       // working-hours window, which is why the 20:00 slot fires for a project
       // whose window closes at 19:00. Every other hour follows the ordinary
       // gates, so the floor is still quoted — dropping it would imply the
       // whole day ignores it.
-      return `hourly advisory during ${hours}${gate}, plus a guaranteed send at 08:00, 12:00, 16:00 and 20:00 whatever the band and outside those hours — no daily kickoff${mutesSuffix(
+      return `hourly advisory during ${hours}${gate}, plus a guaranteed send every 2 hours from 08:00 to 20:00 whatever the band and outside those hours — no daily kickoff${mutesSuffix(
         config,
       )}`;
     }
@@ -484,8 +488,12 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
         // true of all 25 and tell a reader nothing. It said "4-hourly" vs
         // "hourly" while `four_hourly` meant "only at those four hours"; it now
         // means an override on top of the hourly run (INV-HAZE-01).
+        //
+        // Labelled 2-hourly because that is what it does since ca13cbd. The
+        // column kept its old name, but a pill is read at a glance and "4" for
+        // seven sends is simply wrong; the editor's help explains the mismatch.
         {
-          label: "🕓 4-hourly override",
+          label: "🕓 2-hourly override",
           on: on(config.four_hourly),
         },
         // The floor still governs every other hour, so it is reported as stored

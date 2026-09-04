@@ -265,12 +265,12 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       // has a default that is a real decision.
       {
         column: "four_hourly",
-        label: "Four-hourly override",
+        label: "Four-hourly override (now every 2 hours)",
         kind: "toggle",
         required: false,
         notNull: true,
         fallback: "false",
-        help: "Guarantees a send in the 08, 12, 16 and 20 SGT hours on top of the hourly advisory, ignoring both the floor below and the working-hours window. Every other hour follows the ordinary rules.",
+        help: "Guarantees a send every two hours — 08, 10, 12, 14, 16, 18 and 20 SGT — on top of the hourly advisory, ignoring both the floor below and the working-hours window. Seven slots despite the column name, which was left alone when the interim widening landed. Every other hour follows the ordinary rules.",
       },
       {
         column: "alert_only_when_at_least",

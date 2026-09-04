@@ -468,6 +468,16 @@ export type ScopeOverride = {
 };
 
 export type BulkOp =
+  /**
+   * "These projects do not exist yet."
+   *
+   * The onboarding path used to be reachable only through a keyword read of the
+   * sentence, so a phrasing that read never recognised — "I need issue chaser
+   * rows for every Wohhup site" — was answered as a change to projects that do
+   * not exist. The model sees the request and the rows, so it can say this
+   * itself and the request is re-read as a creation.
+   */
+  | { kind: "onboard"; summary: string }
   | { kind: "set"; changes: Record<string, unknown>; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
   /** Remove delivery groups whose name matches `phrase`. Matching happens in code. */
   | { kind: "remove-groups"; phrase: string; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
@@ -501,6 +511,7 @@ export function parseBulkOp(parsed: Record<string, unknown> | null): BulkOp | nu
     if (!phrase) return null;
     return { kind: "remove-groups", phrase, summary, where, scope };
   }
+  if (op === "onboard") return { kind: "onboard", summary };
   if (op === "defaults") return { kind: "defaults", summary, where, scope };
   if (op === "set") {
     const changes = parsed.changes;
@@ -665,11 +676,16 @@ export const BULK_SYSTEM_PROMPT = [
   '  {"op":"set","changes":{"<column>":<value>},"where":[<condition>],"scope":<scope>,"summary":"<one sentence>"}',
   '  {"op":"remove-groups","phrase":"<the group name as the person described it>","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"defaults","where":[<condition>],"summary":"<one sentence>"}',
+  '  {"op":"onboard","summary":"<one sentence>"}   // the request is to CREATE projects, not change existing ones',
   "",
   '  <condition> = {"column":"<column>","op":"is"|"is-not"|"empty"|"not-empty"|"contains","value":<value>}',
   '  {"question":"<what you need to know>"}',
   "",
   "Rules:",
+  '- If the request is to CREATE projects that do not exist yet — "onboard", "add rows for", "we need issue',
+  '  chaser set up for every Wohhup site" — answer {"op":"onboard"}. The request is then re-read by the part',
+  "  that plans creations. Do not try to express it as a change to the rows below: those are the projects that",
+  "  already exist, and the ones being asked for are not among them.",
   "- You are given every project in scope with its current values. Use them. If the request is about some of",
   '  those rows rather than all of them, decide which and name them: {"scope":{"codes":["A","B"]}}. Work it out',
   "  from the values in front of you rather than asking which ones were meant — the sentence already said, and a",

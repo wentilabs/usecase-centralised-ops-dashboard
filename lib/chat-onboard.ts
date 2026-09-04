@@ -1,4 +1,4 @@
-import { companyIn } from "./chat-scope";
+import { companyIn, describeConditions, matchesConditions, type RowCondition } from "./chat-scope";
 import { serviceHintsIn } from "./chat-intent";
 import {
   onboardingFor,
@@ -108,7 +108,11 @@ function describeFilters(scope: OnboardIntent["scope"]): string {
         ? `sites configured in ${SERVICES[filter.service].label}`
         : filter.kind === "any"
           ? `(${filter.of.map(say).join(" or ")})`
-          : `${filter.codes.join(", ")}`;
+          : filter.kind === "where"
+            ? `sites whose ${SERVICES[filter.service].label} ${describeConditions([
+                { column: filter.column, op: filter.op, value: filter.value },
+              ])}`
+            : `${filter.codes.join(", ")}`;
   const head = scope.include.length ? scope.include.map(say).join(" that are also ") : "Sites";
   const tail = scope.exclude.length ? ` except ${scope.exclude.map(say).join(" or ")}` : "";
   return (head + tail).replace(/^./, (first) => first.toUpperCase());
@@ -369,6 +373,21 @@ export type SiteFilter =
   | { kind: "company"; company: string }
   | { kind: "in-service"; service: ServiceKey }
   | { kind: "codes"; codes: string[] }
+  /**
+   * A condition on the site's row in one service — "whose noise config is
+   * disabled", "with no delivery group in WBGT".
+   *
+   * The bulk path could already select on a row's values and this could not,
+   * which was an asymmetry with no reason behind it: the same question is
+   * asked of the same rows, and only the verb differed.
+   */
+  | {
+      kind: "where";
+      service: ServiceKey;
+      column: string;
+      op: RowCondition["op"];
+      value?: unknown;
+    }
   /** Matches when ANY of its members match. Nests, so filters compose freely. */
   | { kind: "any"; of: SiteFilter[] };
 
@@ -418,6 +437,15 @@ export function parseOnboardIntent(
       } else if (kind === "codes" && Array.isArray(entry?.codes)) {
         const codes = entry.codes.map((code) => String(code).trim()).filter(Boolean);
         if (codes.length) out.push({ kind: "codes", codes });
+      } else if (kind === "where") {
+        const service = asService(entry?.service);
+        const column = String(entry?.column ?? "").trim();
+        const op = String(entry?.op ?? "is").trim() as RowCondition["op"];
+        // Same rule as in-service: a condition that cannot be evaluated must
+        // not be dropped from an INCLUDE, because dropping it widens the plan.
+        if (!service || !column) return null;
+        if (!["is", "is-not", "empty", "not-empty", "contains"].includes(op)) return null;
+        out.push({ kind: "where", service, column, op, value: entry?.value });
       } else if (kind === "any") {
         const of = readFilters(entry?.of, label);
         if (of === null) return null;
@@ -710,6 +738,18 @@ export function planOnboarding({
       return cluster.members.some((member) => member.service === filter.service);
     }
     if (filter.kind === "any") return filter.of.some((inner) => matches(inner, cluster));
+    if (filter.kind === "where") {
+      // Evaluated against that service's real row for this site, found through
+      // the identity map — so a condition written about "the WBGT config"
+      // reaches the row WBGT calls MBS while the site is filed under IR2.
+      const member = cluster.members.find((entry) => entry.service === filter.service);
+      if (!member) return false;
+      const row = existingFor(filter.service).find(
+        (candidate) => String(candidate.project_code ?? "").trim() === member.projectCode,
+      );
+      if (!row) return false;
+      return matchesConditions(row, [{ column: filter.column, op: filter.op, value: filter.value }]);
+    }
     // A code SELECTS a site by any of its spellings. An invented one matches
     // nothing, which is why the model is allowed to supply these.
     const wanted = new Set(filter.codes.map(fold));
@@ -894,6 +934,9 @@ export const ONBOARD_INTENT_PROMPT = [
   '      <filter> = {"kind":"company","company":"<name>"}',
   '               | {"kind":"in-service","service":"<key>"}   // sites already configured in that service',
   '               | {"kind":"codes","codes":["<code>",...]}   // named outright, by any spelling they use',
+  '               | {"kind":"where","service":"<key>","column":"<column>","op":"is"|"is-not"|"empty"|"not-empty"|"contains","value":<value>}',
+  '                 // a condition on that site\'s row in that service — "whose noise config is disabled",',
+  '                 // "with no delivery group in WBGT". Evaluated against the real row.',
   '               | {"kind":"any","of":[<filter>,...]}        // matches if ANY of these do',
   '      "include" is AND-ed, so ["company Wohhup", "in-service noise"] means Wohhup sites that are ALSO in',
   '      noise. For a union, wrap them in {"kind":"any"}. An empty "include" means every site.',

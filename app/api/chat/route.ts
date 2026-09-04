@@ -282,6 +282,9 @@ async function bulkReply({
   const op = parseBulkOp(parseModelJson(text) as Record<string, unknown> | null);
   if (!op) return reply({ message: "The model did not answer in a shape this could use. Try rewording it." });
   if (op.kind === "question") return reply({ message: op.question });
+  // The model read the request and says these projects do not exist yet. It has
+  // seen the rows, so it is better placed to know that than a keyword was.
+  if (op.kind === "onboard") return onboardingReply(prompt, rows as never);
 
   let edits: RowEdit[] = [];
   /** Parts of the change one service could not take. Shown, not swallowed. */
@@ -402,6 +405,142 @@ async function bulkReply({
   });
 }
 
+/**
+ * Read a creation request and answer with a plan.
+ *
+ * Reached two ways: the sentence looked like onboarding, or the bulk model
+ * read it and said so. The keyword gate used to be the only way in, which
+ * meant a phrasing it did not recognise never reached this code at all — the
+ * request would come back as a change to projects that do not exist yet.
+ */
+async function onboardingReply(
+  prompt: string,
+  rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>,
+) {
+  const serviceRows: ServiceRow[] = [];
+  for (const key of SERVICE_KEYS) {
+    for (const row of (rows[key] ?? []) as ProjectConfigRow[]) {
+      const code = String(row.project_code ?? "").trim();
+      if (code) serviceRows.push({ service: key, projectCode: code, row });
+    }
+  }
+  // The model reads the sentence into a shape; code resolves the shape into
+  // rows. It cannot name a project, a chat or a sheet — there is no field for
+  // one — so the worst a misreading does is select the wrong SET, which the
+  // review list shows before anything is written.
+  const catalogue = SERVICE_KEYS.map((key) => {
+    const definition = onboardingFor(key);
+    return {
+      key,
+      label: SERVICES[key].label,
+      hasOnboarding: Boolean(definition),
+      switches: (definition?.fields ?? [])
+        .filter((field) => field.kind === "toggle")
+        .map((field) => ({ column: field.column, label: field.label })),
+      fields: (definition?.fields ?? []).map((field) => ({
+        column: field.column,
+        label: field.label,
+        kind: field.kind,
+        required: field.required,
+      })),
+    };
+  });
+
+  let intent: OnboardIntent | undefined;
+  const choice = chooseProvider(process.env);
+  if (choice.provider) {
+    const clusters = clusterProjects(serviceRows);
+    const turn = {
+      system: ONBOARD_INTENT_PROMPT,
+      user: [
+        onboardIntentContext(catalogue, COMPANIES),
+        "",
+        siteTableFor(clusters, (service) => (rows[service] ?? []) as ProjectConfigRow[]),
+        "",
+        `Request: ${prompt}`,
+      ].join("\n"),
+    };
+    try {
+      let result = await askModel(choice, turn);
+      if (!result.ok && shouldFallBack(result.status, result.text)) {
+        const second = fallbackRequest(choice, turn);
+        if (second) result = await askModel(choice, turn, second);
+      }
+      if (result.ok) {
+        const text = extractText(JSON.parse(result.text));
+        const read = parseOnboardIntent(parseModelJson(text) as Record<string, unknown> | null, {
+          services: [...SERVICE_KEYS],
+          switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
+          valueColumns: SERVICE_KEYS.flatMap((key) =>
+            (onboardingFor(key)?.fields ?? []).map((field) => field.column),
+          ),
+          declaredCarry: Object.fromEntries(
+            SERVICE_KEYS.flatMap((key) =>
+              carryColumnsFor(key).map((column) => [column, declaredCarrySource(key, column)!]),
+            ),
+          ),
+        });
+        if (read && "question" in read) return reply({ message: read.question });
+        if (read) intent = read;
+      }
+    } catch {
+      // Falls through to the deterministic reading rather than failing the
+      // request: a provider being down should not stop the obvious cases.
+    }
+  }
+
+  const { map: groupNameMap } = await getGroupNames(
+    chatIdsIn(Object.values(rows).flat() as never),
+  );
+  const plan = planOnboarding({
+    prompt,
+    intent,
+    clusters: clusterProjects(serviceRows),
+    existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
+    env: process.env,
+    // `.map`, not the result object: getGroupNames returns
+    // { configured, storeReady, map, ... } and iterating the wrapper yields
+    // its own field names as if they were chat ids. It type-checks, because
+    // Object.entries accepts anything, and silently matches nothing.
+    //
+    // The store holds EVERY known chat, not just the ids some project already
+    // references — which is what lets a "<site> x WL coordination" chat be
+    // found for a project that has no groups yet.
+    groupNames: Object.entries(groupNameMap).map(([chatId, name]) => ({
+      chatId,
+      name: String(name),
+    })),
+  });
+  if (plan.kind === "question") return reply({ message: plan.question });
+  const knownAs = (members: { service: ServiceKey; projectCode: string }[]) =>
+    members.map((member) => `${SERVICES[member.service].label}: ${member.projectCode}`);
+  return reply({
+    onboard: {
+      summary: plan.summary,
+      company: plan.company,
+      unread: plan.unread,
+      services: plan.services.map((entry) => ({
+        service: entry.service,
+        label: entry.label,
+        ready: entry.ready.map((row) => ({
+          projectCode: row.projectCode,
+          values: row.values,
+          knownAs: knownAs(row.knownAs),
+          derived: row.derived,
+        })),
+        blocked: entry.blocked.map((row) => ({
+          projectCode: row.projectCode,
+          values: row.values,
+          knownAs: knownAs(row.knownAs),
+          problems: row.problems,
+          derived: row.derived,
+        })),
+        alreadyThere: entry.alreadyThere,
+      })),
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   const session = await getDashboardSession();
   if (!session.allowed) return reply({ message: "Unauthorized." }, 401);
@@ -442,130 +581,9 @@ export async function POST(request: NextRequest) {
    * decidable in code, so there is no route by which a hallucinated project
    * code reaches a create. See `lib/chat-onboard.ts`.
    */
-  if (saysOnboard(prompt)) {
-    const serviceRows: ServiceRow[] = [];
-    for (const key of SERVICE_KEYS) {
-      for (const row of (rows[key] ?? []) as ProjectConfigRow[]) {
-        const code = String(row.project_code ?? "").trim();
-        if (code) serviceRows.push({ service: key, projectCode: code, row });
-      }
-    }
-    // The model reads the sentence into a shape; code resolves the shape into
-    // rows. It cannot name a project, a chat or a sheet — there is no field for
-    // one — so the worst a misreading does is select the wrong SET, which the
-    // review list shows before anything is written.
-    const catalogue = SERVICE_KEYS.map((key) => {
-      const definition = onboardingFor(key);
-      return {
-        key,
-        label: SERVICES[key].label,
-        hasOnboarding: Boolean(definition),
-        switches: (definition?.fields ?? [])
-          .filter((field) => field.kind === "toggle")
-          .map((field) => ({ column: field.column, label: field.label })),
-        fields: (definition?.fields ?? []).map((field) => ({
-          column: field.column,
-          label: field.label,
-          kind: field.kind,
-          required: field.required,
-        })),
-      };
-    });
-
-    let intent: OnboardIntent | undefined;
-    const choice = chooseProvider(process.env);
-    if (choice.provider) {
-      const clusters = clusterProjects(serviceRows);
-      const turn = {
-        system: ONBOARD_INTENT_PROMPT,
-        user: [
-          onboardIntentContext(catalogue, COMPANIES),
-          "",
-          siteTableFor(clusters, (service) => (rows[service] ?? []) as ProjectConfigRow[]),
-          "",
-          `Request: ${prompt}`,
-        ].join("\n"),
-      };
-      try {
-        let result = await askModel(choice, turn);
-        if (!result.ok && shouldFallBack(result.status, result.text)) {
-          const second = fallbackRequest(choice, turn);
-          if (second) result = await askModel(choice, turn, second);
-        }
-        if (result.ok) {
-          const text = extractText(JSON.parse(result.text));
-          const read = parseOnboardIntent(parseModelJson(text) as Record<string, unknown> | null, {
-            services: [...SERVICE_KEYS],
-            switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
-            valueColumns: SERVICE_KEYS.flatMap((key) =>
-              (onboardingFor(key)?.fields ?? []).map((field) => field.column),
-            ),
-            declaredCarry: Object.fromEntries(
-              SERVICE_KEYS.flatMap((key) =>
-                carryColumnsFor(key).map((column) => [column, declaredCarrySource(key, column)!]),
-              ),
-            ),
-          });
-          if (read && "question" in read) return reply({ message: read.question });
-          if (read) intent = read;
-        }
-      } catch {
-        // Falls through to the deterministic reading rather than failing the
-        // request: a provider being down should not stop the obvious cases.
-      }
-    }
-
-    const { map: groupNameMap } = await getGroupNames(
-      chatIdsIn(Object.values(rows).flat() as never),
-    );
-    const plan = planOnboarding({
-      prompt,
-      intent,
-      clusters: clusterProjects(serviceRows),
-      existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
-      env: process.env,
-      // `.map`, not the result object: getGroupNames returns
-      // { configured, storeReady, map, ... } and iterating the wrapper yields
-      // its own field names as if they were chat ids. It type-checks, because
-      // Object.entries accepts anything, and silently matches nothing.
-      //
-      // The store holds EVERY known chat, not just the ids some project already
-      // references — which is what lets a "<site> x WL coordination" chat be
-      // found for a project that has no groups yet.
-      groupNames: Object.entries(groupNameMap).map(([chatId, name]) => ({
-        chatId,
-        name: String(name),
-      })),
-    });
-    if (plan.kind === "question") return reply({ message: plan.question });
-    const knownAs = (members: { service: ServiceKey; projectCode: string }[]) =>
-      members.map((member) => `${SERVICES[member.service].label}: ${member.projectCode}`);
-    return reply({
-      onboard: {
-        summary: plan.summary,
-        company: plan.company,
-        unread: plan.unread,
-        services: plan.services.map((entry) => ({
-          service: entry.service,
-          label: entry.label,
-          ready: entry.ready.map((row) => ({
-            projectCode: row.projectCode,
-            values: row.values,
-            knownAs: knownAs(row.knownAs),
-            derived: row.derived,
-          })),
-          blocked: entry.blocked.map((row) => ({
-            projectCode: row.projectCode,
-            values: row.values,
-            knownAs: knownAs(row.knownAs),
-            problems: row.problems,
-            derived: row.derived,
-          })),
-          alreadyThere: entry.alreadyThere,
-        })),
-      },
-    });
-  }
+  // The keyword read is a fast path, not the gate: when it misses, the bulk
+  // model sees the request WITH the rows and can redirect here itself.
+  if (saysOnboard(prompt)) return onboardingReply(prompt, rows as never);
 
   /**
    * Scope first, then the old single-project path.

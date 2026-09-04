@@ -11,6 +11,7 @@ import {
   siteTableFor,
   switchesIn,
   type OnboardIntent,
+  type SiteFilter,
 } from "../lib/chat-onboard";
 import { onboardingFor } from "../lib/onboarding";
 import { clusterProjects, type ServiceRow } from "../lib/project-identity";
@@ -728,4 +729,73 @@ test("the prompt tells the model to read through typos rather than refuse", () =
   assert.match(ONBOARD_INTENT_PROMPT, /never report a limitation you could work around/i);
   // And it must not still claim the scope is decided elsewhere.
   assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /You do not decide WHICH projects/i);
+});
+
+test("a site can be selected by a condition on another service's row", () => {
+  // The bulk path could already select on a row's values and this could not,
+  // which was an asymmetry with nothing behind it. "Every Wohhup site whose
+  // noise config is disabled" is one filter, not a follow-up question.
+  const rows = [
+    row("noise", "ON", { company: "Wohhup", enabled: true }),
+    row("noise", "OFF", { company: "Wohhup", enabled: false }),
+    row("noise", "BLANK", { company: "Wohhup" }),
+  ];
+  const run = (include: SiteFilter[]) =>
+    planOnboarding({
+      prompt: "onboard into subcon",
+      intent: {
+        targets: ["subcon"], scope: { include, exclude: [] },
+        switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+      },
+      clusters: clusterProjects(rows),
+      existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+      env: ENV,
+    });
+  const codesOf = (result: ReturnType<typeof run>) =>
+    result.kind === "plan"
+      ? [...result.services[0].ready, ...result.services[0].blocked].map((r) => r.projectCode).sort()
+      : [];
+
+  assert.deepEqual(
+    codesOf(run([{ kind: "where", service: "noise", column: "enabled", op: "is", value: false }])),
+    ["BLANK", "OFF"],
+    "NULL counts as off, as it does everywhere else",
+  );
+  assert.deepEqual(
+    codesOf(run([{ kind: "where", service: "noise", column: "enabled", op: "is", value: true }])),
+    ["ON"],
+  );
+  // A site with no row in that service cannot satisfy a condition about it.
+  assert.deepEqual(
+    codesOf(run([{ kind: "where", service: "wbgt", column: "enabled", op: "is", value: false }])),
+    [],
+  );
+
+  // And it composes with the rest.
+  assert.deepEqual(
+    codesOf(
+      run([
+        { kind: "company", company: "Wohhup" },
+        { kind: "where", service: "noise", column: "enabled", op: "is", value: true },
+      ]),
+    ),
+    ["ON"],
+  );
+});
+
+test("an unreadable where filter is refused, never dropped", () => {
+  // Dropping it from an INCLUDE silently widens the plan to every site, which
+  // is the one direction a mistake here must not go.
+  const base = { targets: ["subcon"], scope: { include: [], exclude: [] } };
+  for (const bad of [
+    { kind: "where", service: "noize", column: "enabled", op: "is", value: false },
+    { kind: "where", service: "noise", op: "is", value: false },
+    { kind: "where", service: "noise", column: "enabled", op: "roughly", value: false },
+  ]) {
+    assert.equal(
+      parseOnboardIntent({ ...base, scope: { include: [bad], exclude: [] } }, ALLOWED),
+      null,
+      `${JSON.stringify(bad)} must be refused`,
+    );
+  }
 });

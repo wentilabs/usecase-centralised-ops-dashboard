@@ -528,3 +528,16 @@ test("nothing in the bulk prompt refuses a change spanning services", () => {
   assert.doesNotMatch(BULK_SYSTEM_PROMPT, /Name one service/i);
   assert.doesNotMatch(BULK_SYSTEM_PROMPT, /`set` is not available/i);
 });
+
+test("the bulk model can say a request is a creation, not a change", () => {
+  // The keyword read used to be the ONLY way into the onboarding path, so a
+  // phrasing it did not recognise was answered as a change to projects that do
+  // not exist. The model sees the request and the rows, so it is better placed
+  // to know that than a word list is.
+  assert.deepEqual(parseBulkOp({ op: "onboard", summary: "create them" }), {
+    kind: "onboard",
+    summary: "create them",
+  });
+  assert.match(BULK_SYSTEM_PROMPT, /"op":"onboard"/, "and the prompt must offer it");
+  assert.match(BULK_SYSTEM_PROMPT, /do not exist yet/i);
+});

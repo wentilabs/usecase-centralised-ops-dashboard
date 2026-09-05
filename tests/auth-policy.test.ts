@@ -1902,3 +1902,44 @@ test("subcon's housekeeping groups run in both directions", () => {
   );
   assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false, "nothing configured");
 });
+
+test("every service HALO knows about has an audit trigger, on insert and update", async () => {
+  // How the history came to be missing: Issue Chaser was added to the estate
+  // after config_audit_setup.sql was last written, so it had no trigger and its
+  // cards showed nothing at all. Subcon had one in the file that had never been
+  // run. Nothing in the codebase could see either gap.
+  const sql = await readFile(resolve("supabase/config_audit_setup.sql"), "utf8");
+
+  for (const key of SERVICE_KEYS) {
+    const { schema, table } = SERVICES[key];
+    const trigger = new RegExp(
+      `create trigger config_audit_trg[\\s\\S]{0,60}?on\\s+"?${schema}"?\\.${table}\\b`,
+      "i",
+    );
+    assert.match(sql, trigger, `${key} (${schema}.${table}) has no audit trigger`);
+  }
+
+  // On insert too, or a project's history starts at its first edit and the row
+  // appears to have come from nowhere.
+  const triggers = sql.match(/create trigger config_audit_trg[^;]*/g) ?? [];
+  assert.equal(triggers.length, SERVICE_KEYS.length, "one trigger per service, no more, no fewer");
+  for (const trigger of triggers) {
+    assert.match(trigger, /after insert or update on/, `not an insert trigger: ${trigger.slice(0, 80)}`);
+  }
+
+  // The insert branch writes a marker rather than diffing against a row that
+  // does not exist — otherwise every creation is a twenty-column entry.
+  assert.match(sql, /if tg_op = 'INSERT' then/);
+  assert.match(sql, /jsonb_build_object\('created'/);
+  assert.match(sql, /'insert'\s*\)/, "and records action = insert");
+
+  // And the schema must be exposed to PostgREST, or the dashboard reads nothing.
+  const exposed = sql.slice(sql.indexOf("pgrst.db_schemas"));
+  for (const key of SERVICE_KEYS) {
+    if (SERVICES[key].schema === "public") continue;
+    assert.ok(
+      exposed.includes(SERVICES[key].schema),
+      `${SERVICES[key].schema} is missing from the exposed-schemas line`,
+    );
+  }
+});

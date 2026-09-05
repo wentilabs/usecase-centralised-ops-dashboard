@@ -18,6 +18,8 @@ type AuditEntry = {
   note: string | null;
   external: boolean;
   changes: Record<string, { from: unknown; to: unknown }>;
+  /** "insert" is the entry recording the project being created. */
+  action?: "insert" | "update";
 };
 
 function display(value: unknown): string {
@@ -478,16 +480,24 @@ export function ConfigEditor({
                     {entry.note ? (
                       <div className="mt-1 text-warn">📝 {entry.note}</div>
                     ) : null}
-                    {Object.entries(entry.changes).map(([column, change]) => (
-                      <div key={column} className="mt-1">
-                        <code className="font-mono text-[11px]">{column}</code>{" "}
-                        <ChangeValue
-                          column={column}
-                          from={change.from}
-                          to={change.to}
-                        />
-                      </div>
-                    ))}
+                    {/* A creation has nothing to diff against, so it is a
+                        marker rather than every column at once — twenty lines
+                        at the bottom of the card would bury the edits above
+                        it, and the columns it was created with are the row. */}
+                    {entry.action === "insert" ? (
+                      <div className="mt-1 font-semibold text-on">✦ Project created</div>
+                    ) : (
+                      Object.entries(entry.changes).map(([column, change]) => (
+                        <div key={column} className="mt-1">
+                          <code className="font-mono text-[11px]">{column}</code>{" "}
+                          <ChangeValue
+                            column={column}
+                            from={change.from}
+                            to={change.to}
+                          />
+                        </div>
+                      ))
+                    )}
                   </div>
                 ))
               ) : (

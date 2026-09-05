@@ -381,6 +381,13 @@ export type AuditEntry = {
   note: string | null;
   source: string;
   external: boolean;
+  /**
+   * "insert" for the entry that records the project being created.
+   *
+   * Defaults to "update" so entries written before the insert trigger existed
+   * keep reading correctly rather than becoming creations.
+   */
+  action: "insert" | "update";
 };
 
 function auditSetupHint(status: number) {
@@ -400,6 +407,9 @@ export async function listAudit(options: { table?: string; rowId?: string; limit
   return (res.body as Omit<AuditEntry, "external">[]).map((row) => ({
     ...row,
     external: !row.actor_email,
+    // Rows written before the insert trigger existed have no `action` column
+    // value to read; they are all edits.
+    action: row.action === "insert" ? ("insert" as const) : ("update" as const),
   }));
 }
 

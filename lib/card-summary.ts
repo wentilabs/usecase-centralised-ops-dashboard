@@ -140,11 +140,18 @@ export function formatSgt(value?: string | null): string {
   }).format(new Date(value));
 }
 
-function mutesSuffix(config: ProjectConfigRow): string {
+/**
+ * `phrase` exists for subcon, where the same two columns mean something
+ * narrower. Everywhere else the whole service is outbound, so "muted Sundays"
+ * describes the project. Subcon also takes messages IN on a muted date and
+ * still records them, so the default wording would claim the project is dark
+ * when only its reports are.
+ */
+function mutesSuffix(config: ProjectConfigRow, phrase = "muted"): string {
   const mutes: string[] = [];
   if (config.remove_sunday_notifications) mutes.push("Sundays");
   if (config.remove_ph_notifications) mutes.push("PH");
-  return mutes.length ? ` — muted ${mutes.join(" + ")}` : "";
+  return mutes.length ? ` — ${phrase} ${mutes.join(" + ")}` : "";
 }
 
 function window(start: unknown, end: unknown): string {
@@ -273,7 +280,8 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     // gated by `enabled` alone — not by Housekeeping intake, which is the
     // inbound route — and since 140b1e9 it goes to the housekeeping groups
     // rather than the summary destination.
-    if (config.enabled !== false && String(config.safety_group_ids ?? "").trim()) {
+    const nightly = config.enabled !== false && Boolean(String(config.safety_group_ids ?? "").trim());
+    if (nightly) {
       parts.push("nightly housekeeping report to the housekeeping groups");
     }
     // Each report is an explicit opt-in in the service, so a project can be
@@ -291,6 +299,12 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     // A report with no destination is the quiet failure worth surfacing.
     if (reports.length && !String(config.manpower_activity_outbound_group_id ?? "").trim()) {
       line += " — no report group set, so nothing is delivered";
+    }
+    // Only when something is actually sent. On an intake-only project the mutes
+    // are still stored and still true, but they suppress nothing, and saying so
+    // on the card would send someone looking for a report that was never on.
+    if (nightly || reports.length) {
+      line += mutesSuffix(config, "no reports on");
     }
     return line;
   }
@@ -348,7 +362,10 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
           ", always to the configured groups",
       );
     }
-    return `Reads the Safety workbook — ${clauses.join("; ")}`;
+    // The workbook is still read on a muted date — the suppression is at the
+    // send — so this qualifies the clauses above without contradicting the
+    // opening verb.
+    return `Reads the Safety workbook — ${clauses.join("; ")}${mutesSuffix(config, "nothing sent on")}`;
   }
 
   return "Event-driven — fires when the CCTV bot posts.";
@@ -560,6 +577,11 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
           label: "housekeeping in/out",
           on: on(config.safety_group_ids),
         },
+        // Last, and after the intake pill deliberately: they silence the three
+        // outbound reports and leave intake running, so they belong at the end
+        // of the row rather than next to the switch they do not affect.
+        { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
+        { label: "mute PH", on: on(config.remove_ph_notifications) },
       ];
     case "issueChaser":
       return [
@@ -580,6 +602,11 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
           ? [{ label: "summary by company", on: true, tone: "info" as const }]
           : []),
         { label: "reply in origin group", on: config.send_to_originating_groups !== false },
+        // Not gated by `enabled` the way the styles are, so these two can be lit
+        // on a project that is otherwise switched off — which is correct: they
+        // describe the calendar, not the cadence.
+        { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
+        { label: "mute PH", on: on(config.remove_ph_notifications) },
         // "origin required", "images" and "PIC mentions" were dropped here when
         // their columns were retired from the service (412256d). Each is now
         // unconditional behaviour, and a pill for a setting that no longer exists

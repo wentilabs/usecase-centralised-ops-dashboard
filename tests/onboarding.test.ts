@@ -432,7 +432,10 @@ test("subcon onboarding offers the three switches, in the house field order", ()
   // they decide what the project DOES and each is an explicit opt-in the
   // service checks for `true` — onboarding without them leaves a project that
   // runs intake and sends nothing.
-  const columns = subcon.fields.map((f) => f.column);
+  // Rendered fields only. The two calendar mutes are written on insert and never
+  // shown, so counting them here would assert a dialog order for two controls
+  // that have no place in the dialog.
+  const columns = subcon.fields.filter((f) => !f.hidden).map((f) => f.column);
   assert.deepEqual(columns, [
     "project_code",
     "company",
@@ -696,10 +699,18 @@ test("haze and lightning can be configured at creation; noise and wbgt stay mini
 });
 
 test("a new project of any service starts muted on Sundays and public holidays", () => {
-  // The columns default to false in Postgres, so every one of these has to be
-  // written rather than omitted. Hidden everywhere: a site that works weekends
-  // has them turned off in the editor, which is the rarer case.
-  for (const key of ["wbgt", "noise", "haze", "lightning"] as ServiceKey[]) {
+  // Every one of these has to be written rather than omitted: four of the six
+  // tables default the columns to false, and subcon and issue-chaser default
+  // them to true only after their backfill migration has been run. Which value
+  // an omitted field would land on therefore depends on the database, so HALO
+  // states it. Hidden everywhere: a site that works weekends has them turned
+  // off in the editor, which is the rarer case.
+  //
+  // Ailytics is the one service with neither column, so this list is "all but
+  // ailytics" rather than a set someone has to remember to extend. It was
+  // "wbgt, noise, haze, lightning" until subcon and issue-chaser gained the
+  // columns, which is exactly the drift the derivation below removes.
+  for (const key of SERVICE_KEYS.filter((k) => k !== "ailytics")) {
     const definition = onboardingFor(key)!;
     const row = buildInsertRow(definition, { project_code: "ZZT" });
     assert.equal(row.remove_sunday_notifications, true, `${key} Sundays`);
@@ -712,12 +723,11 @@ test("a new project of any service starts muted on Sundays and public holidays",
     }
   }
 
-  // The three services without those columns must not invent them.
-  for (const key of ["ailytics", "subcon", "issueChaser"] as ServiceKey[]) {
-    const row = buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" });
-    assert.equal("remove_sunday_notifications" in row, false, key);
-    assert.equal("remove_ph_notifications" in row, false, key);
-  }
+  // Ailytics has neither column and must not invent them: PostgREST rejects the
+  // whole insert on an unknown key, so onboarding would fail outright.
+  const ailytics = buildInsertRow(onboardingFor("ailytics")!, { project_code: "ZZT" });
+  assert.equal("remove_sunday_notifications" in ailytics, false);
+  assert.equal("remove_ph_notifications" in ailytics, false);
 });
 
 test("every onboarding flow offers the company, and lightning hides what it still writes", () => {

@@ -825,6 +825,30 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: true,
         help: "Where the daily summary is sent.",
       },
+      // Written rather than asked about, like every sibling service. The live
+      // column defaults to true here, but the column was added with `false`
+      // first and backfilled, so an omitted field would depend on which
+      // migration a database happens to have run. HALO states the value.
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Outbound only — intake still runs and is still recorded on a muted date, and the roster is still captured. It silences the two morning reports and the nightly housekeeping report. Turn it off in the editor for a site that works Sundays.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Same, for the Singapore holiday list in the service's `utils/notification-calendar.js`, which currently ends on 2027-12-25.",
+      },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
       { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },
       {
@@ -886,6 +910,30 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         required: false,
         notNull: false,
         help: "Fallback destinations. Not needed while Reply in the originating group is on, which is the default.",
+      },
+      // Written rather than asked about, like every sibling service. The live
+      // column defaults to true here, but the column was added with `false`
+      // first and backfilled, so an omitted field would depend on which
+      // migration a database happens to have run. HALO states the value.
+      {
+        column: "remove_sunday_notifications",
+        label: "Mute Sundays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Outbound only — the workbook is still read, issues are still selected and a dry run still previews. It silences reminders and both daily summaries. Turn it off in the editor for a site that works Sundays.",
+      },
+      {
+        column: "remove_ph_notifications",
+        label: "Mute public holidays",
+        kind: "toggle",
+        hidden: true,
+        required: false,
+        notNull: true,
+        fallback: "true",
+        help: "Same, for the Singapore holiday list in the service's `lib/time.js`, which currently ends on 2027-12-25.",
       },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
       { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },

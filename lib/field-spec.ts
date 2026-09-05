@@ -669,6 +669,23 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "On by default, which is the historical behaviour: Woh Hup, Wohhup and WHPL rows are dropped when the central `Manpower` tab is read. Applies to the plain report, the activity + manpower summary, and the first housekeeping-roster capture of the day (INV-HK-12). Off only where those rows are genuine participants.",
     },
 
+    // Delivery-only, and they cover all THREE outbound reports — the two
+    // morning summaries and the nightly housekeeping report — because the
+    // service evaluates them inside each send path. Intake is untouched: a
+    // forwarded message on a Sunday is still accepted and still recorded in
+    // Supabase, and the day's roster is still captured. The day is not skipped,
+    // only unannounced.
+    remove_sunday_notifications: {
+      label: "Mute Sundays",
+      row: "mutes",
+      help: "Suppresses all three outbound reports on SGT Sundays. Intake, the Supabase record and the roster capture continue, and a dry run still returns its message. Only checked when Scheduled reports is on, so it changes nothing on a project that sends nothing.",
+    },
+    remove_ph_notifications: {
+      label: "Mute public holidays",
+      row: "mutes",
+      help: "The same, for the Singapore holiday list kept in the service's `utils/notification-calendar.js`, which currently ends on 2027-12-25. A date past the end of that list is treated as an ordinary working day rather than guessed at, so the list has to be extended before it can be relied on for a later year.",
+    },
+
     // The delivery trio, on every service. Named here because a blank one is
     // silent: the report is generated, the send fails, and the card looks fine.
     instance_name: {
@@ -832,6 +849,23 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     lambda_url: {
       label: "Send-message proxy URL",
       help: "Must be https and end in /send-message — the database checks the shape, so a trailing slash or an http URL makes Project enabled unsavable.",
+    },
+    // Delivery-only, and unlike the chaser styles they are NOT gated by
+    // `enabled` — the service evaluates them at send time in both runProject and
+    // runSummaryProject, so they cover the reminders and both daily summaries.
+    // Everything upstream of the send still runs: the workbook is read, issues
+    // are selected, cadence is calculated, and a dryRun request returns its
+    // normal preview. A muted real run is reported as suppressed rather than as
+    // nothing due.
+    remove_sunday_notifications: {
+      label: "Mute Sundays",
+      row: "mutes",
+      help: "Suppresses every outbound message on SGT Sundays — reminders and both daily summaries. The sheet is still read and the run still reports what it would have sent, so a Sunday looks like a suppression in the logs, not like an empty day.",
+    },
+    remove_ph_notifications: {
+      label: "Mute public holidays",
+      row: "mutes",
+      help: "The same, for the Singapore holiday list kept in the service's `lib/time.js`, which currently ends on 2027-12-25. A date past the end of that list is treated as an ordinary working day, so the list has to be extended before it can be relied on for a later year.",
     },
     timezone: {
       label: "Timezone",
@@ -1018,6 +1052,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "lambda_url",
       ],
     },
+    // Their own section rather than a line inside "Scheduled reports": they
+    // also silence the nightly housekeeping report, which is configured two
+    // groups up, so filing them under either one would understate their reach.
+    { title: "Mutes", fields: ["remove_sunday_notifications", "remove_ph_notifications"] },
   ],
   issueChaser: [
     { title: "Status", fields: ["company", "enabled", "timezone"] },
@@ -1052,6 +1090,9 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "lambda_url",
       ],
     },
+    // Below Delivery, and covering everything above it: the chasers and both
+    // summaries stop on a muted date, whichever destination they would use.
+    { title: "Mutes", fields: ["remove_sunday_notifications", "remove_ph_notifications"] },
   ],
 };
 

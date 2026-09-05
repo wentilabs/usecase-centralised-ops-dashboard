@@ -178,12 +178,14 @@ async function askModel(
  * this function decides which rows and which chat ids. Nothing the model says
  * selects a project or a group.
  *
- * A `set` is refused across several services on purpose. The same outcome is
- * different columns on different services — muting public holidays is
- * `remove_ph_notifications` on some and absent on others — so a cross-service
- * `set` would need per-service column mapping that nothing here validates. The
- * operator is asked to name a service instead. Group removal and defaults have
- * no such problem: both resolve their columns per service, in code.
+ * A `set` spans as many services as the scope touches. It used to be refused
+ * across several, on the grounds that the same outcome is different columns on
+ * different services — but the answer to that is to look, not to refuse: each
+ * service takes the columns it has and what it could not take is reported back,
+ * rather than the operator being sent away to run the request once per service.
+ * `remove_ph_notifications` is the shape of it — six of the seven services carry
+ * it and ailytics does not, so "mute public holidays everywhere" applies to six
+ * and says so about the seventh.
  */
 async function bulkReply({
   prompt,

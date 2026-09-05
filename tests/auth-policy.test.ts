@@ -13,6 +13,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { COMPANIES, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { onboardingFor } from "../lib/onboarding";
 import { EXPORT_FORMATS, EXPORTS, JOBS, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
@@ -466,6 +467,46 @@ test("every service resolves its WhatsApp group column", () => {
   };
   for (const key of SERVICE_KEYS) {
     assert.ok(deliveryGroups(key, row).length > 0, `${key} resolves no delivery group`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Calendar mutes. Six of the seven services carry them and ailytics carries
+// neither, which is the kind of split that goes stale silently: subcon and
+// issue-chaser gained the columns after the rest, and until they were named
+// here HALO rendered them from introspection alone — raw column name, no help,
+// filed under "Other". The card said nothing about them at all. This asserts
+// the two files agree with each other, so adding the column to one and not the
+// other fails rather than degrades.
+// ---------------------------------------------------------------------------
+const MUTE_COLUMNS = ["remove_sunday_notifications", "remove_ph_notifications"];
+
+test("every service that writes the calendar mutes also explains and places them", () => {
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: true };
+  const introspected = Object.fromEntries(MUTE_COLUMNS.map((c) => [c, bool]));
+
+  for (const key of SERVICE_KEYS) {
+    const definition = onboardingFor(key);
+    const writes = MUTE_COLUMNS.filter((c) => definition?.fields.some((f) => f.column === c));
+    if (!writes.length) {
+      assert.equal(key, "ailytics", `${key} onboards without the mutes — is that deliberate?`);
+      continue;
+    }
+    assert.deepEqual(writes, MUTE_COLUMNS, `${key} writes one mute and not the other`);
+
+    const spec = buildFieldSpec(key, introspected);
+    for (const column of MUTE_COLUMNS) {
+      const field = spec.fields[column];
+      assert.ok(field, `${key}.${column} is written on insert but absent from the editor`);
+      // The fallback label is the column name prettified, so a missing overlay
+      // entry shows as "Remove sunday notifications" — legible enough to pass
+      // unnoticed, and wrong: the column reads as a verb and the control is a
+      // state.
+      assert.equal(field.label, column === "remove_sunday_notifications" ? "Mute Sundays" : "Mute public holidays", `${key}.${column}`);
+      const group = spec.groups.find((g) => g.fields.includes(column));
+      assert.ok(group, `${key}.${column} is in no group`);
+      assert.notEqual(group!.title, "Other", `${key}.${column} fell through to Other`);
+    }
   }
 });
 

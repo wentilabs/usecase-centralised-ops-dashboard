@@ -8,7 +8,7 @@ import {
   type TokenIdentity,
   type TokenRecord,
 } from "./api-tokens";
-import { buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
+import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -396,21 +396,39 @@ function auditSetupHint(status: number) {
     : `status ${status}`;
 }
 
+/** An entry with its job-state keys removed, or null if that was all it held. */
+function withoutJobState(entry: Omit<AuditEntry, "external">): Omit<AuditEntry, "external"> | null {
+  const changes = auditChangesWithoutJobState(entry.changes);
+  return changes ? { ...entry, changes } : null;
+}
+
 export async function listAudit(options: { table?: string; rowId?: string; limit?: number } = {}) {
-  const params = ["select=*", "order=at.desc", `limit=${Math.min(options.limit ?? 200, 1000)}`];
+  const limit = Math.min(options.limit ?? 200, 1000);
+  // Over-fetch, because the filtering below happens after the database has
+  // already chosen the page. On a WBGT project most rows are still job state
+  // until config_audit_setup.sql has been re-run, so asking for exactly `limit`
+  // would return a nearly empty history and hide edits that do exist. The
+  // multiplier is bounded by PostgREST's own 1000-row ceiling either way.
+  const fetched = Math.min(limit * 4, 1000);
+
+  const params = ["select=*", "order=at.desc", `limit=${fetched}`];
   if (options.table) params.push(`table_name=eq.${encodeURIComponent(options.table)}`);
   if (options.rowId) params.push(`row_id=eq.${encodeURIComponent(options.rowId)}`);
 
   const res = await request(`config_audit?${params.join("&")}`, { schema: "ops" });
   if (!res.ok) throw new Error(auditSetupHint(res.status));
 
-  return (res.body as Omit<AuditEntry, "external">[]).map((row) => ({
-    ...row,
-    external: !row.actor_email,
-    // Rows written before the insert trigger existed have no `action` column
-    // value to read; they are all edits.
-    action: row.action === "insert" ? ("insert" as const) : ("update" as const),
-  }));
+  return (res.body as Omit<AuditEntry, "external">[])
+    .map(withoutJobState)
+    .filter((row): row is Omit<AuditEntry, "external"> => row !== null)
+    .slice(0, limit)
+    .map((row) => ({
+      ...row,
+      external: !row.actor_email,
+      // Rows written before the insert trigger existed have no `action` column
+      // value to read; they are all edits.
+      action: row.action === "insert" ? ("insert" as const) : ("update" as const),
+    }));
 }
 
 export async function annotateAudit(input: {

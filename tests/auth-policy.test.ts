@@ -12,7 +12,7 @@ import {
 } from "../lib/auth-policy";
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
-import { COMPANIES, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
 import { EXPORT_FORMATS, EXPORTS, JOBS, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
@@ -1983,4 +1983,50 @@ test("every service HALO knows about has an audit trigger, on insert and update"
       `${SERVICES[key].schema} is missing from the exposed-schemas line`,
     );
   }
+
+  // The trigger and the dashboard must agree on what job state is. The trigger
+  // stops it being recorded; JOB_STATE_COLUMNS stops what was already recorded
+  // from rendering. A column named in one and not the other is a column that
+  // either keeps appearing in histories or keeps being written for nothing.
+  const skipped = sql.slice(sql.indexOf("if k in ("), sql.indexOf(") then", sql.indexOf("if k in (")));
+  for (const column of JOB_STATE_COLUMNS) {
+    assert.ok(skipped.includes(`'${column}'`), `the trigger still records ${column}`);
+  }
+  // And nothing the trigger skips as job state may be missing from the list —
+  // the direction that would leave HALO rendering a column nobody can act on.
+  for (const quoted of skipped.match(/'[a-z0-9_]+'/g) ?? []) {
+    const column = quoted.slice(1, -1);
+    if (column === "updated_at" || column === "created_at") continue;
+    assert.ok(
+      (JOB_STATE_COLUMNS as readonly string[]).includes(column),
+      `${column} is skipped by the trigger but not in JOB_STATE_COLUMNS`,
+    );
+  }
+});
+
+test("job state is stripped from a history, and an entry that was only job state disappears", () => {
+  // What the operator saw on a WBGT card: "⚠️ changed outside the dashboard —
+  // top_of_hour_band moderate_low → low". Accurate, and nothing anyone did.
+  assert.equal(auditChangesWithoutJobState({ top_of_hour_band: { from: "moderate_low", to: "low" } }), null);
+  assert.equal(
+    auditChangesWithoutJobState({
+      last_5min_alert_at: { from: "2026-09-05T06:05:23.335+00:00", to: "2026-09-05T06:15:23.326+00:00" },
+      last_5min_alert_level: { from: "neutral", to: "green" },
+    }),
+    null,
+    "the pair the service writes together",
+  );
+
+  // A real edit is untouched, and one that arrived with job state beside it
+  // keeps the edit. Keys are dropped, not rows.
+  assert.deepEqual(auditChangesWithoutJobState({ enabled: { from: false, to: true } }), {
+    enabled: { from: false, to: true },
+  });
+  assert.deepEqual(
+    auditChangesWithoutJobState({
+      enabled: { from: false, to: true },
+      top_of_hour_band: { from: "low", to: "high" },
+    }),
+    { enabled: { from: false, to: true } },
+  );
 });

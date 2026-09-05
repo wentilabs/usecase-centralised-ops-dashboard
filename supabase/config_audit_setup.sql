@@ -43,6 +43,21 @@ create index if not exists config_audit_match_idx on ops.config_audit (table_nam
 -- updated_at is excluded from the diff (it changes on every write and would
 -- bury the interesting columns), but is kept as new_updated_at for matching.
 --
+-- Three WBGT columns are excluded for a different reason: they are job state,
+-- not configuration. The service writes `top_of_hour_band` on every :00 fire
+-- and `last_5min_alert_level` / `last_5min_alert_at` on every zone crossing, so
+-- each one produces an audit row that no operator made and nobody can act on.
+-- They were 1187 of the first 1730 rows — a card's history read as a machine
+-- log with the occasional human edit buried in it. WBGT's own CONFIG_SCHEMA.md
+-- calls them job state; this list says the same thing where it has an effect.
+-- The list is by column name across all seven tables, which is safe because
+-- nothing else in the estate uses these names, and it is mirrored in HALO's
+-- JOB_STATE_COLUMNS with a test asserting the two agree.
+--
+-- An update that touches only these columns leaves an empty diff and is
+-- therefore not recorded at all, by the guard that already exists for a no-op
+-- touch of updated_at.
+--
 -- On INSERT there is no previous row to diff against. Recording every column as
 -- a change would put a twenty-line entry at the bottom of every card, burying
 -- the edits above it; what a reader wants there is "this project was created".
@@ -81,7 +96,11 @@ begin
   end if;
 
   for k in select jsonb_object_keys(after_json) loop
-    if k in ('updated_at', 'created_at') then
+    if k in (
+      'updated_at', 'created_at',
+      -- Job state, written by the service as it runs. See the note above.
+      'top_of_hour_band', 'last_5min_alert_level', 'last_5min_alert_at'
+    ) then
       continue;
     end if;
     if (before_json -> k) is distinct from (after_json -> k) then
@@ -111,6 +130,29 @@ begin
   return new;
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- Clear out the job-state rows already recorded. The exclusion above only stops
+-- new ones; without this the history stays two-thirds machine log.
+--
+-- Scoped to rows whose changes are ENTIRELY job state, so an entry that also
+-- carries a real edit is kept and merely reads with an extra line. There are
+-- none of those today — all 1187 such rows checked held nothing else, because
+-- the service writes these columns on their own — but scoping it this way means
+-- the statement cannot remove an operator's record even if that stops being
+-- true. HALO hides the same keys when it renders, so a history already reads
+-- correctly before this runs; this is what stops the table growing.
+--
+-- Re-running this file re-runs the statement, which by then matches nothing.
+-- -----------------------------------------------------------------------------
+delete from ops.config_audit
+where table_name = 'wbgt_project_configs'
+  and changes <> '{}'::jsonb
+  and not exists (
+    select 1
+    from jsonb_object_keys(changes) as k
+    where k not in ('top_of_hour_band', 'last_5min_alert_level', 'last_5min_alert_at')
+  );
 
 -- -----------------------------------------------------------------------------
 -- Attach to every config table, on INSERT as well as UPDATE, so a project's

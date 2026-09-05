@@ -244,17 +244,25 @@ source and fails if it imports `updateConfig`, `insertConfig`, `insertRows` or
 two model APIs. The failure mode it guards is silent: a route that writes looks
 exactly like one that proposes, until a row moves.
 
-**Resolving the project is deliberately not the model's job.** A project code is a
-string match against a list HALO already holds; handing that to an LLM adds a way
-to be confidently wrong about the one part of the request that decides *whose site
-gets changed*. So the route matches codes itself — tolerantly enough that "CR 106"
-and "CR106" are one project and "C991 SGB" matches `C991-SGB`, strictly enough
-that "TRI" does not match inside "TRIAL" — and returns ambiguity as a question:
+**A model never names a row id.** A project code is a string match against a list
+HALO already holds, so the code matching happens here — tolerantly enough that
+"CR 106" and "CR106" are one project and "C991 SGB" matches `C991-SGB`, strictly
+enough that "TRI" does not match inside "TRIAL".
 
-> *"CFC should stop on Sundays"* → **CFC exists for WBGT, Haze and Lightning. Say which service you mean.**
->
-> *"set ZRA and TJR to four-hourly"* → **You named ZRA and TJR — this handles one project at a time.**
->
+What that does NOT mean is that keywords decide what a sentence meant. They used
+to, and it was the wrong line to draw: a named code won over everything else in
+the sentence, so an exclusion selected the row it excluded, and "mute Sundays for
+all Wohhup WBGT projects except MBS" came back asking which single project was
+meant — about MBS. The model had already read it correctly and was made to ask
+anyway.
+
+So the sentence goes to the model with every candidate row and their current
+values, and the model says what it means: a company, a service, a list of codes,
+or a `where` over column values. That is resolved back to rows here. Three things
+still have to hold before anything is written, and none of them is a keyword:
+the model's scope only selects rows that exist, the change is validated per
+service, and a person reads every row and presses Apply.
+
 > *"Lightning, TEST, make it 0900 to 2000"* → **Lightning has no project called TEST. Its projects include AST, C991-SGB, C992-SYT, …**
 
 That third one was a bug worth recording. A named service used to be applied only

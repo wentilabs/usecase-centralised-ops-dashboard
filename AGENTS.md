@@ -482,30 +482,40 @@ curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 
 ## The smart chat, and bulk changes
 
-`lib/chat-intent.ts` turns a sentence into a change to ONE project;
-`lib/chat-scope.ts` is the half that handles several. `app/api/chat/route.ts`
-picks between them. Both files share one rule, and it is the rule to defend:
+One request goes down one path. `resolveScope` decides which rows the model is
+SHOWN, the model decides what the request means, and whether the answer touches
+one project or thirty is an outcome of that reading — not a decision made before
+it. `lib/chat-intent.ts` remains the fallback for the two cases the model cannot
+help with: nothing resolved at all, and no model key configured.
 
-**Which projects a sentence will change is decided in code, never by the model.**
-One project resolved wrongly is a wrong site getting a message; fifty resolved
-wrongly is fifty. So project codes, company names, service names and the
-"all projects" phrasing are all parsed against closed sets HALO already holds.
-The model is left with the job only it can do — mapping an outcome onto columns
-and values.
+The rule to defend is narrower than it used to be, and it is the only one that
+carries safety:
 
-The scope precedence in `resolveScope` is safety-critical and written out in its
-doc comment. The part worth repeating here: **a service name alone is not a bulk
-scope.** "noise projects should mute Sundays" reads as bulk to a person and as an
-unfinished sentence to a machine, so it comes back asking for the word "all"
-rather than writing to every noise site.
+**A model never names a row id.** It says what it means — a company, a service,
+project codes, a `where` over column values — and `targetsForOverride` and
+`matchesConditions` resolve that to rows here, against data that already exists.
+An invented code selects nothing. The operator then reads every row and presses
+Apply. That is three checks, and none of them requires a keyword to have settled
+what the sentence meant.
 
-Four things follow from the same caution:
+What used to sit here instead was a keyword test that chose bulk-or-single
+before the model saw the sentence, and it did real damage:
 
-- **`set` is refused across services.** The same outcome is different columns on
-  different services, so a cross-service `set` would need per-service column
-  mapping that nothing validates. It asks for one service instead. Group removal
-  and `defaults` have no such problem — both resolve their columns per service,
-  in code.
+- **"Explicit codes win"** meant a code named anywhere replaced everything else,
+  so an EXCLUSION selected the row it excluded. "Mute Sundays for all Wohhup WBGT
+  projects except MBS" resolved to MBS, one row, which then read as a
+  single-project request — and the single-project prompt asked which project was
+  meant. The model had already worked out that the request covered many projects
+  and excluded MBS; it said so in the question it was forced to ask.
+- **"A service name alone is not a bulk scope"** meant "noise projects should
+  mute Sundays" came back asking for the word "all".
+
+Both are gone. A company or "all" quantifies; a service name qualifies. Named
+codes are added to the candidate set, never substituted for it. Showing a row to
+the model is not touching it.
+
+Three things still follow from the same caution:
+
 - **A group removal carries a phrase, never chat ids.** `parseBulkOp` drops any
   ids the model volunteers. Which groups a phrase means is `matchGroupNames` over
   the real alias store, and the operator sees the match list before anything is

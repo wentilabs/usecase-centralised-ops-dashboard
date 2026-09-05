@@ -157,8 +157,8 @@ export const openapiDocument = {
         tags: ["configuration"],
         summary: "Turn one sentence into a proposed change, a bulk change, or an onboarding plan",
         description:
-          "PROPOSES ONLY — writes nothing, on every path. Which rows a sentence affects is resolved HERE, in code, from the project codes this dashboard holds; the model is only ever asked what to do to them, never which they are. Returns exactly one of four shapes, and the response key says which:\n\n" +
-          "- `proposal` — one project. Apply with `updateProjectConfig`.\n" +
+          "PROPOSES ONLY — writes nothing, on every path. Whether a sentence covers one project or thirty is decided by the model reading it, not by keywords beforehand: it is given every candidate row with its current values, and it answers with what it means — a company, a service, project codes, or a condition over column values. That answer is resolved back to rows HERE, in code, against projects that already exist, so a model never names a row id and an invented code selects nothing. Exclusions (\"all Wohhup WBGT projects except MBS\") are ordinary requests and are resolved, not questioned. Returns exactly one of four shapes, and the response key says which:\n\n" +
+          "- `proposal` — the change landed on one project. Apply with `updateProjectConfig`.\n" +
           "- `batch` — several projects, each with its own change set. Apply one `updateProjectConfig` per entry; there is no bulk write endpoint, so each keeps its own validation, optimistic concurrency and audit row.\n" +
           "- `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`.\n" +
           "- `message` — a question or a refusal, when there is nothing to propose.\n\n" +

@@ -389,6 +389,33 @@ async function bulkReply({
     return reply({ message: `Nothing to change — every project in ${scopeLine} already reads that way.` });
   }
 
+  /**
+   * One project is not a batch of one.
+   *
+   * The two client shapes do different things: a `proposal` opens that project's
+   * card with the change staged, which is the right review surface for a single
+   * edit; a `batch` opens the review dialog, which is the right one for thirty.
+   * Since the model now decides how many projects a request covers, the shape
+   * follows its answer rather than a guess made before it read the sentence.
+   *
+   * `notes` becomes `rejected` — the same information, in the field the card
+   * already renders.
+   */
+  if (edits.length === 1) {
+    const only = edits[0];
+    return reply({
+      proposal: {
+        service: only.service,
+        serviceLabel: SERVICES[only.service].label,
+        projectCode: only.projectCode,
+        rowId: only.rowId,
+        changes: only.changes,
+        summary: op.summary || "Proposed change",
+        rejected: notes.map((note) => ({ column: "", reason: note })),
+      },
+    });
+  }
+
   return reply({
     batch: {
       scope: op.where.length ? `${scopeLabel}, where ${describeConditions(op.where)}` : scopeLabel,
@@ -558,7 +585,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return reply({ message: "That request was not valid JSON." }, 400);
   }
-  if (!prompt) return reply({ message: "Say what you want changed, and name the project." });
+  if (!prompt) return reply({ message: "Say what you want changed, and which projects — a code, a company, or a whole service." });
   // No length cap. It used to stop at 2,000 characters with "one sentence is
   // plenty", which was the same opinion the intent shape was making elsewhere:
   // a well-specified onboarding request runs to paragraphs — scope, switches,
@@ -597,35 +624,46 @@ export async function POST(request: NextRequest) {
    * that line does not move for bulk requests.
    */
   const scope = resolveScope(prompt, rows as never, (service) => SERVICES[service].idColumn);
-  const distinctCodes = new Set(
-    "targets" in scope ? scope.targets.map((entry) => entry.projectCode) : [],
-  );
 
-  // A bulk scope is anything covering rows this route cannot hand to the
-  // single-project editor: a company, a service, the estate, or several codes
-  // named at once. One code that exists under several services is NOT bulk — it
-  // is the old ambiguity, and it still comes back as a question.
-  const isBulk =
-    scope.kind === "company" ||
-    scope.kind === "service" ||
-    scope.kind === "estate" ||
-    (scope.kind === "projects" && distinctCodes.size > 1);
-
-  if (isBulk && "targets" in scope) {
+  /**
+   * One path, and the model decides what the request is.
+   *
+   * There was a keyword test here that decided bulk-or-single BEFORE the model
+   * saw the sentence, and sent everything it judged single to a prompt that can
+   * only answer about one project. It got "mute Sundays for all Wohhup WBGT
+   * projects except MBS" wrong in the worst way: the named exclusion was read as
+   * the selection, one row survived, and the single-project prompt — correctly,
+   * for the question it was asked — replied "which single project?". The model
+   * had already worked out that the request covered many projects and excluded
+   * MBS. It said so in the question it was forced to ask.
+   *
+   * So the routing question is now answered where the comprehension is. The
+   * model reads the sentence and the rows and returns a plan; whether that plan
+   * touches one project or thirty is an outcome, not a precondition, and
+   * `bulkReply` picks the right shape to hand the client at the end.
+   *
+   * `resolveTarget` and the single-project turn below are still here for the two
+   * cases the model cannot help with: no scope resolved at all, and no model key
+   * configured.
+   */
+  if ("targets" in scope && scope.targets.length) {
     return bulkReply({ prompt, scope, rows: rows as never });
   }
 
   const target = resolveTarget(prompt, rows as never, (service) => SERVICES[service].idColumn);
   if (target.kind === "none") {
-    // A scope that refused for a stated reason says so — "name the code, or say
-    // all projects" is more useful than the generic prompt below.
+    // Reached only when nothing in the sentence matched a project, a company or
+    // a service — so this is a genuine "I cannot tell what this is about", not
+    // the old "say it differently". No "one project at a time": several is fine,
+    // and so is a company or a whole service.
     if (scope.kind === "none" && scope.why) return reply({ message: scope.why });
     const named = target.hinted.map((key) => SERVICES[key].label).join(" / ");
     return reply({
       message: named
-        ? `Which ${named} project? Name its code — one project at a time.`
-        : "Which project? Name its code — for example “CFC's WBGT alerts shouldn't go out on Sundays”. " +
-          "One project at a time.",
+        ? `Nothing in that names a ${named} project. Give a code, a company, or the whole service.`
+        : "Nothing in that names a project. Give a code, a company, or a service — " +
+          "for example “CFC's WBGT alerts shouldn't go out on Sundays”, or " +
+          "“mute Sundays for all Wohhup WBGT projects except MBS”.",
     });
   }
   if (target.kind === "not-in-service") {

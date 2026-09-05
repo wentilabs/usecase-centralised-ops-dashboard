@@ -85,20 +85,29 @@ function targetsFor(
 }
 
 /**
- * Work out which projects a sentence covers.
+ * Which projects a sentence could be about.
  *
- * The precedence is the safety-critical part, so it is written out rather than
- * left to fall out of the order of the ifs:
+ * This is a CANDIDATE SET, not a verdict. It decides what the model is shown;
+ * the model decides what the request actually means, and says so by returning a
+ * scope of its own, which `targetsForOverride` resolves back to rows here. The
+ * safety line is that a model never names a row id — not that a keyword gets to
+ * settle what the sentence meant.
  *
- * 1. **Explicit codes win.** Naming CFC means CFC, whatever else the sentence
- *    says. This is the existing single-project path and is unchanged.
- * 2. **A company** narrows to that company, further narrowed by a named service.
- * 3. **"all projects" plus a service** is that service.
- * 4. **"all projects" alone** is the whole estate.
- * 5. **A service name with no "all"** is deliberately NOT a bulk scope. "noise
- *    projects should mute Sundays" reads as a bulk request to a person and as an
- *    unfinished sentence to a machine, and guessing wrong writes to every noise
- *    site. It comes back asking for the word.
+ * It used to be a precedence chain, and every rule in it was a way of showing
+ * the model LESS than the sentence referred to:
+ *
+ * - "Explicit codes win" meant a code mentioned anywhere replaced everything
+ *   else in the sentence. So "mute Sundays for all Wohhup WBGT projects except
+ *   MBS and IR2" resolved to MBS — the exclusion selected the row it excluded,
+ *   and since IR2 is not a WBGT project that left exactly one, which then read
+ *   as a single-project request and came back asking which project was meant.
+ * - "A service with no 'all' is not a scope" meant "noise projects should mute
+ *   Sundays" was answered with a request for the word "all".
+ *
+ * Both are now unions: everything the sentence points at is offered, and what
+ * to do with each part is the model's call. Showing a row is not touching it —
+ * every row still has to survive the model's scope and then a human pressing
+ * Apply.
  */
 export function resolveScope(
   prompt: string,
@@ -112,47 +121,56 @@ export function resolveScope(
   const company = companyIn(prompt);
   const all = saysAllProjects(prompt);
 
-  // 1. Explicit codes, optionally narrowed by a named service.
-  if (codes.length) {
-    const inHinted = hints.length ? codes.filter((t) => hints.includes(t.service)) : codes;
-    if (inHinted.length) return { kind: "projects", targets: inHinted };
-    return { kind: "projects", targets: codes };
+  /**
+   * A company or "all" QUANTIFIES — it says how many. A service name only
+   * QUALIFIES — it says which of them.
+   *
+   * So a bare service hint opens a scope when nothing else narrows the sentence
+   * ("noise projects should mute Sundays" — which used to be refused until the
+   * word "all" was added), but alongside a named code it is read as telling us
+   * which CFC, not as asking for every WBGT project. That keeps an ordinary
+   * one-project sentence cheap without deciding anything: the model still sees
+   * the rows it names and can widen the scope itself if the sentence meant more.
+   */
+  const services = hints.length ? hints : [...SERVICE_KEYS];
+  const broad: ChatTarget[] = company
+    ? targetsFor(
+        rows,
+        idColumnFor,
+        (service, row) => services.includes(service) && String(row.company ?? "").trim() === company,
+      )
+    : all || (hints.length && !codes.length)
+      ? targetsFor(rows, idColumnFor, (service) => services.includes(service))
+      : [];
+
+  // The named half. Kept even when a service is named and the code lives
+  // elsewhere: "IR2" being absent from WBGT is something the model should be
+  // able to say, and it can only say it if the row is in front of it.
+  const merged = [...broad];
+  const seen = new Set(merged.map((entry) => `${entry.service}:${entry.rowId}`));
+  for (const target of codes) {
+    const key = `${target.service}:${target.rowId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(target);
+    }
   }
 
-  // 2. A company.
-  if (company) {
-    const services = hints.length ? hints : [...SERVICE_KEYS];
-    const targets = targetsFor(
-      rows,
-      idColumnFor,
-      (service, row) => services.includes(service) && String(row.company ?? "").trim() === company,
-    );
-    if (!targets.length) {
+  if (!merged.length) {
+    if (company) {
       return { kind: "none", hinted: hints, why: `No ${company} projects${hints.length ? " on that service" : ""}.` };
     }
-    return { kind: "company", company, services, targets };
+    if (hints.length) return { kind: "none", hinted: hints, why: "That service has no projects." };
+    return { kind: "none", hinted: [] };
   }
 
-  // 3 & 4. An explicit "all".
-  if (all) {
-    if (hints.length) {
-      const targets = targetsFor(rows, idColumnFor, (service) => hints.includes(service));
-      if (!targets.length) return { kind: "none", hinted: hints, why: "That service has no projects." };
-      return { kind: "service", services: hints, targets };
-    }
-    const targets = targetsFor(rows, idColumnFor, () => true);
-    return targets.length ? { kind: "estate", targets } : { kind: "none", hinted: [] };
-  }
-
-  // 5. A service with no "all" — ask rather than assume.
-  if (hints.length) {
-    return {
-      kind: "none",
-      hinted: hints,
-      why: "Name the project code, or say “all projects” if you mean every one of them.",
-    };
-  }
-  return { kind: "none", hinted: [] };
+  // `kind` now only shapes the sentence shown back to the operator. Nothing
+  // routes on it, so a candidate set that is broader than the request is
+  // described honestly and then narrowed by the model rather than acted on.
+  if (company) return { kind: "company", company, services, targets: merged };
+  if (!broad.length) return { kind: "projects", targets: merged };
+  if (hints.length) return { kind: "service", services: hints, targets: merged };
+  return { kind: "estate", targets: merged };
 }
 
 /* ------------------------------------------------------------------ *
@@ -656,7 +674,11 @@ export function describeScope(
 
 /** The instruction for a request covering more than one project. Read by a test. */
 export const BULK_SYSTEM_PROMPT = [
-  "You turn one request from an operations engineer into a configuration change covering SEVERAL projects.",
+  "You turn one request from an operations engineer into a configuration change.",
+  "",
+  "You decide how many projects it covers. One, thirty, or none — that is your call and nothing decides it",
+  "before you. There is no separate single-project path any more: a request about one project is this request",
+  "with a scope of one, and the operator gets the right review screen either way.",
   "",
   "Interpret the request. It will arrive with typos, missing words, loose service names and sentences that do not",
   "parse — read through that to what was meant. Never refuse or narrow it because of how it is written, and never",
@@ -695,6 +717,12 @@ export const BULK_SYSTEM_PROMPT = [
   '  sentence means a different set, say so: {"scope":{"company":"<name>"}|{"services":["<key>"]}|',
   '  {"codes":["<code>"]}|{"all":true}} and the rows are resolved again from it. Combine with "services" to',
   "  stay inside one service.",
+  '- EXCLUSIONS ARE NORMAL AND YOU RESOLVE THEM. "all Wohhup WBGT projects except MBS", "every noise site but',
+  '  TJR and CFC" — the named projects are being taken OUT, not selected. Return the set that remains, either',
+  '  as {"scope":{"codes":[...]}} listing what stays, or as a `where` that excludes them. A code named after',
+  "  except, but, excluding, apart from or other than is never the target. If one of the excluded codes does",
+  "  not exist on that service, drop it and carry on — say so in the summary; it does not make the request",
+  "  ambiguous and it is not worth a question.",
   "- `where` narrows the scope to the rows the sentence actually means. The scope below is every project the",
   "  sentence could be about; a request that says WHICH of them — \"the ones whose scheduled reports are off\",",
   '  "any with no delivery group", "the ones still on the default wording" — is a `where`, and it is applied in',
@@ -709,6 +737,9 @@ export const BULK_SYSTEM_PROMPT = [
   "  groups, sheet ids or coordinates.",
   "- Change the fewest columns that achieve what was asked.",
   "- If the sentence is ambiguous, or asks for something no column covers, ask a question instead of guessing.",
-  "- A bulk change is read out to the operator project by project before it is applied, so the summary must say",
-  "  what will happen in one plain sentence.",
+  "- Every change is read out to the operator before it is applied — project by project when there are several,",
+  "  on the project's own card when there is one — so the summary must say what will happen in one plain",
+  "  sentence.",
+  "- Never ask which single project is meant. If the sentence covers several, act on several. If you genuinely",
+  "  cannot tell what OUTCOME is wanted, ask about the outcome.",
 ].join("\n");

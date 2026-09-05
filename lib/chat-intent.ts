@@ -158,7 +158,9 @@ export function describeAmbiguity(
   const listed = codes.length > 3
     ? `${codes.slice(0, 3).join(", ")} and ${codes.length - 3} more`
     : `${codes.slice(0, -1).join(", ")} and ${codes[codes.length - 1]}`;
-  return `You named ${listed} — this handles one project at a time. Ask for one, then the next.`;
+  // Several codes now resolve to several rows and go to the model, so this line
+  // is only reached when none of them matched anything real.
+  return `None of ${listed} matches a project on the services named.`;
 }
 
 /**

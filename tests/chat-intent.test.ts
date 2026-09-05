@@ -234,7 +234,9 @@ test("the two kinds of ambiguity get two different answers", () => {
   assert.match(shared, /which service/);
   assert.doesNotMatch(shared, /one project at a time/, "that is the other problem");
 
-  // Several codes: the question is which project, and the answer is one at a time.
+  // Several codes no longer end here at all — they resolve to several rows and
+  // the model reads them. This branch is reached only when none of the names
+  // matched anything, so it reports that rather than asking for one at a time.
   const several = describeAmbiguity(
     [
       { service: "wbgt", projectCode: "ZRA", rowId: "ZRA" },
@@ -243,8 +245,8 @@ test("the two kinds of ambiguity get two different answers", () => {
     ],
     label,
   );
-  assert.match(several, /You named ZRA and TJR/);
-  assert.match(several, /one project at a time/);
+  assert.match(several, /ZRA and TJR/);
+  assert.doesNotMatch(several, /one project at a time/, "several projects is an ordinary request now");
   // The duplicate ZRA is not listed twice — it is one project named once.
   assert.equal(several.match(/ZRA/g)?.length, 1);
 

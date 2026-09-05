@@ -69,21 +69,29 @@ test("only an explicit all-projects phrase opens a bulk scope", () => {
   }
 });
 
-test("an explicit project code wins over every other signal", () => {
-  // The existing single-project path, unchanged: naming CFC means CFC even in a
-  // sentence that also says a company and "all projects".
-  const scope = resolveScope("for all Wohhup projects, change CFC's wbgt hourly", ROWS, idColumn);
-  assert.equal(scope.kind, "projects");
-  assert.deepEqual(codesOf(scope as never), ["wbgt:CFC"]);
+test("a named code never shrinks the sentence to itself", () => {
+  // The whole bug, in one line. A code mentioned anywhere used to win outright,
+  // so a sentence with a quantifier AND a named project collapsed to that
+  // project — and an EXCLUSION names a project. "all Wohhup WBGT projects
+  // except MBS" resolved to MBS, one row, which then read as a single-project
+  // request; the model correctly answered "which single project?" about the row
+  // the operator had just ruled out.
+  //
+  // What is asserted is only that: the set stays wider than the excluded code.
+  // Which rows the change finally lands on is the model's reading, corrected
+  // through `scope`, and then a person pressing Apply.
+  for (const prompt of [
+    "mute sundays for all wohhup projects in wbgt except for MBS",
+    "Mute sundays for all wbgt projects under wohhup, but exclude MBS",
+    "mute sundays for all project codes with company wohhup in wbgt except MBS and IR2",
+  ]) {
+    const codes = codesOf(resolveScope(prompt, ROWS, idColumn) as never);
+    assert.ok(codes.length > 1, `${prompt} → ${codes.join(", ") || "nothing"}`);
+    assert.ok(codes.includes("wbgt:CFC"), `the other Wohhup WBGT rows must be visible: ${codes.join(", ")}`);
+  }
 
-  // A code in two services, narrowed by the service that was named.
-  const narrowed = resolveScope("ZRA noise should mute Sundays", ROWS, idColumn);
-  assert.equal(narrowed.kind, "projects");
-  assert.deepEqual(codesOf(narrowed as never), ["noise:ZRA"]);
-
-  // And unnarrowed when no service is named — the caller then asks which.
-  const both = resolveScope("ZRA should mute Sundays", ROWS, idColumn);
-  assert.deepEqual(codesOf(both as never), ["noise:ZRA", "wbgt:ZRA"]);
+  // An ordinary one-project sentence still resolves to that project.
+  assert.deepEqual(codesOf(resolveScope("change CFC's wbgt hourly", ROWS, idColumn) as never), ["wbgt:CFC"]);
 });
 
 test("a company scope covers that company only, narrowed by a named service", () => {
@@ -103,13 +111,14 @@ test("a company scope covers that company only, narrowed by a named service", ()
   assert.match((empty as { why: string }).why, /No Obayashi projects on that service/);
 });
 
-test("a service name alone is refused; the word 'all' is what opens it", () => {
-  // The safety rule. "noise projects should mute Sundays" reads as bulk to a
-  // person and as unfinished to a machine — guessing writes to every noise site.
+test("a service named without the word 'all' is still a scope", () => {
+  // It used to come back asking for the word "all". "noise projects should mute
+  // Sundays" is not unfinished to a person, and the model is about to be shown
+  // every row it covers along with their current values — so it can decide,
+  // and the operator still confirms every row before anything is written.
   const vague = resolveScope("noise projects should mute Sundays", ROWS, idColumn);
-  assert.equal(vague.kind, "none");
-  assert.match((vague as { why: string }).why, /Name the project code, or say/);
-  assert.deepEqual((vague as { hinted: ServiceKey[] }).hinted, ["noise"]);
+  assert.equal(vague.kind, "service");
+  assert.deepEqual(codesOf(vague as never), ["noise:C9177", "noise:ZRA"]);
 
   const explicit = resolveScope("all noise projects should mute Sundays", ROWS, idColumn);
   assert.equal(explicit.kind, "service");

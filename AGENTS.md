@@ -527,11 +527,13 @@ draw 29 badges. While it is loading the badge is absent rather than shown as
 "unprotected": claiming a meter is exposed when it is not is the harmless
 direction, the reverse is not.
 
-There is no write path. Editing limits means writing `noise_limits`, and three
-things would have to be settled first: the table has no `updated_at`, so the
-optimistic-concurrency check every other write here uses cannot work; no audit
-trigger covers it, so an edit would leave no history; and a save would have to
-set the marker itself, or it would be reverted by the next refresh.
+There is no write path yet. The plan for one is parked as **[WRITE NOISE LIMITS]**
+in [docs/WRITE_NOISE_LIMITS.md](docs/WRITE_NOISE_LIMITS.md): write, choose whether
+it is protected, preview, save. Read that before starting it — it records the
+three prerequisites (`noise_limits` has no `updated_at`, no audit trigger covers
+the table, and protection is a deliberate choice rather than an automatic
+consequence of editing), the rule that values and marker must go in one write per
+row, and five behaviours that look like bugs and are intended.
 
 ## The smart chat, and bulk changes
 

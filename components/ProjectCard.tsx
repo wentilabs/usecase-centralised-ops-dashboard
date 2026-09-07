@@ -107,6 +107,8 @@ export function ProjectCard({
   groupNames = {},
   visoUrl = null,
   onOpenMap,
+  onOpenLimits,
+  protectedMeters,
 }: {
   service: ServiceKey;
   config: ProjectConfigRow;
@@ -121,6 +123,16 @@ export function ProjectCard({
   visoUrl?: string | null;
   /** Opens the in-app lightning evidence map focused on this project. */
   onOpenMap?: () => void;
+  /** Opens the stored permissible noise levels for this project. */
+  onOpenLimits?: () => void;
+  /**
+   * Meters whose limits survive the limits refresh, for this project.
+   *
+   * Passed in rather than derived from `config`, because protection lives in
+   * `noise_limits.source_file` and not in the project row. The card only needs
+   * the count; the names are in the limits view.
+   */
+  protectedMeters?: string[];
 }) {
   const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
@@ -354,11 +366,29 @@ export function ProjectCard({
                       event.stopPropagation();
                       onOpenMap();
                     }
-                  : undefined
+                  : // The limits view has no external equivalent to middle-click
+                    // through to, so every click opens it.
+                    link.internal === "noise-limits" && onOpenLimits
+                    ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onOpenLimits();
+                      }
+                    : undefined
               }
               className="relative z-10 rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
             >
               {link.label}
+              {/* On the link rather than in the pill row: protection is a fact
+                  about the limits, so it belongs where the limits are opened. */}
+              {link.internal === "noise-limits" && protectedMeters?.length ? (
+                <span
+                  className="ml-1.5"
+                  title={`Protected from the limits refresh: ${protectedMeters.join(", ")}`}
+                >
+                  🔒{protectedMeters.length > 1 ? ` ${protectedMeters.length}` : ""}
+                </span>
+              ) : null}
             </a>
           ))}
         </div>

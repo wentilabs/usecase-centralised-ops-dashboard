@@ -9,6 +9,12 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
+import {
+  MANUAL_SOURCE_MARKER,
+  groupLimitsByMeter,
+  type LimitRow,
+  type MeterLimits,
+} from "./noise-limits";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -140,6 +146,53 @@ export async function listLightningDetections({
     rows: res.body as LightningDetection[],
     total: Number.isFinite(total) ? total : (res.body as unknown[]).length,
   };
+}
+
+/**
+ * One project's permissible noise levels, per meter, collapsed into bands.
+ *
+ * `active = true` only, matching `loadAllProjectLimitRows` in the noise service,
+ * so what HALO shows is what the outbound filter is comparing against.
+ */
+export async function listNoiseLimits(projectCode: string): Promise<MeterLimits[]> {
+  const res = await request(
+    `noise_limits?select=full_identifier,noise_meter_loc,rec_id,day_type_normalized,` +
+      `hour_start_minutes,hour_end_minutes,leq_5min,leq_1hr,leq_12hr,source_file,subscription_end_date` +
+      `&active=is.true&project_code=eq.${encodeURIComponent(projectCode)}` +
+      `&order=full_identifier.asc,day_type_normalized.asc,hour_start_minutes.asc&limit=1000`,
+    { schema: "noise-meters" },
+  );
+  if (!res.ok) throw new Error(`noise limits for ${projectCode}: ${res.status} ${res.text.slice(0, 200)}`);
+  return groupLimitsByMeter((res.body ?? []) as LimitRow[]);
+}
+
+/**
+ * Which meters are protected from the limits refresh, across every project.
+ *
+ * One small query rather than per-project ones: the badge belongs on the card
+ * list, and asking 29 times to draw 29 cards would be absurd. Filtered in
+ * Postgres on the same substring the noise service matches on, so the set is
+ * defined in one place even though the marker is spelled in two.
+ *
+ * There are 72 such rows today against ~4,900 in the table, so this stays small
+ * for as long as protection stays exceptional — which is the intent.
+ */
+export async function listProtectedNoiseMeters(): Promise<Record<string, string[]>> {
+  const res = await request(
+    `noise_limits?select=project_code,full_identifier&active=is.true` +
+      `&source_file=ilike.*${encodeURIComponent(MANUAL_SOURCE_MARKER)}*&limit=1000`,
+    { schema: "noise-meters" },
+  );
+  if (!res.ok) throw new Error(`protected noise limits: ${res.status} ${res.text.slice(0, 200)}`);
+
+  const byProject: Record<string, Set<string>> = {};
+  for (const row of (res.body ?? []) as { project_code?: string; full_identifier?: string }[]) {
+    const code = String(row.project_code ?? "").trim();
+    const identifier = String(row.full_identifier ?? "").trim();
+    if (!code || !identifier) continue;
+    (byProject[code] ??= new Set()).add(identifier);
+  }
+  return Object.fromEntries(Object.entries(byProject).map(([code, set]) => [code, [...set].sort()]));
 }
 
 /**

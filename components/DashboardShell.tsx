@@ -10,6 +10,7 @@ import { ExportDialog } from "./ExportDialog";
 import { BatchProposal, type Batch } from "./BatchProposal";
 import { OnboardProposal, type OnboardPlanView } from "./OnboardProposal";
 import { LightningMap } from "./LightningMap";
+import { NoiseLimits } from "./NoiseLimits";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
@@ -96,6 +97,18 @@ export function DashboardShell({
    * project code, and `""` is open on the whole island.
    */
   const [lightningMap, setLightningMap] = useState<string | null>(null);
+  /** Permissible noise levels for one project. `null` is closed. */
+  const [noiseLimits, setNoiseLimits] = useState<string | null>(null);
+  /**
+   * project code → meters whose limits survive the refresh.
+   *
+   * Fetched once, not per card: it is 72 rows out of ~4,900 today, and asking
+   * per project would be 29 requests to draw one badge each. `null` means not
+   * loaded yet, which renders as no badge rather than as "none protected" —
+   * claiming a meter is unprotected while still loading would be a lie in the
+   * dangerous direction.
+   */
+  const [protectedMeters, setProtectedMeters] = useState<Record<string, string[]> | null>(null);
   /** A chat request covering several projects, awaiting review. */
   const [batch, setBatch] = useState<{ batch: Batch; note: string } | null>(null);
   const [onboardPlan, setOnboardPlan] = useState<OnboardPlanView | null>(null);
@@ -234,6 +247,28 @@ export function DashboardShell({
   );
 
   const active = services.find((service) => service.key === tab) ?? services[0];
+
+  /**
+   * Which noise meters are protected from the limits refresh.
+   *
+   * Fetched when the noise tab is first opened rather than on mount, since it is
+   * the only tab that shows the badge. Failure is left silent on purpose: a
+   * missing badge is a smaller harm than an error banner over a screen the
+   * operator opened to do something else, and the limits view itself states
+   * protection per meter authoritatively.
+   */
+  useEffect(() => {
+    if (active.key !== "noise" || protectedMeters) return;
+    let alive = true;
+    fetch("/api/noise-limits")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => alive && body?.protectedMeters && setProtectedMeters(body.protectedMeters))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [active.key, protectedMeters]);
+
 
   const visible = useMemo(() => {
     const list = rows[active.key] ?? [];
@@ -519,6 +554,8 @@ export function DashboardShell({
               onEdit={() => setEditing({ service: active, row })}
               onOpen={() => setViewing({ service: active, row })}
               onOpenMap={() => setLightningMap(String(row.project_code ?? ""))}
+              onOpenLimits={() => setNoiseLimits(String(row.project_code ?? ""))}
+              protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />
@@ -620,6 +657,10 @@ export function DashboardShell({
           initialFocus={lightningMap || null}
           onClose={() => setLightningMap(null)}
         />
+      ) : null}
+
+      {noiseLimits !== null ? (
+        <NoiseLimits projectCode={noiseLimits} onClose={() => setNoiseLimits(null)} />
       ) : null}
 
       {job ? (

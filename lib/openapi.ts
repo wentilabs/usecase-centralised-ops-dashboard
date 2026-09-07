@@ -457,6 +457,37 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/noise-limits": {
+      get: {
+        operationId: "listNoiseLimits",
+        tags: ["discovery"],
+        summary: "Permissible noise levels for one project's meters",
+        description: [
+          "The limits a noise project's readings are assessed against, from `noise-meters.noise_limits`. Read-only.",
+          "",
+          "Stored per HOUR and returned per BAND: the source page presents eight uneven bands (7am-7pm, 7pm-8pm, 8pm-10pm, 10pm-12am, 12am-2am, 2am-5am, 5am-6am, 6am-7am) which the refresh expands to 48 rows per meter (24 hours x Mon-Sat / Sun-PH). Contiguous hours holding identical limits are collapsed back, by runs of equal values rather than against the canonical eight, so an hour that differs inside a band shows as its own band instead of being hidden.",
+          "",
+          "`hourly` reports what an hourly assessment is actually compared against. A band with no Leq1hr borrows the Leq12hr limit and the outbound message discloses the substitution (`borrowedFrom12hr`); a band with neither has no hourly limit at all (`limit: null`). Both read as `0` on the source page, so the distinction is not recoverable from it.",
+          "",
+          "`isProtected` means `source_file` contains \"manual source of truth\", which is what makes the limits refresh keep a row's values instead of taking the scraped ones. A meter holding hand-entered numbers WITHOUT that marker is overwritten on the next refresh.",
+          "",
+          "Omit `project` to get only `protectedMeters` — project code to protected meter identifiers, across every project, in one query.",
+        ].join("\n"),
+        parameters: [
+          {
+            name: "project",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Project code. Omitted, returns just the protected set for every project.",
+          },
+        ],
+        responses: {
+          "200": { description: "Limits for the project, or the protected set.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "401": errorResponses["401"],
+        },
+      },
+    },
     "/api/jobs/{job}": {
       post: {
         operationId: "runJob",

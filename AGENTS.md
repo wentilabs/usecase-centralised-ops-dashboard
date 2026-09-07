@@ -480,6 +480,51 @@ found sitting unlabelled in the "Other" bucket:
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 ```
 
+## Noise limits
+
+The `📏 Noise limits` link on a noise card opens the permissible levels its
+readings are assessed against, read from `noise-meters.noise_limits`. Read-only,
+and open to read-only accounts, like the lightning map.
+
+Three things about that table decide how this view is built:
+
+**It is stored per hour and shown per band.** NoiseLynx presents a meter as eight
+uneven bands (7am–7pm, 7pm–8pm, 8pm–10pm, 10pm–12am, 12am–2am, 2am–5am, 5am–6am,
+6am–7am); the refresh expands each into one row per hour, so a meter is 48 rows.
+`collapseToBands` joins them back — by **runs of equal values**, not against the
+canonical eight. A canonical grid would hide an hour that differs behind whichever
+hour it sampled, and a hand-edit or a partial import is exactly when you need to
+see the split.
+
+**A missing `leq_1hr` is not "unassessed".** The noise service borrows that band's
+`leq_12hr` and discloses the substitution in the message (INV-NOISE-06 there).
+NoiseLynx writes `0` for both a missing 1-hour limit and a missing 12-hour one, so
+the same `0` means "borrowed 76" in one band and "no hourly limit at all" in the
+next — a distinction that cannot be recovered from the source page. The
+`Hourly applied` column states which: a number, `76 ← 12hr`, or `none`.
+
+**Protection from the refresh is a substring, and it is per row.** A row keeps its
+values only if `source_file` contains `manual source of truth` — see INV-NOISE-16
+in the noise repo, which is the authority. `MANUAL_SOURCE_MARKER` in
+`lib/noise-limits.ts` is the second spelling of that string, and
+`tests/noise-limits.test.ts` reads the sibling repo to assert the two still agree;
+it skips when that repo is not checked out beside this one, rather than making the
+suite depend on a directory layout. Because protection is per row it can be
+partial — TRI NM01 is protected Mon-Sat and refreshed Sun/PH — so the badge says
+"partly protected" rather than showing a lock over numbers that get overwritten.
+
+The card badge comes from one estate-wide query (`listProtectedNoiseMeters`),
+fetched when the noise tab is first opened. Per-project would be 29 requests to
+draw 29 badges. While it is loading the badge is absent rather than shown as
+"unprotected": claiming a meter is exposed when it is not is the harmless
+direction, the reverse is not.
+
+There is no write path. Editing limits means writing `noise_limits`, and three
+things would have to be settled first: the table has no `updated_at`, so the
+optimistic-concurrency check every other write here uses cannot work; no audit
+trigger covers it, so an edit would leave no history; and a save would have to
+set the marker itself, or it would be reverted by the next refresh.
+
 ## The smart chat, and bulk changes
 
 One request goes down one path. `resolveScope` decides which rows the model is

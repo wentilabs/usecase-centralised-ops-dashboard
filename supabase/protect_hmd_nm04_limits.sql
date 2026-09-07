@@ -1,5 +1,9 @@
 -- Exempt HMD NM04 from the NoiseLynx limits refresh (INV-NOISE-16).
 --
+-- ALREADY APPLIED on 2026-09-07, through PostgREST rather than psql, because
+-- the operator had no SQL access at the time. Kept as the worked example for the
+-- next meter that needs it. Re-running is harmless: it writes the same value.
+--
 -- `mergeLimitRows` keeps a row's leq_5min / leq_1hr / leq_12hr, instead of
 -- taking the scraped ones, when the stored `source_file` contains the substring
 -- "manual source of truth". That string is the whole mechanism; the rest of the

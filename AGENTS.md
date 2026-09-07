@@ -491,10 +491,15 @@ Three things about that table decide how this view is built:
 **It is stored per hour and shown per band.** NoiseLynx presents a meter as eight
 uneven bands (7am–7pm, 7pm–8pm, 8pm–10pm, 10pm–12am, 12am–2am, 2am–5am, 5am–6am,
 6am–7am); the refresh expands each into one row per hour, so a meter is 48 rows.
-`collapseToBands` joins them back — by **runs of equal values**, not against the
-canonical eight. A canonical grid would hide an hour that differs behind whichever
-hour it sampled, and a hand-edit or a partial import is exactly when you need to
-see the split.
+`collapseToBands` joins them back: equal-valued hours merge, but **never across
+one of the eight boundaries**. The first version collapsed purely by value and
+rendered HMD NM04 as four Mon-Sat rows against the eight on its page — 12am-2am
+through 6am-7am all hold 61, and both evening bands hold 71/68. The data was
+right and the view still prompted "didn't something change?", which for a screen
+whose only job is to be checked against that page is a failure. Stopping at the
+boundaries rather than snapping to them keeps the other property: an hour that
+differs inside a band still splits out instead of hiding behind whichever hour a
+fixed grid sampled.
 
 **A missing `leq_1hr` is not "unassessed".** The noise service borrows that band's
 `leq_12hr` and discloses the substitution in the message (INV-NOISE-06 there).

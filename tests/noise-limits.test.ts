@@ -61,35 +61,49 @@ test("the protection marker is spelled the way the noise service matches it", as
   assert.equal(isProtectedFromRefresh(null), false);
 });
 
-test("hours collapse into the bands the source page shows, and a difference splits one", () => {
-  // HMD NM04's real Mon-Sat night: seven hours at 61/61, then the 07:00-19:00
-  // daytime block. Twelve identical daytime rows must read as one band or the
-  // view does not resemble the page it is checked against.
+test("the rendered rows are the rows on the source page", () => {
+  // HMD NM04's real Mon-Sat profile. Every hour from midnight to 7am holds
+  // 61/61, and 7pm-8pm and 8pm-10pm both hold 71/68 — so a collapse that only
+  // looked at values would render four rows against the eight on the page, and
+  // the honest reading of that is "the numbers changed". They had not.
   const night = [0, 1, 2, 3, 4, 5, 6].map((h) => hour(h, { leq5min: 61, leq1hr: 61 }));
   const day = Array.from({ length: 12 }, (_, index) => hour(7 + index, { leq5min: 90, leq12hr: 76 }));
-  const bands = collapseToBands([...day, ...night]);
+  const evening = [19, 20, 21].map((h) => hour(h, { leq5min: 71, leq1hr: 68 }));
+  const late = [22, 23].map((h) => hour(h, { leq5min: 62, leq1hr: 62 }));
 
   assert.deepEqual(
-    bands.map((band) => [band.label, band.hours]),
-    [["12am–7am", 7], ["7am–7pm", 12]],
-    "sorted by start minute, and each run is one band",
+    collapseToBands([...day, ...night, ...evening, ...late]).map((band) => [band.label, band.hours]),
+    [
+      ["12am–2am", 2],
+      ["2am–5am", 3],
+      ["5am–6am", 1],
+      ["6am–7am", 1],
+      ["7am–7pm", 12],
+      ["7pm–8pm", 1],
+      ["8pm–10pm", 2],
+      ["10pm–12am", 2],
+    ],
+    "the eight uneven bands of the source grid, in the day's order",
   );
 
-  // A single hour that differs is its own band rather than being swallowed —
-  // the reason to collapse by runs rather than against the canonical eight.
+  // And the other half: an hour that differs INSIDE a band still splits out,
+  // rather than hiding behind whichever hour a fixed grid would have sampled.
   const edited = collapseToBands([
-    ...[0, 1].map((h) => hour(h, { leq5min: 61, leq1hr: 61 })),
-    hour(2, { leq5min: 55, leq1hr: 55 }),
-    ...[3, 4].map((h) => hour(h, { leq5min: 61, leq1hr: 61 })),
+    hour(2, { leq5min: 61, leq1hr: 61 }),
+    hour(3, { leq5min: 55, leq1hr: 55 }),
+    hour(4, { leq5min: 61, leq1hr: 61 }),
   ]);
   assert.deepEqual(
     edited.map((band) => [band.label, band.hours, band.leq5min]),
-    [["12am–2am", 2, 61], ["2am–3am", 1, 55], ["3am–5am", 2, 61]],
+    [["2am–3am", 1, 61], ["3am–4am", 1, 55], ["4am–5am", 1, 61]],
   );
 
   // A gap is left as a gap: a missing hour is not a covered one.
-  const gapped = collapseToBands([hour(0, { leq5min: 61 }), hour(2, { leq5min: 61 })]);
-  assert.equal(gapped.length, 2, "not bridged across the missing 1am row");
+  assert.equal(
+    collapseToBands([hour(2, { leq5min: 61 }), hour(4, { leq5min: 61 })]).length,
+    2,
+    "not bridged across the missing 3am row",
+  );
 });
 
 test("the hourly limit reports both the borrow and the absence", () => {

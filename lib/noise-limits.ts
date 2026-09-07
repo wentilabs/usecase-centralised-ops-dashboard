@@ -11,11 +11,18 @@
  * an operator is checking against, so consecutive hours holding the same three
  * limits are collapsed back into a band here.
  *
- * They are collapsed by RUNS OF EQUAL VALUES rather than against the canonical
- * eight, deliberately. If one hour inside a band ever differs — a hand-edit, a
- * partial import — the canonical grid would hide it behind whichever hour was
- * sampled. A run-based collapse shows the split instead, which is the thing
- * worth seeing.
+ * The collapse joins equal-valued hours but NEVER crosses one of the eight
+ * boundaries. Both halves of that matter and the first was learned the hard way:
+ * collapsing purely by runs of equal values rendered HMD NM04 as four Mon-Sat
+ * rows against the eight on its page — because 12am-2am, 2am-5am, 5am-6am and
+ * 6am-7am all hold 61, and 7pm-8pm and 8pm-10pm both hold 71/68. Nothing was
+ * wrong with the data, but a view whose whole job is to be checked against that
+ * page did not look like it, and the reasonable conclusion was that the numbers
+ * had changed. Fidelity to the source grid is the feature.
+ *
+ * Stopping at the boundaries rather than snapping to them keeps the other half:
+ * an hour inside a band that differs still splits out and is visible, instead of
+ * hiding behind whichever hour a canonical grid happened to sample.
  *
  * **A row's protection from the refresh is a substring of `source_file`.** The
  * noise service's `mergeLimitRows` keeps a row's limits, rather than taking the
@@ -127,6 +134,15 @@ function limitOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+/**
+ * Minutes from midnight where the source grid starts a new column.
+ *
+ * 12am, 2am, 5am, 6am, 7am, 7pm, 8pm, 10pm — the eight uneven bands NoiseLynx
+ * presents. A collapse never merges across one of these, so the rendered rows
+ * are always the rows on the page.
+ */
+const BAND_BOUNDARIES = new Set([0, 2 * 60, 5 * 60, 6 * 60, 7 * 60, 19 * 60, 20 * 60, 22 * 60]);
+
 function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["hourly"] {
   if (leq1hr !== null) return { limit: leq1hr, borrowedFrom12hr: false };
   return { limit: leq12hr, borrowedFrom12hr: leq12hr !== null };
@@ -136,9 +152,10 @@ function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["ho
  * Hourly rows for one day type, collapsed into bands.
  *
  * Sorted by start minute first, because the display order is the day's order and
- * the table's own order is not guaranteed. Rows are joined into a band only when
- * they are contiguous AND hold the same three limits — a gap is left as a gap
- * rather than bridged, since a missing hour is not the same as a covered one.
+ * the table's own order is not guaranteed. Rows are joined only when they are
+ * contiguous, hold the same three limits, AND the later one does not begin a
+ * band of its own — a gap is left as a gap rather than bridged, since a missing
+ * hour is not the same as a covered one.
  */
 export function collapseToBands(rows: LimitRow[]): LimitBand[] {
   const hourly = rows
@@ -160,7 +177,7 @@ export function collapseToBands(rows: LimitRow[]): LimitBand[] {
       open.leq5min === row.leq5min &&
       open.leq1hr === row.leq1hr &&
       open.leq12hr === row.leq12hr;
-    if (open && sameLimits && open.endMinutes === row.start) {
+    if (open && sameLimits && open.endMinutes === row.start && !BAND_BOUNDARIES.has(row.start)) {
       open.endMinutes = row.end;
       open.hours += 1;
       open.label = bandLabel(open.startMinutes, open.endMinutes);

@@ -143,6 +143,26 @@ function limitOrNull(value: unknown): number | null {
  */
 const BAND_BOUNDARIES = new Set([0, 2 * 60, 5 * 60, 6 * 60, 7 * 60, 19 * 60, 20 * 60, 22 * 60]);
 
+/**
+ * Where the noise day starts, and therefore where the table starts.
+ *
+ * 07:00, so the rows read 7am–7pm, 7pm–8pm, 8pm–10pm, 10pm–12am, 12am–2am,
+ * 2am–5am, 5am–6am, 6am–7am — the order of the columns on the source page,
+ * which is the order to check against it in.
+ *
+ * Not an arbitrary display choice: 07:00 is the day boundary throughout the
+ * noise service. The reporting day rolls there (`getReportingDayDateString`),
+ * and the Sunday mute window runs Sunday 07:00 to Monday 07:00 (INV-NOISE-04).
+ * Sorting from midnight put the small hours first and split the working day
+ * across the top and bottom of the table.
+ */
+const DAY_START_MINUTES = 7 * 60;
+
+/** Minutes from 07:00, so the day's own order sorts ascending. */
+function fromDayStart(minutes: number): number {
+  return (minutes - DAY_START_MINUTES + 1440) % 1440;
+}
+
 function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["hourly"] {
   if (leq1hr !== null) return { limit: leq1hr, borrowedFrom12hr: false };
   return { limit: leq12hr, borrowedFrom12hr: leq12hr !== null };
@@ -151,11 +171,13 @@ function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["ho
 /**
  * Hourly rows for one day type, collapsed into bands.
  *
- * Sorted by start minute first, because the display order is the day's order and
- * the table's own order is not guaranteed. Rows are joined only when they are
- * contiguous, hold the same three limits, AND the later one does not begin a
- * band of its own — a gap is left as a gap rather than bridged, since a missing
- * hour is not the same as a covered one.
+ * Sorted from 07:00 rather than from midnight, so the rows come out in the order
+ * the source page lists its columns. The table's own order is not guaranteed, so
+ * this sort is what produces the order, not a tidy-up of it.
+ *
+ * Rows are joined only when they are contiguous, hold the same three limits, AND
+ * the later one does not begin a band of its own — a gap is left as a gap rather
+ * than bridged, since a missing hour is not the same as a covered one.
  */
 export function collapseToBands(rows: LimitRow[]): LimitBand[] {
   const hourly = rows
@@ -167,7 +189,7 @@ export function collapseToBands(rows: LimitRow[]): LimitBand[] {
       leq12hr: limitOrNull(row.leq_12hr),
     }))
     .filter((row) => Number.isFinite(row.start) && Number.isFinite(row.end))
-    .sort((left, right) => left.start - right.start);
+    .sort((left, right) => fromDayStart(left.start) - fromDayStart(right.start));
 
   const bands: LimitBand[] = [];
   for (const row of hourly) {
@@ -177,6 +199,10 @@ export function collapseToBands(rows: LimitRow[]): LimitBand[] {
       open.leq5min === row.leq5min &&
       open.leq1hr === row.leq1hr &&
       open.leq12hr === row.leq12hr;
+    // Midnight is stored as 0, not 1440, so the 23:00 row's end and the 00:00
+    // row's start are both 0 and compare as contiguous. Harmless only because
+    // midnight is also a band boundary, which is what actually stops the merge —
+    // the boundary check is load-bearing here, not belt-and-braces.
     if (open && sameLimits && open.endMinutes === row.start && !BAND_BOUNDARIES.has(row.start)) {
       open.endMinutes = row.end;
       open.hours += 1;

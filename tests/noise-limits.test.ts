@@ -71,19 +71,21 @@ test("the rendered rows are the rows on the source page", () => {
   const evening = [19, 20, 21].map((h) => hour(h, { leq5min: 71, leq1hr: 68 }));
   const late = [22, 23].map((h) => hour(h, { leq5min: 62, leq1hr: 62 }));
 
+  // Fed in deliberately out of order, because the sort is what produces the
+  // reading order — not a tidy-up of whatever the table happened to return.
   assert.deepEqual(
-    collapseToBands([...day, ...night, ...evening, ...late]).map((band) => [band.label, band.hours]),
+    collapseToBands([...late, ...day, ...night, ...evening]).map((band) => [band.label, band.hours]),
     [
-      ["12am–2am", 2],
-      ["2am–5am", 3],
-      ["5am–6am", 1],
-      ["6am–7am", 1],
       ["7am–7pm", 12],
       ["7pm–8pm", 1],
       ["8pm–10pm", 2],
       ["10pm–12am", 2],
+      ["12am–2am", 2],
+      ["2am–5am", 3],
+      ["5am–6am", 1],
+      ["6am–7am", 1],
     ],
-    "the eight uneven bands of the source grid, in the day's order",
+    "the eight columns of the source page, in its order: the working day first, 6am–7am last",
   );
 
   // And the other half: an hour that differs INSIDE a band still splits out,
@@ -103,6 +105,21 @@ test("the rendered rows are the rows on the source page", () => {
     collapseToBands([hour(2, { leq5min: 61 }), hour(4, { leq5min: 61 })]).length,
     2,
     "not bridged across the missing 3am row",
+  );
+
+  // Midnight is stored as 0 rather than 1440, so the 23:00 row ends where the
+  // 00:00 row starts and the two compare as contiguous. They must not merge:
+  // 10pm-12am and 12am-2am are different columns on the page, and here they even
+  // hold the same values, which is exactly when a value-only rule would join them.
+  const acrossMidnight = collapseToBands([
+    { ...hour(22, { leq5min: 62, leq1hr: 62 }), hour_end_minutes: 23 * 60 },
+    { ...hour(23, { leq5min: 62, leq1hr: 62 }), hour_end_minutes: 0 },
+    hour(0, { leq5min: 62, leq1hr: 62 }),
+    hour(1, { leq5min: 62, leq1hr: 62 }),
+  ]);
+  assert.deepEqual(
+    acrossMidnight.map((band) => [band.label, band.hours]),
+    [["10pm–12am", 2], ["12am–2am", 2]],
   );
 });
 

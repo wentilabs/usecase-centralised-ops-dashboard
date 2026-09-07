@@ -492,7 +492,10 @@ Three things about that table decide how this view is built:
 uneven bands (7am–7pm, 7pm–8pm, 8pm–10pm, 10pm–12am, 12am–2am, 2am–5am, 5am–6am,
 6am–7am); the refresh expands each into one row per hour, so a meter is 48 rows.
 `collapseToBands` joins them back: equal-valued hours merge, but **never across
-one of the eight boundaries**. The first version collapsed purely by value and
+one of the eight boundaries**, and the rows are ordered from **07:00** so the
+table starts at 7am–7pm and ends at 6am–7am — the page's own column order, and
+the day boundary the noise service already uses for its reporting day and its
+Sunday mute window. The first version collapsed purely by value and
 rendered HMD NM04 as four Mon-Sat rows against the eight on its page — 12am-2am
 through 6am-7am all hold 61, and both evening bands hold 71/68. The data was
 right and the view still prompted "didn't something change?", which for a screen

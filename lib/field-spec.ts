@@ -98,6 +98,11 @@ export const JOB_STATE_COLUMNS = [
   "top_of_hour_band",
   "last_5min_alert_level",
   "last_5min_alert_at",
+  // `noise_limits.imported_at`, stamped by the limits refresh on every row it
+  // merges — including the protected rows whose values it left alone. Without
+  // it, every refresh would write one audit entry per protected row saying
+  // nothing but "imported_at moved".
+  "imported_at",
 ] as const;
 
 /**

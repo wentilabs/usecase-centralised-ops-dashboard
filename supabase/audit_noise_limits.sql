@@ -33,9 +33,11 @@
 --    drops those runs entirely.
 -- -----------------------------------------------------------------------------
 
--- 1. Stop `imported_at` being recorded as a change. Additive and idempotent:
---    re-running config_audit_setup.sql afterwards would revert it, so this file
---    has to be applied last, or the same column added to the list there.
+-- 1. Stop `imported_at` being recorded as a change.
+--
+--    Identical to the function in config_audit_setup.sql, which carries the same
+--    skip list — so the two agree and the ORDER the files are applied in does not
+--    matter. Re-running either one later cannot undo the other.
 create or replace function ops.record_config_change()
 returns trigger
 language plpgsql

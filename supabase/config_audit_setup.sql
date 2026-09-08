@@ -99,7 +99,12 @@ begin
     if k in (
       'updated_at', 'created_at',
       -- Job state, written by the service as it runs. See the note above.
-      'top_of_hour_band', 'last_5min_alert_level', 'last_5min_alert_at'
+      'top_of_hour_band', 'last_5min_alert_level', 'last_5min_alert_at',
+      -- Written by the noise limits refresh on every row it merges, including
+      -- the protected rows whose values it deliberately left unchanged. Listed
+      -- here as well as in audit_noise_limits.sql so the two files agree and the
+      -- order they are applied in cannot matter.
+      'imported_at'
     ) then
       continue;
     end if;

@@ -660,7 +660,15 @@ export function DashboardShell({
       ) : null}
 
       {noiseLimits !== null ? (
-        <NoiseLimits projectCode={noiseLimits} onClose={() => setNoiseLimits(null)} />
+        <NoiseLimits
+          projectCode={noiseLimits}
+          canEdit={session.canEdit}
+          onClose={() => {
+            setNoiseLimits(null);
+            // A save may have marked a meter, so the card badge is stale.
+            setProtectedMeters(null);
+          }}
+        />
       ) : null}
 
       {job ? (

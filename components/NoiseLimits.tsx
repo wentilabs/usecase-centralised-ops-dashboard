@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { NoiseLimitsEditor } from "./NoiseLimitsEditor";
 import type { LimitBand, MeterLimits } from "@/lib/noise-limits";
 
 /**
@@ -27,9 +28,12 @@ import type { LimitBand, MeterLimits } from "@/lib/noise-limits";
  */
 export function NoiseLimits({
   projectCode,
+  canEdit,
   onClose,
 }: {
   projectCode: string;
+  /** A reader sees the tables and no Edit button. The view itself stays open to them. */
+  canEdit: boolean;
   onClose: () => void;
 }) {
   const [meters, setMeters] = useState<MeterLimits[] | null>(null);
@@ -60,6 +64,8 @@ export function NoiseLimits({
   }, [onClose]);
 
   const protectedCount = (meters ?? []).filter((meter) => meter.isProtected).length;
+  /** `full_identifier` of the meter being edited, or null. One at a time. */
+  const [editing, setEditing] = useState<string | null>(null);
 
   return (
     <div
@@ -76,7 +82,7 @@ export function NoiseLimits({
               {projectCode} — permissible noise levels
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              What each meter is assessed against, as stored. Read-only.
+              What each meter is assessed against, as stored.
               {meters
                 ? ` ${meters.length} meter${meters.length === 1 ? "" : "s"}${
                     protectedCount ? `, ${protectedCount} protected from the refresh` : ""
@@ -105,7 +111,19 @@ export function NoiseLimits({
             </p>
           ) : null}
           {(meters ?? []).map((meter) => (
-            <MeterBlock key={meter.fullIdentifier} meter={meter} />
+            <MeterBlock
+              key={meter.fullIdentifier}
+              projectCode={projectCode}
+              meter={meter}
+              canEdit={canEdit}
+              editing={editing === meter.fullIdentifier}
+              onEdit={() => setEditing(meter.fullIdentifier)}
+              onCancel={() => setEditing(null)}
+              onSaved={(next) => {
+                setMeters(next);
+                setEditing(null);
+              }}
+            />
           ))}
         </div>
       </div>
@@ -113,7 +131,23 @@ export function NoiseLimits({
   );
 }
 
-function MeterBlock({ meter }: { meter: MeterLimits }) {
+function MeterBlock({
+  projectCode,
+  meter,
+  canEdit,
+  editing,
+  onEdit,
+  onCancel,
+  onSaved,
+}: {
+  projectCode: string;
+  meter: MeterLimits;
+  canEdit: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSaved: (meters: MeterLimits[]) => void;
+}) {
   return (
     <section className="rounded-xl border border-border">
       <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
@@ -148,21 +182,39 @@ function MeterBlock({ meter }: { meter: MeterLimits }) {
             subscription to {meter.subscriptionEndDate}
           </span>
         ) : null}
+        {canEdit && !editing ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="ml-auto rounded-lg border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+          >
+            ⚙︎ Edit limits
+          </button>
+        ) : null}
       </header>
       {meter.sourceFile ? (
         <p className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
           Source: {meter.sourceFile}
         </p>
       ) : null}
-      <div className="grid gap-0 md:grid-cols-2">
-        <BandTable title="Mon–Sat" bands={meter.monSat} isProtected={meter.monSatProtected} />
-        <BandTable
-          title="Sun & public holiday"
-          bands={meter.sunPh}
-          isProtected={meter.sunPhProtected}
-          className="md:border-l md:border-border"
+      {editing ? (
+        <NoiseLimitsEditor
+          projectCode={projectCode}
+          meter={meter}
+          onCancel={onCancel}
+          onSaved={onSaved}
         />
-      </div>
+      ) : (
+        <div className="grid gap-0 md:grid-cols-2">
+          <BandTable title="Mon–Sat" bands={meter.monSat} isProtected={meter.monSatProtected} />
+          <BandTable
+            title="Sun & public holiday"
+            bands={meter.sunPh}
+            isProtected={meter.sunPhProtected}
+            className="md:border-l md:border-border"
+          />
+        </div>
+      )}
     </section>
   );
 }

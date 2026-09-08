@@ -60,6 +60,7 @@ export type LimitRow = {
   source_file?: string | null;
   subscription_end_date?: string | null;
   rec_id?: string | null;
+  imported_at?: string | null;
 };
 
 export type LimitBand = {
@@ -111,6 +112,14 @@ export type MeterLimits = {
   /** Verbatim, because it is where the numbers came from. */
   sourceFile: string | null;
   subscriptionEndDate: string | null;
+  /**
+   * The newest `imported_at` across this meter's rows, used as the write token.
+   *
+   * `noise_limits` has no `updated_at`, so this stands in: a save sends back what
+   * it saw and the write refuses if any row has moved past it. See
+   * `writeNoiseLimits`.
+   */
+  importedAt: string | null;
   monSat: LimitBand[];
   sunPh: LimitBand[];
 };
@@ -163,7 +172,7 @@ function fromDayStart(minutes: number): number {
   return (minutes - DAY_START_MINUTES + 1440) % 1440;
 }
 
-function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["hourly"] {
+export function hourlyFor(leq1hr: number | null, leq12hr: number | null): LimitBand["hourly"] {
   if (leq1hr !== null) return { limit: leq1hr, borrowedFrom12hr: false };
   return { limit: leq12hr, borrowedFrom12hr: leq12hr !== null };
 }
@@ -257,8 +266,130 @@ export function groupLimitsByMeter(rows: LimitRow[]): MeterLimits[] {
         sourceFile: sources.length ? sources.join(" · ") : null,
         subscriptionEndDate:
           meterRows.map((row) => row.subscription_end_date).find((value) => Boolean(value)) ?? null,
+        importedAt:
+          meterRows.map((row) => String(row.imported_at ?? "")).filter(Boolean).sort().pop() ?? null,
         monSat: collapseToBands(dayRows("mon_sat")),
         sunPh: collapseToBands(dayRows("sun_ph")),
       };
     });
+}
+
+/* ------------------------------------------------------------------ *
+ * Writing — see docs/WRITE_NOISE_LIMITS.md
+ * ------------------------------------------------------------------ */
+
+/** A band as the editor holds it: the three limits, or null for "no limit". */
+export type BandEdit = {
+  startMinutes: number;
+  endMinutes: number;
+  leq5min: number | null;
+  leq1hr: number | null;
+  leq12hr: number | null;
+};
+
+/**
+ * One metric that moved, with what it does to the assessment.
+ *
+ * `hourlyBefore` / `hourlyAfter` are carried on every change of the band, not
+ * only on `leq_1hr`, because editing `leq_12hr` moves the hourly threshold too
+ * whenever the band has no `leq_1hr` of its own. That consequence is the whole
+ * reason the preview exists: it is invisible in the grid being typed into.
+ */
+export type BandChange = {
+  dayType: "mon_sat" | "sun_ph";
+  label: string;
+  /** Rows this band expands to. A save writes hours, not bands. */
+  hours: number;
+  metric: "leq_5min" | "leq_1hr" | "leq_12hr";
+  from: number | null;
+  to: number | null;
+  hourlyBefore: LimitBand["hourly"];
+  hourlyAfter: LimitBand["hourly"];
+};
+
+/** The NoiseLynx field is labelled "Permissible Noise Level ( 0 – 99 )". */
+export const LIMIT_MIN = 0;
+export const LIMIT_MAX = 99;
+
+/**
+ * A typed cell, or a reason it could not be read.
+ *
+ * Blank is a value — "no limit for this metric in this band" — and not an error,
+ * because that is how the source page expresses it and how the service reads it.
+ * Out of range is deliberately NOT an error either: the columns carry no CHECK
+ * and that is intended, so this warns and lets the preview carry it to a human
+ * rather than refusing a number an operator may genuinely mean.
+ */
+export function parseLimitCell(raw: string): { value: number | null; error?: string; warning?: string } {
+  const text = String(raw ?? "").trim();
+  if (!text) return { value: null };
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return { value: null, error: `“${text}” is not a number` };
+  if (parsed < 0) return { value: null, error: "A limit cannot be negative" };
+  // 0 and blank are the same thing to the service (`positiveLimitOrNull`), so
+  // they are stored the same way rather than kept as two spellings of nothing.
+  const value = parsed === 0 ? null : parsed;
+  if (value !== null && (value < LIMIT_MIN || value > LIMIT_MAX)) {
+    return { value, warning: `${value} is outside the ${LIMIT_MIN}–${LIMIT_MAX} range the source page allows` };
+  }
+  return { value };
+}
+
+/** What a save would change, band by band, for one day type. */
+export function diffBands(
+  dayType: "mon_sat" | "sun_ph",
+  current: LimitBand[],
+  edited: Record<string, BandEdit>,
+): BandChange[] {
+  const changes: BandChange[] = [];
+  for (const band of current) {
+    const next = edited[`${band.startMinutes}-${band.endMinutes}`];
+    if (!next) continue;
+    const hourlyBefore = band.hourly;
+    const hourlyAfter = hourlyFor(next.leq1hr, next.leq12hr);
+    for (const [metric, from, to] of [
+      ["leq_5min", band.leq5min, next.leq5min],
+      ["leq_1hr", band.leq1hr, next.leq1hr],
+      ["leq_12hr", band.leq12hr, next.leq12hr],
+    ] as const) {
+      if (from === to) continue;
+      changes.push({ dayType, label: band.label, hours: band.hours, metric, from, to, hourlyBefore, hourlyAfter });
+    }
+  }
+  return changes;
+}
+
+/**
+ * The hourly rows a band expands to.
+ *
+ * Storage is per hour and the editor is per band, so this is the translation a
+ * save performs. `endMinutes` wraps to 0 at midnight, matching how the table
+ * already stores the 23:00 row.
+ */
+export function expandBandToHours(band: BandEdit): { hourStartMinutes: number; hourEndMinutes: number }[] {
+  const span = ((band.endMinutes - band.startMinutes + 1440) % 1440) || 1440;
+  const hours: { hourStartMinutes: number; hourEndMinutes: number }[] = [];
+  for (let offset = 0; offset < span; offset += 60) {
+    const start = (band.startMinutes + offset) % 1440;
+    hours.push({ hourStartMinutes: start, hourEndMinutes: (start + 60) % 1440 });
+  }
+  return hours;
+}
+
+/** "0700" — the text form the table keeps alongside the minute columns. */
+export function hourText(minutes: number): string {
+  return String(Math.floor((((minutes % 1440) + 1440) % 1440) / 60)).padStart(2, "0") + "00";
+}
+
+/**
+ * The `source_file` a protected save writes.
+ *
+ * The marker has to be a substring or the refresh will not honour it; everything
+ * after it is free text and is the only record of WHY these numbers differ from
+ * the vendor's page, so an empty provenance is filled with something rather than
+ * left as a bare marker.
+ */
+export function protectedSourceFile(provenance: string, today: string): string {
+  const why = String(provenance ?? "").trim();
+  return `Manual source of truth - ${why || `edited in HALO ${today}`}`;
 }

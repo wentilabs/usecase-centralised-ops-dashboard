@@ -1,6 +1,8 @@
 # [WRITE NOISE LIMITS]
 
-Parked plan, signed off 7 Sep 2026. Not started.
+**Built 8 Sep 2026.** The editor works today. One optional piece is deferred:
+`supabase/audit_noise_limits.sql` gives limits edits a history and has not been
+run — SQL access was unavailable, and nothing in HALO changes when it lands.
 
 Editing a noise meter's permissible levels from HALO. The read side shipped on
 the same day (`📏 Noise limits` on a noise card, `GET /api/noise-limits`); this is
@@ -17,19 +19,24 @@ the write side.
    the config editor uses.
 4. **Save.**
 
-## Prerequisites, all three decisions rather than code
+## How the three prerequisites were settled
 
-- **`noise_limits` has no `updated_at`.** Every other write in HALO carries a
-  `baseUpdatedAt` and takes a 409 when the row moved underneath it. Either add
-  the column or accept last-write-wins on this one table, deliberately and in
-  writing.
-- **No audit trigger covers the table.** `ops.config_audit` is attached to the
-  seven `project_configs` tables only, so a limits edit would leave no history.
-  Adding it means one more trigger in `supabase/config_audit_setup.sql`; the
-  identity column would be `full_identifier` rather than `project_code`, since a
-  project has several meters.
-- **The marker is a checkbox.** See point 2 above. The save writes
-  `source_file` when the box is ticked and leaves it alone when it is not.
+- **`noise_limits` has no `updated_at`, so `imported_at` is the token.** It is
+  already "when this row was last written" — the refresh stamps it on everything
+  it merges — so it works as a version. The editor sends back the newest one it
+  saw and the write refuses with a 409 if any row has moved past it. This is a
+  check-then-write, not a true compare-and-swap; the losing window is the few
+  hundred milliseconds between the read and the upsert, on a table written by one
+  cron and this editor. If `updated_at` is ever added, move to the `updateConfig`
+  pattern.
+- **The audit trigger is deferred, and is NOT the same trigger as the other
+  seven.** `supabase/audit_noise_limits.sql`, unrun. A blanket trigger would
+  write thousands of rows per refresh; it is scoped by a WHEN clause to rows
+  carrying the marker, and `imported_at` joins the skipped columns so a refresh
+  that touches a protected row without changing its values records nothing.
+- **The marker is a checkbox**, defaulting to whatever the meter already is, so
+  saving never changes a meter's standing by accident. Unticking does not clear
+  an existing marker — removing protection is not something this screen does.
 
 ## The sequencing rule the implementation must honour
 
@@ -78,6 +85,19 @@ them rather than correct them:
    entirely, and a project whose `source_type` is not `default` / `whgd` / `svs`
    is skipped by the refresh outright — which is why OBAYA's geoscan limits
    survive unmarked.
+
+## Two things the live run taught
+
+**The upsert needs an explicit `on_conflict`.** PostgREST resolves against the
+PRIMARY key by default, which here is the bigserial `id` the payload does not
+carry — so every row read as an insert and the five-column unique constraint
+rejected the whole batch with a 23505. Naming the same conflict target the
+refresh uses (`LIMITS_CONFLICT`) fixes it. No unit test would have caught this.
+
+**A partial save produces a partly-protected meter.** Sending one band with
+`protect: true` marks only that band's rows, which is the state TRI NM01 is in.
+The API is right to do exactly what it was asked; the editor avoids it by sending
+every band of both day types on save, changed or not.
 
 ## Already in place
 

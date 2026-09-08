@@ -547,6 +547,90 @@ paths:
                 type: object
                 additionalProperties: true
         "401": *a1
+    patch:
+      operationId: writeNoiseLimits
+      tags:
+        - configuration
+      summary: Write one meter's permissible noise levels
+      description: |-
+        Changes the limits of ONE meter, band by band, and optionally protects them from the NoiseLynx refresh. Requires an editor session. The only route that writes `noise_limits`.
+
+        Bands are addressed by `startMinutes`/`endMinutes` and must be bands the meter already has — this route changes existing rows and never creates a meter or a band. Each band is expanded to its hours on the way in, so `2am-5am` writes 3 rows and `7am-7pm` writes 12, and the whole set goes in ONE upsert so a save cannot land half-applied.
+
+        `protect: true` writes a `source_file` carrying the marker that makes the limits refresh keep these values (`provenance` becomes the free text after it, and is the only record of why they differ from the vendor's page). `protect: false` leaves each row's existing `source_file` alone rather than clearing a marker someone else set — protection is a deliberate choice, not a consequence of editing. Values and marker always go in the same row write, so a refresh cannot land between them.
+
+        `baseImportedAt` is the newest `imported_at` the caller saw, from `listNoiseLimits`. If any row has been written since, the save is refused with 409 rather than overwriting it. `noise_limits` has no `updated_at`, so this is a check-then-write rather than a true compare-and-swap.
+
+        A limit of `0` or `null` means NO limit for that metric in that band, which is how the source page and the service both read it. Values outside 0-99 are accepted: the columns carry no CHECK and that is intended.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectCode
+                - fullIdentifier
+                - bands
+              properties:
+                projectCode:
+                  type: string
+                fullIdentifier:
+                  type: string
+                  description: The meter, exactly as stored.
+                bands:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - dayType
+                      - startMinutes
+                      - endMinutes
+                    properties:
+                      dayType:
+                        type: string
+                        enum:
+                          - mon_sat
+                          - sun_ph
+                      startMinutes:
+                        type: integer
+                        minimum: 0
+                        maximum: 1439
+                      endMinutes:
+                        type: integer
+                        minimum: 0
+                        maximum: 1440
+                      leq5min:
+                        type: number
+                        nullable: true
+                      leq1hr:
+                        type: number
+                        nullable: true
+                      leq12hr:
+                        type: number
+                        nullable: true
+                protect:
+                  type: boolean
+                  description: Exempt these rows from the limits refresh.
+                provenance:
+                  type: string
+                  description: Where the numbers came from. Free text after the marker.
+                baseImportedAt:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Rows written, and the project's limits re-read.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": *a3
+        "401": *a1
+        "403": *a2
+        "409":
+          description: A row was written after baseImportedAt.
   /api/jobs/{job}:
     post:
       operationId: runJob

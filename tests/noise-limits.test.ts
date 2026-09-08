@@ -6,8 +6,13 @@ import { resolve } from "node:path";
 import {
   MANUAL_SOURCE_MARKER,
   collapseToBands,
+  diffBands,
+  expandBandToHours,
   groupLimitsByMeter,
+  hourText,
   isProtectedFromRefresh,
+  parseLimitCell,
+  protectedSourceFile,
   type LimitRow,
 } from "../lib/noise-limits";
 
@@ -153,4 +158,107 @@ test("a meter is flagged protected when any of its rows carries the marker", () 
   assert.equal(meters.length, 1);
   assert.equal(meters[0].isProtected, true);
   assert.match(meters[0].sourceFile ?? "", /NoiseLynx DeviceAdmin refresh · Manual source of truth/);
+});
+
+/* ------------------------------------------------------------------ *
+ * Writing — [WRITE NOISE LIMITS]
+ * ------------------------------------------------------------------ */
+
+test("a band expands to the hours a save actually writes", () => {
+  // The editor is per band and the table is per hour, so this is the
+  // translation the save performs. Getting the count wrong writes a limit to
+  // the wrong part of the day.
+  assert.equal(expandBandToHours({ startMinutes: 120, endMinutes: 300, leq5min: null, leq1hr: null, leq12hr: null }).length, 3);
+  assert.equal(expandBandToHours({ startMinutes: 420, endMinutes: 1140, leq5min: null, leq1hr: null, leq12hr: null }).length, 12);
+
+  // 10pm–12am ends at midnight, which the table stores as 0 rather than 1440 —
+  // so the last hour must come out as 23:00→00:00 and not wrap into a new day.
+  assert.deepEqual(
+    expandBandToHours({ startMinutes: 1320, endMinutes: 0, leq5min: null, leq1hr: null, leq12hr: null }),
+    [
+      { hourStartMinutes: 1320, hourEndMinutes: 1380 },
+      { hourStartMinutes: 1380, hourEndMinutes: 0 },
+    ],
+  );
+  assert.equal(hourText(1380), "2300");
+  assert.equal(hourText(0), "0000");
+});
+
+test("a cell reads blank and 0 as the same thing, and refuses what cannot be meant", () => {
+  // Blank is a value: "no limit for this metric in this band". The service reads
+  // 0 the same way, so both are stored as null rather than kept as two spellings.
+  assert.deepEqual(parseLimitCell(""), { value: null });
+  assert.deepEqual(parseLimitCell("0"), { value: null });
+  assert.deepEqual(parseLimitCell("61"), { value: 61 });
+
+  assert.ok(parseLimitCell("abc").error, "not a number");
+  assert.ok(parseLimitCell("-5").error, "negative");
+
+  // Out of range WARNS and is still accepted: the columns carry no CHECK and
+  // that is intended, so a human reading the preview is the check.
+  const high = parseLimitCell("150");
+  assert.equal(high.value, 150);
+  assert.ok(high.warning, "flagged but allowed");
+  assert.equal(parseLimitCell("99").warning, undefined);
+});
+
+test("the preview reports the hourly consequence of a 12hr edit", () => {
+  // The reason a preview exists at all. HMD NM04's weekday daytime band has no
+  // Leq1hr, so the hourly assessment borrows Leq12hr — editing 76 moves a
+  // threshold the operator never typed into.
+  const band = collapseToBands([hour(7, { leq5min: 90, leq12hr: 76 })])[0];
+  const [change] = diffBands("mon_sat", [band], {
+    [`${band.startMinutes}-${band.endMinutes}`]: {
+      startMinutes: band.startMinutes,
+      endMinutes: band.endMinutes,
+      leq5min: 90,
+      leq1hr: null,
+      leq12hr: 70,
+    },
+  });
+  assert.equal(change.metric, "leq_12hr");
+  assert.deepEqual([change.from, change.to], [76, 70]);
+  assert.deepEqual(change.hourlyBefore, { limit: 76, borrowedFrom12hr: true });
+  assert.deepEqual(change.hourlyAfter, { limit: 70, borrowedFrom12hr: true }, "the hourly limit moved too");
+
+  // And clearing the 12hr leaves the band with no hourly limit at all, which is
+  // a bigger change than the number suggests.
+  const [cleared] = diffBands("mon_sat", [band], {
+    [`${band.startMinutes}-${band.endMinutes}`]: {
+      startMinutes: band.startMinutes,
+      endMinutes: band.endMinutes,
+      leq5min: 90,
+      leq1hr: null,
+      leq12hr: null,
+    },
+  });
+  assert.deepEqual(cleared.hourlyAfter, { limit: null, borrowedFrom12hr: false });
+
+  // An unchanged band produces nothing to confirm.
+  assert.deepEqual(
+    diffBands("mon_sat", [band], {
+      [`${band.startMinutes}-${band.endMinutes}`]: {
+        startMinutes: band.startMinutes,
+        endMinutes: band.endMinutes,
+        leq5min: 90,
+        leq1hr: null,
+        leq12hr: 76,
+      },
+    }),
+    [],
+  );
+});
+
+test("a protected save writes a source_file the refresh will honour", () => {
+  // If the marker is not a substring of what is stored, the refresh reverts the
+  // edit on its next run and nothing says so until the values change back.
+  const withWhy = protectedSourceFile("NEA letter 2026-09-08", "2026-09-08");
+  assert.ok(isProtectedFromRefresh(withWhy), "the marker survives");
+  assert.match(withWhy, /NEA letter 2026-09-08/, "and the provenance is kept");
+
+  // Provenance is the only record of WHY a meter differs from its vendor page,
+  // so a blank one is filled rather than leaving a bare marker.
+  const blank = protectedSourceFile("   ", "2026-09-08");
+  assert.ok(isProtectedFromRefresh(blank));
+  assert.match(blank, /edited in HALO 2026-09-08/);
 });

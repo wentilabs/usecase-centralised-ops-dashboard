@@ -527,13 +527,28 @@ draw 29 badges. While it is loading the badge is absent rather than shown as
 "unprotected": claiming a meter is exposed when it is not is the harmless
 direction, the reverse is not.
 
-There is no write path yet. The plan for one is parked as **[WRITE NOISE LIMITS]**
-in [docs/WRITE_NOISE_LIMITS.md](docs/WRITE_NOISE_LIMITS.md): write, choose whether
-it is protected, preview, save. Read that before starting it — it records the
-three prerequisites (`noise_limits` has no `updated_at`, no audit trigger covers
-the table, and protection is a deliberate choice rather than an automatic
-consequence of editing), the rule that values and marker must go in one write per
-row, and five behaviours that look like bugs and are intended.
+`⚙︎ Edit limits` on a meter writes them — **[WRITE NOISE LIMITS]**, built 8 Sep
+2026 and documented in [docs/WRITE_NOISE_LIMITS.md](docs/WRITE_NOISE_LIMITS.md).
+Read that before changing it. The short version:
+
+`PATCH /api/noise-limits` is the only route that writes the table. Bands must
+already exist — it never creates a meter or a band. Each band is expanded to its
+hours and the whole set goes in ONE upsert, so a save cannot land half applied,
+and values and `source_file` are always in the same row write so a refresh cannot
+land between them. The conflict target must be named explicitly
+(`on_conflict=` the five-column unique key); PostgREST otherwise resolves against
+the bigserial primary key and rejects the batch.
+
+Protection is a checkbox, not a consequence of editing, and defaults to the
+meter's current standing. Unticking does not clear an existing marker.
+
+`imported_at` stands in for the `updated_at` this table does not have: the editor
+sends back the newest one it saw and a save is refused with 409 if any row moved
+past it. Limits edits have no history until `supabase/audit_noise_limits.sql` is
+run — deliberately a different trigger from the other seven, since a blanket one
+would write thousands of rows per refresh.
+
+Five behaviours there look like bugs and are intended; the doc lists them.
 
 ## The smart chat, and bulk changes
 

@@ -12,6 +12,7 @@ import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, t
 import {
   MANUAL_SOURCE_MARKER,
   groupLimitsByMeter,
+  hourText,
   type LimitRow,
   type MeterLimits,
 } from "./noise-limits";
@@ -157,13 +158,143 @@ export async function listLightningDetections({
 export async function listNoiseLimits(projectCode: string): Promise<MeterLimits[]> {
   const res = await request(
     `noise_limits?select=full_identifier,noise_meter_loc,rec_id,day_type_normalized,` +
-      `hour_start_minutes,hour_end_minutes,leq_5min,leq_1hr,leq_12hr,source_file,subscription_end_date` +
+      `hour_start_minutes,hour_end_minutes,leq_5min,leq_1hr,leq_12hr,source_file,subscription_end_date,imported_at` +
       `&active=is.true&project_code=eq.${encodeURIComponent(projectCode)}` +
       `&order=full_identifier.asc,day_type_normalized.asc,hour_start_minutes.asc&limit=1000`,
     { schema: "noise-meters" },
   );
   if (!res.ok) throw new Error(`noise limits for ${projectCode}: ${res.status} ${res.text.slice(0, 200)}`);
   return groupLimitsByMeter((res.body ?? []) as LimitRow[]);
+}
+
+/**
+ * Write one meter's limits, and decide whether they survive the refresh.
+ *
+ * See docs/WRITE_NOISE_LIMITS.md. Three things about this write are decided by
+ * the table rather than by preference:
+ *
+ * **Values and `source_file` go in the same row write.** Splitting them opens a
+ * window where a refresh lands between the two and reverts the values. Every row
+ * here carries both, and the whole set goes in one upsert, so there is no window
+ * at all.
+ *
+ * **The concurrency token is `imported_at`, not `updated_at`.** `noise_limits`
+ * has no `updated_at` — adding one needs a migration nobody can run yet — and
+ * `imported_at` is already "when this row was last written", set by the refresh
+ * on everything it merges. So it works as a version: read it, refuse if it moved.
+ * It is a check-then-write rather than a true compare-and-swap, which is honest
+ * to state: the losing window is the few hundred milliseconds between the two,
+ * on a table written by one cron and, now, this. When `updated_at` arrives this
+ * should move to the `updateConfig` pattern above.
+ *
+ * **Upsert, not patch.** One request, one transaction, so a save cannot land
+ * half-applied across the 48 rows of a meter. `merge-duplicates` resolves on the
+ * table's own unique key, which is also the key the refresh upserts on.
+ */
+export async function writeNoiseLimits(input: {
+  projectCode: string;
+  fullIdentifier: string;
+  /** The hourly rows to write, already expanded from bands by the caller. */
+  rows: {
+    dayTypeNormalized: string;
+    hourStartMinutes: number;
+    hourEndMinutes: number;
+    leq5min: number | null;
+    leq1hr: number | null;
+    leq12hr: number | null;
+  }[];
+  /** `null` leaves each row's existing value, so "follows NoiseLynx" stays as it is. */
+  sourceFile: string | null;
+  /** The newest `imported_at` the editor saw. A row newer than this is a conflict. */
+  baseImportedAt: string | null;
+}): Promise<{ written: number }> {
+  const { projectCode, fullIdentifier, rows, sourceFile, baseImportedAt } = input;
+  if (!rows.length) return { written: 0 };
+
+  const scope =
+    `noise_limits?project_code=eq.${encodeURIComponent(projectCode)}` +
+    `&full_identifier=eq.${encodeURIComponent(fullIdentifier)}&active=is.true`;
+
+  const existing = await request(`${scope}&select=*`, { schema: "noise-meters" });
+  if (!existing.ok) throw new Error(`noise limits: ${existing.status} ${existing.text.slice(0, 200)}`);
+  const current = (existing.body ?? []) as Record<string, unknown>[];
+  if (!current.length) {
+    throw Object.assign(new Error(`${fullIdentifier} has no active limit rows to write to.`), { badRequest: true });
+  }
+
+  if (baseImportedAt) {
+    const moved = current.filter((row) => String(row.imported_at ?? "") > baseImportedAt);
+    if (moved.length) {
+      // Named rather than counted: "the refresh ran" and "someone else edited
+      // two bands" need different responses, and the timestamp says which.
+      const newest = moved.map((row) => String(row.imported_at)).sort().pop();
+      throw Object.assign(
+        new Error(
+          `${fullIdentifier} changed since this was opened — ${moved.length} row${moved.length === 1 ? "" : "s"} ` +
+            `written at ${newest}. Reopen the limits to see the current values before saving.`,
+        ),
+        { conflict: true },
+      );
+    }
+  }
+
+  const byKey = new Map(
+    current.map((row) => [`${row.day_type_normalized}|${row.hour_start_minutes}`, row]),
+  );
+  const importedAt = new Date().toISOString();
+  const payload = rows.map((row) => {
+    const base = byKey.get(`${row.dayTypeNormalized}|${row.hourStartMinutes}`);
+    if (!base) {
+      // The caller named a band this meter does not have. That is a bad request,
+      // not a failure of the database — flagged so the route can say so.
+      throw Object.assign(
+        new Error(
+          `No active row for ${fullIdentifier} ${row.dayTypeNormalized} ${hourText(row.hourStartMinutes)} — ` +
+            "this editor changes existing rows and does not create bands.",
+        ),
+        { badRequest: true },
+      );
+    }
+    return {
+      // Carried from the stored row: the upsert has to satisfy every NOT NULL
+      // column, and these identify the row rather than being edited by anyone.
+      project_code: projectCode,
+      full_identifier: fullIdentifier,
+      noise_meter_loc: base.noise_meter_loc,
+      day_type: base.day_type,
+      day_type_normalized: row.dayTypeNormalized,
+      hour_start: hourText(row.hourStartMinutes),
+      hour_end: hourText(row.hourEndMinutes),
+      hour_start_minutes: row.hourStartMinutes,
+      hour_end_minutes: row.hourEndMinutes,
+      rec_id: base.rec_id ?? null,
+      subscription_end_date: base.subscription_end_date ?? null,
+      active: true,
+      leq_5min: row.leq5min,
+      leq_1hr: row.leq1hr,
+      leq_12hr: row.leq12hr,
+      source_file: sourceFile ?? base.source_file ?? null,
+      imported_at: importedAt,
+    };
+  });
+
+  // `on_conflict` names the table's five-column unique key. Without it PostgREST
+  // resolves against the PRIMARY key, which here is the bigserial `id` the
+  // payload does not carry — so every row read as an insert and the unique
+  // constraint rejected the lot with a 23505. This is the same conflict target
+  // the limits refresh upserts on (`LIMITS_CONFLICT` in the noise repo).
+  const onConflict =
+    "project_code,full_identifier,day_type_normalized,hour_start_minutes,hour_end_minutes";
+  const res = await request(`noise_limits?on_conflict=${encodeURIComponent(onConflict)}`, {
+    schema: "noise-meters",
+    method: "POST",
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`noise limits write: ${res.status} ${res.text.slice(0, 300)}`);
+  return { written: Array.isArray(res.body) ? res.body.length : payload.length };
 }
 
 /**

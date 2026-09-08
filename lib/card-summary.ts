@@ -19,15 +19,17 @@ export function splitList(value: unknown): string[] {
  * with several group columns that mean different things — showing them as one
  * undifferentiated list would lose that, hence the roles.
  */
-const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string; single?: boolean }[]> = {
+const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   wbgt: [
     { column: "whatsapp_group_id" },
-    // `single`: the service reads this column with
-    // `String(config.water_parade_outbound_group_id || "").trim()` and posts it
-    // as one `chatId` — no comma split, unlike every other group column. So a
-    // second id in there is not a second recipient; it corrupts the chat id.
-    // Marked here so the card can say which group actually receives a reminder.
-    { column: "water_parade_outbound_group_id", role: "water parade", single: true },
+    // This was a `single` column: the service read it with a bare
+    // `String(...).trim()` and posted the whole value as one chatId, so a second
+    // id corrupted the send rather than adding a recipient. `ff2ec70` in the
+    // WBGT repo split it on commas and `migrate_water_parade_multiple_groups.sql`
+    // dropped the CHECK that enforced one — verified gone against the live
+    // table. Each id now gets its own reminder, delivery row and outbound
+    // message id, so quoted replies still correlate per group.
+    { column: "water_parade_outbound_group_id", role: "water parade" },
   ],
   noise: [
     { column: "whatsapp_group_id" },
@@ -67,20 +69,17 @@ export type DeliveryGroup = { chatId: string; role?: string };
  * and the way it would drift is by missing one — leaving a group in place on a
  * column nobody remembered.
  */
-export function groupColumnsFor(service: ServiceKey): { column: string; role?: string; single?: boolean }[] {
+export function groupColumnsFor(service: ServiceKey): { column: string; role?: string }[] {
   return GROUP_COLUMNS[service] ?? [];
 }
 
 export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): DeliveryGroup[] {
   const roles = new Map<string, string[]>();
-  for (const { column, role, single } of GROUP_COLUMNS[service] ?? []) {
+  for (const { column, role } of GROUP_COLUMNS[service] ?? []) {
     const ids = splitList(config[column]);
     for (const [index, chatId] of ids.entries()) {
       const existing = roles.get(chatId) ?? [];
-      // A `single` column only ever delivers to its first id. Anything after it
-      // is stored, shown, and never sent to — saying otherwise would present a
-      // misconfiguration as a capability.
-      const effective = single && index > 0 ? `${role} — ignored, the service sends to the first id only` : role;
+      const effective = role;
       if (effective && !existing.includes(effective)) existing.push(effective);
       roles.set(chatId, existing);
     }
@@ -106,6 +105,9 @@ export const CHAT_ID_COLUMNS: string[] = [
     "alert_whatsapp_gid",
     "poc_alert_wa_groups",
     "whatsapp_wbgt_source_chat_ids",
+    // Not a destination — it is the snapshot's exclusion list — but it holds
+    // chat ids, so it needs names resolved for the picker like any other.
+    "exclude_whatsapp_group_ids",
   ]),
 ];
 
@@ -324,11 +326,16 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     }
     if (config.same_day_open_snapshot_enabled) {
       const lookback = Number(config.include_days_before_snapshot ?? 0);
+      // The exclusion list belongs on this clause and no other: it narrows the
+      // snapshot alone, so putting it in the shared suffix would read as a
+      // project-wide mute.
+      const excluded = splitList(config.exclude_whatsapp_group_ids).length;
       parts.push(
         "same-day open snapshot at 09:00 and 21:00" +
           (Number.isFinite(lookback) && lookback > 0
             ? ` covering the previous ${lookback} day${lookback === 1 ? "" : "s"} too`
-            : ""),
+            : "") +
+          (excluded ? `, skipping ${excluded} group${excluded === 1 ? "" : "s"}` : ""),
       );
     }
 
@@ -336,6 +343,7 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
     // nobody and never uses an issue's origin group — it carries the opposite
     // routing, so sharing the chasers' suffix would state the wrong destination.
     const summaries: string[] = [];
+    if (config.novade_name_list_check_enabled) summaries.push("weekly Novade name reminder");
     if (config.daily_safety_summary_enabled) summaries.push("past-days safety summary");
     if (config.daily_safety_company_summary_enabled) {
       summaries.push(summaries.length ? "the same split by company" : "past-days summary by company");
@@ -413,13 +421,15 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
               { label: "cooldown 2h", on: on(config.water_parade_cooldown_enabled), tone: "info" as const },
             ]
           : []),
-        // A second id in `water_parade_outbound_group_id` is not a second
-        // recipient: the reminder path posts the raw column value as one
-        // `chatId`, so the comma goes with it and the send is malformed. The
-        // service returns no error a reader would notice — the value is
-        // non-empty, so it never reports missing delivery config.
+        // A second id used to be a corrupted send and carried a warning here.
+        // It is an ordinary second recipient now, so it is reported as a count
+        // rather than a problem.
         ...(splitList(config.water_parade_outbound_group_id).length > 1
-          ? [{ label: "⚠ 2+ water parade groups", on: true, tone: "warn" as const }]
+          ? [{
+              label: `${splitList(config.water_parade_outbound_group_id).length} reminder groups`,
+              on: true,
+              tone: "info" as const,
+            }]
           : []),
         { label: "hourly", on: on(config.enable_hourly) },
         { label: "intermittent", on: on(config.enable_intermittent_reports) },
@@ -602,6 +612,23 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
           ? [{ label: "summary by company", on: true, tone: "info" as const }]
           : []),
         { label: "reply in origin group", on: config.send_to_originating_groups !== false },
+        // Shown only when set: an unlit "0 excluded" pill on every project would
+        // be noise, and this is the exception rather than a setting most have.
+        ...(splitList(config.exclude_whatsapp_group_ids).length
+          ? [{
+              label: `snapshot skips ${splitList(config.exclude_whatsapp_group_ids).length}`,
+              on: true,
+              tone: "info" as const,
+            }]
+          : []),
+        // The only thing in this service that writes to the workbook, so it is
+        // worth seeing from the card rather than only in the editor.
+        ...(config.novade_name_sync_enabled
+          ? [{ label: "✎ writes Novade names", on: true, tone: "warn" as const }]
+          : []),
+        ...(config.novade_name_list_check_enabled
+          ? [{ label: "weekly name reminder", on: true, tone: "info" as const }]
+          : []),
         // Not gated by `enabled` the way the styles are, so these two can be lit
         // on a project that is otherwise switched off — which is correct: they
         // describe the calendar, not the cadence.

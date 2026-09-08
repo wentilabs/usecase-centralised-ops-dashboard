@@ -911,6 +911,15 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
         notNull: false,
         help: "Fallback destinations. Not needed while Reply in the originating group is on, which is the default.",
       },
+      // Not offered at creation and not written either: the column defaults to
+      // false in Postgres, which is the right starting point for a route that
+      // WRITES to the customer's workbook. Switching it on is a decision to make
+      // against a project that already exists, in the editor, where the help
+      // text explaining what it writes is in front of you.
+      //
+      //   novade_name_sync_enabled
+      //   novade_name_list_check_enabled  (column not created yet)
+      //   exclude_whatsapp_group_ids      (empty excludes nothing)
       // Written rather than asked about, like every sibling service. The live
       // column defaults to true here, but the column was added with `false`
       // first and backfilled, so an omitted field would depend on which

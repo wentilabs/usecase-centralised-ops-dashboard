@@ -291,7 +291,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     water_parade_outbound_group_id: {
       label: "Water Parade reminder group",
       widget: "groups",
-      help: "The dedicated reminder group, and exactly one — unlike the WBGT alert groups above, this is not a list. The reminder is posted to this value as a single chat id, so a second id makes the whole string an invalid group. Often NOT one of the alert groups.",
+      help: "Where the reminder goes. A comma-separated list since migrate_water_parade_multiple_groups.sql dropped the single-group CHECK: ids are trimmed and de-duplicated, each group gets its own reminder, and each keeps its own delivery row and outbound message id so quoted replies correlate per group. Often NOT one of the alert groups.",
     },
     water_parade_cooldown_enabled: {
       label: "Cooldown between cycles",
@@ -778,7 +778,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     safety_sheet_id: {
       label: "Safety workbook",
       widget: "sheet",
-      help: "Source of all issue state. The service finds the `Safety` tab and any `Safety-MMM YYYY` archives, reads rows by header name, and never writes to it.",
+      help: "Source of all issue state. The service finds the `Safety` tab and any `Safety-MMM YYYY` archives and reads rows by header name. It also WRITES to one column of it now — `POST /api/sync-novade-names` fills blank `Novade Name` cells from `Whatsapp Name`, and only when the sync below is switched on. Nothing else in the service writes here.",
     },
     // Each style says it needs `enabled` first, on the style itself. Saying it
     // only on `enabled` was not enough: the operator toggling a style is looking
@@ -867,6 +867,31 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // fallback rather than a setting, and the single configured-group origin
     // fallback is unconditional. `deliveryConfig` in that repo's config/index.js
     // explicitly deletes all four, so they are behaviour, not configuration.
+    // Snapshot-only, which is the whole point of it: the severity chaser still
+    // replies wherever an issue came from, and the summaries still go to the
+    // full group list. Naming it "exclude groups" without saying from WHAT would
+    // read as a project-wide mute.
+    exclude_whatsapp_group_ids: {
+      label: "Excluded from the snapshot",
+      widget: "groups",
+      help: "Groups the 09:00/21:00 same-day snapshot skips. Nothing else: severity reminders still reply in each issue's originating group, and both daily summaries still go to the full list. Matching is trimmed and case-insensitive, and an empty list excludes nothing.",
+      showIf: { field: "same_day_open_snapshot_enabled", equals: true },
+    },
+    // Not a report: it sends no WhatsApp message and needs no destination, which
+    // is why it sits apart from the summaries and their group requirement.
+    novade_name_sync_enabled: {
+      label: "Write back Novade names",
+      help: "Lets `POST /api/sync-novade-names` fill blank `Novade Name` cells in the workbook from `Whatsapp Name`. The only thing in this service that writes to the sheet. Off, the route refuses; on, it is still dry-run unless the request sets `dryRun: false`, and it skips any WhatsApp name that normalises ambiguously. Sends no message, so it needs no group.",
+    },
+    // The column does not exist in Supabase yet — supabase/migrate_novade_name_list_check.sql
+    // in the issue-chaser repo is unrun, so `row.novade_name_list_check_enabled`
+    // reads undefined and the weekly reminder can never fire. Named here anyway:
+    // the editor renders from live introspection, so this shows nothing until
+    // the migration lands and then appears already labelled.
+    novade_name_list_check_enabled: {
+      label: "Weekly Novade name reminder",
+      help: "`POST /api/remind-write-novade-names` — one weekly message counting `Novade Name List` rows that have a phone and a WhatsApp name but no Novade name. Read-only, and silent when the count is zero. Needs Project enabled and at least one WhatsApp group, like the summaries: it is a project-level report, not a reply to an issue.",
+    },
     send_to_originating_groups: {
       label: "Reply in the originating group",
       help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required. Applies to reminders only: the daily summaries ignore this and always use the group list, so one project report is never copied into every issue's origin group.",
@@ -1124,11 +1149,18 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "summary_days",
       ],
     },
+    // Its own section: one reads the Name List and one writes to it, and neither
+    // is a chaser or a summary.
+    {
+      title: "Novade names",
+      fields: ["novade_name_list_check_enabled", "novade_name_sync_enabled"],
+    },
     {
       title: "Delivery",
       fields: [
         "send_to_originating_groups",
         "whatsapp_group_ids",
+        "exclude_whatsapp_group_ids",
         "instance_name",
         "client_id",
         "lambda_url",

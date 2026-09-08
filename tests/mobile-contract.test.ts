@@ -261,33 +261,39 @@ test("the water-parade role the droplet depends on is still assigned", () => {
   // as a React key.
   assert.equal(groups.length, 2);
 
-  // The column can HOLD several ids — TEST and ZRA both do — but the reminder
-  // path reads it with String(...).trim() and posts it as one chatId, with no
-  // comma split. So only the first id is ever a recipient, and the rest must be
-  // marked as ignored rather than presented as extra delivery.
+  // Every id in the column is a real recipient now. It used to be only the
+  // first — the reminder path read the column with String(...).trim() and posted
+  // the whole value as one chatId — so the rest were drawn as "ignored". That
+  // label would now hide a group that genuinely receives the reminder, which is
+  // the worse of the two ways to be wrong.
   const many = deliveryGroups("wbgt", {
     whatsapp_group_id: "1201@g.us, 1202@g.us",
     water_parade_outbound_group_id: "1201@g.us,1202@g.us",
   });
   assert.equal(many.length, 2);
-  assert.match(many[0].role ?? "", /water parade/);
-  assert.doesNotMatch(many[0].role ?? "", /ignored/, "the first id is the real recipient");
-  assert.match(many[1].role ?? "", /ignored/, "and the second is not sent to at all");
+  for (const group of many) {
+    assert.match(group.role ?? "", /water parade/, "both are Water Parade recipients");
+    assert.doesNotMatch(group.role ?? "", /ignored/);
+  }
 });
 
-test("a second water-parade group is flagged, not drawn as extra delivery", () => {
-  // Silent in the service: the column is non-empty, so it never reports missing
-  // delivery config — it just posts a chatId with a comma in it.
+test("a second water-parade group is a second recipient, not a warning", () => {
+  // It used to be a corrupted send: the service posted the raw column value as
+  // one chatId, comma included, and reported nothing because the value was
+  // non-empty. `ff2ec70` in the WBGT repo splits on commas and the CHECK that
+  // enforced one group has been dropped — confirmed against the live table — so
+  // the card counts recipients instead of warning about them.
   const two = pillsFor("wbgt", {
     water_parade_enabled: true,
     water_parade_outbound_group_id: "1201@g.us,1202@g.us",
   });
-  const warning = two.find((p) => /water parade groups/.test(p.label));
-  assert.ok(warning?.on, "a project with two ids must say so");
-  assert.equal(warning?.tone, "warn", "and loudly, since nothing else reports it");
+  const pill = two.find((p) => /reminder groups/.test(p.label));
+  assert.ok(pill?.on, "a project with two ids says how many");
+  assert.equal(pill?.tone, "info", "informational — nothing is wrong with it");
+  assert.ok(!two.some((p) => /⚠/.test(p.label)), "and no warning survives");
 
   const one = pillsFor("wbgt", { water_parade_enabled: true, water_parade_outbound_group_id: "1201@g.us" });
-  assert.ok(!one.some((p) => /water parade groups/.test(p.label)), "no warning on a correct row");
+  assert.ok(!one.some((p) => /reminder groups/.test(p.label)), "a single group needs no count");
 });
 
 test("the Water Parade pills are one blue family, and an off one still reads as off", async () => {

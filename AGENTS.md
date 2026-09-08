@@ -544,9 +544,14 @@ meter's current standing. Unticking does not clear an existing marker.
 
 `imported_at` stands in for the `updated_at` this table does not have: the editor
 sends back the newest one it saw and a save is refused with 409 if any row moved
-past it. Limits edits have no history until `supabase/audit_noise_limits.sql` is
-run — deliberately a different trigger from the other seven, since a blanket one
-would write thousands of rows per refresh.
+past it.
+
+Every limits change is recorded, by whichever writer, since
+`supabase/audit_noise_limits.sql` was applied on 8 Sep 2026 — a hand edit and the
+NoiseLynx refresh moving a limit are both evidence. Volume is held down by the
+empty-diff guard and by `imported_at` being a skipped column, not by filtering on
+who wrote the row: a refresh that re-confirms a value writes nothing. Each meter's
+history is under `📏 Noise limits`, read from `/api/audit?table=noise_limits`.
 
 Five behaviours there look like bugs and are intended; the doc lists them.
 

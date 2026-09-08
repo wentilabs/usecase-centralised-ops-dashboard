@@ -228,10 +228,10 @@ function MeterBlock({
  * the site is assessed against. NoiseLynx shows the current grid and keeps no
  * history, and the refresh overwrites in place.
  *
- * Collapsed by default because most meters have none, and silent when the audit
- * trigger has not been installed — supabase/audit_noise_limits.sql is optional
- * and the editor does not depend on it, so an empty history is the ordinary
- * state rather than an error to report.
+ * Collapsed by default because most meters have none. The trigger has been
+ * installed since 8 Sep 2026 and records both writers, so an empty history now
+ * means the limits have not moved since then — not that nothing is watching.
+ * Nothing before that date was captured, and a trigger cannot recover it.
  */
 function MeterHistory({ fullIdentifier }: { fullIdentifier: string }) {
   const [open, setOpen] = useState(false);
@@ -263,7 +263,8 @@ function MeterHistory({ fullIdentifier }: { fullIdentifier: string }) {
           <p className="mt-1 text-[11px] text-muted-foreground">Reading…</p>
         ) : !entries.length ? (
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Nothing recorded. Limits history begins when supabase/audit_noise_limits.sql is applied.
+            Nothing recorded — these limits have not changed since 8 Sep 2026, when the trigger was
+            installed. Earlier changes were never captured and cannot be recovered.
           </p>
         ) : (
           <ul className="mt-1 space-y-1">

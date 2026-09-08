@@ -1,5 +1,9 @@
 -- History for noise limits — hand edits AND what the refresh changes.
 --
+-- APPLIED 8 Sep 2026. Verified live on the TEST fixture: a value change wrote one
+-- entry carrying its from/to, and an `imported_at`-only touch — what a refresh
+-- does to a row it re-confirmed — wrote nothing. Re-running is harmless.
+--
 -- Both are wanted. A hand edit is somebody's decision; a refresh that moves a
 -- limit is the vendor changing what a site is assessed against, which is the
 -- evidence you need when a reading is disputed months later. Neither is

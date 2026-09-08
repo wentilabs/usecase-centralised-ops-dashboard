@@ -1,8 +1,10 @@
 # [WRITE NOISE LIMITS]
 
-**Built 8 Sep 2026.** The editor works today. One optional piece is deferred:
-`supabase/audit_noise_limits.sql` gives limits edits a history and has not been
-run — SQL access was unavailable, and nothing in HALO changes when it lands.
+**Built and complete, 8 Sep 2026.** The editor works and
+`supabase/audit_noise_limits.sql` has been applied, so every limits change —
+hand-made or from the refresh — is recorded from that date. Verified live: a
+value change writes one entry carrying its from/to, and an `imported_at`-only
+touch, which is what a refresh does to a row it re-confirmed, writes nothing.
 
 Editing a noise meter's permissible levels from HALO. The read side shipped on
 the same day (`📏 Noise limits` on a noise card, `GET /api/noise-limits`); this is
@@ -29,11 +31,12 @@ the write side.
   hundred milliseconds between the read and the upsert, on a table written by one
   cron and this editor. If `updated_at` is ever added, move to the `updateConfig`
   pattern.
-- **The audit trigger is deferred, and is NOT the same trigger as the other
-  seven.** `supabase/audit_noise_limits.sql`, unrun. A blanket trigger would
-  write thousands of rows per refresh; it is scoped by a WHEN clause to rows
-  carrying the marker, and `imported_at` joins the skipped columns so a refresh
-  that touches a protected row without changing its values records nothing.
+- **The audit trigger is applied, and records BOTH writers.** An early draft
+  scoped it by a WHEN clause to rows carrying the marker, which would have
+  discarded the evidence it exists for: a refresh moving a limit is the vendor
+  changing what a site is assessed against. What keeps the volume honest is the
+  empty-diff guard plus `imported_at` in the skipped columns — so volume tracks
+  real changes rather than runs. Deletes are still not captured.
 - **The marker is a checkbox**, defaulting to whatever the meter already is, so
   saving never changes a meter's standing by accident. Unticking does not clear
   an existing marker — removing protection is not something this screen does.

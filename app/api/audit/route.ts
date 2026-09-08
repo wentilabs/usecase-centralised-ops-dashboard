@@ -25,9 +25,19 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const service = params.get("service");
+  // `table` reaches the audited tables that are not a service's config row —
+  // today just `noise_limits`, whose history is per METER and so is keyed on
+  // `full_identifier` rather than a project code. Allow-listed rather than
+  // passed through: `table_name` is a filter value, and the set of things worth
+  // asking for is small and known.
+  const table = params.get("table");
+  const AUDITED_TABLES = new Set(["noise_limits"]);
+  if (table && !AUDITED_TABLES.has(table)) {
+    return NextResponse.json({ error: `No audit history is kept for “${table}”.` }, { status: 400 });
+  }
   try {
     const entries = await listAudit({
-      table: service && isServiceKey(service) ? SERVICES[service].table : undefined,
+      table: table ?? (service && isServiceKey(service) ? SERVICES[service].table : undefined),
       rowId: params.get("project") ?? undefined,
       limit: Number(params.get("limit") ?? 200),
     });

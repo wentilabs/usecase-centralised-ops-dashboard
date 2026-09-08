@@ -1,36 +1,37 @@
--- History for hand-edited noise limits. OPTIONAL, and not yet run.
+-- History for noise limits — hand edits AND what the refresh changes.
 --
--- [WRITE NOISE LIMITS] shipped without this: the editor works, and edits made
--- before this runs simply have no history. Run it whenever SQL access allows.
--- Nothing in HALO changes when it does — the trigger is the only writer of audit
--- rows, exactly as it is for the seven project_configs tables, and the card
--- history reads whatever is there.
+-- Both are wanted. A hand edit is somebody's decision; a refresh that moves a
+-- limit is the vendor changing what a site is assessed against, which is the
+-- evidence you need when a reading is disputed months later. Neither is
+-- recoverable from anywhere else: NoiseLynx shows the current grid and no
+-- history, and the refresh overwrites in place.
 --
 -- Apply AFTER supabase/config_audit_setup.sql, which creates ops.config_audit
--- and ops.record_config_change().
+-- and ops.record_config_change(). Idempotent; safe to re-run, in either order.
 --
 -- -----------------------------------------------------------------------------
--- Why this is not simply the same trigger as the other seven
+-- What stops this being noise
 -- -----------------------------------------------------------------------------
 --
--- `noise_limits` is not a config table an operator edits a few times a month. It
--- holds ~4,900 rows and the NoiseLynx refresh upserts almost all of them on every
--- run. A blanket `after insert or update` trigger would write thousands of audit
--- rows per refresh and bury the handful a person actually made — the same failure
--- that made WBGT's job-state columns 1187 of the first 1730 rows in that table.
+-- Not a filter on who wrote the row — the whole point is to catch both. It is
+-- the empty-diff guard that already exists in `record_config_change`, plus one
+-- column added to its skip list.
 --
--- Two things keep it proportionate:
+-- The refresh upserts nearly every row it scrapes whether or not anything moved:
+-- of 4,896 rows today, 4,512 carry the same `imported_at` from a single run on
+-- 2026-09-06. If `imported_at` counted as a change, every one of those would
+-- write an audit entry saying nothing. Skipping it means the diff is empty for a
+-- row the refresh re-confirmed, and the guard drops it before the insert.
 --
--- 1. A WHEN clause, so only rows carrying the manual-source-of-truth marker are
---    recorded. A row that follows NoiseLynx is the vendor's data and its history
---    is that page, not this table. An edit that ADDS the marker is caught by the
---    `new` half; one that somehow removed it by the `old` half.
+-- So volume tracks REAL changes, not runs. A fortnight where NoiseLynx changed
+-- nothing writes nothing. The worst case is a mass reconfiguration writing one
+-- entry per hour-row it touched — up to 48 for a meter, and once a fortnight at
+-- the observed cadence. That is a spike worth having rather than spam.
 --
--- 2. `imported_at` joins the skipped columns below. The refresh stamps it on
---    every row it merges, INCLUDING protected rows whose values it left alone —
---    so without this, every refresh would write an audit entry per protected row
---    saying nothing but "imported_at moved". The existing empty-diff guard then
---    drops those runs entirely.
+-- Not captured: DELETEs. A meter renamed on NoiseLynx has its old rows deleted
+-- and re-inserted under the new identifier, so the history shows the arrival and
+-- not the departure. Adding a delete branch to the shared function is the fix if
+-- that ever matters.
 -- -----------------------------------------------------------------------------
 
 -- 1. Stop `imported_at` being recorded as a change.
@@ -104,39 +105,33 @@ begin
 end;
 $$;
 
--- 2. Record only rows that are, or are becoming, a manual source of truth.
---    `row_id` is the meter rather than the bigserial `id`, so a card's history
---    reads as one meter's story instead of 48 unrelated row ids.
---    Two triggers rather than one `insert or update`: Postgres refuses a WHEN
---    clause that references OLD on an INSERT trigger, and the update case needs
---    OLD so that removing the marker is still recorded.
+-- 2. Record every row, from whichever writer.
 --
---    `new_updated_at` will be null on these entries — noise_limits has no
---    `updated_at` column. That is only used by HALO's annotate step, which does
+--    No WHEN clause. An earlier draft recorded only rows carrying the
+--    manual-source-of-truth marker, which would have thrown away exactly the
+--    evidence this is for: what the vendor changed, and when.
+--
+--    `row_id` is the meter rather than the bigserial `id`, so a meter's history
+--    reads as one story instead of 48 unrelated row ids. `source_file` travels
+--    in the diff when it moves, so an entry says whether the row became
+--    protected as part of the same change.
+--
+--    `new_updated_at` is null on these entries — noise_limits has no
+--    `updated_at`. That column is only used by HALO's annotate step, which does
 --    not run for limits, so it costs nothing here.
-drop trigger if exists config_audit_ins_trg on "noise-meters".noise_limits;
-create trigger config_audit_ins_trg
-  after insert on "noise-meters".noise_limits
-  for each row
-  when (coalesce(new.source_file, '') ilike '%manual source of truth%')
-  execute function ops.record_config_change('full_identifier');
-
-drop trigger if exists config_audit_upd_trg on "noise-meters".noise_limits;
-create trigger config_audit_upd_trg
-  after update on "noise-meters".noise_limits
-  for each row
-  when (
-    coalesce(new.source_file, '') ilike '%manual source of truth%'
-    or coalesce(old.source_file, '') ilike '%manual source of truth%'
-  )
-  execute function ops.record_config_change('full_identifier');
-
--- An older single-trigger attempt, removed if it is there.
 drop trigger if exists config_audit_trg on "noise-meters".noise_limits;
+create trigger config_audit_trg
+  after insert or update on "noise-meters".noise_limits
+  for each row
+  execute function ops.record_config_change('full_identifier');
+
+-- The two WHEN-scoped triggers from the earlier draft, removed if they were run.
+drop trigger if exists config_audit_ins_trg on "noise-meters".noise_limits;
+drop trigger if exists config_audit_upd_trg on "noise-meters".noise_limits;
 
 -- -----------------------------------------------------------------------------
--- Check it did what it should: a protected save writes ONE entry per row it
--- changed, and a limits refresh writes none.
+-- Check it did what it should. A save writes one entry per hour-row it changed;
+-- a refresh that re-confirmed the same values writes nothing at all.
 -- -----------------------------------------------------------------------------
 -- select at, row_id, project_code, changes
 -- from ops.config_audit

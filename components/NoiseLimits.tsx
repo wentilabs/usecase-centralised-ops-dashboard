@@ -215,8 +215,104 @@ function MeterBlock({
           />
         </div>
       )}
+      {!editing ? <MeterHistory fullIdentifier={meter.fullIdentifier} /> : null}
     </section>
   );
+}
+
+/**
+ * What has changed on this meter, and when.
+ *
+ * Both halves matter and neither is recoverable anywhere else: a hand edit is
+ * somebody's decision, and a refresh moving a limit is the vendor changing what
+ * the site is assessed against. NoiseLynx shows the current grid and keeps no
+ * history, and the refresh overwrites in place.
+ *
+ * Collapsed by default because most meters have none, and silent when the audit
+ * trigger has not been installed — supabase/audit_noise_limits.sql is optional
+ * and the editor does not depend on it, so an empty history is the ordinary
+ * state rather than an error to report.
+ */
+function MeterHistory({ fullIdentifier }: { fullIdentifier: string }) {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
+
+  useEffect(() => {
+    if (!open || entries) return;
+    let alive = true;
+    fetch(`/api/audit?table=noise_limits&project=${encodeURIComponent(fullIdentifier)}&limit=200`)
+      .then((res) => (res.ok ? res.json() : { entries: [] }))
+      .then((body) => alive && setEntries(body.entries ?? []))
+      .catch(() => alive && setEntries([]));
+    return () => {
+      alive = false;
+    };
+  }, [open, entries, fullIdentifier]);
+
+  return (
+    <div className="border-t border-border px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen((was) => !was)}
+        className="text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {open ? "▾" : "▸"} History
+      </button>
+      {open ? (
+        entries === null ? (
+          <p className="mt-1 text-[11px] text-muted-foreground">Reading…</p>
+        ) : !entries.length ? (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Nothing recorded. Limits history begins when supabase/audit_noise_limits.sql is applied.
+          </p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {entries.slice(0, 40).map((entry) => (
+              <li key={entry.id} className="text-[11px] text-muted-foreground">
+                <span className="tabular-nums">{formatSgt(entry.at)}</span>
+                {entry.actor_email ? (
+                  <span className="ml-1 text-foreground">{entry.actor_email}</span>
+                ) : (
+                  // Not "changed outside the dashboard" here: on this table the
+                  // usual author is the refresh, which is expected rather than
+                  // irregular.
+                  <span className="ml-1">refresh or direct edit</span>
+                )}
+                <span className="ml-1">
+                  {Object.entries(entry.changes ?? {})
+                    .map(([column, change]) => `${column} ${fmt(change?.from)} → ${fmt(change?.to)}`)
+                    .join(", ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+type AuditEntry = {
+  id: string;
+  at: string;
+  actor_email: string | null;
+  changes: Record<string, { from?: unknown; to?: unknown }>;
+};
+
+function fmt(value: unknown) {
+  return value === null || value === undefined || value === "" ? "none" : String(value);
+}
+
+/** SGT, because every cadence in the estate is stated in it. */
+function formatSgt(value: string) {
+  return new Intl.DateTimeFormat("en-SG", {
+    timeZone: "Asia/Singapore",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 }
 
 function BandTable({

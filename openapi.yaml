@@ -433,7 +433,9 @@ paths:
         and **the database does not record who**. Note also that many such rows are the services writing their
         own runtime state, not people.
 
-        Only updates are recorded. Row creation and deletion are not.
+        Creations are recorded as a single `created` marker with `action: "insert"`, rather than as a diff of every column. Deletions are not recorded.
+
+        `noise_limits` is audited too, via `table` — every change to a meter's permissible levels, hand-made or from the NoiseLynx refresh. Those entries are keyed on the meter's `full_identifier`, so `project` filters by meter there rather than by project code.
       parameters:
         - name: service
           in: query
@@ -448,11 +450,18 @@ paths:
               - subcon
               - issueChaser
           description: Restrict to one service's config table.
+        - name: table
+          in: query
+          schema:
+            type: string
+            enum:
+              - noise_limits
+          description: An audited table that is not a service's config row. Takes precedence over `service`.
         - name: project
           in: query
           schema:
             type: string
-          description: Restrict to one project — `project_code`, or the row id for Ailytics and Subcon.
+          description: Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`.
         - name: limit
           in: query
           schema:

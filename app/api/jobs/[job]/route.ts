@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { JOBS, isJobKey, validateJobInput } from "@/lib/jobs";
+import { JOBS, eachDate, isJobKey, validateJobInput } from "@/lib/jobs";
 import { listConfigs } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -10,6 +10,26 @@ export const dynamic = "force-dynamic";
 
 /** These jobs write to Google Sheets and can walk a long date range. */
 const TIMEOUT_MS = 60_000;
+
+/**
+ * The sentence a service returned, from wherever it put it.
+ *
+ * The alert services answer `{ success: false, error }`; some return plain text.
+ * Without this the callers saw only HALO's own 502 wrapper, which named the
+ * status and nothing else — "status 502" told an operator nothing about a body
+ * key the endpoint does not accept.
+ */
+function upstreamMessage(result: unknown, status: number): string {
+  if (result && typeof result === "object") {
+    const asRecord = result as Record<string, unknown>;
+    for (const key of ["error", "message", "reason"]) {
+      const value = asRecord[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+  if (typeof result === "string" && result.trim()) return result.trim().slice(0, 400);
+  return `The service returned ${status} with nothing this could read.`;
+}
 
 /**
  * `POST /api/jobs/{job}` — `runJob` in the OpenAPI contract.
@@ -78,46 +98,94 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     Object.entries(body.flags ?? {}).filter(([key, value]) => allowed.has(key) && value === true),
   );
 
-  const payload = job.buildPayload({
-    projectCode: body.projectCode as string,
-    startDate: body.startDate as string,
-    endDate: body.endDate as string,
-    flags,
-  });
+  /**
+   * One upstream call per date for a `perDay` job, one for the whole range
+   * otherwise. `noise-sheet-sync` takes a single `date`; sending it a range was
+   * silently ignored until INV-NOISE-15's strict body check turned it into a 400.
+   *
+   * Sequential, with a deadline. These write Google Sheets against a quota
+   * shared by every service on one credential, so firing a fortnight of dates at
+   * once is the fastest way to a 429 — and a long range would otherwise run past
+   * whatever request timeout sits in front of this route with nothing to show.
+   * Running out of budget reports how far it got; the job is idempotent, so the
+   * operator re-runs from the date named.
+   */
+  const dates = job.perDay ? eachDate(body.startDate as string, body.endDate as string) : [null];
+  const deadline = Date.now() + TIMEOUT_MS;
+  const perDate: { date: string | null; status: number; result: unknown }[] = [];
+  let lastPayload: Record<string, unknown> = {};
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}${job.path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      signal: controller.signal,
-    });
+    for (const date of dates) {
+      if (Date.now() > deadline) break;
+      lastPayload = job.buildPayload({
+        projectCode: body.projectCode as string,
+        startDate: body.startDate as string,
+        endDate: body.endDate as string,
+        ...(date ? { date } : {}),
+        flags,
+      });
 
-    const text = await res.text();
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = null;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(1_000, deadline - Date.now()));
+      let res: Response;
+      let text: string;
+      try {
+        res = await fetch(`${base}${job.path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lastPayload),
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        text = await res.text();
+      } finally {
+        clearTimeout(timer);
+      }
+
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+      perDate.push({ date, status: res.status, result: parsed ?? text.slice(0, 2000) });
+
+      console.log(
+        `[halo][job] ${job.key} project=${body.projectCode} ${date ? `date=${date}` : `range=${body.startDate}..${body.endDate}`} ` +
+          `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
+      );
+
+      // Stop at the first failure rather than hammering the same fault 11 more
+      // times — and the reason is the same for every remaining date anyway.
+      if (!res.ok) break;
     }
 
-    console.log(
-      `[halo][job] ${job.key} project=${body.projectCode} range=${body.startDate}..${body.endDate} ` +
-        `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
-    );
+    const failed = perDate.find((entry) => entry.status < 200 || entry.status >= 300);
+    const remaining = dates.length - perDate.length;
+    const ok = !failed && !remaining;
 
     return NextResponse.json(
       {
-        ok: res.ok,
-        status: res.status,
-        // What HALO actually sent, so a surprising result is diagnosable.
-        sent: { url: `${base}${job.path}`, payload },
-        result: parsed ?? text.slice(0, 4000),
+        ok,
+        status: failed?.status ?? 200,
+        // Surfaced as `error` because that is the field both callers read; the
+        // upstream message was previously only inside `result`, so a failure
+        // rendered as a bare "status 502" and said nothing about why.
+        ...(ok
+          ? {}
+          : {
+              error: failed
+                ? upstreamMessage(failed.result, failed.status) +
+                  (failed.date ? ` (on ${failed.date})` : "")
+                : `Ran out of time after ${perDate.length} of ${dates.length} dates. ` +
+                  `Re-run from ${dates[perDate.length]} — this job is idempotent.`,
+            }),
+        sent: { url: `${base}${job.path}`, payload: lastPayload },
+        ...(job.perDay ? { dates: dates.length, completed: perDate.filter((e) => e.status < 300).length } : {}),
+        result: job.perDay ? perDate : (perDate[0]?.result ?? null),
       },
-      { status: res.ok ? 200 : 502 },
+      { status: ok ? 200 : 502 },
     );
   } catch (error) {
     const aborted = error instanceof Error && error.name === "AbortError";
@@ -131,7 +199,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       },
       { status: 504 },
     );
-  } finally {
-    clearTimeout(timer);
   }
 }

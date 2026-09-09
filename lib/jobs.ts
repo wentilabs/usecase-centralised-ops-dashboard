@@ -28,8 +28,23 @@ export type JobInput = {
   projectCode: string;
   startDate: string;
   endDate: string;
+  /** The single date being sent, for a `perDay` job. Absent for range jobs. */
+  date?: string;
   flags?: Record<string, boolean>;
 };
+
+/** Every date in an inclusive range, as YYYY-MM-DD. */
+export function eachDate(startDate: string, endDate: string): string[] {
+  const out: string[] = [];
+  for (
+    let at = Date.parse(`${startDate}T00:00:00Z`);
+    at <= Date.parse(`${endDate}T00:00:00Z`);
+    at += 86_400_000
+  ) {
+    out.push(new Date(at).toISOString().slice(0, 10));
+  }
+  return out;
+}
 
 /**
  * What must already be true of a project before the job can do its work.
@@ -60,6 +75,16 @@ export type JobDefinition = {
   precondition: JobPrecondition;
   /** Inclusive day limit the endpoint itself enforces, if any. */
   maxSpanDays?: number;
+  /**
+   * The endpoint takes ONE date, not a range, so HALO walks the range for it.
+   *
+   * `noise-sheet-sync` is the case: it accepts `date` and nothing else, and it
+   * used to be sent `start_date`/`end_date`, which it silently ignored — so the
+   * job filled whichever day `resolveReportingDay` defaulted to, whatever range
+   * the operator typed. INV-NOISE-15's strict body check turned that into a 400
+   * and made it visible. `buildPayload` receives one `date` per call.
+   */
+  perDay?: boolean;
   /** Optional booleans the endpoint accepts. */
   flags?: JobFlag[];
   /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
@@ -158,14 +183,17 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     service: "noise",
     label: "⟳ Sync sheet",
     title: "Sync the noise analysis sheet",
-    description: "Writes each day's readings into the analysis workbook for the range given. Idempotent.",
+    description:
+      "Writes each day's readings into the analysis workbook. The endpoint takes one day at a time, so HALO calls it once per date in the range. Idempotent.",
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-sync",
     precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
-    buildPayload: ({ projectCode, startDate, endDate }) => ({
+    // One date per call — see `perDay`. The accepted keys are project_code,
+    // project_codes, date, dryRun, dry_run, force; anything else is a 400.
+    perDay: true,
+    buildPayload: ({ projectCode, date }) => ({
       project_code: projectCode,
-      start_date: startDate,
-      end_date: endDate,
+      date,
     }),
   },
   "wbgt-fill": {

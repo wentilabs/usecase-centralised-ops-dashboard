@@ -14,7 +14,7 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
-import { EXPORT_FORMATS, EXPORTS, JOBS, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import { EXPORT_FORMATS, EXPORTS, JOBS, eachDate, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
   describeSelection,
@@ -640,11 +640,22 @@ test("each job builds the payload its own endpoint expects", () => {
     start_date: "2026-07-01",
     end_date: "2026-07-31",
   });
-  assert.deepEqual(JOBS["noise-sync"].buildPayload(input), {
+  // noise-sheet-sync takes ONE date. It was sent start_date/end_date, which the
+  // endpoint never accepted — silently ignored until INV-NOISE-15's strict body
+  // check turned it into a 400, at which point every project in a bulk run
+  // failed. HALO walks the range and sends one date per call (`perDay`).
+  assert.equal(JOBS["noise-sync"].perDay, true);
+  assert.deepEqual(JOBS["noise-sync"].buildPayload({ ...input, date: "2026-07-04" }), {
     project_code: "ZRA",
-    start_date: "2026-07-01",
-    end_date: "2026-07-31",
+    date: "2026-07-04",
   });
+  assert.deepEqual(eachDate("2026-07-01", "2026-07-04"), [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+  ]);
+  assert.deepEqual(eachDate("2026-07-01", "2026-07-01"), ["2026-07-01"], "a single day is one call");
   // wbgt-sheet-fill: camelCase, and resolveDates() only enumerates a range when
   // given from + to.
   assert.deepEqual(JOBS["wbgt-fill"].buildPayload(input), {
@@ -652,6 +663,47 @@ test("each job builds the payload its own endpoint expects", () => {
     from: "2026-07-01",
     to: "2026-07-31",
   });
+});
+
+test("every noise payload key is one the endpoint actually accepts", async () => {
+  // The check that was missing. Each noise route declares `allowedKeys` and
+  // rejects anything else with a 400 naming the key (INV-NOISE-15) — so a
+  // payload HALO builds from a stale idea of the contract fails every project
+  // in a run at once, which is exactly what happened to noise-sync.
+  const routes: Record<string, string> = {
+    "noise-bootstrap": "api/noise-sheet-bootstrap.js",
+    "noise-sync": "api/noise-sheet-sync.js",
+  };
+
+  for (const [key, file] of Object.entries(routes)) {
+    const source = await readFile(
+      resolve(process.cwd(), "..", "usecase-wohhup-noise-meter-alerts", file),
+      "utf8",
+    ).catch(() => null);
+    // The sibling repo is not always checked out beside this one; skipping
+    // beats making the suite depend on a directory layout.
+    if (source === null) continue;
+
+    const declared = /allowedKeys:\s*\[([^\]]*)\]/.exec(source);
+    assert.ok(declared, `${file} no longer declares allowedKeys`);
+    const accepted = new Set(
+      [...declared[1].matchAll(/["']([^"']+)["']/g)].map((match) => match[1]),
+    );
+
+    const job = JOBS[key as keyof typeof JOBS];
+    const payload = job.buildPayload({
+      projectCode: "ZRA",
+      startDate: "2026-07-01",
+      endDate: "2026-07-31",
+      ...(job.perDay ? { date: "2026-07-01" } : {}),
+    });
+    for (const sent of Object.keys(payload)) {
+      assert.ok(
+        accepted.has(sent),
+        `${key} sends "${sent}", which ${file} rejects. It accepts: ${[...accepted].join(", ")}`,
+      );
+    }
+  }
 });
 
 test("the historical scrape always sends its mandatory opt-in", () => {

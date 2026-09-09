@@ -11,6 +11,7 @@ import { BatchProposal, type Batch } from "./BatchProposal";
 import { OnboardProposal, type OnboardPlanView } from "./OnboardProposal";
 import { LightningMap } from "./LightningMap";
 import { NoiseLimits } from "./NoiseLimits";
+import { JobBatch, type JobPlan } from "./JobBatch";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
@@ -112,6 +113,8 @@ export function DashboardShell({
   /** A chat request covering several projects, awaiting review. */
   const [batch, setBatch] = useState<{ batch: Batch; note: string } | null>(null);
   const [onboardPlan, setOnboardPlan] = useState<OnboardPlanView | null>(null);
+  /** A sheet job the chat proposed, awaiting review. Nothing has run yet. */
+  const [jobPlan, setJobPlan] = useState<JobPlan | null>(null);
 
   // Names arrive with the page from ops.whatsapp_group_names; refreshing
   // re-reads the listener log and updates that shared table for everyone.
@@ -239,6 +242,8 @@ export function DashboardShell({
     [],
   );
 
+  const proposeJobs = useCallback((plan: unknown) => setJobPlan(plan as JobPlan), []);
+
   const proposeOnboard = useCallback(
     (plan: { summary: string; company: string | null; services: unknown[] }) => {
       setOnboardPlan(plan as OnboardPlanView);
@@ -341,6 +346,7 @@ export function DashboardShell({
           fullWidth
           onProposal={proposeChange}
           onBatch={proposeBatch}
+          onJobs={proposeJobs}
           onOnboard={proposeOnboard}
           flash={proposeFlash}
           registerInput={(element) => {
@@ -403,6 +409,7 @@ export function DashboardShell({
           <SmartChat
             onProposal={proposeChange}
             onBatch={proposeBatch}
+            onJobs={proposeJobs}
             onOnboard={proposeOnboard}
             flash={proposeFlash}
             registerInput={(element) => {
@@ -658,6 +665,8 @@ export function DashboardShell({
           onClose={() => setLightningMap(null)}
         />
       ) : null}
+
+      {jobPlan ? <JobBatch plan={jobPlan} onClose={() => setJobPlan(null)} /> : null}
 
       {noiseLimits !== null ? (
         <NoiseLimits

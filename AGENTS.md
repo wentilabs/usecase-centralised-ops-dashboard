@@ -480,6 +480,34 @@ found sitting unlabelled in the "Other" bucket:
 curl -s localhost:5178/api/schema | grep -o '"[a-z_]*formatter"'
 ```
 
+## Running a job from the chat
+
+`{"op":"job"}` is the chat equivalent of pressing a service's action button once
+per project. "Bootstrap all the sheets from start of July 2026 to end of 2026 for
+noise service" resolves to `noise-bootstrap`, `2026-07-01`–`2026-12-31`, every
+Noise project — 24 that can run and 6 listed with the reason they cannot.
+
+The division of labour is the same as every other op, and worth keeping: the
+model names the JOB KEY and the DATES, and nothing else. Which projects it covers
+comes from the scope, and whether each one can run is `jobTargets` against the
+live row. An invented job key is refused against the registry the way an invented
+project code selects nothing.
+
+Two things the reply is careful about. A job belongs to one service, so a scope
+naming others is narrowed to it and the rest reported as set aside rather than
+the request being refused for being too broad. And a blocked project is listed
+with `precondition.unmet` — `jobTargets` leaves `reason` null whenever the
+precondition defines no `detail`, which is most of them, so the fallback is what
+makes the list diagnosable rather than just short.
+
+Nothing is triggered by the chat. `JobBatch` runs each project through
+`POST /api/jobs/{job}`, which carries the `jobs` scope that `write` deliberately
+does not confer, so the chat is not a second way to reach a service. Runs go one
+at a time: these build Google Sheets against a quota shared by every service on
+one credential, and firing two dozen at once is the fastest way to a 429 storm.
+Sequential also makes Stop mean something — it halts before the next project
+rather than after everything has been dispatched.
+
 ## Noise limits
 
 The `📏 Noise limits` link on a noise card opens the permissible levels its

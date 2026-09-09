@@ -500,7 +500,35 @@ export type BulkOp =
   /** Remove delivery groups whose name matches `phrase`. Matching happens in code. */
   | { kind: "remove-groups"; phrase: string; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
   | { kind: "defaults"; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
+  /**
+   * Run one of the sheet jobs across a scope — the chat equivalent of pressing
+   * a service's action button once per project.
+   *
+   * The model names the job KEY and the dates and nothing else. Which projects
+   * it covers is resolved from the scope like every other op, and whether each
+   * one can actually run is `jobTargets` in code, against the live row. Nothing
+   * is triggered here: this returns a list the operator confirms, and each run
+   * then goes through `POST /api/jobs/{job}`, which carries the `jobs` scope
+   * that `write` deliberately does not confer.
+   */
+  | {
+      kind: "job";
+      job: string;
+      startDate: string;
+      endDate: string;
+      summary: string;
+      where: RowCondition[];
+      scope: ScopeOverride | null;
+    }
   | { kind: "question"; question: string };
+
+/** `YYYY-MM-DD`, and a real date — "2026-02-31" parses and is not one. */
+function isIsoDate(value: unknown): value is string {
+  const text = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
 
 /**
  * Read the model's bulk answer.
@@ -528,6 +556,18 @@ export function parseBulkOp(parsed: Record<string, unknown> | null): BulkOp | nu
     const phrase = String(parsed.phrase ?? "").trim();
     if (!phrase) return null;
     return { kind: "remove-groups", phrase, summary, where, scope };
+  }
+  if (op === "job") {
+    // The job key is checked against the real registry by the caller, which
+    // owns it; here it only has to be a non-empty string. The dates are checked
+    // HERE because a job with a malformed or reversed range is a request that
+    // cannot be executed at all, and saying so beats sending it on.
+    const job = String(parsed.job ?? "").trim();
+    const startDate = String(parsed.start_date ?? parsed.startDate ?? "").trim();
+    const endDate = String(parsed.end_date ?? parsed.endDate ?? "").trim();
+    if (!job || !isIsoDate(startDate) || !isIsoDate(endDate)) return null;
+    if (startDate > endDate) return null;
+    return { kind: "job", job, startDate, endDate, summary, where, scope };
   }
   if (op === "onboard") return { kind: "onboard", summary };
   if (op === "defaults") return { kind: "defaults", summary, where, scope };
@@ -698,6 +738,7 @@ export const BULK_SYSTEM_PROMPT = [
   '  {"op":"set","changes":{"<column>":<value>},"where":[<condition>],"scope":<scope>,"summary":"<one sentence>"}',
   '  {"op":"remove-groups","phrase":"<the group name as the person described it>","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"defaults","where":[<condition>],"summary":"<one sentence>"}',
+  '  {"op":"job","job":"<job key>","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","scope":<scope>,"summary":"<one sentence>"}',
   '  {"op":"onboard","summary":"<one sentence>"}   // the request is to CREATE projects, not change existing ones',
   "",
   '  <condition> = {"column":"<column>","op":"is"|"is-not"|"empty"|"not-empty"|"contains","value":<value>}',
@@ -735,6 +776,20 @@ export const BULK_SYSTEM_PROMPT = [
   "  done in code, and the operator reviews the matches before anything is written.",
   '- `defaults` resets the cadence and formatter columns to their documented defaults. It never touches delivery',
   "  groups, sheet ids or coordinates.",
+  "- `job` RUNS one of the sheet jobs, once per project in scope — the chat equivalent of pressing a",
+  "  service's action button for each of them. Use it when the request is about the WORKBOOKS rather than a",
+  '  setting: "bootstrap all the noise sheets for the second half of 2026", "re-sync WBGT sheets for August",',
+  '  "backfill the scrape for CFC last week". The job keys are:',
+  "    noise-bootstrap   — lay out a noise analysis workbook: tabs and date columns for a range",
+  "    noise-sync        — write each day's readings into that workbook. Idempotent",
+  "    wbgt-fill         — fill the WBGT monthly sheet from stored readings. Idempotent",
+  "    wbgt-scrape       — replay a historical CloudLynx scrape to recover missing readings",
+  "    wbgt-water-parade — rebuild the Water Parade log",
+  "  Give both dates as YYYY-MM-DD and resolve relative wording yourself: “the second half of 2026” is",
+  '  2026-07-01 to 2026-12-31, "start of July to end of the year" the same, "last month" that whole month.',
+  "  A job belongs to one service, so a scope naming others is narrowed to it and the rest reported as set",
+  "  aside — you do not have to name the service separately. Nothing runs from your answer: the operator is",
+  "  shown every project, whether each one can run, and confirms before anything is triggered.",
   "- Change the fewest columns that achieve what was asked.",
   "- If the sentence is ambiguous, or asks for something no column covers, ask a question instead of guessing.",
   "- Every change is read out to the operator before it is applied — project by project when there are several,",

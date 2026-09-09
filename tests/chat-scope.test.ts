@@ -550,3 +550,52 @@ test("the bulk model can say a request is a creation, not a change", () => {
   assert.match(BULK_SYSTEM_PROMPT, /"op":"onboard"/, "and the prompt must offer it");
   assert.match(BULK_SYSTEM_PROMPT, /do not exist yet/i);
 });
+
+test("a job request names a key and a real date range, or it is not a job", () => {
+  // The chat equivalent of pressing a service's action button once per project.
+  // The model supplies the key and the dates; which projects it covers and
+  // whether each can run are decided in code, like every other op.
+  const ok = parseBulkOp({
+    op: "job",
+    job: "noise-bootstrap",
+    start_date: "2026-07-01",
+    end_date: "2026-12-31",
+    scope: { services: ["noise"], all: true },
+    summary: "Bootstrap every noise workbook for the second half of 2026",
+  });
+  assert.equal(ok?.kind, "job");
+  assert.deepEqual(
+    ok?.kind === "job" ? [ok.job, ok.startDate, ok.endDate] : null,
+    ["noise-bootstrap", "2026-07-01", "2026-12-31"],
+  );
+
+  // camelCase too — the model is told snake_case and should not be refused for
+  // answering in the other one.
+  assert.equal(parseBulkOp({ op: "job", job: "noise-sync", startDate: "2026-07-01", endDate: "2026-07-02" })?.kind, "job");
+
+  // A range that cannot be executed is refused here rather than sent onward:
+  // reversed, malformed, or a date that does not exist.
+  for (const bad of [
+    { start_date: "2026-12-31", end_date: "2026-07-01" },
+    { start_date: "01/07/2026", end_date: "31/12/2026" },
+    { start_date: "2026-02-31", end_date: "2026-03-01" },
+    { start_date: "2026-07-01" },
+  ]) {
+    assert.equal(parseBulkOp({ op: "job", job: "noise-bootstrap", ...bad }), null, JSON.stringify(bad));
+  }
+
+  // And a job with no key is not a job.
+  assert.equal(parseBulkOp({ op: "job", start_date: "2026-07-01", end_date: "2026-07-02" }), null);
+});
+
+test("the bulk prompt documents the job op it will be sent", () => {
+  // The recurring failure in this file: the shape grows, the prompt keeps
+  // describing the old one, and the model answers in a form the parser drops.
+  assert.match(BULK_SYSTEM_PROMPT, /"op":"job"/, "the JSON shape is shown");
+  assert.match(BULK_SYSTEM_PROMPT, /start_date/, "and the date keys the parser reads");
+  for (const key of ["noise-bootstrap", "noise-sync", "wbgt-fill", "wbgt-scrape", "wbgt-water-parade"]) {
+    assert.ok(BULK_SYSTEM_PROMPT.includes(key), `${key} must be offered, or it can never be chosen`);
+  }
+  // The worked example is the request this was built for.
+  assert.match(BULK_SYSTEM_PROMPT, /2026-07-01 to 2026-12-31/);
+});

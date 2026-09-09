@@ -40,6 +40,7 @@ import {
 } from "@/lib/chat-onboard";
 import { COMPANIES } from "@/lib/field-spec";
 import { onboardingFor } from "@/lib/onboarding";
+import { JOBS, JOB_KEYS, isJobKey, jobTargets, spanDays } from "@/lib/jobs";
 import { clusterProjects, type ServiceRow } from "@/lib/project-identity";
 import { getGroupNames } from "@/lib/group-names";
 import { chatIdsIn } from "@/lib/card-summary";
@@ -109,6 +110,29 @@ type ChatReply = {
       changes: Record<string, unknown>;
       detail?: string;
     }[];
+  };
+  /**
+   * A sheet job to run, once per project, after the operator confirms.
+   *
+   * Sent instead of `batch` when the request is "do this to the workbooks"
+   * rather than "change this setting". NOTHING is triggered here — the chat
+   * proposes, the review dialog runs each project through `POST /api/jobs/{job}`,
+   * and that route carries the `jobs` scope which `write` deliberately does not
+   * confer. Projects failing the job's precondition are listed with the reason
+   * rather than hidden, the same choice `jobTargets` makes for the button.
+   */
+  jobs?: {
+    job: string;
+    label: string;
+    title: string;
+    serviceLabel: string;
+    startDate: string;
+    endDate: string;
+    /** Inclusive, as the endpoints measure it. */
+    days: number;
+    summary: string;
+    scope: string;
+    runs: { projectCode: string; ready: boolean; reason: string | null }[];
   };
   /**
    * Projects to CREATE, sent instead of the others when the sentence asks for
@@ -318,6 +342,76 @@ async function bulkReply({
     return reply({
       message:
         `No project in ${scopeLabel} has ${describeConditions(op.where)}, so there is nothing to change.`,
+    });
+  }
+
+  if (op.kind === "job") {
+    // The model names a job key; whether it is a real one is decided here,
+    // against the registry, exactly as an invented project code selects nothing.
+    if (!isJobKey(op.job)) {
+      return reply({
+        message:
+          `There is no job called “${op.job}”. HALO can run: ` +
+          `${JOB_KEYS.map((key) => `${key} (${SERVICES[JOBS[key].service].label})`).join(", ")}.`,
+      });
+    }
+    const job = JOBS[op.job];
+
+    // A job belongs to one service, so the scope is narrowed to it rather than
+    // the request being refused for naming more. Saying which projects were set
+    // aside matters: "all projects" on a noise job means the noise ones.
+    const onService = selected.filter((target) => target.service === job.service);
+    if (!onService.length) {
+      return reply({
+        message:
+          `${job.title} runs on ${SERVICES[job.service].label}, and ${scopeLabel} covers none of its projects.`,
+      });
+    }
+    const setAside = selected.length - onService.length;
+
+    const span = spanDays(op.startDate, op.endDate);
+    if (job.maxSpanDays && span > job.maxSpanDays) {
+      return reply({
+        message:
+          `${op.startDate} to ${op.endDate} is ${span} days; ${job.title} accepts at most ${job.maxSpanDays}. ` +
+          "Split it into shorter runs.",
+      });
+    }
+
+    // Readiness per project, from the live row — the same check the button
+    // makes. A project short its sheet id is listed with the reason rather than
+    // dropped, so the answer to "why is that one missing" is on the screen.
+    const serviceRows = (rows[job.service] ?? []) as ProjectConfigRow[];
+    const byCode = new Map(serviceRows.map((row) => [String(row.project_code ?? ""), row]));
+    const targets = jobTargets(
+      job,
+      onService.map((entry) => byCode.get(entry.projectCode)).filter(Boolean) as ProjectConfigRow[],
+    );
+    if (!targets.length) return reply({ message: `No ${SERVICES[job.service].label} project matched.` });
+
+    return reply({
+      jobs: {
+        job: job.key,
+        label: job.label,
+        title: job.title,
+        serviceLabel: SERVICES[job.service].label,
+        startDate: op.startDate,
+        endDate: op.endDate,
+        days: span,
+        summary: op.summary || job.title,
+        scope: setAside
+          ? `${scopeLabel} — ${setAside} project${setAside === 1 ? "" : "s"} on other services set aside`
+          : scopeLabel,
+        runs: targets.map((target) => ({
+          projectCode: target.projectCode,
+          ready: Boolean(target.ready),
+          // `jobTargets` leaves `reason` null when the precondition defines no
+          // `detail`, which is most of them — so fall back to `unmet`, the same
+          // sentence `validateJobInput` shows in the dialog. Listing a blocked
+          // project without saying why is the one thing this list must not do.
+          reason: target.ready ? null : (target.reason ?? job.precondition.unmet(target.projectCode)),
+        })),
+      },
     });
   }
 

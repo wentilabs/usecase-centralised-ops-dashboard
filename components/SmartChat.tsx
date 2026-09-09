@@ -18,6 +18,7 @@ import { useState } from "react";
 export function SmartChat({
   onProposal,
   onBatch,
+  onJobs,
   onOnboard,
   fullWidth = false,
   registerInput,
@@ -40,6 +41,8 @@ export function SmartChat({
    * same reason it travels with a single proposal — every row's audit note.
    */
   onBatch: (batch: { scope: string; summary: string; matchedGroups?: unknown[]; edits: unknown[] }, prompt: string) => void;
+  /** A sheet job to run across a scope, once the operator confirms. */
+  onJobs: (plan: unknown) => void;
   /**
    * Projects to create. A separate surface from `onBatch` because a create has
    * no before-state to diff and can be refused for a field nobody supplied —
@@ -73,6 +76,11 @@ export function SmartChat({
       const body = await res.json();
       if (body.onboard) {
         onOnboard(body.onboard);
+        setMessage(null);
+        return;
+      }
+      if (body.jobs) {
+        onJobs(body.jobs);
         setMessage(null);
         return;
       }

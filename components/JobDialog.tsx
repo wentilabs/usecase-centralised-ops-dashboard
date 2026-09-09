@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
+import { eachChunk, jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -17,6 +17,29 @@ import { useEscapeKey } from "@/lib/use-body-scroll-lock";
  * is listed but not runnable — the button stays disabled and says why, since the
  * job would otherwise report success while doing nothing.
  */
+/**
+ * A response body, or a sentence explaining why there is not one.
+ *
+ * A function killed by the platform answers with nothing, and `res.json()` then
+ * throws "Unexpected end of JSON input" — which describes a parser, not the
+ * request. Reading the text first turns it into something an operator can act on.
+ */
+async function readJson(res: Response): Promise<{ error?: string; result?: unknown } | null> {
+  const text = await res.text().catch(() => "");
+  if (!text.trim()) {
+    return {
+      error:
+        `The service answered ${res.status} with an empty body — the request was almost certainly cut ` +
+        "off before it finished. Try a shorter date range; re-running is safe.",
+    };
+  }
+  try {
+    return JSON.parse(text) as { error?: string; result?: unknown };
+  } catch {
+    return { error: text.slice(0, 300) };
+  }
+}
+
 export function JobDialog({
   job,
   rows,
@@ -34,6 +57,8 @@ export function JobDialog({
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  /** Which chunk is in flight, so a twenty-minute run is not a frozen button. */
+  const [progress, setProgress] = useState<string | null>(null);
 
   useEscapeKey(!busy, onClose);
 
@@ -58,21 +83,45 @@ export function JobDialog({
     setBusy(true);
     setOutcome(null);
     try {
-      const res = await fetch(`/api/jobs/${job.key}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectCode, startDate, endDate, flags }),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        setOutcome({ ok: false, text: body.error ?? `HTTP ${res.status}` });
-        return;
+      /**
+       * A `perDay` endpoint takes one date, so the range is walked here rather
+       * than in the route.
+       *
+       * It was looped server-side first, and that request outlived the
+       * platform's function timeout: it was killed around the tenth day and the
+       * browser got an empty body, which surfaced as "Unexpected end of JSON
+       * input" — a parser message that says nothing about what happened. One
+       * request per date is short enough that no timeout is in play at all.
+       */
+      const chunks = eachChunk(startDate, endDate, job.chunkDays);
+      const results: string[] = [];
+
+      for (const [index, chunk] of chunks.entries()) {
+        const label = chunk.startDate === chunk.endDate ? chunk.startDate : `${chunk.startDate}–${chunk.endDate}`;
+        setProgress(chunks.length > 1 ? `${label} — ${index + 1} of ${chunks.length}` : null);
+        const res = await fetch(`/api/jobs/${job.key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectCode, startDate: chunk.startDate, endDate: chunk.endDate, flags }),
+        });
+        const body = await readJson(res);
+        if (!res.ok) {
+          setOutcome({
+            ok: false,
+            text:
+              `${body?.error ?? `HTTP ${res.status}`}${chunks.length > 1 ? ` (on ${label})` : ""}` +
+              (index > 0 ? `\n\n${index} of ${chunks.length} completed before this. Re-run from ${chunk.startDate}.` : ""),
+          });
+          return;
+        }
+        const summary = typeof body?.result === "string" ? body.result : JSON.stringify(body?.result ?? null, null, 1);
+        results.push(chunks.length > 1 ? `${label}: ${summary}` : summary);
       }
-      const summary = typeof body.result === "string" ? body.result : JSON.stringify(body.result, null, 1);
-      setOutcome({ ok: true, text: summary.slice(0, 1500) });
+      setOutcome({ ok: true, text: results.join("\n").slice(0, 4000) });
     } catch (error) {
       setOutcome({ ok: false, text: error instanceof Error ? error.message : String(error) });
     } finally {
+      setProgress(null);
       setBusy(false);
     }
   }

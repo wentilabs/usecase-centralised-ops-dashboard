@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { eachChunk } from "@/lib/jobs";
 
 /**
  * Running one sheet job across many projects, from a chat request.
@@ -24,6 +25,8 @@ import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
  */
 export type JobPlan = {
   job: string;
+  /** Longest range HALO puts in one request; the client walks the rest. */
+  chunkDays?: number;
   label: string;
   title: string;
   serviceLabel: string;
@@ -61,35 +64,56 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
       halt = true;
     };
 
+    // The range in pieces short enough for one request to answer inside the
+    // platform's function timeout. A single request covering months was killed
+    // mid-flight and the browser saw only an empty body. The RUN can take
+    // twenty minutes; no request in it needs to.
+    const chunks = eachChunk(plan.startDate, plan.endDate, plan.chunkDays);
+
     for (const target of runnable) {
       if (halt) {
         setOutcomes((was) => ({ ...was, [target.projectCode]: { state: "skipped", detail: "stopped" } }));
         continue;
       }
-      setOutcomes((was) => ({ ...was, [target.projectCode]: { state: "running" } }));
-      try {
-        const res = await fetch(`/api/jobs/${plan.job}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectCode: target.projectCode,
-            startDate: plan.startDate,
-            endDate: plan.endDate,
-          }),
-        });
-        const body = await res.json().catch(() => ({}));
+      let failure: string | null = null;
+      for (const [index, chunk] of chunks.entries()) {
+        if (halt) break;
+        const label = chunk.startDate === chunk.endDate ? chunk.startDate : `${chunk.startDate}–${chunk.endDate}`;
         setOutcomes((was) => ({
           ...was,
-          [target.projectCode]: res.ok
-            ? { state: "done" }
-            : { state: "failed", detail: body?.error || `status ${res.status}` },
+          [target.projectCode]: {
+            state: "running",
+            detail: chunks.length > 1 ? `${label} (${index + 1}/${chunks.length})` : undefined,
+          },
         }));
-      } catch (cause) {
-        setOutcomes((was) => ({
-          ...was,
-          [target.projectCode]: { state: "failed", detail: cause instanceof Error ? cause.message : String(cause) },
-        }));
+        try {
+          const res = await fetch(`/api/jobs/${plan.job}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectCode: target.projectCode,
+              startDate: chunk.startDate,
+              endDate: chunk.endDate,
+            }),
+          });
+          const body = await readJson(res);
+          if (!res.ok) {
+            failure = `${body?.error || `status ${res.status}`}${chunks.length > 1 ? ` (on ${label})` : ""}`;
+            break;
+          }
+        } catch (cause) {
+          failure = cause instanceof Error ? cause.message : String(cause);
+          break;
+        }
       }
+      setOutcomes((was) => ({
+        ...was,
+        [target.projectCode]: failure
+          ? { state: "failed", detail: failure }
+          : halt
+            ? { state: "skipped", detail: "stopped part-way" }
+            : { state: "done", detail: chunks.length > 1 ? `${chunks.length} parts` : undefined },
+      }));
     }
     setRunning(false);
     setFinished(true);
@@ -130,11 +154,11 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
                     {!target.ready ? (
                       <span className="text-warn">{target.reason ?? "cannot run"}</span>
                     ) : outcome?.state === "done" ? (
-                      <span className="text-primary">✓ done</span>
+                      <span className="text-primary">✓ done{outcome.detail ? ` · ${outcome.detail}` : ""}</span>
                     ) : outcome?.state === "failed" ? (
                       <span className="text-danger">✗ {outcome.detail}</span>
                     ) : outcome?.state === "running" ? (
-                      <span className="text-foreground">running…</span>
+                      <span className="text-foreground">running… {outcome.detail ?? ""}</span>
                     ) : outcome?.state === "skipped" ? (
                       <span>stopped before this one</span>
                     ) : (
@@ -194,3 +218,27 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
 
 /** Lets the Stop button reach into the loop that is already running. */
 const stopRef: { halt?: () => void } = {};
+
+/**
+ * A response body, or null when there is not one.
+ *
+ * A killed function answers with nothing, and `res.json()` then throws
+ * "Unexpected end of JSON input" — a message about parsing that says nothing
+ * about the request. Reading the text first turns that into a sentence naming
+ * the status.
+ */
+async function readJson(res: Response): Promise<{ error?: string } | null> {
+  const text = await res.text().catch(() => "");
+  if (!text.trim()) {
+    return {
+      error:
+        `The service answered ${res.status} with an empty body — usually the request was cut off ` +
+        "before it finished. Re-running is safe.",
+    };
+  }
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    return { error: text.slice(0, 300) };
+  }
+}

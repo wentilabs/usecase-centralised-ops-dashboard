@@ -8,8 +8,28 @@ import type { ProjectConfigRow } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
 
-/** These jobs write to Google Sheets and can walk a long date range. */
-const TIMEOUT_MS = 60_000;
+/**
+ * One upstream call has to finish well inside the platform's own limit.
+ *
+ * Amplify runs this route on SSR compute with a 30s default and no maxDuration
+ * set, so a route that ran longer was killed mid-flight: the browser got an
+ * empty body and `res.json()` threw "Unexpected end of JSON input", which says
+ * nothing about what happened. 20s leaves room to answer before that.
+ *
+ * A `perDay` job is therefore expanded by the CALLER — one request per date —
+ * rather than looped here. See `eachDate` and JobBatch/JobDialog.
+ */
+const TIMEOUT_MS = 50_000;
+
+/**
+ * The longest a single request may take.
+ *
+ * Amplify's SSR compute caps this regardless, so the number is a request to the
+ * platform and not a guarantee — which is exactly why no run depends on it:
+ * `chunkDays` keeps each request to a slice the endpoint answers quickly, and
+ * the client walks the slices for as long as the work takes.
+ */
+export const maxDuration = 60;
 
 /**
  * The sentence a service returned, from wherever it put it.
@@ -110,6 +130,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
    * Running out of budget reports how far it got; the job is idempotent, so the
    * operator re-runs from the date named.
    */
+  // A `perDay` job gets ONE date per request — the caller walks the range. The
+  // loop below therefore runs once for it, and stays a loop only so a caller
+  // that does send a range gets a bounded, resumable answer rather than a
+  // truncated one.
   const dates = job.perDay ? eachDate(body.startDate as string, body.endDate as string) : [null];
   const deadline = Date.now() + TIMEOUT_MS;
   const perDate: { date: string | null; status: number; result: unknown }[] = [];

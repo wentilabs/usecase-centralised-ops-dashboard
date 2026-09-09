@@ -33,6 +33,32 @@ export type JobInput = {
   flags?: Record<string, boolean>;
 };
 
+/**
+ * An inclusive range split into pieces of at most `chunkDays`.
+ *
+ * `chunkDays` of 1 gives one entry per date, which is what a `perDay` endpoint
+ * needs. Undefined gives the whole range as a single piece.
+ */
+export function eachChunk(
+  startDate: string,
+  endDate: string,
+  chunkDays?: number,
+): { startDate: string; endDate: string }[] {
+  const size = Math.max(1, Math.floor(chunkDays ?? 0));
+  if (!chunkDays || size <= 0) return [{ startDate, endDate }];
+
+  const out: { startDate: string; endDate: string }[] = [];
+  const last = Date.parse(`${endDate}T00:00:00Z`);
+  for (let at = Date.parse(`${startDate}T00:00:00Z`); at <= last; at += size * 86_400_000) {
+    const chunkEnd = Math.min(at + (size - 1) * 86_400_000, last);
+    out.push({
+      startDate: new Date(at).toISOString().slice(0, 10),
+      endDate: new Date(chunkEnd).toISOString().slice(0, 10),
+    });
+  }
+  return out;
+}
+
 /** Every date in an inclusive range, as YYYY-MM-DD. */
 export function eachDate(startDate: string, endDate: string): string[] {
   const out: string[] = [];
@@ -85,6 +111,21 @@ export type JobDefinition = {
    * and made it visible. `buildPayload` receives one `date` per call.
    */
   perDay?: boolean;
+  /**
+   * The longest range HALO will put in ONE request, in days.
+   *
+   * Not a limit the endpoint imposes — a limit the PLATFORM imposes. Amplify
+   * runs these routes on SSR compute with a fixed request timeout, and a job
+   * asked to walk half a year in one call was killed part-way: the browser got
+   * an empty body and "Unexpected end of JSON input", which describes a parser
+   * and not the problem. Chunking keeps every request short; the client walks
+   * the chunks, so a run can take twenty minutes without any single request
+   * needing to.
+   *
+   * Absent means the whole range goes in one request, which is right for the
+   * jobs that finish quickly.
+   */
+  chunkDays?: number;
   /** Optional booleans the endpoint accepts. */
   flags?: JobFlag[];
   /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
@@ -172,6 +213,10 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-bootstrap",
     precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
+    // A fortnight per request. The endpoint accepts any range, but laying out
+    // half a year of columns in one call outlives the platform's request
+    // timeout — the client walks the chunks instead.
+    chunkDays: 14,
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
       start_date: startDate,
@@ -191,6 +236,7 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     // One date per call — see `perDay`. The accepted keys are project_code,
     // project_codes, date, dryRun, dry_run, force; anything else is a 400.
     perDay: true,
+    chunkDays: 1,
     buildPayload: ({ projectCode, date }) => ({
       project_code: projectCode,
       date,
@@ -206,6 +252,9 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     baseUrlEnv: "WBGT_API_URL",
     path: "/api/wbgt-sheet-fill",
     precondition: sheetPrecondition("monthly_sheet_id", "Monthly sheet ID"),
+    // A month per request, for the same platform-timeout reason as the noise
+    // bootstrap. resolveDates() enumerates the range it is given.
+    chunkDays: 31,
     // camelCase, and `from`/`to` rather than start/end — resolveDates() in
     // sheet-fill-job.js only enumerates a range when given body.from + body.to.
     buildPayload: ({ projectCode, startDate, endDate }) => ({

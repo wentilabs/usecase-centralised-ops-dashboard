@@ -123,6 +123,8 @@ type ChatReply = {
    */
   jobs?: {
     job: string;
+    /** Longest range HALO puts in one request; the client walks the rest. */
+    chunkDays?: number;
     label: string;
     title: string;
     serviceLabel: string;
@@ -409,6 +411,7 @@ async function bulkReply({
     return reply({
       jobs: {
         job: job.key,
+        ...(job.chunkDays ? { chunkDays: job.chunkDays } : {}),
         label: job.label,
         title: job.title,
         serviceLabel: SERVICES[job.service].label,

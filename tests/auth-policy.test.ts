@@ -14,7 +14,7 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
-import { EXPORT_FORMATS, EXPORTS, JOBS, eachDate, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, eachDate, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
   describeSelection,
@@ -2081,4 +2081,47 @@ test("job state is stripped from a history, and an entry that was only job state
     }),
     { enabled: { from: false, to: true } },
   );
+});
+
+test("a long range is split so no single request depends on the platform's timeout", () => {
+  // The failure this exists for: a job asked to walk half a year in one request
+  // was killed by Amplify's SSR timeout around the tenth day, and the browser
+  // got an empty body — surfaced as "Unexpected end of JSON input", a message
+  // about a parser rather than about the request. Chunking moves the length of
+  // the RUN into the client, where nothing caps it.
+  assert.deepEqual(
+    eachChunk("2026-09-01", "2026-09-05", 1).map((c) => c.startDate),
+    ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"],
+    "a per-day endpoint gets one date per request",
+  );
+
+  // Chunks are contiguous and inclusive: no date may fall between two of them,
+  // and none may be covered twice — a gap is a day that never gets written.
+  const chunks = eachChunk("2026-07-01", "2026-12-31", 14);
+  assert.equal(chunks[0].startDate, "2026-07-01");
+  assert.equal(chunks[chunks.length - 1].endDate, "2026-12-31");
+  for (let index = 1; index < chunks.length; index += 1) {
+    const previousEnd = Date.parse(`${chunks[index - 1].endDate}T00:00:00Z`);
+    const thisStart = Date.parse(`${chunks[index].startDate}T00:00:00Z`);
+    assert.equal(thisStart - previousEnd, 86_400_000, `gap or overlap before ${chunks[index].startDate}`);
+  }
+  assert.equal(
+    chunks.reduce((total, c) => total + spanDays(c.startDate, c.endDate), 0),
+    spanDays("2026-07-01", "2026-12-31"),
+    "every day in the range is covered exactly once",
+  );
+
+  // No chunk size means the whole range in one request, which is right for the
+  // jobs that answer quickly.
+  assert.deepEqual(eachChunk("2026-07-01", "2026-12-31"), [
+    { startDate: "2026-07-01", endDate: "2026-12-31" },
+  ]);
+  // A single day is one chunk however the job is configured.
+  assert.equal(eachChunk("2026-07-01", "2026-07-01", 14).length, 1);
+
+  // The jobs that write a workbook all declare one, because they are the slow
+  // ones. A new sheet job without a chunk size is the same trap again.
+  for (const key of ["noise-bootstrap", "noise-sync", "wbgt-fill"] as const) {
+    assert.ok(JOBS[key].chunkDays, `${key} must say how much it will do in one request`);
+  }
 });

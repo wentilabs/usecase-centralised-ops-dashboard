@@ -85,6 +85,9 @@ export function summariseJobResult(result: unknown): string {
 /** Count fields worth reporting, and what to call them in one line. */
 const COUNT_KEYS: Record<string, string> = {
   configs_processed: "projects",
+  // Added by the noise repo's 7562c33 alongside range support, so a ranged run
+  // says how many days it covered rather than only that it answered.
+  dates_processed: "dates",
   metersProcessed: "meters",
   records: "records",
   recordsWritten: "records",

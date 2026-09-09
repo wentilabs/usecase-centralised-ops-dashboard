@@ -28,8 +28,6 @@ export type JobInput = {
   projectCode: string;
   startDate: string;
   endDate: string;
-  /** The single date being sent, for a `perDay` job. Absent for range jobs. */
-  date?: string;
   flags?: Record<string, boolean>;
 };
 
@@ -59,18 +57,6 @@ export function eachChunk(
   return out;
 }
 
-/** Every date in an inclusive range, as YYYY-MM-DD. */
-export function eachDate(startDate: string, endDate: string): string[] {
-  const out: string[] = [];
-  for (
-    let at = Date.parse(`${startDate}T00:00:00Z`);
-    at <= Date.parse(`${endDate}T00:00:00Z`);
-    at += 86_400_000
-  ) {
-    out.push(new Date(at).toISOString().slice(0, 10));
-  }
-  return out;
-}
 
 /**
  * What must already be true of a project before the job can do its work.
@@ -101,16 +87,6 @@ export type JobDefinition = {
   precondition: JobPrecondition;
   /** Inclusive day limit the endpoint itself enforces, if any. */
   maxSpanDays?: number;
-  /**
-   * The endpoint takes ONE date, not a range, so HALO walks the range for it.
-   *
-   * `noise-sheet-sync` is the case: it accepts `date` and nothing else, and it
-   * used to be sent `start_date`/`end_date`, which it silently ignored — so the
-   * job filled whichever day `resolveReportingDay` defaulted to, whatever range
-   * the operator typed. INV-NOISE-15's strict body check turned that into a 400
-   * and made it visible. `buildPayload` receives one `date` per call.
-   */
-  perDay?: boolean;
   /**
    * The longest range HALO will put in ONE request, in days.
    *
@@ -213,10 +189,12 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-bootstrap",
     precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
-    // A fortnight per request. The endpoint accepts any range, but laying out
-    // half a year of columns in one call outlives the platform's request
-    // timeout — the client walks the chunks instead.
-    chunkDays: 14,
+    // A week per request. Not measured directly — bootstrapping rewrites a
+    // workbook's structure and is not something to time against a live one — but
+    // the sync numbers next door put the heaviest project at 2–3s per day, and a
+    // fortnight at that rate would sit past the platform's limit. Seven is the
+    // conservative read of a measurement taken on the neighbouring job.
+    chunkDays: 7,
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
       start_date: startDate,
@@ -228,18 +206,31 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     service: "noise",
     label: "⟳ Sync sheet",
     title: "Sync the noise analysis sheet",
-    description:
-      "Writes each day's readings into the analysis workbook. The endpoint takes one day at a time, so HALO calls it once per date in the range. Idempotent.",
+    description: "Writes each day's readings into the analysis workbook for the range given. Idempotent.",
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-sync",
     precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
-    // One date per call — see `perDay`. The accepted keys are project_code,
-    // project_codes, date, dryRun, dry_run, force; anything else is a 400.
-    perDay: true,
-    chunkDays: 1,
-    buildPayload: ({ projectCode, date }) => ({
+    /**
+     * A range per call, four days at a time.
+     *
+     * `7562c33` in the noise repo taught this endpoint `start_date`/`end_date`.
+     * Before that it took one `date`, so HALO walked the range a day at a time —
+     * and the cost of that was almost all overhead: measured against the live
+     * service on P105, the estate's heaviest project at 11 meters, a single day
+     * cold is 13.2s while four days together are 12.3s, and fifteen are 30.1s.
+     * Per day that is 13.2s → 3.1s → 2.0s. The config load and the workbook read
+     * happen once per CALL, not once per date, so the fewer calls the better.
+     *
+     * Four rather than more because the request still has to answer inside the
+     * platform's own limit: 8 days measured 23.3s and 15 days 30.1s, which is
+     * already at it. Four leaves room for a cold start on the first call of a
+     * batch, which costs about ten seconds on its own.
+     */
+    chunkDays: 4,
+    buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
-      date,
+      start_date: startDate,
+      end_date: endDate,
     }),
   },
   "wbgt-fill": {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { JOBS, eachDate, isJobKey, validateJobInput } from "@/lib/jobs";
+import { JOBS, isJobKey, validateJobInput } from "@/lib/jobs";
 import { listConfigs } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * A `perDay` job is therefore expanded by the CALLER — one request per date —
  * rather than looped here. See `eachDate` and JobBatch/JobDialog.
  */
-const TIMEOUT_MS = 50_000;
+const TIMEOUT_MS = 25_000;
 
 /**
  * The longest a single request may take.
@@ -130,11 +130,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
    * Running out of budget reports how far it got; the job is idempotent, so the
    * operator re-runs from the date named.
    */
-  // A `perDay` job gets ONE date per request — the caller walks the range. The
-  // loop below therefore runs once for it, and stays a loop only so a caller
-  // that does send a range gets a bounded, resumable answer rather than a
-  // truncated one.
-  const dates = job.perDay ? eachDate(body.startDate as string, body.endDate as string) : [null];
+  // One chunk in, one upstream call out — the caller walks the range, sized by
+  // the job's `chunkDays`. The loop is kept for a caller that sends more than a
+  // chunk anyway, so the answer is partial-and-resumable rather than truncated.
+  const dates = [null];
   const deadline = Date.now() + TIMEOUT_MS;
   const perDate: { date: string | null; status: number; result: unknown }[] = [];
   let lastPayload: Record<string, unknown> = {};
@@ -206,8 +205,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
                   `Re-run from ${dates[perDate.length]} — this job is idempotent.`,
             }),
         sent: { url: `${base}${job.path}`, payload: lastPayload },
-        ...(job.perDay ? { dates: dates.length, completed: perDate.filter((e) => e.status < 300).length } : {}),
-        result: job.perDay ? perDate : (perDate[0]?.result ?? null),
+
+        result: perDate[0]?.result ?? null,
       },
       { status: ok ? 200 : 502 },
     );

@@ -15,7 +15,7 @@ import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-va
 import { readJson, summariseJobResult } from "../lib/read-json";
 import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
-import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, eachDate, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
   buildToggles,
   describeSelection,
@@ -641,22 +641,15 @@ test("each job builds the payload its own endpoint expects", () => {
     start_date: "2026-07-01",
     end_date: "2026-07-31",
   });
-  // noise-sheet-sync takes ONE date. It was sent start_date/end_date, which the
-  // endpoint never accepted — silently ignored until INV-NOISE-15's strict body
-  // check turned it into a 400, at which point every project in a bulk run
-  // failed. HALO walks the range and sends one date per call (`perDay`).
-  assert.equal(JOBS["noise-sync"].perDay, true);
-  assert.deepEqual(JOBS["noise-sync"].buildPayload({ ...input, date: "2026-07-04" }), {
+  // noise-sheet-sync learned start_date/end_date in the noise repo's 7562c33.
+  // Before that it took one `date` and was being sent a range it silently
+  // ignored — so the job filled whichever day it defaulted to. It takes the
+  // range now, and HALO sends one.
+  assert.deepEqual(JOBS["noise-sync"].buildPayload(input), {
     project_code: "ZRA",
-    date: "2026-07-04",
+    start_date: "2026-07-01",
+    end_date: "2026-07-31",
   });
-  assert.deepEqual(eachDate("2026-07-01", "2026-07-04"), [
-    "2026-07-01",
-    "2026-07-02",
-    "2026-07-03",
-    "2026-07-04",
-  ]);
-  assert.deepEqual(eachDate("2026-07-01", "2026-07-01"), ["2026-07-01"], "a single day is one call");
   // wbgt-sheet-fill: camelCase, and resolveDates() only enumerates a range when
   // given from + to.
   assert.deepEqual(JOBS["wbgt-fill"].buildPayload(input), {
@@ -696,7 +689,6 @@ test("every noise payload key is one the endpoint actually accepts", async () =>
       projectCode: "ZRA",
       startDate: "2026-07-01",
       endDate: "2026-07-31",
-      ...(job.perDay ? { date: "2026-07-01" } : {}),
     });
     for (const sent of Object.keys(payload)) {
       assert.ok(
@@ -2124,6 +2116,16 @@ test("a long range is split so no single request depends on the platform's timeo
   // ones. A new sheet job without a chunk size is the same trap again.
   for (const key of ["noise-bootstrap", "noise-sync", "wbgt-fill"] as const) {
     assert.ok(JOBS[key].chunkDays, `${key} must say how much it will do in one request`);
+  }
+
+  // Sized from a measurement, not a guess: 8 days of noise-sync on the heaviest
+  // project took 23.3s against a platform limit of about 30. A chunk that grows
+  // past a week is one that starts being killed mid-write.
+  for (const key of ["noise-bootstrap", "noise-sync"] as const) {
+    assert.ok(
+      (JOBS[key].chunkDays ?? 0) <= 7,
+      `${key} asks for ${JOBS[key].chunkDays} days in one request; 8 measured 23.3s and 15 measured 30.1s`,
+    );
   }
 });
 

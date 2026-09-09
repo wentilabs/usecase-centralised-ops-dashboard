@@ -1,5 +1,6 @@
 "use client";
 
+import { readJson } from "@/lib/read-json";
 import { useState } from "react";
 
 /**
@@ -73,7 +74,18 @@ export function SmartChat({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: asked }),
       });
-      const body = await res.json();
+      // The one route here that a platform timeout can genuinely reach: it calls
+      // a model. `readJson` turns an empty body into a sentence rather than
+      // "Unexpected end of JSON input", which describes a parser and not the
+      // request. The shape is the route's own ChatReply, loosely.
+      const body = (await readJson(res)) as {
+        message?: string;
+        error?: string;
+        proposal?: { summary: string } & Record<string, unknown>;
+        batch?: { scope: string; summary: string; matchedGroups?: unknown[]; edits: unknown[] };
+        jobs?: unknown;
+        onboard?: Parameters<typeof onOnboard>[0];
+      };
       if (body.onboard) {
         onOnboard(body.onboard);
         setMessage(null);
@@ -92,7 +104,7 @@ export function SmartChat({
       if (body.proposal) {
         // The sentence travels with the proposal and lands in the audit note, so
         // the trail records what was asked for, not just what changed.
-        onProposal({ ...body.proposal, summary: body.proposal.summary });
+        onProposal({ ...(body.proposal as Parameters<typeof onProposal>[0]), summary: body.proposal.summary });
         // The prompt STAYS. A proposal is usually the first draft of a request —
         // one radius wrong, or the wrong project — and retyping the whole
         // sentence to change a digit is the kind of small hostility that stops
@@ -100,7 +112,7 @@ export function SmartChat({
         setMessage(null);
         return;
       }
-      setMessage(body.message ?? `HTTP ${res.status}`);
+      setMessage(body.message ?? body.error ?? `HTTP ${res.status}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {

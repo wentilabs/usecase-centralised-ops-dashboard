@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { eachChunk } from "@/lib/jobs";
+import { readJson, summariseJobResult } from "@/lib/read-json";
 
 /**
  * Running one sheet job across many projects, from a chat request.
@@ -45,6 +46,30 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
   const blocked = useMemo(() => plan.runs.filter((run) => !run.ready), [plan.runs]);
 
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
+  /**
+   * A running log, because a long batch is otherwise a row of spinners.
+   *
+   * One line per request, carrying what the service reported rather than just
+   * that it answered — "3 meters, 288 records" and "nothing to write" are the
+   * difference between a run that worked and one that quietly did nothing, and
+   * both come back as 200.
+   */
+  const [log, setLog] = useState<{ at: string; text: string; tone: "ok" | "bad" | "info" }[]>([]);
+  const say = (text: string, tone: "ok" | "bad" | "info" = "info") =>
+    setLog((was) => [
+      ...was,
+      {
+        at: new Intl.DateTimeFormat("en-SG", {
+          timeZone: "Asia/Singapore",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).format(new Date()),
+        text,
+        tone,
+      },
+    ]);
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -69,6 +94,12 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
     // mid-flight and the browser saw only an empty body. The RUN can take
     // twenty minutes; no request in it needs to.
     const chunks = eachChunk(plan.startDate, plan.endDate, plan.chunkDays);
+    setLog([]);
+    say(
+      `${plan.title} · ${runnable.length} project${runnable.length === 1 ? "" : "s"} × ` +
+        `${chunks.length} request${chunks.length === 1 ? "" : "s"} = ${runnable.length * chunks.length} calls`,
+    );
+    const startedAt = Date.now();
 
     for (const target of runnable) {
       if (halt) {
@@ -99,10 +130,13 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
           const body = await readJson(res);
           if (!res.ok) {
             failure = `${body?.error || `status ${res.status}`}${chunks.length > 1 ? ` (on ${label})` : ""}`;
+            say(`${target.projectCode} ${label} — ${failure}`, "bad");
             break;
           }
+          say(`${target.projectCode} ${label} — ${summariseJobResult(body.result)}`, "ok");
         } catch (cause) {
           failure = cause instanceof Error ? cause.message : String(cause);
+          say(`${target.projectCode} ${label} — ${failure}`, "bad");
           break;
         }
       }
@@ -115,6 +149,8 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
             : { state: "done", detail: chunks.length > 1 ? `${chunks.length} parts` : undefined },
       }));
     }
+    const minutes = Math.round((Date.now() - startedAt) / 6_000) / 10;
+    say(`Finished in ${minutes} min`, "info");
     setRunning(false);
     setFinished(true);
   }
@@ -170,6 +206,45 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
             })}
           </ul>
 
+          {log.length ? (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Log</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigator.clipboard?.writeText(log.map((line) => `${line.at}  ${line.text}`).join("\n"))
+                  }
+                  className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                >
+                  Copy
+                </button>
+              </div>
+              {/* Newest last and scrolled to the bottom: a log is read in the
+                  order it happened, and the interesting line during a run is
+                  the one that just arrived. */}
+              <div
+                className="max-h-48 overflow-y-auto rounded-lg border border-border bg-background/60 p-2 font-mono text-[11px] leading-relaxed"
+                ref={(node) => {
+                  if (node) node.scrollTop = node.scrollHeight;
+                }}
+              >
+                {log.map((line, index) => (
+                  <div key={index} className="whitespace-pre-wrap">
+                    <span className="text-muted-foreground">{line.at}</span>{" "}
+                    <span
+                      className={
+                        line.tone === "bad" ? "text-danger" : line.tone === "ok" ? "text-foreground" : "text-primary"
+                      }
+                    >
+                      {line.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {finished ? (
             <p className="text-xs">
               <span className="text-primary">{done} finished</span>
@@ -219,26 +294,3 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
 /** Lets the Stop button reach into the loop that is already running. */
 const stopRef: { halt?: () => void } = {};
 
-/**
- * A response body, or null when there is not one.
- *
- * A killed function answers with nothing, and `res.json()` then throws
- * "Unexpected end of JSON input" — a message about parsing that says nothing
- * about the request. Reading the text first turns that into a sentence naming
- * the status.
- */
-async function readJson(res: Response): Promise<{ error?: string } | null> {
-  const text = await res.text().catch(() => "");
-  if (!text.trim()) {
-    return {
-      error:
-        `The service answered ${res.status} with an empty body — usually the request was cut off ` +
-        "before it finished. Re-running is safe.",
-    };
-  }
-  try {
-    return JSON.parse(text) as { error?: string };
-  } catch {
-    return { error: text.slice(0, 300) };
-  }
-}

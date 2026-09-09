@@ -12,6 +12,7 @@ import {
 } from "../lib/auth-policy";
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
+import { readJson, summariseJobResult } from "../lib/read-json";
 import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
 import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, eachDate, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
@@ -2124,4 +2125,44 @@ test("a long range is split so no single request depends on the platform's timeo
   for (const key of ["noise-bootstrap", "noise-sync", "wbgt-fill"] as const) {
     assert.ok(JOBS[key].chunkDays, `${key} must say how much it will do in one request`);
   }
+});
+
+test("a job log line says what the run did, not just that it answered", () => {
+  // Both of these come back 200. A log of "ok, ok, ok" would not tell them
+  // apart, and "quietly wrote nothing" is the outcome worth catching — it is
+  // what a missing sheet id or an empty date range looks like from outside.
+  assert.match(
+    summariseJobResult({ configs_processed: 1, results: [{ metersProcessed: 3, records: 288, errors: [] }] }),
+    /1 projects.*3 meters.*288 records/,
+  );
+  assert.equal(summariseJobResult({ configs_processed: 0, results: [] }), "nothing to write");
+
+  // A zero count is not worth a word, but a non-completed status is.
+  assert.match(
+    summariseJobResult({ results: [{ status: "bootstrap_required", metersProcessed: 0 }] }),
+    /bootstrap_required/,
+  );
+
+  // Errors travel, because a 200 with errors inside is the shape these services
+  // use for a partial success.
+  assert.match(
+    summariseJobResult({ results: [{ records: 5, errors: ["Workbook structure is missing"] }] }),
+    /5 records — Workbook structure is missing/,
+  );
+
+  // Nothing readable is still a sentence rather than "undefined".
+  assert.equal(summariseJobResult(null), "nothing to write");
+  assert.equal(summariseJobResult("plain text"), "nothing to write");
+});
+
+test("an empty response body reads as a request that was cut off", () => {
+  // The literal message an operator reported twice. `res.json()` on an empty
+  // body throws "Unexpected end of JSON input", which names a parser and not
+  // the platform timeout that actually caused it.
+  const empty = new Response("", { status: 502 });
+  return readJson(empty).then((body) => {
+    assert.match(body.error ?? "", /empty body/);
+    assert.match(body.error ?? "", /cut off/);
+    assert.doesNotMatch(body.error ?? "", /JSON input/);
+  });
 });

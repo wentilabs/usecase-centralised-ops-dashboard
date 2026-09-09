@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { eachChunk, jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
+import { readJson, summariseJobResult } from "@/lib/read-json";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -17,28 +18,6 @@ import { useEscapeKey } from "@/lib/use-body-scroll-lock";
  * is listed but not runnable — the button stays disabled and says why, since the
  * job would otherwise report success while doing nothing.
  */
-/**
- * A response body, or a sentence explaining why there is not one.
- *
- * A function killed by the platform answers with nothing, and `res.json()` then
- * throws "Unexpected end of JSON input" — which describes a parser, not the
- * request. Reading the text first turns it into something an operator can act on.
- */
-async function readJson(res: Response): Promise<{ error?: string; result?: unknown } | null> {
-  const text = await res.text().catch(() => "");
-  if (!text.trim()) {
-    return {
-      error:
-        `The service answered ${res.status} with an empty body — the request was almost certainly cut ` +
-        "off before it finished. Try a shorter date range; re-running is safe.",
-    };
-  }
-  try {
-    return JSON.parse(text) as { error?: string; result?: unknown };
-  } catch {
-    return { error: text.slice(0, 300) };
-  }
-}
 
 export function JobDialog({
   job,
@@ -114,8 +93,10 @@ export function JobDialog({
           });
           return;
         }
-        const summary = typeof body?.result === "string" ? body.result : JSON.stringify(body?.result ?? null, null, 1);
-        results.push(chunks.length > 1 ? `${label}: ${summary}` : summary);
+        // Summarised rather than dumped: the raw envelope is hundreds of lines
+        // of per-meter detail, and what a reader wants is whether it wrote
+        // anything. The full body is still in the service's own logs.
+        results.push(`${label}: ${summariseJobResult(body?.result)}`);
       }
       setOutcome({ ok: true, text: results.join("\n").slice(0, 4000) });
     } catch (error) {
@@ -236,6 +217,14 @@ export function JobDialog({
               <li key={problem}>{problem}</li>
             ))}
           </ul>
+        ) : null}
+
+        {/* A long range is many requests; without this the button just sits
+            there for minutes and the only honest reading is that it has hung. */}
+        {progress ? (
+          <p className="mt-3 rounded-lg border border-primary/40 bg-primary/10 p-2 font-mono text-[11px] text-primary">
+            running… {progress}
+          </p>
         ) : null}
 
         {outcome ? (

@@ -598,4 +598,8 @@ test("the bulk prompt documents the job op it will be sent", () => {
   }
   // The worked example is the request this was built for.
   assert.match(BULK_SYSTEM_PROMPT, /2026-07-01 to 2026-12-31/);
+
+  // And the model is told to resolve year-less dates against the clock it is
+  // given, because it has none of its own: "30 Aug to 10 Sep" came back as 2025.
+  assert.match(BULK_SYSTEM_PROMPT, /no clock/);
 });

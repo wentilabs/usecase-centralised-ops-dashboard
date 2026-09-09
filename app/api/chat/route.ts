@@ -276,9 +276,26 @@ async function bulkReply({
       ].join("\n")
     : "No project rows are available for the services in scope.";
 
+  /**
+   * Today, in SGT, because the model has no clock.
+   *
+   * Without it "30th Aug to 10 Sep" resolved to 2025 — the model fell back to
+   * its training era, and a sync would have run against last year's date
+   * columns. Every relative date in a job request depends on this: "last
+   * month", "yesterday", "the second half of the year". SGT rather than UTC
+   * because every cadence and reporting day in the estate is stated in it.
+   */
+  const todaySgt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
   const turn = {
     system: BULK_SYSTEM_PROMPT,
     user: [
+      `Today is ${todaySgt} (SGT). Resolve every relative or year-less date against it.`,
       `Scope read from keywords (${scope.targets.length} projects, may be wrong): ${scopeLine}`,
       `Services in scope: ${services.map((key) => `${SERVICES[key].label} (key: ${key})`).join(", ")}`,
       `Service keys, for "scope": ${SERVICE_KEYS.map((key) => key).join(", ")}`,

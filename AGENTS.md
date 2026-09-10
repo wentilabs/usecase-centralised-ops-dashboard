@@ -372,6 +372,30 @@ Rules that are easy to get wrong and are pinned by tests:
 - **Only require what the table demands.** A field marked required that the
   database would accept as null is a dialog inventing a rule and blocking a
   legitimate draft row.
+- **Anything editable after creation is settable while creating.**
+  `withSchemaFields` merges the curated `fields` list with every other column
+  the editor would let you change, so the dialog, `createProject` and a chat
+  proposal all speak the whole table. The curated list stays curated — it is
+  what carries required-ness, env defaults, derived tab names and the pickers,
+  and it renders first; the rest sit under "Everything else on this table".
+  Before this, a column absent from the curated list could only be set by
+  creating the row and immediately editing it: two audit rows and a window
+  where the row is wrong.
+  - A schema-derived field left blank is **omitted from the insert**, so the
+    column default applies. Curated fields still write `""` or null — for them
+    a blank is a decision.
+  - A draft key that is not a column is **rejected**, naming the key. It used
+    to be dropped, and the row came back looking created.
+  - `enabled` is never settable here. Insert disabled, verify, then enable —
+    and several CHECKs are written on that assumption.
+- **A CHECK that depends on `enabled` goes in `requiresEnabled`.** Rows are
+  always created disabled, so a column Postgres only allows on an enabled row
+  can never be set at creation. Declared per service, it produces a sentence in
+  the checklist and stops a template copying the flag. Found the hard way: the
+  plan said "ready to create" and the insert came back as a bare 23514 quoting
+  a row truncated mid-URL — `issue_chaser_feature_requires_enabled_check`.
+  `describePostgrestError` now puts the constraint name first, which is the
+  only part anyone can act on.
 - **The identity map is not a gate on creation.** It is built from rows that
   exist, so a site nobody has configured is absent from it by definition; using
   it to decide what may be created refuses the first project of every new site,

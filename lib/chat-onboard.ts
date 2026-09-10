@@ -4,9 +4,11 @@ import {
   onboardingFor,
   prefillDefaults,
   validateDraft,
+  withSchemaFields,
   type OnboardDefinition,
   type OnboardDraft,
 } from "./onboarding";
+import type { ServiceFieldSpec } from "./field-spec";
 import { absentFrom, fold, newSiteCluster, type Cluster } from "./project-identity";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
@@ -647,8 +649,14 @@ function draftFor(
   const templated: Record<string, string> = {};
   if (template) {
     const code = String(template.row.project_code ?? "");
+    // A flag the database only permits on an enabled row. Copying it would
+    // make every templated row fail its insert with a bare 23514, so it is
+    // dropped here and reported once, at plan level, rather than turning a
+    // whole batch into blocked rows nobody can unblock.
+    const needsEnabled = new Set(definition.requiresEnabled ?? []);
     for (const [column, raw] of Object.entries(template.row)) {
       if (!columns.has(column) || column === "project_code") continue;
+      if (needsEnabled.has(column)) continue;
       const value = String(raw ?? "").trim();
       if (!value) continue;
       templated[column] = value;
@@ -680,7 +688,12 @@ function draftFor(
   // An explicit instruction beats a carried equivalence, so these go on before
   // the carry runs and the carry then skips a column that already has a value.
   for (const [column, value] of Object.entries(asked.values)) {
-    if (columns.has(column)) draft[column] = value;
+    if (!columns.has(column)) continue;
+    draft[column] = value;
+    // Listed with the same provenance as a carried value. Now that a proposal
+    // can set any column, "where did this come from" is the question the
+    // review list exists to answer, and "your sentence" is an answer.
+    derived.push({ column, from: "your sentence", value, why: "asked for outright" });
   }
 
   // The declared equivalences, plus whatever the sentence asked for. A request
@@ -778,6 +791,7 @@ export function planOnboarding({
   existingFor,
   env,
   groupNames,
+  specs,
 }: {
   prompt: string;
   /** The model's reading. Omitted falls back to `intentFromPrompt`. */
@@ -788,6 +802,14 @@ export function planOnboarding({
   env: Record<string, string | undefined>;
   /** Every known chat, for resolving a `<site> x …` group pattern by name. */
   groupNames?: { chatId: string; name: string }[];
+  /**
+   * Live column lists, so a plan can fill any column the editor could.
+   *
+   * Omitted, each service falls back to its curated fields — which is what
+   * every plan used before, and still the right answer when introspection is
+   * down. It is not a smaller plan, only a plan that can say less.
+   */
+  specs?: Partial<Record<ServiceKey, ServiceFieldSpec | null>>;
 }): OnboardPlan {
   const chats = groupNames ?? [];
   const read = given ?? intentFromPrompt(prompt);
@@ -873,13 +895,16 @@ export function planOnboarding({
   const unreadRequests: string[] = [...read.notes];
 
   for (const service of targets) {
-    const definition = onboardingFor(service);
-    if (!definition) {
+    const curated = onboardingFor(service);
+    if (!curated) {
       return {
         kind: "question",
         question: `${SERVICES[service].label} has no onboarding flow, so projects cannot be created in it from here.`,
       };
     }
+    // Curated fields plus every other column the editor would let you change,
+    // so a plan can fill anything a person could fill in the dialog.
+    const definition = withSchemaFields(curated, specs?.[service]);
 
     // Sites, not codes. `absentFrom` counts a site as present if ANY of its
     // aliases is in the service, which is what stops a second row being made
@@ -934,16 +959,22 @@ export function planOnboarding({
          * disabled, and that is a rule rather than a gap.
          */
         const creatable = new Set(definition.fields.map((field) => field.column));
+        const needsEnabled = new Set(definition.requiresEnabled ?? []);
         const unreachable = Object.entries(row)
           .filter(([column, value]) => {
-            if (creatable.has(column) || IDENTITY_COLUMNS.has(column)) return false;
+            if (IDENTITY_COLUMNS.has(column)) return false;
+            // Two different reasons a column cannot come across: it is not a
+            // column of this service's table at all, or the database only
+            // allows it on an enabled row and new rows are always disabled.
+            if (creatable.has(column) && !needsEnabled.has(column)) return false;
             return value !== null && value !== false && value !== "" && value !== 0;
           })
           .map(([column]) => column);
         if (unreachable.length) {
           unreadRequests.push(
             `${SERVICES[service].label}: ${String(row.project_code)} also has ${unreachable.join(", ")} set, ` +
-              `and creating a row here cannot set them — put them on the new row afterwards`,
+              `and a new row cannot carry them — a new row is disabled, and some of these need it enabled. ` +
+              `Set them once the project is on.`,
           );
         }
       } else {
@@ -1076,7 +1107,11 @@ export const ONBOARD_INTENT_PROMPT = [
   "reasonable reading beats asking. Ask only when the OUTCOME is genuinely unclear — never about which rows, and",
   "never about spelling.",
   "",
-  "Never invent a chat id or a spreadsheet id — there is no field for them.",
+  "Never INVENT a chat id or a spreadsheet id. Relaying one is different and is expected: if the request",
+  "contains an id, a sheet URL, a time, a radius, a threshold — anything that is a column below — put it in",
+  "`values` and it is written. It appears in the review list with where it came from. If the request does not",
+  "say, leave the column out and it takes its database default; a guessed group id sends a site's messages to",
+  "strangers, and a guessed sheet id fills someone else's workbook.",
   "",
   "Project codes you DO name. A code that appears in the estate below selects that site, under any of its",
   "spellings, and the row is created under its canonical alias. A code that appears nowhere is a site nobody has",
@@ -1098,7 +1133,7 @@ export const ONBOARD_INTENT_PROMPT = [
   '      "include" is AND-ed, so ["company Wohhup", "in-service noise"] means Wohhup sites that are ALSO in',
   '      noise. For a union, wrap them in {"kind":"any"}. An empty "include" means every site.',
   '  "switches": {"<column>": true|false},        // only columns listed as switches below',
-  '  "values": {"<column>": "<value>"},           // set a column outright, any field the target is created with',
+  '  "values": {"<column>": "<value>"},           // set a column outright — ANY column of the target, listed below',
   '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
   '  "carry": [{"column":"<col>","from":"<service key>","fromColumn":"<col on that service>"}],',
   '  "template": {"service":"<service key>","projectCode":"<existing code>"},  // copy EVERY column off that row',
@@ -1148,7 +1183,9 @@ export const ONBOARD_INTENT_PROMPT = [
   "  empty is only what happens for the sites with no such chat, and code decides which those are, not you.",
   '- `values` sets a column outright; `fallbacks` fills one only where nothing else did. "If no WBGT workbook is',
   '  configured, use X" is a FALLBACK — as a `value` it would overwrite the workbook carried for every site that',
-  "  has one. Both are limited to columns the target is created with; anything else goes in `notes`.",
+  "  has one. Both may name ANY column of the target — the full list is below, and it is the whole config",
+  "  table. `notes` is for what no column can express, which is now rare; reaching for it when a column exists",
+  "  drops something the operator asked for.",
   "- `carry` may name ANY column on ANY service. Some pairs are listed below as known equivalents; those are the",
   "  ones this dashboard vouches for. Asking for a pair that is not listed is allowed and WILL be performed — it",
   "  is shown to the operator as unverified. Prefer a listed pair when one fits, and do not invent a copy the",
@@ -1159,8 +1196,8 @@ export const ONBOARD_INTENT_PROMPT = [
   "- The project code of a created row is the canonical alias of whichever site the code selected, and for a",
   '  code that selected nothing it is the code itself, upper-cased. "Use the project site alias as the code" is',
   "  already what happens; it needs no field and is not a note.",
-  "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
-  "  not belong in `notes`.",
+  "- `enabled` is the one column you cannot set, and asking for it is not a note either: every row is ALWAYS",
+  "  created disabled, whatever the sentence says, and turning it on is a separate act on a row that exists.",
   "- Put anything you understood but could not express into `notes`. It is shown to the operator under",
   '  "Not applied from your sentence", so it must mean exactly that. An instruction that matches what would',
   "  happen anyway — leaving a column empty that is empty by default — was applied, not skipped, and noting it",
@@ -1212,8 +1249,12 @@ export function onboardIntentContext(
     label: string;
     hasOnboarding: boolean;
     switches: { column: string; label: string }[];
-    /** Every column the service is created with, so a name is never guessed. */
-    fields?: { column: string; label: string; kind: string; required: boolean }[];
+    /**
+     * Every column of the service's config table, so a name is never guessed
+     * and nothing the operator asked for has to be dropped into `notes` for
+     * want of somewhere to put it.
+     */
+    fields?: { column: string; label: string; kind: string; required: boolean; options?: string[] | null }[];
   }[],
   companies: readonly string[],
 ): string {
@@ -1227,11 +1268,24 @@ export function onboardIntentContext(
   // to default the safety workbook came back as `safety_spreadsheet_id`, which
   // does not exist — the column is `safety_sheet_id` — so the value was
   // dropped and reported instead of being set.
-  lines.push("", "Columns each service is CREATED with. Use these names exactly in `values`/`fallbacks`:");
+  lines.push(
+    "",
+    "Every column a new row can carry, by service. This is the whole config table, not a shortlist — anything",
+    "the operator asks for that is a column here goes in `values` (or `switches`, for a boolean), never in",
+    "`notes`. Use these names exactly. A column left out simply takes its database default.",
+  );
   for (const service of services.filter((entry) => entry.fields?.length)) {
     lines.push(
       `  ${service.key}: ${service
-        .fields!.map((field) => `${field.column} (${field.kind}${field.required ? ", required" : ""})`)
+        .fields!.map((field) => {
+          const notes = [field.kind];
+          if (field.required) notes.push("required");
+          // The allowed values, because a select is the one kind where a
+          // plausible-looking guess is rejected by Postgres rather than by
+          // anything the operator can see.
+          if (field.options?.length) notes.push(`one of ${field.options.join("|")}`);
+          return `${field.column} (${notes.join(", ")})`;
+        })
         .join(", ")}`,
     );
   }

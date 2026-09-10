@@ -38,8 +38,8 @@ import {
   saysOnboard,
   type OnboardIntent,
 } from "@/lib/chat-onboard";
-import { COMPANIES } from "@/lib/field-spec";
-import { onboardingFor } from "@/lib/onboarding";
+import { COMPANIES, type ServiceFieldSpec } from "@/lib/field-spec";
+import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import { JOBS, JOB_KEYS, isJobKey, jobTargets, spanDays } from "@/lib/jobs";
 import { clusterProjects, type ServiceRow } from "@/lib/project-identity";
 import { getGroupNames } from "@/lib/group-names";
@@ -570,12 +570,35 @@ async function onboardingReply(
       if (code) serviceRows.push({ service: key, projectCode: code, row });
     }
   }
+  /**
+   * The live column list per service, for the catalogue below.
+   *
+   * `allSettled`, because one service whose introspection is failing must not
+   * take the whole proposal down with it — that service simply falls back to
+   * its curated fields, which is what every service had until now.
+   */
+  const settled = await Promise.allSettled(SERVICE_KEYS.map((key) => getFieldSpec(key)));
+  const specs = Object.fromEntries(
+    SERVICE_KEYS.map((key, index) => {
+      const result = settled[index];
+      return [key, result.status === "fulfilled" ? result.value : null];
+    }),
+  ) as Record<ServiceKey, ServiceFieldSpec | null>;
+
   // The model reads the sentence into a shape; code resolves the shape into
-  // rows. It cannot name a project, a chat or a sheet — there is no field for
-  // one — so the worst a misreading does is select the wrong SET, which the
-  // review list shows before anything is written.
+  // rows. What it may name is bounded by the shape rather than by a short
+  // menu: a project code selects a site or creates one, and `values` may
+  // carry any column of the target — including a chat id or a sheet id, which
+  // is the point, since a proposal that cannot say them is a proposal somebody
+  // has to finish by hand. Nothing here is written. Every row lands in a
+  // review list with its values and their origins, and a human ticks it.
   const catalogue = SERVICE_KEYS.map((key) => {
-    const definition = onboardingFor(key);
+    const curated = onboardingFor(key);
+    // The same list the dialog and the create route use: every column the
+    // editor would let you change. The model is not given a shorter menu than
+    // the human reviewing its proposal — it could otherwise read a request
+    // perfectly and have nowhere to put half of it.
+    const definition = curated ? withSchemaFields(curated, specs[key] ?? null) : null;
     return {
       key,
       label: SERVICES[key].label,
@@ -583,12 +606,19 @@ async function onboardingReply(
       switches: (definition?.fields ?? [])
         .filter((field) => field.kind === "toggle")
         .map((field) => ({ column: field.column, label: field.label })),
-      fields: (definition?.fields ?? []).map((field) => ({
-        column: field.column,
-        label: field.label,
-        kind: field.kind,
-        required: field.required,
-      })),
+      fields: (definition?.fields ?? [])
+        // A computed field is written from the project code and the server
+        // ignores whatever a draft says for it, so offering it invites a value
+        // that is silently discarded. A companion field belongs to another
+        // table and the dialog collects it; a proposal cannot.
+        .filter((field) => !field.computed && field.target !== "companion")
+        .map((field) => ({
+          column: field.column,
+          label: field.label,
+          kind: field.kind,
+          required: field.required,
+          options: field.options ?? null,
+        })),
     };
   });
 
@@ -617,9 +647,7 @@ async function onboardingReply(
         const read = parseOnboardIntent(parseModelJson(text) as Record<string, unknown> | null, {
           services: [...SERVICE_KEYS],
           switchColumns: catalogue.flatMap((entry) => entry.switches.map((s) => s.column)),
-          valueColumns: SERVICE_KEYS.flatMap((key) =>
-            (onboardingFor(key)?.fields ?? []).map((field) => field.column),
-          ),
+          valueColumns: catalogue.flatMap((entry) => (entry.fields ?? []).map((field) => field.column)),
           declaredCarry: Object.fromEntries(
             SERVICE_KEYS.flatMap((key) =>
               carryColumnsFor(key).map((column) => [column, declaredCarrySource(key, column)!]),
@@ -644,6 +672,7 @@ async function onboardingReply(
     clusters: clusterProjects(serviceRows),
     existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
     env: process.env,
+    specs,
     // `.map`, not the result object: getGroupNames returns
     // { configured, storeReady, map, ... } and iterating the wrapper yields
     // its own field names as if they were chat ids. It type-checks, because

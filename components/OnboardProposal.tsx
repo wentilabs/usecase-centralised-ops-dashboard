@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { useBodyScrollLock, useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -67,6 +67,8 @@ export function OnboardProposal({
   const [done, setDone] = useState<Outcome[] | null>(null);
   const [progress, setProgress] = useState(0);
   const [showBlocked, setShowBlocked] = useState(true);
+  /** Rows whose full value list is expanded, keyed like `skipped`. */
+  const [openValues, setOpenValues] = useState<Set<string>>(() => new Set());
 
   useEscapeKey(!busy, onClose);
   useBodyScrollLock(true);
@@ -256,6 +258,40 @@ export function OnboardProposal({
                             })}
                           </ul>
                         ) : null}
+                        {/* The whole row, before anyone ticks it. A proposal
+                            can now set any column of the table, so "what will
+                            this actually write" has to be answerable here
+                            rather than after the insert. Collapsed, because a
+                            list of twenty values on every row would bury the
+                            few that were derived. */}
+                        <div className="mt-1 pl-6">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenValues((current) => {
+                                const next = new Set(current);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                return next;
+                              })
+                            }
+                            className="text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                          >
+                            {openValues.has(key) ? "Hide" : "Show"} all {Object.keys(row.values).length} values
+                          </button>
+                          {openValues.has(key) ? (
+                            <dl className="mt-1 grid grid-cols-[minmax(0,1fr)_2fr] gap-x-3 gap-y-0.5 text-[11px]">
+                              {Object.entries(row.values)
+                                .sort(([a], [b]) => a.localeCompare(b))
+                                .map(([column, value]) => (
+                                  <Fragment key={column}>
+                                    <dt className="truncate font-mono text-muted-foreground">{column}</dt>
+                                    <dd className="truncate font-mono text-foreground">{value || "—"}</dd>
+                                  </Fragment>
+                                ))}
+                            </dl>
+                          ) : null}
+                        </div>
                         {outcome?.error ? (
                           <div className="mt-1 pl-6 text-[11px] text-danger">{outcome.error}</div>
                         ) : null}

@@ -10,8 +10,13 @@ import {
   prefillDefaults,
   resolveValue,
   validateDraft,
+  withSchemaFields,
 } from "../lib/onboarding";
+import { buildFieldSpec } from "../lib/field-spec";
 import { CHAT_ID_COLUMNS } from "../lib/card-summary";
+
+/** Real-shaped, because validateDraft checks a sheet id looks like one. */
+const SHEET_ID = "1fsbJ04eSqfaGUBTO_HN7d0s8aafjQEftRoXLEziDe40";
 import { jobsForService } from "../lib/jobs";
 import { SERVICE_KEYS } from "../lib/services";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
@@ -824,14 +829,20 @@ test("a half-open working-hours window is refused, not silently ignored", () => 
   // enforces.
   for (const key of ["haze", "lightning"] as ServiceKey[]) {
     const definition = onboardingFor(key)!;
-    const base: Record<string, string> = {
-      project_code: "ZZT",
-      latitude: "1.3",
-      longitude: "103.8",
-      nea_region: "north",
-      red_radius_m: "8000",
-      amber_radius_m: "12000",
-    };
+    // Trimmed to the columns each service actually has. Shared verbatim, the
+    // radii are lightning's and haze now reports them as columns it does not
+    // have — which is the point of that check, not a reason to weaken it.
+    const columns = new Set(definition.fields.map((field) => field.column));
+    const base = Object.fromEntries(
+      Object.entries({
+        project_code: "ZZT",
+        latitude: "1.3",
+        longitude: "103.8",
+        nea_region: "north",
+        red_radius_m: "8000",
+        amber_radius_m: "12000",
+      }).filter(([column]) => columns.has(column)),
+    ) as Record<string, string>;
     const half = validateDraft(definition, { ...base, working_hours_start_hhmm: "0800" }, []);
     assert.ok(half.some((p) => /both ends, or neither/.test(p)), `${key}: ${JSON.stringify(half)}`);
 
@@ -900,4 +911,128 @@ test("subcon's onboarding switch defaults match what the service does", () => {
   assert.equal(written.enable_activity_summary, false, "unset stays off");
   // Still created disabled, whatever the switches say.
   assert.equal(written.enabled, false);
+});
+
+/**
+ * Creating a row was, silently, a much smaller thing than editing one.
+ *
+ * The curated `fields` list per service is deliberately short — it carries
+ * required-ness, env defaults, derived tab names, the pickers — and it was also
+ * the entire vocabulary of the create path. A column absent from it could not be
+ * typed in the dialog, sent to `createProject`, or named in a proposal. The only
+ * way to set one was to create the row and immediately edit it: two audit
+ * entries and a window where the row is wrong.
+ */
+test("anything editable after creation is settable while creating", () => {
+  const spec = buildFieldSpec("issueChaser", {
+    project_code: { type: "string" },
+    created_at: { type: "string" },
+    // Curated already — must not be duplicated or re-typed.
+    safety_sheet_id: { type: "string" },
+    // Not curated. These are the ones that were unreachable.
+    summary_days: { type: "integer", default: 5 },
+    daily_safety_summary_enabled: { type: "boolean", default: false },
+    timezone: { type: "string" },
+    enabled: { type: "boolean", default: false },
+  });
+  const merged = withSchemaFields(onboardingFor("issueChaser")!, spec);
+  const byColumn = Object.fromEntries(merged.fields.map((field) => [field.column, field]));
+
+  assert.ok(byColumn.summary_days?.fromSchema, "a column the flow never named is now a field");
+  assert.equal(byColumn.summary_days?.kind, "number", "typed from the introspected column");
+  assert.equal(byColumn.summary_days?.required, false, "and never required — the curated list carries those");
+  assert.equal(byColumn.daily_safety_summary_enabled?.kind, "toggle");
+  // `timezone` is CHECK-constrained to a single value, which introspection
+  // cannot see; the editor's overlay supplies it and the dialog must too, or a
+  // free-text box would offer a value Postgres rejects.
+  assert.deepEqual(byColumn.timezone?.options, ["Asia/Singapore"]);
+
+  // Curated fields keep everything that makes them curated.
+  assert.equal(byColumn.safety_sheet_id?.required, true, "a curated field is not overwritten by the schema one");
+  assert.equal(byColumn.safety_sheet_id?.fromSchema, undefined);
+  assert.equal(merged.fields.filter((f) => f.column === "safety_sheet_id").length, 1, "and appears once");
+
+  // Identity, audit stamps and `enabled` stay out. `enabled` is the deliberate
+  // one: every service prescribes insert-disabled-then-verify, and
+  // issue_chaser_feature_requires_enabled_check is written on that assumption.
+  assert.equal(byColumn.created_at, undefined);
+  assert.equal(byColumn.enabled, undefined, "rows are always created disabled");
+
+  // A blank schema field is left OUT of the insert so the column default
+  // stands. Writing null instead would replace a considered default with a
+  // blank, and fail outright on the NOT NULL ones.
+  const written = buildInsertRow(merged, { project_code: "NEW1", safety_sheet_id: SHEET_ID }, {});
+  assert.equal("summary_days" in written, false, "an untouched column is not written at all");
+  assert.equal(written.enabled, false, "and the row is disabled");
+
+  // Set it, and it is written — as a number-shaped string through the same
+  // path every other value takes.
+  const filled = buildInsertRow(
+    merged,
+    { project_code: "NEW1", safety_sheet_id: SHEET_ID, summary_days: "9", daily_safety_summary_enabled: "true" },
+    {},
+  );
+  assert.equal(filled.summary_days, "9");
+  assert.equal(filled.daily_safety_summary_enabled, true, "a toggle is written as a real boolean");
+
+  // A select still validates against the overlay's values.
+  assert.ok(
+    validateDraft(merged, { project_code: "NEW1", safety_sheet_id: SHEET_ID, timezone: "Asia/Tokyo" }, []).some(
+      (problem) => /Asia\/Tokyo/.test(problem),
+    ),
+    "a value the CHECK forbids is caught here, not by Postgres",
+  );
+});
+
+test("a draft key that is not a column is refused, not ignored", () => {
+  // buildInsertRow iterates the FIELDS, so an unknown key was silently dropped
+  // and the row came back looking created — the same shape as the sheet
+  // endpoint that accepted `project_code` in its body and ignored it. Now that
+  // the field list is the whole table, a key matching nothing is a typo or a
+  // renamed column, and naming it is the only useful answer.
+  const definition = onboardingFor("issueChaser")!;
+  const problems = validateDraft(
+    definition,
+    { project_code: "NEW1", safety_sheet_id: SHEET_ID, safety_spreadsheet_id: SHEET_ID },
+    [],
+  );
+  assert.ok(
+    problems.some((problem) => problem.includes('"safety_spreadsheet_id" is not a column')),
+    JSON.stringify(problems),
+  );
+});
+
+test("withSchemaFields degrades to the curated flow when introspection is down", () => {
+  // One service failing to introspect must not take the create path with it —
+  // it falls back to what every service had before, which is a plan that can
+  // say less rather than no plan at all.
+  const curated = onboardingFor("haze")!;
+  assert.equal(withSchemaFields(curated, null), curated);
+  assert.equal(withSchemaFields(curated, undefined), curated);
+});
+
+test("a field HALO states a default for is still settable", () => {
+  // `hidden` meant "written on insert, never rendered", and twenty-two fields
+  // across the seven services carry it — the mutes, the working-hours windows,
+  // lightning's dwell seconds. Every one is editable the moment the row
+  // exists, so hiding it at creation only meant creating the row and
+  // immediately editing it. The stated default is still stated; it is now also
+  // changeable.
+  for (const key of SERVICE_KEYS) {
+    const definition = onboardingFor(key);
+    if (!definition) continue;
+    for (const field of definition.fields) {
+      if (!field.hidden) continue;
+      assert.ok(
+        field.fallback !== undefined || field.envDefault,
+        `${key}.${field.column} is kept out of the primary list but states no default, so it is simply missing`,
+      );
+      // Prefilled, so the dialog shows what will be written rather than a blank.
+      assert.equal(
+        prefillDefaults(definition, { [field.envDefault ?? ""]: "set" })[field.column] !== undefined,
+        true,
+        `${key}.${field.column} must be prefilled`,
+      );
+    }
+  }
 });

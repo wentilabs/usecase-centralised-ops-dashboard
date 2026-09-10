@@ -1,5 +1,5 @@
 import { deriveNeaRegion, withinServiceArea } from "./derive";
-import { COMPANIES } from "./field-spec";
+import { COMPANIES, type FieldWidget, type ServiceFieldSpec } from "./field-spec";
 import { readSheetId } from "./jobs";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
@@ -65,13 +65,20 @@ export type OnboardField = {
   /** Computed from the draft, e.g. "(ZRA) CCTV History". */
   derive?: (draft: OnboardDraft, projectCode: string) => string;
   /**
-   * Written on insert but never rendered.
+   * Written on insert, and kept out of the dialog's primary list.
    *
    * For a value that has one sensible answer nobody needs to be asked for, and
-   * where relying on the column default is not safe: HALO writes it explicitly.
-   * `feed_stale_after_seconds` is exactly that case — setup.sql says 600 and the
-   * live column default is 360, so an omitted field would silently produce the
-   * wrong number.
+   * where relying on the column default is not safe: HALO writes it
+   * explicitly. `feed_stale_after_seconds` is exactly that case — setup.sql
+   * says 600 and the live column default is 360, so an omitted field would
+   * silently produce the wrong number.
+   *
+   * It used to mean "never rendered", which quietly broke the rule
+   * `withSchemaFields` exists to keep: all twenty-two of these are editable
+   * the moment the row exists, so refusing to show them at creation only meant
+   * creating the row and immediately editing it. They now render alongside the
+   * rest of the table, prefilled with the value HALO would have written — the
+   * stated default is still stated, and it is also changeable.
    */
   hidden?: boolean;
   /** Numeric bounds, mirroring the column's CHECK constraint. */
@@ -108,6 +115,18 @@ export type OnboardField = {
   envDefault?: string;
   /** Literal default. */
   fallback?: string;
+  /**
+   * Added from the live schema rather than written here — see
+   * `withSchemaFields`.
+   *
+   * The one behavioural difference: left blank, it is OMITTED from the insert
+   * instead of written as null, so the column's own default applies. A curated
+   * field is one somebody thought about, and writing null for it is a
+   * decision; a column nobody named in this file has a default for a reason,
+   * and overwriting it with null would be an accident — several are NOT NULL
+   * with a default, where null is a constraint violation rather than a blank.
+   */
+  fromSchema?: boolean;
 };
 
 export type OnboardDefinition = {
@@ -129,6 +148,19 @@ export type OnboardDefinition = {
   codeHelp: string;
   /** Columns forming a composite unique constraint, checked before insert. */
   uniqueTogether?: string[];
+  /**
+   * Columns Postgres refuses to see set while the row is disabled.
+   *
+   * Rows are ALWAYS created disabled, so these can never be true at creation —
+   * `issue_chaser_feature_requires_enabled_check` says
+   * `not (a or b or c or d) or enabled`, and the insert fails with a bare
+   * 23514 quoting a truncated row. Declared here so the dialog and the plan
+   * say the useful thing instead: set them once the project is turned on.
+   *
+   * Mirrored from the service's own migration, like `codePattern` and the
+   * range checks. Getting it wrong costs a failed insert, never bad data.
+   */
+  requiresEnabled?: string[];
   /**
    * A `security definer` function to run before the config row is inserted.
    *
@@ -870,6 +902,17 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     title: "Add a new Issue Chaser project",
     description:
       "Creates one disabled row in issue_chaser.project_configs. Enable it first, then switch on a chaser style — a CHECK enforces that order.",
+    // issue_chaser_feature_requires_enabled_check, from
+    // supabase/migrate_daily_summary_features.sql:
+    //   not (severity_cadence_chaser_enabled or same_day_open_snapshot_enabled
+    //        or daily_safety_summary_enabled or daily_safety_company_summary_enabled)
+    //   or enabled
+    requiresEnabled: [
+      "severity_cadence_chaser_enabled",
+      "same_day_open_snapshot_enabled",
+      "daily_safety_summary_enabled",
+      "daily_safety_company_summary_enabled",
+    ],
     outsideHalo: [
       "Share the Safety workbook with the service account. The service reads the `Safety` tab and any `Safety-MMM YYYY` archives by header name, and never writes to it.",
       "The sheet needs `Status`, a date column and an issue identifier at minimum. `Message Id Serialized` is what lets a reminder land back in the group the issue came from.",
@@ -1314,6 +1357,22 @@ export function validateDraft(
     problems.push(`${code} already exists.`);
   }
 
+  /**
+   * A draft key that is not a field of this service.
+   *
+   * Reported rather than ignored. `buildInsertRow` iterates the FIELDS, so an
+   * unknown key was silently dropped and the row came back looking created —
+   * the same shape as the bug where a sheet endpoint accepted `project_code`
+   * in its body and quietly ignored it, and every caller looked fine for
+   * weeks. Now that the field list is the whole table, a key that matches
+   * nothing is a typo or a stale column name, and naming it is the only useful
+   * answer.
+   */
+  const known = new Set(definition.fields.map((field) => field.column));
+  for (const key of Object.keys(draft)) {
+    if (!known.has(key)) problems.push(`"${key}" is not a column of this service.`);
+  }
+
   for (const field of definition.fields) {
     if (field.column === "project_code") continue;
     const resolved = resolveValue(field, draft, code, env).trim();
@@ -1384,6 +1443,17 @@ export function validateDraft(
     }
   }
 
+  // A flag the database only allows on an enabled row. Rows are always created
+  // disabled, so this is not "not yet valid" but "not settable here at all".
+  for (const column of definition.requiresEnabled ?? []) {
+    if (value(column) !== "true") continue;
+    const field = definition.fields.find((entry) => entry.column === column);
+    problems.push(
+      `${field?.label ?? column} cannot be switched on while the project is disabled, and new projects are ` +
+        `always created disabled. Create it, verify it, enable it, then turn this on.`,
+    );
+  }
+
   // Pre-empt the composite unique key rather than surfacing a Postgres error.
   if (definition.uniqueTogether?.length) {
     const pair = definition.uniqueTogether.map((column) => value(column));
@@ -1440,6 +1510,86 @@ export function resolveValue(
  * the distinction the service itself draws, and the reason a draft row is legal.
  * `enabled` is always false and is not settable from here.
  */
+/**
+ * Every column the editor would let you change, whether or not this file names it.
+ *
+ * The rule, and the whole point of this function: **anything editable after a
+ * row is created is settable while creating it.** The curated `fields` list
+ * below is what somebody thought about — required-ness, env defaults, derived
+ * tab names, the coordinate picker, the group picker — and it is deliberately
+ * short. It was also, silently, the entire vocabulary of the create path: a
+ * column absent from it could not be typed into the dialog, could not be sent
+ * to `createProject`, and could not be named by the model in a proposal. The
+ * only way to set one was to create the row and immediately edit it, which is
+ * two audit rows and a window where the row is wrong.
+ *
+ * So the live schema supplies the rest. Order is curated first, schema after,
+ * because the curated fields are the ones that decide whether the insert is
+ * accepted at all. Read-only columns are excluded for the same reason the
+ * editor excludes them — identity and audit stamps — and hidden ones because
+ * they are job state the services write and nobody sets by hand.
+ *
+ * `enabled` is excluded on purpose and is not an oversight: every service's own
+ * docs prescribe insert-disabled-then-verify, and issue-chaser's
+ * `issue_chaser_feature_requires_enabled_check` is one of several constraints
+ * written on that assumption. Turning a project on is a separate, deliberate
+ * act on a row that exists.
+ *
+ * Pass a null spec — introspection failed, or a caller has none — and the
+ * curated definition is returned unchanged, so the create path degrades to
+ * what it did before rather than breaking.
+ */
+export function withSchemaFields(
+  definition: OnboardDefinition,
+  spec: ServiceFieldSpec | null | undefined,
+): OnboardDefinition {
+  if (!spec) return definition;
+  const named = new Set(definition.fields.map((field) => field.column));
+  const extra: OnboardField[] = [];
+  for (const column of Object.keys(spec.fields)) {
+    const field = spec.fields[column];
+    if (named.has(column) || field.readonly || field.hidden || column === "enabled") continue;
+    extra.push({
+      column,
+      label: field.label,
+      help: field.help || undefined,
+      kind: kindForWidget(field.widget),
+      // Nothing here is required: the curated list carries every field the
+      // insert genuinely cannot do without, and a column with a NOT NULL and a
+      // default is satisfied by leaving it out.
+      required: false,
+      notNull: false,
+      options: field.options ?? undefined,
+      fromSchema: true,
+    });
+  }
+  return extra.length ? { ...definition, fields: [...definition.fields, ...extra] } : definition;
+}
+
+/**
+ * The editor's widget vocabulary in the dialog's terms.
+ *
+ * `csv` and `meters` become plain text: both are comma lists in a text column,
+ * and the pickers that make them pleasant need data this form does not have.
+ * They are still typeable, which is the difference that matters.
+ */
+function kindForWidget(widget: FieldWidget): OnboardFieldKind {
+  switch (widget) {
+    case "toggle":
+    case "select":
+    case "number":
+    case "hhmm":
+    case "sheet":
+    case "groups":
+    case "multi":
+      return widget;
+    case "csv":
+    case "meters":
+    case "text":
+      return "text";
+  }
+}
+
 export function buildInsertRow(
   definition: OnboardDefinition,
   draft: OnboardDraft,
@@ -1450,6 +1600,10 @@ export function buildInsertRow(
   for (const field of definition.fields) {
     if (field.target === "companion") continue;
     const value = resolveValue(field, draft, code, env);
+    // A schema field nobody filled in is left out of the insert entirely, so
+    // the column's own default applies. Writing null instead would replace a
+    // considered default with a blank, and fail outright on the NOT NULL ones.
+    if (field.fromSchema && !value) continue;
     if (field.kind === "toggle") {
       // A boolean column, so write a boolean. "false" as a string is truthy in
       // enough places that sending it would be asking for trouble.

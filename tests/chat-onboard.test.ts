@@ -14,6 +14,7 @@ import {
   type SiteFilter,
 } from "../lib/chat-onboard";
 import { onboardingFor } from "../lib/onboarding";
+import { buildFieldSpec } from "../lib/field-spec";
 import { clusterProjects, type ServiceRow } from "../lib/project-identity";
 import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 
@@ -940,7 +941,7 @@ test("a brand new project can be created, and templated from an existing one", (
   const said = gaps.unread.join(" ");
   assert.match(said, /daily_safety_summary_enabled/);
   assert.match(said, /include_days_before_snapshot/);
-  assert.match(said, /cannot set them/);
+  assert.match(said, /cannot carry them/);
   assert.doesNotMatch(said, /same_day_open_snapshot_enabled/, "a column set to false is not a gap worth naming");
   assert.doesNotMatch(said, /severity_p1_window_start/, "nor is a null one");
   // Anchored on the separators, not on \b: every other column here ENDS in
@@ -981,4 +982,77 @@ test("a new code that is already taken is caught before anything is written", ()
   } else {
     assert.match(result.question, /already onboarded/i);
   }
+});
+
+test("a template does not copy a flag the database only allows on an enabled row", () => {
+  // Found by running it: the plan said TEST4 was "ready to create" and the
+  // insert came back as a bare 23514 quoting a truncated row.
+  // issue_chaser_feature_requires_enabled_check forbids four flags while
+  // `enabled` is false, and every row here is created disabled — so copying
+  // one from the template guaranteed a failed insert on every templated row.
+  const rows = [
+    row("issueChaser", "ON", {
+      company: "Wohhup",
+      safety_sheet_id: SHEET_ID,
+      enabled: true,
+      severity_cadence_chaser_enabled: true,
+      same_day_open_snapshot_enabled: true,
+      // Not gated, so this one must still come across.
+      include_days_before_snapshot: 1,
+    }),
+  ];
+  const result = planOnboarding({
+    prompt: "add NEWSITE to issue chaser exactly like ON",
+    intent: {
+      targets: ["issueChaser"],
+      scope: { include: [{ kind: "codes", codes: ["NEWSITE"] }], exclude: [] },
+      template: { service: "issueChaser", projectCode: "ON" },
+      switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const [created] = result.services[0].ready;
+  assert.ok(created, `should be ready: ${result.services[0].blocked[0]?.problems.join(" ")}`);
+  assert.equal(created.values.severity_cadence_chaser_enabled, undefined, "the gated flag is not copied");
+  assert.equal(created.values.same_day_open_snapshot_enabled, undefined);
+  assert.match(result.unread.join(" "), /severity_cadence_chaser_enabled/, "and the operator is told why");
+  assert.match(result.unread.join(" "), /need it enabled/);
+});
+
+test("a flag that needs an enabled row is refused at creation, in words", () => {
+  // Asked for outright rather than copied. The plan must not call this ready
+  // and let Postgres be the one to explain, because Postgres explains it as
+  // 23514 and a row truncated mid-URL.
+  const rows = [row("issueChaser", "ZRA", { company: "Wohhup", safety_sheet_id: SHEET_ID })];
+  const result = planOnboarding({
+    prompt: "add NEWSITE to issue chaser with the daily safety summary on",
+    intent: {
+      targets: ["issueChaser"],
+      scope: { include: [{ kind: "codes", codes: ["NEWSITE"] }], exclude: [] },
+      switches: { daily_safety_summary_enabled: true },
+      values: { safety_sheet_id: SHEET_ID },
+      fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+    // The column is not one the curated flow names; it reaches the plan the
+    // same way it reaches the dialog, off the live schema.
+    specs: {
+      issueChaser: buildFieldSpec("issueChaser", {
+        project_code: { type: "string" },
+        safety_sheet_id: { type: "string" },
+        daily_safety_summary_enabled: { type: "boolean", default: false },
+      }),
+    },
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  assert.deepEqual(result.services[0].ready, [], "not offered as creatable");
+  assert.match(
+    result.services[0].blocked[0]?.problems.join(" ") ?? "",
+    /cannot be switched on while the project is disabled/,
+  );
 });

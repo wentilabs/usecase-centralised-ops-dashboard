@@ -19,7 +19,7 @@ import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
-import { onboardingFor } from "@/lib/onboarding";
+import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -625,7 +625,10 @@ export function DashboardShell({
 
       {onboarding && onboardingFor(active.key) ? (
         <OnboardDialog
-          definition={onboardingFor(active.key)!}
+          // The curated fields plus every other column the editor would let you
+          // change: what you can set after creating, you can set while
+          // creating. The server re-derives the same list and has the last word.
+          definition={withSchemaFields(onboardingFor(active.key)!, active.spec)}
           rows={rows[active.key] ?? []}
           groupNames={groupNames}
           onClose={() => setOnboarding(false)}

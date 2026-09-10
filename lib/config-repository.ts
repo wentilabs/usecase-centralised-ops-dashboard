@@ -9,6 +9,7 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
+import { describePostgrestError } from "./postgrest-error";
 import {
   MANUAL_SOURCE_MARKER,
   groupLimitsByMeter,
@@ -387,7 +388,7 @@ export async function updateConfig(
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
   return res.body as ProjectConfigRow[];
 }
 
@@ -409,7 +410,7 @@ export async function insertConfig(
     headers: { Prefer: "return=representation" },
     body: JSON.stringify(row),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
   return res.body as ProjectConfigRow[];
 }
 
@@ -480,7 +481,7 @@ export async function insertRows(
     },
     body: JSON.stringify(rows),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
   return res.body as ProjectConfigRow[];
 }
 

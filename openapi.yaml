@@ -130,11 +130,13 @@ paths:
 
         - `proposal` — the change landed on one project. Apply with `updateProjectConfig`.
         - `batch` — several projects, each with its own change set. Apply one `updateProjectConfig` per entry; there is no bulk write endpoint, so each keeps its own validation, optimistic concurrency and audit row.
-        - `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`.
+        - `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`. `values` is the whole row: the model may set any column of the target table, so read it before applying rather than assuming a fixed set of fields.
         - `jobs` — a sheet job to run once per project. Apply one `runJob` per entry in `runs` where `ready` is true, passing `job`, that entry's `projectCode`, and the plan's `startDate`/`endDate`. Entries with `ready: false` carry a `reason` and must not be sent. Nothing is triggered by this route: `runJob` needs the `jobs` scope, which `write` does not confer.
         - `message` — a question or a refusal, when there is nothing to propose.
 
         The onboarding path counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code alone would create duplicates. A code that matches a site selects it under any of its spellings and the row is created under the canonical one. A code that matches nothing is a site nobody has configured yet: it is proposed as a NEW project with `isNew: true`, because the map is derived from rows that exist and so can never contain a project being created. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because "34 of 36 need a Safety workbook id" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.
+
+        The model is given every column of every target table and may fill any of them, including chat ids and sheet ids the request itself supplies. It cannot invent one — there is nothing to invent from — and nothing it produces is written: each row arrives with its values and where each came from, and is confirmed one at a time.
 
         Requires an editor session, and `ANTHROPIC_API_KEY` for the two model-backed paths. An agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip; the onboarding path is worth calling even so, because the site-matching it does is not reproducible from the schema alone.
       requestBody:
@@ -190,7 +192,7 @@ paths:
                               type: string
                             ready:
                               type: array
-                              description: Creatable as they stand. Send each `values` to createProject as the `draft`.
+                              description: Creatable as they stand. Send each `values` to createProject as the `draft`, unchanged — it may carry any column of the table, and `derived` says where each non-obvious value came from.
                               items:
                                 type: object
                                 properties:
@@ -786,7 +788,12 @@ paths:
       tags:
         - onboarding
       summary: What creating a project for this service needs
-      description: Reports the prefilled defaults the server can supply, which environment-backed defaults are missing, and whether any prerequisite database function is installed. Call before `createProject` — WBGT cannot be onboarded at all until its readings-table function exists.
+      description: |-
+        The full vocabulary of a `createProject` draft, plus the prefilled defaults the server can supply, which environment-backed defaults are missing, and whether any prerequisite database function is installed.
+
+        `fields` is every column a new row can carry — the whole config table, not a shortlist. It is built from live schema introspection, so it follows the database rather than this document: read it rather than assuming. Each entry says whether the column is `required`, what `options` a select accepts, and whether it is `fromSchema` — meaning it has no curated default and, left out of the draft, simply keeps the column's database default.
+
+        Call before `createProject` — WBGT cannot be onboarded at all until its readings-table function exists.
       parameters:
         - name: service
           in: path
@@ -803,12 +810,73 @@ paths:
               - issueChaser
       responses:
         "200":
-          description: Requirements and defaults.
+          description: Every settable column, the defaults, and any prerequisite.
           content:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
+                properties:
+                  fields:
+                    type: array
+                    description: Every column a draft may carry, in the order the dialog renders them.
+                    items:
+                      type: object
+                      properties:
+                        column:
+                          type: string
+                        label:
+                          type: string
+                        help:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          enum:
+                            - text
+                            - sheet
+                            - number
+                            - groups
+                            - multi
+                            - toggle
+                            - select
+                            - hhmm
+                          description: How the value is written. `toggle` takes "true"/"false"; `multi` and `groups` take a comma-separated list; `sheet` accepts a full Google Sheets URL and stores the id; `hhmm` is a 24-hour time like "0800". Everything is sent as a string.
+                        required:
+                          type: boolean
+                          description: The insert is refused without it.
+                        computed:
+                          type: boolean
+                          description: Derived server-side from the project code; anything you send for it is ignored.
+                        options:
+                          type: array
+                          items:
+                            type: string
+                          nullable: true
+                          description: The only accepted values, for a select or multi.
+                        target:
+                          type: string
+                          enum:
+                            - config
+                            - companion
+                          description: "`companion` columns are written to a second table, not the config row."
+                        fromSchema:
+                          type: boolean
+                          description: Present on the table but not part of the curated flow. Omit it and the column keeps its database default; nothing is written for it.
+                  prefill:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    description: Values the server will use if the draft omits them.
+                  missingEnvDefaults:
+                    type: array
+                    items:
+                      type: string
+                    description: Declared env defaults that are unset, so those fields must be sent explicitly.
+                  rpc:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                    description: A prerequisite database function and whether it is installed.
         "401": *a1
         "404":
           description: This service has no onboarding flow.
@@ -823,7 +891,18 @@ paths:
       summary: Create a project
       description: |-
         Creates a new project, **always disabled**. `enabled` cannot be set here; it is turned on afterwards
-        through `updateProjectConfig` once the project has been verified.
+        through `updateProjectConfig` once the project has been verified. Several column CHECKs are written on
+        that assumption — issue-chaser refuses its summary and cadence flags while a row is disabled — so a
+        draft that sets one of those will be rejected until the row is enabled.
+
+        **The draft may carry any column of the service's config table.** Not a curated shortlist: whatever the
+        editor would let you change on an existing row, you can set while creating it. `getOnboardingRequirements`
+        returns the exact list with types and allowed values, derived from live schema introspection. A column
+        you omit keeps its database default — omitting is how you say "leave it alone", and there is no way to
+        write an explicit null.
+
+        A key that is not a column of the service is **rejected**, naming the key. It is not ignored: a draft
+        that half-applies and reports success is worse than one that fails.
 
         What gets created varies. Haze and Lightning are a single row. Ailytics is a row whose blank NOT NULL
         columns are stored as empty strings. WBGT creates a per-project readings table first, then the config
@@ -832,7 +911,7 @@ paths:
         Some steps are outside HALO entirely — sharing a Google Sheet, deploying an adapter, matching a
         CloudLynx sensor label. The response lists them, and a project is not working until they are done.
 
-        Note that row creation is **not** recorded in the audit trail; only later updates are.
+        Row creation is recorded in the audit trail as an `insert`, alongside later updates.
       parameters:
         - name: service
           in: path
@@ -858,7 +937,7 @@ paths:
                   type: object
                   additionalProperties:
                     type: string
-                  description: Field values, keyed by column. Call `getOnboardingRequirements` for the field list.
+                  description: Column name to value, every value a string. May carry ANY column of this service's config table — call `getOnboardingRequirements` for the list, the types and the allowed values. Omitted columns keep their database default; an unknown column is rejected rather than ignored.
               required:
                 - draft
       responses:

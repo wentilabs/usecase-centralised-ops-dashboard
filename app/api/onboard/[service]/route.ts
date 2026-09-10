@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+
+import { describePostgrestError } from "@/lib/postgrest-error";
 import type { NextRequest } from "next/server";
 
 import {
   callRpc,
+  getFieldSpec,
   insertConfig,
   insertRows,
   listConfigs,
@@ -13,6 +16,7 @@ import {
   onboardingFor,
   prefillDefaults,
   validateDraft,
+  withSchemaFields,
 } from "@/lib/onboarding";
 import { getDashboardSession } from "@/lib/supabase/server";
 import { SERVICES, isServiceKey } from "@/lib/services";
@@ -38,8 +42,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ser
 
   const { service } = await context.params;
   if (!isServiceKey(service)) return NextResponse.json({ error: "Unknown service" }, { status: 404 });
-  const definition = onboardingFor(service);
-  if (!definition) return NextResponse.json({ error: `${service} has no onboarding flow.` }, { status: 404 });
+  const curated = onboardingFor(service);
+  if (!curated) return NextResponse.json({ error: `${service} has no onboarding flow.` }, { status: 404 });
+  // Every column the editor would let you change, not just the curated few.
+  const definition = withSchemaFields(curated, await getFieldSpec(service).catch(() => null));
 
   const missing = missingEnvDefaults(definition, process.env);
   const defaults = Object.fromEntries(
@@ -60,6 +66,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ser
 
   return NextResponse.json({
     ok: true,
+    // The whole settable vocabulary, so a caller need not guess which columns a
+    // draft may carry — `fromSchema` marks the ones that simply take the
+    // column's own default when left out.
+    fields: definition.fields
+      .map((field) => ({
+        column: field.column,
+        label: field.label,
+        help: field.help ?? null,
+        kind: field.kind,
+        required: field.required,
+        computed: Boolean(field.computed),
+        options: field.options ?? null,
+        target: field.target ?? "config",
+        fromSchema: Boolean(field.fromSchema),
+      })),
     missingEnvDefaults: missing,
     defaultsResolved: defaults,
     prefill: prefillDefaults(definition, process.env),
@@ -76,8 +97,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
 
   const { service } = await context.params;
   if (!isServiceKey(service)) return NextResponse.json({ error: "Unknown service" }, { status: 404 });
-  const definition = onboardingFor(service);
-  if (!definition) return NextResponse.json({ error: `${service} has no onboarding flow.` }, { status: 404 });
+  const curated = onboardingFor(service);
+  if (!curated) return NextResponse.json({ error: `${service} has no onboarding flow.` }, { status: 404 });
+  // Re-derived here rather than trusted from the client: the draft may name any
+  // column of the table now, so what counts as a column is the server's answer.
+  const definition = withSchemaFields(curated, await getFieldSpec(service));
 
   const body = (await request.json().catch(() => ({}))) as { draft?: Record<string, string> };
   const draft = body.draft ?? {};
@@ -120,7 +144,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
     created = await insertConfig(service, row);
   } catch (error) {
     return NextResponse.json(
-      { error: `Supabase rejected the insert: ${error instanceof Error ? error.message : error}` },
+      { error: `Supabase rejected the insert: ${describePostgrestError(error)}` },
       { status: 502 },
     );
   }

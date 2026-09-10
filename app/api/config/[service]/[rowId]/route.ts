@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { describePostgrestError } from "@/lib/postgrest-error";
 import type { NextRequest } from "next/server";
 
 import { effectiveChanges, validateChanges } from "@/lib/config-values";
@@ -80,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     rows = await updateConfig(service, rowId, effective, body.baseUpdatedAt ?? null);
   } catch (error) {
     return NextResponse.json(
-      { error: `Supabase rejected the change: ${error instanceof Error ? error.message : error}` },
+      { error: `Supabase rejected the change: ${describePostgrestError(error)}` },
       { status: 502 },
     );
   }

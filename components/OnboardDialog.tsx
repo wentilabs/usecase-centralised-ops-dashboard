@@ -209,6 +209,166 @@ export function OnboardDialog({
     return entry.notNull ? "left blank (stored as empty)" : "left blank";
   }
 
+  /**
+   * The two lists on screen: the fields this service's onboarding flow names,
+   * and every other column of its table.
+   *
+   * The split is `fromSchema`, which is also exactly the difference in
+   * behaviour — a curated field left blank is written as a considered blank,
+   * one of these is left out so the column default stands.
+   */
+  const shown = definition.fields.filter((entry) => !entry.hidden && !entry.fromSchema);
+  const rest = definition.fields.filter((entry) => entry.hidden || entry.fromSchema);
+  const touchedRest = rest.filter((entry) => String(draft[entry.column] ?? "").trim()).length;
+  const [showRest, setShowRest] = useState(false);
+  /** Columns Postgres refuses while the row is disabled, which it always is here. */
+  const needsEnabled = useMemo(() => new Set(definition.requiresEnabled ?? []), [definition]);
+
+  /**
+   * One field's input, whichever section it is rendered in.
+   *
+   * Extracted rather than duplicated: the curated fields and the rest of the
+   * table are two lists on screen but one set of widgets, and a `select` that
+   * validates in one list and not the other would be a bug nobody sees until
+   * Postgres rejects the insert.
+   */
+  const control = (entry: OnboardDefinition["fields"][number]) => (
+    <>
+                {entry.computed ? (
+                  // Derived from the project code and created on demand as a
+                  // sheet tab, so an editable box would invite a mismatch.
+                  <div className="rounded-lg border border-dashed border-border bg-card/40 px-3 py-2 text-sm text-muted-foreground">
+                    {code ? (
+                      <span className="text-foreground">{resolveValue(entry, {}, code, {})}</span>
+                    ) : (
+                      "set from the project code"
+                    )}
+                    <span className="ml-2 text-[10px] uppercase tracking-wider">automatic</span>
+                  </div>
+                ) : entry.kind === "groups" ? (
+                  // The same picker the editor uses: a chat id says nothing,
+                  // and picking the wrong group is the kind of mistake nobody
+                  // notices until a site gets someone else's messages.
+                  <GroupPicker
+                    value={draft[entry.column] ?? ""}
+                    groupNames={groupNames}
+                    disabled={busy}
+                    onChange={(next) => {
+                      setEdited((prev) => new Set(prev).add(entry.column));
+                      setDraft((prev) => ({ ...prev, [entry.column]: next }));
+                    }}
+                  />
+                ) : entry.kind === "toggle" ? (
+                  // A real switch rather than a box someone types "true"
+                  // into. The draft still holds a string, which is what
+                  // resolveValue and the fallbacks work in.
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary"
+                      checked={(draft[entry.column] ?? entry.fallback ?? "false") === "true"}
+                      disabled={busy}
+                      onChange={(event) => {
+                        setEdited((prev) => new Set(prev).add(entry.column));
+                        setDraft((prev) => ({ ...prev, [entry.column]: event.target.checked ? "true" : "false" }));
+                      }}
+                    />
+                    <span className="text-muted-foreground">
+                      {(draft[entry.column] ?? entry.fallback ?? "false") === "true" ? "on" : "off"}
+                    </span>
+                  </label>
+                ) : entry.kind === "multi" ? (
+                  // One checkbox per allowed value, as the editor does it. A
+                  // typed comma list invites "G,X" and a validation error
+                  // for something that is really a two-way choice. The draft
+                  // still holds a comma list, so resolveValue and
+                  // buildInsertRow are unchanged, and the order follows
+                  // `options` rather than click order so the stored value is
+                  // deterministic.
+                  <div className="flex flex-wrap items-center gap-3">
+                    {(entry.options ?? []).map((option) => {
+                      const chosen = new Set(
+                        String(draft[entry.column] ?? entry.fallback ?? "")
+                          .split(",")
+                          .map((value) => value.trim())
+                          .filter(Boolean),
+                      );
+                      return (
+                        <label key={option} className="flex items-center gap-1.5 text-sm">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={chosen.has(option)}
+                            disabled={busy}
+                            onChange={(event) => {
+                              const next = new Set(chosen);
+                              if (event.target.checked) next.add(option);
+                              else next.delete(option);
+                              const ordered = (entry.options ?? []).filter((value) => next.has(value));
+                              setEdited((prev) => new Set(prev).add(entry.column));
+                              setDraft((prev) => ({ ...prev, [entry.column]: ordered.join(",") }));
+                            }}
+                          />
+                          <span className="font-mono">{option}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {option === "G" ? "cloud-to-ground" : option === "C" ? "intra-cloud" : ""}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : entry.kind === "select" ? (
+                  <select
+                    className={field}
+                    value={draft[entry.column] ?? entry.fallback ?? ""}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setEdited((prev) => new Set(prev).add(entry.column));
+                      setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
+                    }}
+                  >
+                    {(entry.options ?? []).map((option) => (
+                      <option key={option} value={option}>
+                        {option === "" ? "— unset —" : option.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={field}
+                    value={draft[entry.column] ?? ""}
+                    disabled={busy}
+                    placeholder={placeholderFor(entry)}
+                    inputMode={entry.kind === "number" || entry.kind === "hhmm" ? "numeric" : undefined}
+                    onChange={(event) => {
+                      setEdited((prev) => new Set(prev).add(entry.column));
+                      setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
+                    }}
+                  />
+                )}
+                {/* A pasted sheet URL is stored as the bare id, and the box
+                    keeps showing what was typed. Say what will actually be
+                    written, so nobody has to trust that silently. */}
+                {entry.kind === "sheet" &&
+                draft[entry.column] &&
+                resolveValue(entry, draft, code, {}) !== String(draft[entry.column]).trim() ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    stored as <code className="font-mono">{resolveValue(entry, draft, code, {})}</code>
+                  </p>
+                ) : null}
+                {derived[entry.column] && !edited.has(entry.column) ? (
+                  <p
+                    className={`mt-1 text-[11px] ${derived[entry.column].review ? "text-warn" : "text-muted-foreground"}`}
+                  >
+                    {derived[entry.column].review ? "Derived — confirm before enabling. " : ""}
+                    {derived[entry.column].note}
+                  </p>
+                ) : entry.help ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
+                ) : null}
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4">
       <div className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-background p-4 shadow-2xl md:max-h-[88vh] md:w-[min(680px,94vw)] md:rounded-2xl md:p-5">
@@ -331,9 +491,7 @@ export function OnboardDialog({
             ) : null}
 
             <div className="mt-4 flex flex-col gap-3">
-              {definition.fields
-                .filter((entry) => !entry.hidden)
-                .map((entry) => (
+              {shown.map((entry) => (
                 <div key={entry.column} className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3">
                   <div className="md:pt-2">
                     <div className="text-sm font-medium">
@@ -342,143 +500,61 @@ export function OnboardDialog({
                     </div>
                     <div className="font-mono text-[10px] text-muted-foreground">{entry.column}</div>
                   </div>
-                  <div>
-                    {entry.computed ? (
-                      // Derived from the project code and created on demand as a
-                      // sheet tab, so an editable box would invite a mismatch.
-                      <div className="rounded-lg border border-dashed border-border bg-card/40 px-3 py-2 text-sm text-muted-foreground">
-                        {code ? (
-                          <span className="text-foreground">{resolveValue(entry, {}, code, {})}</span>
-                        ) : (
-                          "set from the project code"
-                        )}
-                        <span className="ml-2 text-[10px] uppercase tracking-wider">automatic</span>
-                      </div>
-                    ) : entry.kind === "groups" ? (
-                      // The same picker the editor uses: a chat id says nothing,
-                      // and picking the wrong group is the kind of mistake nobody
-                      // notices until a site gets someone else's messages.
-                      <GroupPicker
-                        value={draft[entry.column] ?? ""}
-                        groupNames={groupNames}
-                        disabled={busy}
-                        onChange={(next) => {
-                          setEdited((prev) => new Set(prev).add(entry.column));
-                          setDraft((prev) => ({ ...prev, [entry.column]: next }));
-                        }}
-                      />
-                    ) : entry.kind === "toggle" ? (
-                      // A real switch rather than a box someone types "true"
-                      // into. The draft still holds a string, which is what
-                      // resolveValue and the fallbacks work in.
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-primary"
-                          checked={(draft[entry.column] ?? entry.fallback ?? "false") === "true"}
-                          disabled={busy}
-                          onChange={(event) => {
-                            setEdited((prev) => new Set(prev).add(entry.column));
-                            setDraft((prev) => ({ ...prev, [entry.column]: event.target.checked ? "true" : "false" }));
-                          }}
-                        />
-                        <span className="text-muted-foreground">
-                          {(draft[entry.column] ?? entry.fallback ?? "false") === "true" ? "on" : "off"}
-                        </span>
-                      </label>
-                    ) : entry.kind === "multi" ? (
-                      // One checkbox per allowed value, as the editor does it. A
-                      // typed comma list invites "G,X" and a validation error
-                      // for something that is really a two-way choice. The draft
-                      // still holds a comma list, so resolveValue and
-                      // buildInsertRow are unchanged, and the order follows
-                      // `options` rather than click order so the stored value is
-                      // deterministic.
-                      <div className="flex flex-wrap items-center gap-3">
-                        {(entry.options ?? []).map((option) => {
-                          const chosen = new Set(
-                            String(draft[entry.column] ?? entry.fallback ?? "")
-                              .split(",")
-                              .map((value) => value.trim())
-                              .filter(Boolean),
-                          );
-                          return (
-                            <label key={option} className="flex items-center gap-1.5 text-sm">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-primary"
-                                checked={chosen.has(option)}
-                                disabled={busy}
-                                onChange={(event) => {
-                                  const next = new Set(chosen);
-                                  if (event.target.checked) next.add(option);
-                                  else next.delete(option);
-                                  const ordered = (entry.options ?? []).filter((value) => next.has(value));
-                                  setEdited((prev) => new Set(prev).add(entry.column));
-                                  setDraft((prev) => ({ ...prev, [entry.column]: ordered.join(",") }));
-                                }}
-                              />
-                              <span className="font-mono">{option}</span>
-                              <span className="text-[11px] text-muted-foreground">
-                                {option === "G" ? "cloud-to-ground" : option === "C" ? "intra-cloud" : ""}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ) : entry.kind === "select" ? (
-                      <select
-                        className={field}
-                        value={draft[entry.column] ?? entry.fallback ?? ""}
-                        disabled={busy}
-                        onChange={(event) => {
-                          setEdited((prev) => new Set(prev).add(entry.column));
-                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
-                        }}
-                      >
-                        {(entry.options ?? []).map((option) => (
-                          <option key={option} value={option}>
-                            {option === "" ? "— unset —" : option.replace(/_/g, " ")}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className={field}
-                        value={draft[entry.column] ?? ""}
-                        disabled={busy}
-                        placeholder={placeholderFor(entry)}
-                        inputMode={entry.kind === "number" || entry.kind === "hhmm" ? "numeric" : undefined}
-                        onChange={(event) => {
-                          setEdited((prev) => new Set(prev).add(entry.column));
-                          setDraft((prev) => ({ ...prev, [entry.column]: event.target.value }));
-                        }}
-                      />
-                    )}
-                    {/* A pasted sheet URL is stored as the bare id, and the box
-                        keeps showing what was typed. Say what will actually be
-                        written, so nobody has to trust that silently. */}
-                    {entry.kind === "sheet" &&
-                    draft[entry.column] &&
-                    resolveValue(entry, draft, code, {}) !== String(draft[entry.column]).trim() ? (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        stored as <code className="font-mono">{resolveValue(entry, draft, code, {})}</code>
-                      </p>
-                    ) : null}
-                    {derived[entry.column] && !edited.has(entry.column) ? (
-                      <p
-                        className={`mt-1 text-[11px] ${derived[entry.column].review ? "text-warn" : "text-muted-foreground"}`}
-                      >
-                        {derived[entry.column].review ? "Derived — confirm before enabling. " : ""}
-                        {derived[entry.column].note}
-                      </p>
-                    ) : entry.help ? (
-                      <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
-                    ) : null}
-                  </div>
+                  <div>{control(entry)}</div>
                   </div>
                 ))}
             </div>
+
+            {/* Everything else on the table. Collapsed rather than absent: a
+                column nobody usually sets should not crowd out the four that
+                decide whether the insert is accepted, but it must be reachable
+                — otherwise the only way to set it is to create the row and
+                immediately edit it, which is two audit entries and a window
+                where the row is wrong. */}
+            {rest.length ? (
+              <div className="mt-4 rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowRest((open) => !open)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted/40"
+                >
+                  <span aria-hidden>{showRest ? "▾" : "▸"}</span>
+                  Everything else on this table ({rest.length})
+                  {touchedRest ? <span className="text-primary">· {touchedRest} set</span> : null}
+                </button>
+                {showRest ? (
+                  <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Prefilled ones carry the value HALO writes by default. The rest, left blank, keep the
+                      column&apos;s own default — nothing is written for them.
+                    </p>
+                    {rest.map((entry) => (
+                      <div
+                        key={entry.column}
+                        className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3"
+                      >
+                        <div className="md:pt-2">
+                          <div className="text-sm font-medium">{entry.label}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{entry.column}</div>
+                        </div>
+                        <div>
+                          {control(entry)}
+                          {/* A flag the database only permits on an enabled
+                              row, and every row here is created disabled. The
+                              checklist catches it, but being told after
+                              ticking is worse than being told before. */}
+                          {needsEnabled.has(entry.column) ? (
+                            <p className="mt-1 text-[11px] text-warn">
+                              Only on an enabled project — set it after you turn this one on.
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-lg border border-border bg-card/50 p-3">
               <div className="text-[11px] font-semibold">HALO cannot do these — they are not row writes</div>

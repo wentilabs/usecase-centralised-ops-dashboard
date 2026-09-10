@@ -574,6 +574,11 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     working_hours_end_hhmm: { label: "Working hours end", widget: "hhmm", row: "hours" },
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },
+    enable_sms_lightning_alerts: {
+      label: "Forward SMS lightning alerts",
+      help: "Controls signed SMS Gateway thunderstorm alerts only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
+      row: "sms",
+    },
 
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
@@ -1075,6 +1080,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
       ],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
+    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts"] },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"],

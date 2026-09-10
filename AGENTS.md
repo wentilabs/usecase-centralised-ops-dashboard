@@ -372,6 +372,21 @@ Rules that are easy to get wrong and are pinned by tests:
 - **Only require what the table demands.** A field marked required that the
   database would accept as null is a dialog inventing a rule and blocking a
   legitimate draft row.
+- **The identity map is not a gate on creation.** It is built from rows that
+  exist, so a site nobody has configured is absent from it by definition; using
+  it to decide what may be created refuses the first project of every new site,
+  which is exactly what it did — "TEST2 is not a site in the estate identity
+  map. Which existing canonical site should receive the row?" A code in a chat
+  request that matches no site is now proposed as a new project, upper-cased,
+  tagged `new site` in the review list. The map still does its real job: a code
+  that DOES match selects that site under any of its spellings, so no second
+  row is made for a project already filed under another one.
+- **`template` copies a project; `carry` copies a column.** "The same
+  configuration as TEST" takes every creatable column off that one row.
+  `carry` takes one column from the same SITE's row in another service. They
+  answer different questions and both exist. A template carries chat ids and
+  sheet ids, so every copied value is listed in the review — pointing a new
+  project at another project's WhatsApp group is the mistake that list is for.
 - **DDL runs first.** A config row pointing at a readings table that was never
   created is the half-onboarded state the ordering avoids. A companion row runs
   last, and a failure there is reported rather than thrown, because the config

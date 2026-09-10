@@ -157,13 +157,13 @@ export const openapiDocument = {
         tags: ["configuration"],
         summary: "Turn one sentence into a proposed change, a bulk change, or an onboarding plan",
         description:
-          "PROPOSES ONLY — writes nothing and triggers nothing, on every path. Whether a sentence covers one project or thirty is decided by the model reading it, not by keywords beforehand: it is given every candidate row with its current values, and it answers with what it means — a company, a service, project codes, or a condition over column values. That answer is resolved back to rows HERE, in code, against projects that already exist, so a model never names a row id and an invented code selects nothing. Exclusions (\"all Wohhup WBGT projects except MBS\") are ordinary requests and are resolved, not questioned. Returns exactly one of five shapes, and the response key says which:\n\n" +
+          "PROPOSES ONLY — writes nothing and triggers nothing, on every path. Whether a sentence covers one project or thirty is decided by the model reading it, not by keywords beforehand: it is given every candidate row with its current values, and it answers with what it means — a company, a service, project codes, or a condition over column values. That answer is resolved back to rows HERE, in code, against projects that already exist, so a model never names a row id. On the editing paths an invented code selects nothing; on the onboarding path it means a new site (see below). Exclusions (\"all Wohhup WBGT projects except MBS\") are ordinary requests and are resolved, not questioned. Returns exactly one of five shapes, and the response key says which:\n\n" +
           "- `proposal` — the change landed on one project. Apply with `updateProjectConfig`.\n" +
           "- `batch` — several projects, each with its own change set. Apply one `updateProjectConfig` per entry; there is no bulk write endpoint, so each keeps its own validation, optimistic concurrency and audit row.\n" +
           "- `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`.\n" +
           "- `jobs` — a sheet job to run once per project. Apply one `runJob` per entry in `runs` where `ready` is true, passing `job`, that entry's `projectCode`, and the plan's `startDate`/`endDate`. Entries with `ready: false` carry a `reason` and must not be sent. Nothing is triggered by this route: `runJob` needs the `jobs` scope, which `write` does not confer.\n" +
           "- `message` — a question or a refusal, when there is nothing to propose.\n\n" +
-          "The onboarding path consults no model at all: the company, the target services and the missing sites are all decided in code, so no project code can be invented. It counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code would create duplicates. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because \"34 of 36 need a Safety workbook id\" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.\n\n" +
+          "The onboarding path counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code alone would create duplicates. A code that matches a site selects it under any of its spellings and the row is created under the canonical one. A code that matches nothing is a site nobody has configured yet: it is proposed as a NEW project with `isNew: true`, because the map is derived from rows that exist and so can never contain a project being created. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because \"34 of 36 need a Safety workbook id\" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.\n\n" +
           "Requires an editor session, and `ANTHROPIC_API_KEY` for the two model-backed paths. An agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip; the onboarding path is worth calling even so, because the site-matching it does is not reproducible from the schema alone.",
         requestBody: {
           required: true,
@@ -221,6 +221,11 @@ export const openapiDocument = {
                                       items: { type: "string" },
                                       description: "What this site is already called in other services.",
                                     },
+                                    isNew: {
+                                      type: "boolean",
+                                      description:
+                                        "This code is in no service at all — the request is creating the site, not extending it. Also what a typo looks like, so show it to a human before creating.",
+                                    },
                                   },
                                 },
                               },
@@ -233,6 +238,7 @@ export const openapiDocument = {
                                     projectCode: { type: "string" },
                                     values: { type: "object", additionalProperties: { type: "string" } },
                                     knownAs: { type: "array", items: { type: "string" } },
+                                    isNew: { type: "boolean" },
                                     problems: { type: "array", items: { type: "string" } },
                                   },
                                 },

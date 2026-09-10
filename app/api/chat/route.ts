@@ -158,12 +158,15 @@ type ChatReply = {
         projectCode: string;
         values: Record<string, string>;
         knownAs: string[];
+        /** In no service at all — a site being created, not extended. */
+        isNew?: boolean;
         derived: { column: string; from: string; value: string; why: string }[];
       }[];
       blocked: {
         projectCode: string;
         values: Record<string, string>;
         knownAs: string[];
+        isNew?: boolean;
         problems: string[];
         derived: { column: string; from: string; value: string; why: string }[];
       }[];
@@ -669,12 +672,14 @@ async function onboardingReply(
           projectCode: row.projectCode,
           values: row.values,
           knownAs: knownAs(row.knownAs),
+          isNew: row.isNew,
           derived: row.derived,
         })),
         blocked: entry.blocked.map((row) => ({
           projectCode: row.projectCode,
           values: row.values,
           knownAs: knownAs(row.knownAs),
+          isNew: row.isNew,
           problems: row.problems,
           derived: row.derived,
         })),

@@ -29,6 +29,7 @@ export type OnboardRowView = {
   values: Record<string, string>;
   /** What this site is already called elsewhere, so a code can be recognised. */
   knownAs: string[];
+  isNew?: boolean;
   problems?: string[];
   /** Values taken from another service's row for the same site. */
   derived?: { column: string; from: string; value: string; why: string }[];
@@ -214,6 +215,15 @@ export function OnboardProposal({
                             </span>
                           )}
                           <span className="font-mono font-semibold">{row.projectCode}</span>
+                          {/* A code in no service at all. Every other row here
+                              is a site the estate already knows, so this is
+                              also what a typo looks like — say it plainly and
+                              let the operator be the one who can tell. */}
+                          {row.isNew ? (
+                            <span className="shrink-0 rounded border border-primary/40 bg-primary/10 px-1 py-px text-[10px] font-medium uppercase tracking-wide text-primary">
+                              new site
+                            </span>
+                          ) : null}
                           {row.knownAs.length ? (
                             <span className="truncate text-[11px] text-muted-foreground">
                               already {row.knownAs.join(" · ")}
@@ -271,7 +281,8 @@ export function OnboardProposal({
                     <ul className="mt-1.5 space-y-1">
                       {entry.blocked.map((row) => (
                         <li key={row.projectCode} className="text-xs">
-                          <span className="font-mono">{row.projectCode}</span>{" "}
+                          <span className="font-mono">{row.projectCode}</span>
+                          {row.isNew ? <span className="text-primary"> (new site)</span> : null}{" "}
                           <span className="text-muted-foreground">— {row.problems?.join(" ")}</span>
                         </li>
                       ))}

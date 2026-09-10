@@ -583,9 +583,16 @@ test("scope filters compose, and excludes win", () => {
   );
   // No includes means every site, so a sentence naming no scope still means something.
   assert.deepEqual(codesOf(run({ include: [], exclude: [] })), ["A", "B", "C", "D"]);
-  // A code the estate does not have simply selects nothing — which is why the
-  // model is allowed to supply codes here at all.
-  assert.deepEqual(codesOf(run({ include: [{ kind: "codes", codes: ["NOPE"] }], exclude: [] })), []);
+  // A code the estate does not have is a site nobody has configured yet, and
+  // naming it asks for it to be created. It used to select nothing, which made
+  // the dashboard able to onboard a site into its second service but never its
+  // first — a new project was refused for being new.
+  const brandNew = run({ include: [{ kind: "codes", codes: ["nope"] }], exclude: [] });
+  assert.deepEqual(codesOf(brandNew), ["NOPE"], "an unknown code proposes a new site, upper-cased");
+  if (brandNew.kind !== "plan") return assert.fail("expected a plan");
+  const [proposed] = [...brandNew.services[0].ready, ...brandNew.services[0].blocked];
+  assert.equal(proposed.isNew, true, "and is marked as new, because this is also what a typo looks like");
+  assert.deepEqual(proposed.knownAs, [], "a new site is in no service by definition");
 });
 
 test("an undeclared copy is performed and flagged, not refused", () => {
@@ -645,7 +652,7 @@ test("the prompt promises the shape the parser accepts", () => {
   // and the model kept answering in a shape the parser silently ignored — so
   // two excludes came back as prose notes and the plan covered 35 sites
   // instead of 27. Nothing else catches this.
-  for (const field of ["targets", "scope", "switches", "values", "fallbacks", "carry", "groupPatterns", "notes"]) {
+  for (const field of ["targets", "scope", "switches", "values", "fallbacks", "carry", "template", "groupPatterns", "notes"]) {
     assert.match(ONBOARD_INTENT_PROMPT, new RegExp(`"${field}"`), `the prompt must document "${field}"`);
   }
   for (const kind of ["company", "in-service", "codes"]) {
@@ -659,29 +666,50 @@ test("the prompt promises the shape the parser accepts", () => {
   assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /"kind":"all"/, "the old fixed scope is gone");
   assert.doesNotMatch(ONBOARD_INTENT_PROMPT, /"groupPattern":\s*\{/, "the single-pattern form is gone");
 
-  // The worked example must itself parse, or it is teaching a shape that fails.
-  const example = ONBOARD_INTENT_PROMPT.slice(ONBOARD_INTENT_PROMPT.indexOf("Worked example."));
-  // Brace-counted: the prompt continues past the example, so lastIndexOf swept
-  // up unrelated text and the extract would not parse.
-  const start = example.indexOf("{");
-  let depth = 0;
-  let end = start;
-  for (let at = start; at < example.length; at += 1) {
-    if (example[at] === "{") depth += 1;
-    if (example[at] === "}") depth -= 1;
-    if (depth === 0) { end = at; break; }
+  // EVERY worked example must itself parse, or the prompt is teaching a shape
+  // that fails. Brace-counted rather than line-matched: the prompt continues
+  // past the examples, so a lastIndexOf sweep picks up unrelated text.
+  const examples = ONBOARD_INTENT_PROMPT.slice(ONBOARD_INTENT_PROMPT.indexOf("Worked example."));
+  const blocks: string[] = [];
+  for (let at = 0; at < examples.length; at += 1) {
+    if (examples[at] !== "{") continue;
+    let depth = 0;
+    for (let scan = at; scan < examples.length; scan += 1) {
+      if (examples[scan] === "{") depth += 1;
+      if (examples[scan] === "}") depth -= 1;
+      if (depth === 0) {
+        blocks.push(examples.slice(at, scan + 1));
+        at = scan;
+        break;
+      }
+    }
   }
-  const json = example.slice(start, end + 1);
-  const parsed = parseOnboardIntent(JSON.parse(json), {
-    ...ALLOWED,
-    switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
-    valueColumns: ["spreadsheet_id"],
-  });
+  // The `<filter>` placeholders above the examples are not JSON; a block that
+  // is not an intent at all would silently pass as "nothing to check".
+  const intents = blocks.filter((block) => block.includes('"targets"'));
+  assert.equal(intents.length, 2, "both worked examples must be found");
+
+  const parseExample = (json: string) =>
+    parseOnboardIntent(JSON.parse(json) as Record<string, unknown>, {
+      ...ALLOWED,
+      switchColumns: ["enable_housekeeping", "enable_manpower_summary", "enable_activity_summary"],
+      valueColumns: ["spreadsheet_id"],
+    });
+
+  const parsed = parseExample(intents[0]);
   assert.ok(parsed && !("question" in parsed), "the worked example must parse");
   if (!parsed || "question" in parsed) return;
   assert.deepEqual(parsed.targets, ["subcon"]);
   assert.equal(parsed.scope.exclude.length, 2, "both excludes in the example must survive");
   assert.equal(parsed.carry[0]?.declared, true, "the example's carry is a declared pair");
+
+  // The new-project example, which is the one the old prompt could not express
+  // — it answered "which existing site did you mean?" instead.
+  const fresh = parseExample(intents[1]);
+  assert.ok(fresh && !("question" in fresh), "the new-project example must parse");
+  if (!fresh || "question" in fresh) return;
+  assert.deepEqual(fresh.scope.include, [{ kind: "codes", codes: ["TEST2"] }]);
+  assert.deepEqual(fresh.template, { service: "issueChaser", projectCode: "TEST" });
 });
 
 test("the notes box means 'not applied', not 'mentioned'", () => {
@@ -797,5 +825,160 @@ test("an unreadable where filter is refused, never dropped", () => {
       null,
       `${JSON.stringify(bad)} must be refused`,
     );
+  }
+});
+
+test("a brand new project can be created, and templated from an existing one", () => {
+  // The request that was refused: "add a new project TEST2 that has the exact
+  // same configurations as TEST in issue chaser. It is a totally new project,
+  // with no other services yet." The answer came back "TEST2 is not a site in
+  // the estate identity map. Which existing canonical site should receive the
+  // new Issue Chaser project row?" — which is the map being used as a gate on
+  // creation. The map is built from rows that exist, so it can only ever say
+  // no to the first project of a new site.
+  const rows = [
+    row("issueChaser", "TEST", {
+      company: "Wohhup",
+      safety_sheet_id: SHEET_ID,
+      whatsapp_group_ids: "a@g.us,b@g.us",
+      remove_sunday_notifications: true,
+      lambda_url: "https://custom/send-message",
+    }),
+    row("issueChaser", "ZRA", { company: "Wohhup", safety_sheet_id: OTHER_SHEET_ID }),
+  ];
+  const run = (intent: Partial<OnboardIntent>) =>
+    planOnboarding({
+      prompt: "add a new project TEST2 with the same configuration as TEST in issue chaser",
+      intent: {
+        targets: ["issueChaser"],
+        scope: { include: [{ kind: "codes", codes: ["TEST2"] }], exclude: [] },
+        switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+        ...intent,
+      } as OnboardIntent,
+      clusters: clusterProjects(rows),
+      existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+      env: ENV,
+    });
+
+  // Without a template it is still proposed — the code alone is enough to
+  // create a project — but it is short the one required field nothing supplies.
+  const bare = run({});
+  if (bare.kind !== "plan") return assert.fail(`expected a plan, got: ${bare.question}`);
+  assert.deepEqual(bare.services[0].ready, [], "nothing is ready without a workbook");
+  assert.equal(bare.services[0].blocked[0]?.projectCode, "TEST2");
+  assert.match(bare.services[0].blocked[0]?.problems.join(" ") ?? "", /Safety workbook is required/i);
+
+  const templated = run({ template: { service: "issueChaser", projectCode: "TEST" } });
+  if (templated.kind !== "plan") return assert.fail(`expected a plan, got: ${templated.question}`);
+  const [created] = templated.services[0].ready;
+  assert.ok(created, `TEST2 should be ready: ${templated.services[0].blocked[0]?.problems.join(" ")}`);
+  assert.equal(created.projectCode, "TEST2");
+  assert.equal(created.isNew, true);
+
+  // Every creatable column comes across, including the ones a required-field
+  // check would not have caught.
+  assert.equal(created.values.safety_sheet_id, SHEET_ID);
+  assert.equal(created.values.whatsapp_group_ids, "a@g.us,b@g.us");
+  assert.equal(created.values.remove_sunday_notifications, "true");
+  // An env default loses to the template: "the same as TEST" means TEST's URL,
+  // not the estate's.
+  assert.equal(created.values.lambda_url, "https://custom/send-message");
+  // Identity never does. The template is a different project.
+  assert.equal(created.values.project_code, "TEST2");
+
+  // And every copied value is listed, because a template carries chat ids —
+  // pointing a new project at another project's WhatsApp group is precisely
+  // what the review list is for.
+  const copied = Object.fromEntries(created.derived.map((entry) => [entry.column, entry]));
+  assert.equal(copied.whatsapp_group_ids?.from, "Issue Chaser: TEST.whatsapp_group_ids");
+  assert.match(copied.whatsapp_group_ids?.why ?? "", /copied from TEST/);
+  assert.equal(copied.project_code, undefined);
+
+  // An explicit instruction still beats the template — a value, and a switch,
+  // which is the one that decides whether a site gets a Sunday message.
+  const overridden = run({
+    template: { service: "issueChaser", projectCode: "TEST" },
+    values: { safety_sheet_id: OTHER_SHEET_ID },
+    switches: { remove_sunday_notifications: false },
+  });
+  if (overridden.kind !== "plan") return assert.fail("expected a plan");
+  assert.equal(overridden.services[0].ready[0]?.values.safety_sheet_id, OTHER_SHEET_ID);
+  assert.equal(overridden.services[0].ready[0]?.values.remove_sunday_notifications, "false");
+
+  // A template can only carry columns the service is CREATED with, and saying
+  // "the same as TEST" while quietly dropping the rest is the half-truth that
+  // actually happened: the real TEST2 came out matching TEST on everything the
+  // dialog asks about and differing on six columns nobody was told about.
+  const partial = [
+    row("issueChaser", "RICH", {
+      company: "Wohhup",
+      safety_sheet_id: SHEET_ID,
+      // Not part of creating an issue-chaser row.
+      daily_safety_summary_enabled: true,
+      include_days_before_snapshot: 1,
+      // Set, but false or empty, so naming it would be noise.
+      same_day_open_snapshot_enabled: false,
+      severity_p1_window_start: null,
+      // A rule, not a gap — every row is created disabled and it is said so
+      // elsewhere.
+      enabled: true,
+    }),
+  ];
+  const gaps = planOnboarding({
+    prompt: "add RICH2 like RICH in issue chaser",
+    intent: {
+      targets: ["issueChaser"],
+      scope: { include: [{ kind: "codes", codes: ["RICH2"] }], exclude: [] },
+      template: { service: "issueChaser", projectCode: "RICH" },
+      switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects(partial),
+    existingFor: (service) => partial.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+  });
+  if (gaps.kind !== "plan") return assert.fail("expected a plan");
+  const said = gaps.unread.join(" ");
+  assert.match(said, /daily_safety_summary_enabled/);
+  assert.match(said, /include_days_before_snapshot/);
+  assert.match(said, /cannot set them/);
+  assert.doesNotMatch(said, /same_day_open_snapshot_enabled/, "a column set to false is not a gap worth naming");
+  assert.doesNotMatch(said, /severity_p1_window_start/, "nor is a null one");
+  // Anchored on the separators, not on \b: every other column here ENDS in
+  // "enabled", so a word boundary matches all of them and the check passes for
+  // the wrong reason.
+  assert.doesNotMatch(said, /(^|[\s,])enabled([\s,]|$)/, "rows are always created disabled; that is a rule, not a gap");
+  // And it is a note, not a refusal: the row is still created.
+  assert.equal(gaps.services[0].ready[0]?.projectCode, "RICH2");
+
+  // A template naming a row that is not there copies nothing and says so,
+  // rather than quietly producing an empty project.
+  const missing = run({ template: { service: "issueChaser", projectCode: "NOSUCH" } });
+  if (missing.kind !== "plan") return assert.fail("expected a plan");
+  assert.match(missing.unread.join(" "), /nothing in Issue Chaser is called "NOSUCH"/);
+  assert.equal(missing.services[0].ready.length, 0);
+});
+
+test("a new code that is already taken is caught before anything is written", () => {
+  // The other half of letting the model name codes: the check that used to be
+  // implicit in "it must be a site we know" has to be explicit now.
+  const rows = [row("issueChaser", "ZRA", { company: "Wohhup", safety_sheet_id: SHEET_ID })];
+  const result = planOnboarding({
+    prompt: "add a new project zra to issue chaser",
+    intent: {
+      targets: ["issueChaser"],
+      // Folded, so this selects the existing ZRA rather than inventing a site.
+      scope: { include: [{ kind: "codes", codes: ["zra"] }], exclude: [] },
+      switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects(rows),
+    existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
+    env: ENV,
+  });
+  if (result.kind !== "plan" && result.kind !== "question") return assert.fail("expected an answer");
+  if (result.kind === "plan") {
+    assert.deepEqual(result.services[0].ready, [], "an existing site is not created twice");
+    assert.deepEqual(result.services[0].alreadyThere, [{ projectCode: "ZRA", existingAs: "ZRA" }]);
+  } else {
+    assert.match(result.question, /already onboarded/i);
   }
 });

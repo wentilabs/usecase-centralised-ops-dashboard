@@ -7,7 +7,7 @@ import {
   type OnboardDefinition,
   type OnboardDraft,
 } from "./onboarding";
-import { absentFrom, fold, type Cluster } from "./project-identity";
+import { absentFrom, fold, newSiteCluster, type Cluster } from "./project-identity";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -329,10 +329,16 @@ export type OnboardIntent = {
    * A union is still available, explicitly: `{kind:"any", of:[...]}`. An empty
    * `include` means every site.
    *
-   * `codes` is safe for the model to supply because a code here only SELECTS —
-   * it is matched against sites that already exist, so an invented one matches
-   * nothing. The code a row is CREATED with is always the canonical site code,
-   * which comes from the identity map and never from the model.
+   * `codes` is where a NEW project comes from. A code matched against the
+   * estate SELECTS that site; a code that matches nothing is a site nobody has
+   * configured yet, and an include filter naming one asks for it to be created.
+   * That is the only way the model can name a code that becomes a row, and it
+   * is deliberate — the alternative was a dashboard that could onboard a site
+   * into its second service but never its first.
+   *
+   * An invented code therefore proposes an invented project. It cannot write
+   * one: the plan is a review list, every new code is marked as new, and the
+   * service's own `codePattern` and uniqueness check run before the insert.
    */
   scope: { include: SiteFilter[]; exclude: SiteFilter[] };
   /** Column → value, for switches the target offers at creation. */
@@ -363,6 +369,22 @@ export type OnboardIntent = {
    * it outright only meant the request silently did less than it said.
    */
   carry: { column: string; from: ServiceKey; fromColumn: string; declared: boolean }[];
+  /**
+   * An existing row to start every draft from — "the same configuration as X".
+   *
+   * `carry` copies one column from the same SITE in another service, which
+   * cannot say this: the sentence names a different site, usually in the same
+   * service, and means all of its columns rather than one. Both exist because
+   * they answer different questions — "where does this site's workbook id
+   * live" and "what does a project of this kind look like".
+   *
+   * Every creatable column is copied and every copy is listed in the review,
+   * because a template carries chat ids and sheet ids, and pointing a new
+   * project at another project's WhatsApp group is exactly the mistake the
+   * review list is there to catch. `values` and `switches` still win over it:
+   * an instruction is more specific than a template.
+   */
+  template?: { service: ServiceKey; projectCode: string } | null;
   /** Groups looked up by name, `<site>` standing for any of the site's codes. */
   groupPatterns: { column: string; pattern: string }[];
   /** Anything recognised in the sentence that this shape cannot express. */
@@ -528,7 +550,19 @@ export function parseOnboardIntent(
     });
   }
 
-  return { targets, scope, switches, values, fallbacks, carry, groupPatterns, notes };
+  // "the same configuration as TEST". The service defaults to the target,
+  // because columns are per-service and a template from elsewhere would mostly
+  // not fit; naming one explicitly is still allowed.
+  let template: OnboardIntent["template"] = null;
+  const rawTemplate = parsed.template as Record<string, unknown> | string | undefined;
+  const templateCode = String(
+    (typeof rawTemplate === "string" ? rawTemplate : rawTemplate?.projectCode) ?? "",
+  ).trim();
+  if (templateCode) {
+    template = { service: asService((rawTemplate as Record<string, unknown>)?.service) ?? targets[0], projectCode: templateCode };
+  }
+
+  return { targets, scope, switches, values, fallbacks, carry, template, groupPatterns, notes };
 }
 
 export type OnboardRow = {
@@ -538,6 +572,12 @@ export type OnboardRow = {
   values: Record<string, string>;
   /** What this site is already called elsewhere, so the reviewer can tell. */
   knownAs: { service: ServiceKey; projectCode: string }[];
+  /**
+   * This code is in no service at all — the request is creating the site, not
+   * extending it. Shown, because it is the difference between onboarding a
+   * known site and acting on a typo, and only a human can tell which.
+   */
+  isNew?: boolean;
   /**
    * Why this row cannot be created as it stands, in `validateDraft`'s own
    * words — the same validator the onboarding dialog and the insert route use,
@@ -578,6 +618,9 @@ export type OnboardPlan =
     }
   | { kind: "question"; question: string };
 
+/** Never carried by a template: this row's own identity and audit stamps. */
+const IDENTITY_COLUMNS = new Set(["id", "project_code", "created_at", "updated_at", "enabled"]);
+
 /** The fields a plan can fill without a human: identity plus env-backed defaults. */
 function draftFor(
   definition: OnboardDefinition,
@@ -588,12 +631,44 @@ function draftFor(
   switches: Record<string, string>,
   asked: { values: Record<string, string>; fallbacks: Record<string, string> },
   requested: OnboardIntent["carry"],
+  template: { service: ServiceKey; row: ProjectConfigRow } | null,
 ): { draft: OnboardDraft; derived: OnboardRow["derived"] } {
+  const columns = new Set(definition.fields.map((field) => field.column));
+  const derived: OnboardRow["derived"] = [];
+
+  /**
+   * "The same configuration as X" — every creatable column off that row.
+   *
+   * Identity and audit stamps fall out for free: `columns` is what the service
+   * is CREATED with, and `project_code` is excluded explicitly because the
+   * template is a different project. Blanks are skipped so a gap in the
+   * template does not blank out an env default that would have filled it.
+   */
+  const templated: Record<string, string> = {};
+  if (template) {
+    const code = String(template.row.project_code ?? "");
+    for (const [column, raw] of Object.entries(template.row)) {
+      if (!columns.has(column) || column === "project_code") continue;
+      const value = String(raw ?? "").trim();
+      if (!value) continue;
+      templated[column] = value;
+      derived.push({
+        column,
+        from: `${SERVICES[template.service].label}: ${code}.${column}`,
+        value,
+        why: `copied from ${code}, which you asked this to match`,
+      });
+    }
+  }
+
   const draft: OnboardDraft = {
     ...prefillDefaults(definition, env),
+    ...templated,
     project_code: cluster.canonical,
     // Read from the sentence, so "no housekeeping, manpower report on" is set
-    // at creation rather than left for a second pass over every new row.
+    // at creation rather than left for a second pass over every new row. After
+    // the template on purpose: an instruction is more specific than "the same
+    // as X", and this is the one that decides whether a site gets a message.
     ...switches,
   };
   // Carried because it is the one field that means the same thing in every
@@ -604,7 +679,6 @@ function draftFor(
 
   // An explicit instruction beats a carried equivalence, so these go on before
   // the carry runs and the carry then skips a column that already has a value.
-  const columns = new Set(definition.fields.map((field) => field.column));
   for (const [column, value] of Object.entries(asked.values)) {
     if (columns.has(column)) draft[column] = value;
   }
@@ -627,7 +701,6 @@ function draftFor(
     });
   }
 
-  const derived: OnboardRow["derived"] = [];
   for (const [column, source] of sources) {
     if (!columns.has(column)) continue;
     if (String(draft[column] ?? "").trim()) continue;
@@ -692,6 +765,7 @@ export function intentFromPrompt(prompt: string): OnboardIntent | { question: st
     values: {},
     fallbacks: {},
     carry: [],
+    template: null,
     groupPatterns: [],
     notes: [],
   };
@@ -708,6 +782,7 @@ export function planOnboarding({
   prompt: string;
   /** The model's reading. Omitted falls back to `intentFromPrompt`. */
   intent?: OnboardIntent;
+  /** The estate as it stands. New sites named in the request are added to it. */
   clusters: Cluster[];
   existingFor: (service: ServiceKey) => ProjectConfigRow[];
   env: Record<string, string | undefined>;
@@ -727,6 +802,35 @@ export function planOnboarding({
   }
 
   const scope = read.scope;
+
+  /**
+   * Codes in the request that name no site in the estate: new projects.
+   *
+   * Only from `include`, for clarity rather than for safety: a site invented
+   * out of an `exclude` would be excluded by the very filter that named it, so
+   * scanning both would change no outcome — there is no test here because
+   * there is nothing to observe. `codes` nested inside an `any` do count,
+   * because `{any:[A, B]}` is how a union is written and both halves include.
+   *
+   * These are appended to the estate for the length of this plan and never
+   * written back to the identity map — the map is derived from rows that
+   * exist, and it becomes true about this site the moment the row is created.
+   */
+  const known = new Set(clusters.flatMap((cluster) => cluster.codes.map(fold)));
+  const namedCodes = new Map<string, string>();
+  const collectCodes = (filters: SiteFilter[]): void => {
+    for (const filter of filters) {
+      if (filter.kind === "codes") for (const code of filter.codes) namedCodes.set(fold(code), code);
+      else if (filter.kind === "any") collectCodes(filter.of);
+    }
+  };
+  collectCodes(scope.include);
+  const newSites = [...namedCodes]
+    .filter(([folded]) => folded && !known.has(folded))
+    .map(([, code]) => newSiteCluster(code));
+  const estate = newSites.length ? [...clusters, ...newSites] : clusters;
+  const isNewSite = new Set(newSites.map((cluster) => fold(cluster.canonical)));
+
   const company =
     scope.include.find((filter): filter is { kind: "company"; company: string } => filter.kind === "company")
       ?.company ?? null;
@@ -780,7 +884,7 @@ export function planOnboarding({
     // Sites, not codes. `absentFrom` counts a site as present if ANY of its
     // aliases is in the service, which is what stops a second row being made
     // for a project that is already there under a different spelling.
-    const missingSites = absentFrom(clusters, service).filter(inScope);
+    const missingSites = absentFrom(estate, service).filter(inScope);
 
     // Only the switches this service actually offers at creation. A column the
     // onboarding flow does not carry cannot be set by an insert, so asking for
@@ -804,6 +908,52 @@ export function planOnboarding({
       }
     }
 
+    /**
+     * The row every draft here copies from, resolved once.
+     *
+     * By code against the target service's own rows rather than through the
+     * identity map: "the same as TEST" names a project, and TEST is a fixture
+     * the map deliberately excludes from clustering.
+     */
+    let template: { service: ServiceKey; row: ProjectConfigRow } | null = null;
+    if (read.template) {
+      const from = read.template.service;
+      const row = existingFor(from).find(
+        (candidate) => fold(String(candidate.project_code ?? "")) === fold(read.template!.projectCode),
+      );
+      if (row) {
+        template = { service: from, row };
+        /**
+         * What "the same configuration as X" could not reach.
+         *
+         * A template can only carry columns the service is CREATED with, and
+         * for issue-chaser that is nine of twenty-three: TEST2 came out
+         * matching TEST everywhere the dialog asks about and differing on six
+         * columns nobody was told about, which is the quiet half-truth this
+         * removes. `enabled` is left out of the list — rows are always created
+         * disabled, and that is a rule rather than a gap.
+         */
+        const creatable = new Set(definition.fields.map((field) => field.column));
+        const unreachable = Object.entries(row)
+          .filter(([column, value]) => {
+            if (creatable.has(column) || IDENTITY_COLUMNS.has(column)) return false;
+            return value !== null && value !== false && value !== "" && value !== 0;
+          })
+          .map(([column]) => column);
+        if (unreachable.length) {
+          unreadRequests.push(
+            `${SERVICES[service].label}: ${String(row.project_code)} also has ${unreachable.join(", ")} set, ` +
+              `and creating a row here cannot set them — put them on the new row afterwards`,
+          );
+        }
+      } else {
+        unreadRequests.push(
+          `${SERVICES[service].label}: nothing in ${SERVICES[from].label} is called ` +
+            `"${read.template.projectCode}", so no configuration was copied from it`,
+        );
+      }
+    }
+
     const ready: OnboardRow[] = [];
     const blocked: OnboardRow[] = [];
     for (const cluster of missingSites) {
@@ -816,6 +966,7 @@ export function planOnboarding({
         switches,
         { values: read.values, fallbacks: read.fallbacks },
         read.carry,
+        template,
       );
 
       // "unless you can identify that it's a '<site> x WL coordination' chat".
@@ -838,6 +989,7 @@ export function planOnboarding({
         projectCode: cluster.canonical,
         values: draft,
         knownAs: cluster.members,
+        isNew: isNewSite.has(fold(cluster.canonical)),
         problems,
         derived,
       };
@@ -924,8 +1076,13 @@ export const ONBOARD_INTENT_PROMPT = [
   "reasonable reading beats asking. Ask only when the OUTCOME is genuinely unclear — never about which rows, and",
   "never about spelling.",
   "",
-  "Never invent a chat id or a spreadsheet id — there is no field for them. Project codes you may name, but only",
-  "ones that appear in the estate below; the row is created under the site's canonical alias regardless.",
+  "Never invent a chat id or a spreadsheet id — there is no field for them.",
+  "",
+  "Project codes you DO name. A code that appears in the estate below selects that site, under any of its",
+  "spellings, and the row is created under its canonical alias. A code that appears nowhere is a site nobody has",
+  "configured yet: put it in `scope.include` as a `codes` filter and it is proposed as a NEW project, marked as",
+  "new in the review list. That is how the first service for a new site gets created — do not ask which existing",
+  "site was meant, and do not refuse because the code is unfamiliar. Use the code the operator wrote.",
   "",
   "Reply with JSON only, no prose:",
   "{",
@@ -944,6 +1101,7 @@ export const ONBOARD_INTENT_PROMPT = [
   '  "values": {"<column>": "<value>"},           // set a column outright, any field the target is created with',
   '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
   '  "carry": [{"column":"<col>","from":"<service key>","fromColumn":"<col on that service>"}],',
+  '  "template": {"service":"<service key>","projectCode":"<existing code>"},  // copy EVERY column off that row',
   '  "groupPatterns": [{"column":"<column>","pattern":"<site> x WL coordination"}],',
   '  "notes": ["anything asked for that this shape cannot express"]',
   "}",
@@ -958,6 +1116,10 @@ export const ONBOARD_INTENT_PROMPT = [
   "- `switches` are only the columns listed below for the target. Anything else goes in `notes`.",
   "- If a switch is mentioned but you cannot tell whether it should be on or off, leave it out and say so in `notes`.",
   "  Guessing one starts or silences a daily message to a construction site.",
+  '- `template` is "the same configuration as X" / "a copy of X" / "like X". It copies every creatable column',
+  "  off that one row; `values` and `switches` then override individual columns. `carry` is the different thing:",
+  "  ONE column, from the SAME site's row in ANOTHER service. Use `template` when the sentence names a different",
+  "  project to imitate, `carry` when it says where a particular value lives.",
   '- `groupPatterns` choose groups BY NAME. Write `<site>` where the project code goes; give one per column.',
   "- Put every part of the scope into `scope`. A sentence that says which sites to SKIP means an `exclude` filter,",
   "  not a note — a note changes nothing, and the plan would silently cover more sites than were asked for.",
@@ -973,6 +1135,14 @@ export const ONBOARD_INTENT_PROMPT = [
   '   "carry":[{"column":"spreadsheet_id","from":"wbgt","fromColumn":"manpower_spreadsheet_id"}],',
   '   "groupPatterns":[],"notes":[]}',
   "",
+  '  "add a new project TEST2 with the same configuration as TEST in issue chaser, it is a totally new project"',
+  "  becomes:",
+  '  {"targets":["issueChaser"],',
+  '   "scope":{"include":[{"kind":"codes","codes":["TEST2"]}],"exclude":[]},',
+  '   "template":{"service":"issueChaser","projectCode":"TEST"},',
+  '   "switches":{},"values":{},"fallbacks":{},"carry":[],"groupPatterns":[],"notes":[]}',
+  "  TEST2 is in no service, and that is the whole point of the request — it is a new site, not a question.",
+  "",
   '  "leave the groups empty unless you can identify a \'SITE x WL coordination\' chat" IS a groupPattern:',
   '  {"column":"safety_group_ids","pattern":"<site> x WL coordination"}. It is not a request to leave them empty —',
   "  empty is only what happens for the sites with no such chat, and code decides which those are, not you.",
@@ -986,9 +1156,9 @@ export const ONBOARD_INTENT_PROMPT = [
   "- Read the whole sentence and act on all of it. If something is asked for that none of these fields expresses,",
   "  do what you can with the fields there are and put the remainder in `notes`. Do not narrow the request to fit",
   "  the shape, and do not refuse a reasonable reading because the shape is awkward.",
-  "- The project code of a created row is ALWAYS the canonical site alias, resolved from the cross-service",
-  '  identity map. "Use the project site alias as the code" is already what happens; it needs no field and is',
-  "  not a note.",
+  "- The project code of a created row is the canonical alias of whichever site the code selected, and for a",
+  '  code that selected nothing it is the code itself, upper-cased. "Use the project site alias as the code" is',
+  "  already what happens; it needs no field and is not a note.",
   "- Every row is ALWAYS created disabled, whatever the sentence says. You never need to express that, and it does",
   "  not belong in `notes`.",
   "- Put anything you understood but could not express into `notes`. It is shown to the operator under",
@@ -1029,6 +1199,8 @@ export function siteTableFor(
     `All ${rows.length} sites in the estate. "in" lists the code each service uses; a service absent from it has`,
     "no row for that site yet. Work out which sites the request means from this, and name them in",
     '`scope.codes` when a filter cannot say it — that is always available and always exact.',
+    "A code the request names that is NOT in this list is not an error and not a question: it is a site nobody",
+    "has configured yet. Name it in `scope.codes` exactly as written and it is proposed as a new project.",
     JSON.stringify(rows),
   ].join("\n");
 }

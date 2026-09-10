@@ -46,6 +46,8 @@ function describe(evidence: Evidence): string {
       return `"${evidence.shorter}" reads as an abbreviation of "${evidence.longer}"`;
     case "override":
       return `Signed off by review — ${evidence.note}`;
+    case "new-site":
+      return "Not configured in any service yet";
   }
 }
 

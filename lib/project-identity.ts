@@ -82,7 +82,15 @@ export type Evidence =
   | { kind: "identical-code"; folded: string }
   | { kind: "code-prefix"; shorter: string; longer: string }
   | { kind: "code-abbreviation"; shorter: string; longer: string }
-  | { kind: "override"; note: string };
+  | { kind: "override"; note: string }
+  /**
+   * Not a site in the estate at all — a code naming a project being created.
+   *
+   * Every other kind is a reason to believe two codes are the same site. This
+   * one says the opposite: nothing here matches anything, and that is the
+   * answer rather than the failure.
+   */
+  | { kind: "new-site" };
 
 export type Cluster = {
   /** The code this site is filed under: the shortest, cleanest spelling. */
@@ -318,6 +326,31 @@ export function needingReview(clusters: Cluster[]): Cluster[] {
 }
 
 /** Which sites are missing from a service — the input to any bulk onboarding. */
+/**
+ * A site with no rows anywhere, so a genuinely new project can be planned.
+ *
+ * The identity map exists to stop a second row being made for a site already
+ * filed under another spelling, and for that it can only know sites that
+ * already exist. Used as a gate on CREATION it says the wrong thing: a project
+ * nobody has configured yet is absent from the map by definition, and refusing
+ * it is refusing the first project of every new site.
+ *
+ * So an unmatched code becomes a cluster of its own: no members, therefore
+ * absent from every service, therefore creatable everywhere. Nothing is
+ * carried into it — there is no other row for this site to carry from — and
+ * the review list marks it as new, which is where a typo gets caught. The
+ * database has the last word either way: `validateDraft` runs the service's own
+ * `codePattern` and its uniqueness check against this code like any other.
+ *
+ * Upper-cased because the estate is, and because haze, lightning and
+ * issue-chaser CHECK `^[A-Z0-9][A-Z0-9-]{0,47}$` — "test2" would be rejected by
+ * Postgres for a reason that has nothing to do with what was asked.
+ */
+export function newSiteCluster(code: string): Cluster {
+  const canonical = code.trim().toUpperCase();
+  return { canonical, members: [], codes: [canonical], evidence: [{ kind: "new-site" }], tier: "confirmed" };
+}
+
 export function absentFrom(clusters: Cluster[], service: ServiceKey): Cluster[] {
   return clusters.filter((c) => !c.members.some((m) => m.service === service));
 }

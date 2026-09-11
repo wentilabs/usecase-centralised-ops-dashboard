@@ -201,14 +201,18 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
 //   showIf  — { field, equals }: only render while another field has a value,
 //             re-evaluated live as you toggle
 //   row     — fields sharing a row key render side by side on one compact row
-const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
+/** Exported alongside `GROUPS`, for the same coverage test. */
+export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
   wbgt: {
     company: {
       label: "Company",
       help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
-    source_type: { label: "Login profile", help: "Which CloudLynx credentials + Browserbase context to scrape with." },
+    source_type: {
+      label: "Login profile",
+      help: "Which CloudLynx account this project logs in with — `default`, `whgd`, `svs` or `pentaocean`. A grouping of credentials and a Browserbase context: not a data source and not a gate, so changing it does not change which meters are read, only who reads them. `pentaocean` needs its own credentials configured; the legacy value `noiselynx` normalises to `default`.",
+    },
     timezone: { label: "Timezone" },
 
     enable_scrape: { label: "Scrape CloudLynx", help: "Off = manual-only project; readings arrive via photo ingestion." },
@@ -349,7 +353,10 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       label: "Project enabled",
       help: "Master switch for the notification cadences — off means none of them run, whatever the toggles below say. One exception: the scrape endpoint still scrapes the internal TEST project while it is disabled.",
     },
-    source_type: { label: "Login profile" },
+    source_type: {
+      label: "Login profile",
+      help: "Which NoiseLynx account this project logs in with — `default`, `whgd`, `svs` or `pentaocean`. A grouping of credentials and a Browserbase context: not a data source and not a gate, so changing it does not change which meters are read, only who reads them. `pentaocean` needs its own credentials configured; the legacy value `noiselynx` normalises to `default`.",
+    },
     timezone: { label: "Timezone" },
 
     // --- 5-minute cadence: dependents follow the enable flag
@@ -994,7 +1001,15 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 };
 
 // Ordered groups. Any column not named here lands in "Other".
-const GROUPS: Record<string, FieldGroup[]> = {
+/**
+ * Exported for `tests/auth-policy.test.ts` only.
+ *
+ * A group naming a column with no `FIELDS` entry renders that column with its
+ * raw name and no explanation, and nothing else notices — 19 noise hints were
+ * once deleted in a bad edit and the whole suite still passed. The test pairs
+ * the two maps so neither can lose an entry quietly.
+ */
+export const GROUPS: Record<string, FieldGroup[]> = {
   wbgt: [
     { title: "Status", fields: ["company", "enabled", "source_type", "timezone"] },
     {
@@ -1196,6 +1211,7 @@ const GROUPS: Record<string, FieldGroup[]> = {
       fields: [
         "daily_safety_summary_enabled",
         "daily_safety_company_summary_enabled",
+        "safety_summary_whatsapp_group_ids",
         "summary_days",
       ],
     },
@@ -1203,19 +1219,23 @@ const GROUPS: Record<string, FieldGroup[]> = {
     // is a chaser or a summary.
     {
       title: "Novade names",
-      fields: ["novade_name_list_check_enabled", "novade_name_sync_enabled"],
+      fields: [
+        "novade_name_list_check_enabled",
+        "novade_name_list_check_whatsapp_group_ids",
+        "novade_name_sync_enabled",
+      ],
     },
-    // Every destination in one place, because "where does each report go" is
-    // one question and it used to be answered in three sections — two of them
-    // behind a feature flag, so the Novade destination was invisible on every
-    // project in the estate.
+    // Each report's destination sits directly under the switch that turns the
+    // report on, rather than together down here: you are choosing where THIS
+    // report goes, and reading the two side by side is what makes the fallback
+    // legible. What matters is that none of them is hidden — they used to be
+    // gated on their own flag, which put the Novade destination out of reach on
+    // every project in the estate.
     {
       title: "Delivery",
       fields: [
         "send_to_originating_groups",
         "whatsapp_group_ids",
-        "safety_summary_whatsapp_group_ids",
-        "novade_name_list_check_whatsapp_group_ids",
         "exclude_whatsapp_group_ids",
         "instance_name",
         "client_id",

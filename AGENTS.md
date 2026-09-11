@@ -406,6 +406,17 @@ Rules that are easy to get wrong and are pinned by tests:
   - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
     **no default**. A row short of them is the correct answer, not a gap to
     fill.
+- **A report's destination sits under the switch that turns the report on.**
+  Not with the other group columns: you are choosing where THIS report goes,
+  and reading the two side by side is what makes the fallback legible. What
+  matters is that none of them is gated — they were hidden behind their own
+  feature flag, which put `novade_name_list_check_whatsapp_group_ids` out of
+  reach on all 34 projects, since none has that report on. A destination is
+  decided BEFORE the report is switched on, not after.
+- **`GROUPS` and `FIELDS` are exported for one test, and only for that.** It
+  pairs them both ways: a grouped column with no hint renders its raw name, and
+  a hinted column no group places falls through to "Other". Nineteen noise
+  hints were once deleted by a bad edit and the whole suite still passed.
 - **Sweep the estate against the live schema, not against this file.** The
   check that finds drift is: every editable column in `/api/schema` has a
   `FIELDS` label and help and a place in `GROUPS`; anything without one renders

@@ -13,7 +13,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { readJson, summariseJobResult } from "../lib/read-json";
-import { COMPANIES, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
+import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
 import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
 import {
@@ -1775,7 +1775,18 @@ test("an issue-chaser project running only a summary is not idle", () => {
 test("summaries carry their own routing, never the chasers'", () => {
   const summaryOnly = firesAt("issueChaser", { daily_safety_summary_enabled: true });
   assert.match(summaryOnly, /past-days safety summary/);
-  assert.match(summaryOnly, /always to the configured groups/);
+  // The main list, because this project has not set a summary destination —
+  // which is the fallback 807adfc preserved, and the state all nine live
+  // projects with a summary on are actually in.
+  assert.match(summaryOnly, /to the configured groups/);
+  // With one set, the card names it rather than implying the chaser list.
+  assert.match(
+    firesAt("issueChaser", {
+      daily_safety_summary_enabled: true,
+      safety_summary_whatsapp_group_ids: "120363000000000000@g.us",
+    }),
+    /to the summary groups/,
+  );
   // A summary is never copied into an issue's origin group. Inheriting the
   // chaser suffix would name a destination the service does not use.
   assert.doesNotMatch(summaryOnly, /originating group/);
@@ -1786,7 +1797,7 @@ test("summaries carry their own routing, never the chasers'", () => {
     daily_safety_summary_enabled: true,
   });
   assert.match(both, /replies in each issue's originating group/);
-  assert.match(both, /always to the configured groups/);
+  assert.match(both, /to the configured groups/);
 });
 
 test("the summary window is read from summary_days and defaults to five", () => {
@@ -2271,15 +2282,72 @@ test("every issue-chaser destination is visible without turning its report on", 
     "novade_name_list_check_whatsapp_group_ids",
     "exclude_whatsapp_group_ids",
   ];
-  const spec = buildFieldSpec("issueChaser", Object.fromEntries(columns.map((c) => [c, text])));
+  // The flags too: buildFieldSpec drops a grouped column that introspection
+  // does not report, so a group fed only its destinations would look empty.
+  const spec = buildFieldSpec(
+    "issueChaser",
+    Object.fromEntries(
+      [...columns, "daily_safety_summary_enabled", "novade_name_list_check_enabled"].map((c) => [c, text]),
+    ),
+  );
   for (const column of columns) {
     assert.equal(spec.fields[column].showIf, null, `${column} is hidden behind a flag`);
     assert.equal(spec.fields[column].widget, "groups", `${column} must use the picker`);
   }
-  // And they answer one question, so they are in one place.
-  const delivery = spec.groups.find((group) => group.title === "Delivery");
-  assert.ok(delivery, "Delivery group must exist");
-  for (const column of columns) {
-    assert.ok(delivery!.fields.includes(column), `${column} belongs under Delivery`);
+  // Each report's destination sits under the switch that turns the report on,
+  // so the two are read together; the general ones stay under Delivery.
+  const placed = (title: string) => spec.groups.find((group) => group.title === title)?.fields ?? [];
+  assert.ok(placed("Delivery").includes("whatsapp_group_ids"));
+  assert.ok(placed("Delivery").includes("exclude_whatsapp_group_ids"));
+  const summaryGroup = spec.groups.find((group) => group.fields.includes("safety_summary_whatsapp_group_ids"));
+  assert.ok(
+    summaryGroup?.fields.includes("daily_safety_summary_enabled"),
+    "the summary destination belongs beside the summary switches",
+  );
+  const novadeGroup = spec.groups.find((group) =>
+    group.fields.includes("novade_name_list_check_whatsapp_group_ids"),
+  );
+  assert.ok(
+    novadeGroup?.fields.includes("novade_name_list_check_enabled"),
+    "the reminder destination belongs beside the reminder switch",
+  );
+});
+
+test("every grouped column is a column HALO can explain", () => {
+  // The guard this file was missing. A group naming a column with no FIELDS
+  // entry renders it with its raw name and no help — the same end state as a
+  // column the services added and nobody noticed, but reached from the other
+  // direction. Found by deleting 19 noise hints in a bad edit and watching the
+  // entire suite still pass.
+  for (const service of SERVICE_KEYS) {
+    const groups = GROUPS[service] ?? [];
+    const hints = FIELDS[service] ?? {};
+    assert.ok(groups.length, `${service} has no groups at all`);
+    for (const group of groups) {
+      assert.ok(group.fields.length, `${service} · ${group.title} is an empty section`);
+      for (const column of group.fields) {
+        const hint = hints[column];
+        assert.ok(hint, `${service}.${column} is placed in "${group.title}" but has no label or help`);
+        assert.ok(hint.label, `${service}.${column} has an entry with no label`);
+      }
+    }
+    // And nothing is listed twice, which would render the same control in two
+    // sections and let one of them go stale.
+    const placed = groups.flatMap((group) => group.fields);
+    assert.equal(placed.length, new Set(placed).size, `${service} places a column in two groups`);
+  }
+});
+
+test("a hinted column is placed, not left to fall through to Other", () => {
+  // The reverse direction: an entry written but never added to a group still
+  // renders — at the bottom, under "Other", away from the setting it belongs
+  // with. That is where the three columns found in the 11 Sep sweep were.
+  for (const service of SERVICE_KEYS) {
+    const placed = new Set((GROUPS[service] ?? []).flatMap((group) => group.fields));
+    for (const [column, hint] of Object.entries(FIELDS[service] ?? {})) {
+      // A hidden column is never rendered, so it has nowhere to be placed.
+      if (hint.hidden) continue;
+      assert.ok(placed.has(column), `${service}.${column} is explained but unplaced — it will land in "Other"`);
+    }
   }
 });

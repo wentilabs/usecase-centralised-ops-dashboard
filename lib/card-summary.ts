@@ -378,7 +378,12 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       const span = Number.isFinite(days) && days > 0 ? days : 5;
       clauses.push(
         `${summaries.join(" and ")} at 08:00 over ${span} day${span === 1 ? "" : "s"}` +
-          ", always to the configured groups",
+          // Never the originating group, and since 807adfc not necessarily the
+          // main list either — the summaries have their own destination, with
+          // the main list as the fallback.
+          (String(config.safety_summary_whatsapp_group_ids ?? "").trim()
+            ? ", to the summary groups"
+            : ", to the configured groups"),
       );
     }
     // The workbook is still read on a muted date — the suppression is at the

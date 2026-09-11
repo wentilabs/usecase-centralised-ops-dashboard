@@ -266,7 +266,7 @@ export function OnboardDialog({
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-primary"
-                      checked={(draft[entry.column] ?? entry.fallback ?? "false") === "true"}
+                      checked={(draft[entry.column] ?? entry.fallback ?? entry.schemaDefault ?? "false") === "true"}
                       disabled={busy}
                       onChange={(event) => {
                         setEdited((prev) => new Set(prev).add(entry.column));
@@ -274,7 +274,7 @@ export function OnboardDialog({
                       }}
                     />
                     <span className="text-muted-foreground">
-                      {(draft[entry.column] ?? entry.fallback ?? "false") === "true" ? "on" : "off"}
+                      {(draft[entry.column] ?? entry.fallback ?? entry.schemaDefault ?? "false") === "true" ? "on" : "off"}
                     </span>
                   </label>
                 ) : entry.kind === "multi" ? (

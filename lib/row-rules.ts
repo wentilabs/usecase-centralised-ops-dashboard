@@ -307,14 +307,13 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     },
   ],
   wbgt: [
-    {
-      constraint: "wbgt_project_configs_water_parade_single_group",
-      columns: ["water_parade_outbound_group_id"],
-      check: (row, label) =>
-        String(row.water_parade_outbound_group_id ?? "").includes(",")
-          ? `${label("water_parade_outbound_group_id")} takes a single group, not a list. Pick one.`
-          : null,
-    },
+    // `wbgt_project_configs_water_parade_single_group` deliberately has no rule.
+    // It forbade a comma, and migrate_water_parade_multiple_groups.sql drops
+    // it — the service sends one reminder per group now, each with its own
+    // delivery row and outbound message id. Probed against the live database
+    // on the wbgt TEST fixture: a two-group value is accepted. A rule here
+    // would block a save the database allows, which is the one failure mode a
+    // mirror must not have.
     {
       constraint: "wbgt_project_configs_authoritative_client_digits",
       columns: ["whatsapp_authoritative_client_identifier"],

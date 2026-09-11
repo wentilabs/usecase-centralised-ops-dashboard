@@ -261,28 +261,39 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
   }
 
   if (service === "subcon") {
-    // Four routes: /housekeeping-intake accepts forwarded messages,
+    // Six routes now. /housekeeping-intake accepts forwarded messages,
     // /daily-housekeeping-report sends the nightly checklist to the same groups
-    // it takes intake from, and /daily-activity-summary and
-    // /daily-manpower-summary send the two morning summaries. `enabled` governs
-    // the three outbound routes and not intake, which runs either way.
+    // it takes intake from, /daily-housekeeping-sheet and
+    // /refresh-housekeeping-photos maintain the HOUSEKEEPING sheet, and
+    // /daily-activity-summary and /daily-manpower-summary send the two morning
+    // summaries.
+    //
+    // `enable_housekeeping` gates the first four together — it was the intake
+    // switch until 5df3928 widened it to the whole feature (INV-HK-01), and a
+    // card that still treated the nightly report as governed by `enabled`
+    // alone would promise a message that is no longer sent. `enabled` remains
+    // the outbound gate on top of it.
     //
     // Naming both reports matters because they read different tabs and answer
     // different questions, and until the per-report columns exist one switch
     // sends both — so a card saying "morning report" left an operator unable to
     // tell which of the two a site actually receives.
     const parts: string[] = [];
-    if (config.enable_housekeeping !== false) {
+    // `=== true` rather than `!== false`, because the service reads it that
+    // way and the repo says so outright: "Only an explicit true enables it."
+    const housekeeping = config.enable_housekeeping === true;
+    if (housekeeping) {
       // Supabase, not a sheet tab. The service stopped writing the Daily
       // Activity projection when Supabase became canonical, so naming the tab
       // here would send someone to a document that no longer updates.
       parts.push("housekeeping events recorded in Supabase");
     }
-    // A third outbound report, and the one HALO used to omit entirely. It is
-    // gated by `enabled` alone — not by Housekeeping intake, which is the
-    // inbound route — and since 140b1e9 it goes to the housekeeping groups
-    // rather than the summary destination.
-    const nightly = config.enabled !== false && Boolean(String(config.safety_group_ids ?? "").trim());
+    // A third outbound report, and the one HALO used to omit entirely. Since
+    // 140b1e9 it goes to the housekeeping groups rather than the summary
+    // destination, and since 5df3928 it needs Housekeeping on as well as
+    // Scheduled reports — it used to need only the latter.
+    const nightly =
+      housekeeping && config.enabled !== false && Boolean(String(config.safety_group_ids ?? "").trim());
     if (nightly) {
       parts.push("nightly housekeeping report to the housekeeping groups");
     }
@@ -552,7 +563,11 @@ export function pillsFor(service: ServiceKey, config: ProjectConfigRow): Pill[] 
       ];
     case "subcon":
       return [
-        { label: "housekeeping intake", on: config.enable_housekeeping !== false },
+        // Named for the feature, not the route: since 5df3928 this one switch
+        // also stops the nightly report, the HOUSEKEEPING sheet and the photo
+        // refresh, so a pill reading "intake" understates what turning it off
+        // does.
+        { label: "housekeeping", on: config.enable_housekeeping === true },
         // One pill per report rather than a single "morning report". They read
         // different tabs and answer different questions, and a project can end
         // up with one and not the other once the columns exist.
@@ -868,15 +883,16 @@ export function hasCadence(service: ServiceKey, config: ProjectConfigRow): boole
     );
   }
   if (service === "subcon") {
-    // Any of the three is work — a project with intake on is not idle. The
-    // summaries are counted through `subconReports` rather than `enabled`, so a
-    // project left enabled with both switched off is not called scheduled; the
-    // nightly housekeeping report needs only `enabled` and a group list.
-    return (
-      config.enable_housekeeping !== false ||
-      subconReports(config).length > 0 ||
-      (config.enabled !== false && Boolean(String(config.safety_group_ids ?? "").trim()))
-    );
+    // Any of the three is work — a project with housekeeping on is not idle,
+    // even with both summaries off. The summaries are counted through
+    // `subconReports` rather than `enabled`, so a project left enabled with
+    // both switched off is not called scheduled.
+    //
+    // The nightly housekeeping report now needs Housekeeping as well as
+    // `enabled` and a group list (INV-HK-01), which makes it a subset of the
+    // first clause rather than an independent third one — a project with
+    // groups but housekeeping off sends nothing at all.
+    return config.enable_housekeeping === true || subconReports(config).length > 0;
   }
   if (service === "issueChaser") {
     // `enabled` alone sends nothing — a chaser style has to be on too, and a

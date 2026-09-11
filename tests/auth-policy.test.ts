@@ -248,7 +248,13 @@ test("subcon fires-at names both morning reports, not just one", () => {
   // first, which left an operator unable to tell which of the two a site gets.
   // Both switches on, because each report is an explicit opt-in in the service
   // (`isSummaryEnabled` is `=== true`) — a bare row opts into neither.
-  const both = firesAt("subcon", { enable_activity_summary: true, enable_manpower_summary: true });
+  const both = firesAt("subcon", {
+    // Housekeeping is its own explicit opt-in since 5df3928; without it there
+    // are no events to record and the line would not mention Supabase at all.
+    enable_housekeeping: true,
+    enable_activity_summary: true,
+    enable_manpower_summary: true,
+  });
   // Supabase, not a sheet tab: the service stopped writing the Daily Activity
   // projection when Supabase became canonical (9b45234), so naming the tab here
   // would point an operator at a document that no longer updates.
@@ -298,13 +304,19 @@ test("subcon fires-at names both morning reports, not just one", () => {
     /no report group/,
   );
 });
-test("subcon's `enabled` governs only the morning report", () => {
+test("subcon's `enabled` governs delivery, not whether there is work", () => {
   // It came back with the outbound route, but it is NOT the master switch:
   // treating it as one would report a project doing live intake as idle.
-  assert.equal(hasCadence("subcon", {}), true, "intake defaults on in Postgres");
-  assert.equal(hasCadence("subcon", { enabled: false }), true, "intake still runs");
-  // A report needs its own opt-in, so intake off with no opt-in is idle — but
-  // intake off with a report opted in is still work.
+  // Housekeeping defaults OFF in Postgres and needs an explicit true, so a
+  // bare row is idle — this used to assert the opposite default.
+  assert.equal(hasCadence("subcon", {}), false, "housekeeping defaults off in Postgres");
+  assert.equal(
+    hasCadence("subcon", { enable_housekeeping: true, enabled: false }),
+    true,
+    "intake and state processing still run with delivery off",
+  );
+  // A report needs its own opt-in, so housekeeping off with no opt-in is idle
+  // — but housekeeping off with a report opted in is still work.
   assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false, "nothing opted in");
   assert.equal(
     hasCadence("subcon", { enable_housekeeping: false, enable_manpower_summary: true }),
@@ -399,7 +411,7 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
   // Subcon has no outbound surface at all now, so there is no such pill to show.
   assert.ok(!subconPills.some((p) => p.label === "outbound WhatsApp"), "superseded by the named routes");
-  assert.ok(subconPills.some((p) => p.label === "housekeeping intake"));
+  assert.ok(subconPills.some((p) => p.label === "housekeeping"));
   // One pill per report, so which of the two a site receives is visible on the
   // card rather than only in the editor.
   for (const label of ["activity + manpower", "manpower + machines"]) {
@@ -409,8 +421,16 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   }
   // Water Parade belongs to the WBGT service now, so subcon must not claim it.
   assert.ok(!subconPills.some((p) => /Water Parade/.test(p.label)));
-  // enable_housekeeping defaults true in Postgres, so an absent flag reads as on.
-  assert.ok(subconPills.some((p) => p.label === "housekeeping intake" && p.on), "defaults to on");
+  // The live column is `boolean not null default false` and the service reads
+  // it as `=== true` ("Only an explicit true enables it"), so an absent flag
+  // reads as OFF. This assertion used to claim the opposite default.
+  assert.ok(
+    subconPills.some((p) => p.label === "housekeeping" && !p.on),
+    "an absent flag is off, not on",
+  );
+  assert.ok(
+    pillsFor("subcon", { enable_housekeeping: true }).some((p) => p.label === "housekeeping" && p.on),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1315,7 +1335,7 @@ test("capability search works across every service", () => {
     { service: "haze" as const, row: { four_hourly: true }, needle: "2-hourly" },
     { service: "lightning" as const, row: { enable_red_band_poc_mentions: true }, needle: "poc mentions" },
     { service: "ailytics" as const, row: { forward_pending_to_whatsapp: true }, needle: "forward pending" },
-    { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping intake" },
+    { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping" },
     { service: "issueChaser" as const, row: { severity_cadence_chaser_enabled: true }, needle: "severity cadence" },
   ];
   for (const { service, row, needle } of cases) {
@@ -1890,7 +1910,9 @@ test("a subcon project enabled with both reports off is idle, not scheduled", ()
   // `enabled` used to stand in for "a report is scheduled". With per-report
   // columns that stops being true, and a card claiming scheduled work while
   // sending nothing is the failure worth catching.
-  assert.equal(hasCadence("subcon", {}), true);
+  // An empty row is idle now: Housekeeping defaults off in Postgres and the
+  // service requires an explicit true, so nothing about a blank project is work.
+  assert.equal(hasCadence("subcon", {}), false);
   assert.equal(
     hasCadence("subcon", {
       enable_housekeeping: false,
@@ -1965,13 +1987,19 @@ test("subcon's housekeeping groups run in both directions", () => {
   // operator editing it had no way to know they were moving a destination.
   const withGroups = { safety_group_ids: "in@g.us" };
 
-  assert.match(firesAt("subcon", withGroups), /nightly housekeeping report/);
-  // Gated by `enabled`, not by intake: the two are independent routes.
-  assert.doesNotMatch(firesAt("subcon", { ...withGroups, enabled: false }), /nightly housekeeping/);
-  assert.match(
+  const live = { ...withGroups, enable_housekeeping: true };
+  assert.match(firesAt("subcon", live), /nightly housekeeping report/);
+  // Gated by `enabled` for delivery…
+  assert.doesNotMatch(firesAt("subcon", { ...live, enabled: false }), /nightly housekeeping/);
+  // …and, since 5df3928, by Housekeeping as well. This assertion used to say
+  // the opposite — "intake off does not stop the report going out" — which was
+  // true while the flag gated the intake route alone. INV-HK-01 widened it to
+  // the whole feature, and a card promising a report nobody receives is the
+  // failure that matters.
+  assert.doesNotMatch(
     firesAt("subcon", { ...withGroups, enable_housekeeping: false }),
-    /nightly housekeeping report/,
-    "intake off does not stop the report going out",
+    /nightly housekeeping/,
+    "housekeeping off stops the report too",
   );
   // No groups means no destination, so there is no report to claim.
   assert.doesNotMatch(firesAt("subcon", {}), /nightly housekeeping/);
@@ -1981,11 +2009,13 @@ test("subcon's housekeeping groups run in both directions", () => {
   assert.ok(labels.includes("housekeeping in/out"));
   assert.ok(!labels.includes("message source"), "the inbound-only wording is gone");
 
-  // A project whose only scheduled work is that report is not idle.
+  // Groups alone are no longer work: with Housekeeping off, the report they
+  // would receive is not sent.
   assert.equal(
     hasCadence("subcon", { enable_housekeeping: false, safety_group_ids: "in@g.us" }),
-    true,
+    false,
   );
+  assert.equal(hasCadence("subcon", { enable_housekeeping: true }), true, "the feature alone is work");
   assert.equal(hasCadence("subcon", { enable_housekeeping: false }), false, "nothing configured");
 });
 
@@ -2167,4 +2197,69 @@ test("an empty response body reads as a request that was cut off", () => {
     assert.match(body.error ?? "", /cut off/);
     assert.doesNotMatch(body.error ?? "", /JSON input/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Estate sweep, 11 Sep 2026. Three columns had reached the live schema with no
+// overlay entry, so they rendered under "Other" with their raw column names and
+// no explanation — the exact shape of drift this file exists to catch.
+// ---------------------------------------------------------------------------
+test("columns the services added recently are explained and placed", () => {
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const cases = [
+    // 807adfc split the report destinations so a management summary need not
+    // land in the chaser group. Blank falls back to whatsapp_group_ids, which
+    // is what kept every project working when the columns appeared.
+    { service: "issueChaser" as const, column: "safety_summary_whatsapp_group_ids", widget: "groups" },
+    { service: "issueChaser" as const, column: "novade_name_list_check_whatsapp_group_ids", widget: "groups" },
+    // fbdcc92 made the POC mention severity configurable; the toggle was named
+    // "@mention POCs on 🔴" back when red was the only band it could be.
+    { service: "wbgt" as const, column: "poc_alert_minimum_band", widget: "select" },
+  ];
+
+  for (const { service, column, widget } of cases) {
+    const spec = buildFieldSpec(service, { [column]: text });
+    const field = spec.fields[column];
+    assert.ok(field, `${service}.${column} is missing from the overlay`);
+    assert.notEqual(field.label, column, `${service}.${column} renders its raw column name`);
+    assert.ok(field.help, `${service}.${column} has no explanation`);
+    assert.equal(field.widget, widget, `${service}.${column} uses the wrong control`);
+    // Not swept into "Other": a destination belongs beside the report it
+    // serves, and a severity beside the switch that uses it.
+    const other = spec.groups.find((group) => group.title === "Other");
+    assert.ok(!other?.fields.includes(column), `${service}.${column} fell through to Other`);
+  }
+
+  // The band is CHECK-constrained rather than a pg enum, so introspection
+  // cannot supply the values and a free-text box would offer ones Postgres
+  // rejects.
+  const band = buildFieldSpec("wbgt", { poc_alert_minimum_band: text }).fields.poc_alert_minimum_band;
+  assert.deepEqual(band.options, ["yellow", "orange", "red"]);
+
+  // Each destination only appears once the report that uses it is on.
+  const summary = buildFieldSpec("issueChaser", { safety_summary_whatsapp_group_ids: text })
+    .fields.safety_summary_whatsapp_group_ids;
+  assert.deepEqual(summary.showIf, {
+    anyOf: [
+      { field: "daily_safety_summary_enabled", equals: true },
+      { field: "daily_safety_company_summary_enabled", equals: true },
+    ],
+  });
+});
+
+test("a report's help names the destination it now has", () => {
+  // Both summaries and the weekly Novade reminder used to say "at least one
+  // WhatsApp group ID", which was the only destination they had. Since 807adfc
+  // each has its own, with whatsapp_group_ids as the fallback — and an
+  // operator reading the old wording would fill in the wrong field.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const spec = buildFieldSpec("issueChaser", {
+    daily_safety_summary_enabled: text,
+    novade_name_list_check_enabled: text,
+  });
+  for (const column of ["daily_safety_summary_enabled", "novade_name_list_check_enabled"]) {
+    const help = spec.fields[column].help;
+    assert.match(help, /destination/i, `${column} must name the field that routes it`);
+    assert.match(help, /fall(s)? back/i, `${column} must say what a blank destination does`);
+  }
 });

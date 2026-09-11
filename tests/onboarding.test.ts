@@ -893,11 +893,13 @@ test("subcon onboarding names both reports and their opt-in", () => {
 });
 
 test("subcon's onboarding switch defaults match what the service does", () => {
-  // Housekeeping intake defaults on in Postgres; both summaries are an explicit
-  // opt-in the service checks for `true`. A dialog that defaulted the summaries
-  // on would start sends the repo's own migration was written to prevent.
+  // All three are an explicit opt-in the service checks for `true`, and all
+  // three default off in the live columns. A dialog that defaulted any of them
+  // on would start work the repo's own migrations were written to prevent —
+  // and housekeeping, since 5df3928, is the whole feature rather than the
+  // inbound route it was when this expected `"true"`.
   const fallback = (column: string) => subcon.fields.find((f) => f.column === column)?.fallback;
-  assert.equal(fallback("enable_housekeeping"), "true");
+  assert.equal(fallback("enable_housekeeping"), "false");
   assert.equal(fallback("enable_manpower_summary"), "false");
   assert.equal(fallback("enable_activity_summary"), "false");
 
@@ -1035,4 +1037,45 @@ test("a field HALO states a default for is still settable", () => {
       );
     }
   }
+});
+
+test("a schema field's switch shows what the COLUMN defaults to", () => {
+  // Found in the 11 Sep sweep. `enable_activity_summary` is `default true` in
+  // the live database while the repo's setup.sql says `false`, and a
+  // schema-derived field left blank is omitted from the insert so the database
+  // default applies. The dialog drew the switch from `fallback ?? "false"` and
+  // had no fallback, so it showed OFF for a column that stores ON — the form
+  // said one thing and the row said another.
+  const merged = withSchemaFields(
+    onboardingFor("subcon")!,
+    buildFieldSpec("subcon", {
+      project_code: { type: "string" },
+      // Not part of subcon's curated flow, so it arrives from the schema and
+      // has no fallback of its own.
+      status_summary_enabled: { type: "boolean", default: true },
+    }),
+  );
+  const byColumn = Object.fromEntries(merged.fields.map((field) => [field.column, field]));
+  assert.equal(byColumn.status_summary_enabled?.fromSchema, true);
+  assert.equal(byColumn.status_summary_enabled?.schemaDefault, "true");
+  // And it stays a display-only value: blank still means "write nothing", so
+  // the database applies its own default rather than HALO restating it.
+  const written = buildInsertRow(merged, { project_code: "NEW1" }, {});
+  assert.equal("status_summary_enabled" in written, false);
+});
+
+test("subcon is not created with the whole housekeeping feature switched on", () => {
+  // The fallback was `true` from when enable_housekeeping gated the inbound
+  // route alone and leaving it on cost nothing. 5df3928 widened it to intake,
+  // the nightly report, HOUSEKEEPING sheet generation and the photo refresh —
+  // so HALO was handing every new project a live housekeeping pipeline before
+  // anyone had checked the groups. The service and the live column both
+  // default to false and read it as `=== true`.
+  const row = buildInsertRow(onboardingFor("subcon")!, { project_code: "NEW1" }, {});
+  assert.equal(row.enable_housekeeping, false);
+  // The two summaries stay explicitly false rather than omitted: the live
+  // column default is `true` while the repo's setup.sql says `false`, and
+  // writing the documented value is what keeps a new project silent.
+  assert.equal(row.enable_activity_summary, false);
+  assert.equal(row.enable_manpower_summary, false);
 });

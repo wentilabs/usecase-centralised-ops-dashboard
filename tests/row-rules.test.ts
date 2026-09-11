@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { ROW_RULES, explainConstraint, newProblems, rowProblems } from "../lib/row-rules";
 import { SERVICE_KEYS } from "../lib/services";
+import { onboardingFor } from "../lib/onboarding";
 
 /** Labels the way the screen writes them, so the sentences read as they will. */
 const LABELS: Record<string, string> = {
@@ -130,6 +131,24 @@ test("a constraint Postgres quotes back resolves to the rule that explains it", 
   assert.equal(explainConstraint("haze", 'violates check constraint "lightning_red_poc_mentions_check"'), null);
 });
 
+test("a constraint that has been dropped upstream is not mirrored", () => {
+  // wbgt_project_configs_water_parade_single_group forbade a comma in the
+  // Water Parade group. migrate_water_parade_multiple_groups.sql drops it, and
+  // the service now sends one reminder per group. Probed against the live
+  // database on the wbgt TEST fixture: a two-group value is accepted.
+  //
+  // A mirror blocking a save the database allows is the one failure it must
+  // not have — worse than no mirror, because there is no way past it.
+  assert.deepEqual(
+    rowProblems("wbgt", { water_parade_outbound_group_id: "1@g.us,2@g.us" }, label),
+    [],
+  );
+  assert.equal(
+    (ROW_RULES.wbgt ?? []).some((rule) => rule.constraint.includes("water_parade_single_group")),
+    false,
+  );
+});
+
 test("every rule is well formed", () => {
   const seen = new Set<string>();
   for (const service of SERVICE_KEYS) {
@@ -146,5 +165,27 @@ test("every rule is well formed", () => {
         `${rule.constraint} fires on an empty row`,
       );
     }
+  }
+});
+
+test("requiresEnabled and the row rule name the same columns", () => {
+  // Two declarations of one constraint: `requiresEnabled` drives the create
+  // dialog's inline warning and the template skip, the row rule drives
+  // validation and the editor. They drifted — the Novade pair joined
+  // issue_chaser_feature_requires_enabled_check and only the rule was updated,
+  // so a template carrying novade_name_sync_enabled produced a row the dialog
+  // called ready and Postgres refused.
+  for (const service of SERVICE_KEYS) {
+    const definition = onboardingFor(service);
+    const declared = definition?.requiresEnabled ?? [];
+    if (!declared.length) continue;
+    const rule = (ROW_RULES[service] ?? []).find((entry) => entry.constraint.includes("requires_enabled"));
+    assert.ok(rule, `${service} declares requiresEnabled with no matching row rule`);
+    // The rule's columns are the flags plus `enabled` itself.
+    assert.deepEqual(
+      [...declared].sort(),
+      rule!.columns.filter((column) => column !== "enabled").sort(),
+      `${service}: the two lists have drifted`,
+    );
   }
 });

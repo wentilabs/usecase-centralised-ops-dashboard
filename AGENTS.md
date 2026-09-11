@@ -406,6 +406,23 @@ Rules that are easy to get wrong and are pinned by tests:
   - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
     **no default**. A row short of them is the correct answer, not a gap to
     fill.
+- **Sweep the estate against the live schema, not against this file.** The
+  check that finds drift is: every editable column in `/api/schema` has a
+  `FIELDS` label and help and a place in `GROUPS`; anything without one renders
+  its raw column name under "Other". As of 11 Sep 2026 that is 217 columns
+  across seven services with nothing in "Other". Three had fallen through —
+  issue-chaser's two split report destinations and wbgt's configurable POC
+  band — and none of them broke anything, which is why only a sweep finds them.
+  - **A flag's meaning can change without the column changing.**
+    `enable_housekeeping` gated the intake route until 5df3928 widened it to
+    the whole housekeeping feature. Nothing in the schema moved, so nothing
+    here noticed, and the help, the card prose, the pill, `hasCadence` and the
+    creation default all went on describing the old contract.
+  - **Probe the database before trusting a mirrored constraint.**
+    `wbgt_project_configs_water_parade_single_group` is dropped by
+    `migrate_water_parade_multiple_groups.sql`; a rule mirroring it blocked a
+    save the database allows. Both migrations sit in the repo, so only the live
+    database says which is in force.
 - **A multi-column CHECK goes in `lib/row-rules.ts`.** These are the rules no
   single field can express — "red mentions needs both lists", "a summary needs
   somewhere to go", "both ends of a window or neither". Postgres was the only

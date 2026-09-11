@@ -155,6 +155,9 @@ const CHECK_ENUMS: Record<string, Record<string, string[]>> = {
     // converting it — a half-applied migration would otherwise render free text
     // on a column the database will reject.
     five_min_alert_threshold: ["yellow", "orange", "red"],
+    // `text not null default 'red'` with a CHECK, so introspection cannot see
+    // the values and a free-text box would offer ones Postgres rejects.
+    poc_alert_minimum_band: ["yellow", "orange", "red"],
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
     source_type: ["default", "whgd", "svs", "pentaocean"],
@@ -216,7 +219,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     hourly_message_formatter: {
       label: "Hourly wording",
       help:
-        "wohhup_full → the full MOM advisory, up to ten points. pentaocean_full → same reading and footer, advisory cut to one to three points. Also used by the 5-min alert when its format is `full`.",
+        "wohhup_full → the full MOM advisory, up to ten points. pentaocean_full → same reading and footer, advisory cut to one to three points. wohhup_full_15min_waterparade_photo → wohhup_full plus the Water Parade photo prompt, at or above the POC mention band. Also used by the 5-min alert when its format is `full`; an unrecognised value falls back to wohhup_full rather than failing.",
       showIf: { field: "enable_hourly", equals: true },
     },
     enable_intermittent_reports: { label: "Intermittent reports", help: "Sub-hour fires at :15/:30/:45." },
@@ -259,7 +262,19 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "Chats we listen to for WBGT meter photos.",
     },
 
-    enable_red_band_poc_mentions: { label: "@mention POCs on 🔴" },
+    enable_red_band_poc_mentions: {
+      label: "@mention POCs",
+      help: "Off by default. All four have to hold before anyone is mentioned: this flag, a valid minimum band, at least one valid number, and the group listed below.",
+    },
+    poc_alert_minimum_band: {
+      label: "Mention from band",
+      widget: "select",
+      // Named after the column's own default, because the column was added
+      // with `'red'` so that every project already running kept the 🔴-only
+      // behaviour the toggle used to be named after.
+      help: "Lowest severity that mentions POCs, and every band above it. red is the long-standing behaviour; orange also mentions on 🟠, and yellow from 🟡 up.",
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
+    },
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
@@ -663,8 +678,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // Parade belongs to WBGT, and the base template still owns manpower
     // classification and the Manpower/Machines tabs.
     enable_housekeeping: {
-      label: "Housekeeping intake",
-      help: "The INTAKE route only (INV-HK-01): off means forwarded housekeeping messages are ignored. It does not govern the nightly housekeeping report, which goes out whenever Scheduled reports is on and the groups above are set. Independent of the summaries — neither implies the other, and there is no master switch.",
+      label: "Housekeeping",
+      // Widened on 11 Sep 2026 (5df3928). It used to gate the intake route
+      // alone, and this help said so — which is now the opposite of what the
+      // service does. INV-HK-01 exists because the surface reading is still
+      // the old one.
+      help: "The whole housekeeping feature, not just intake (INV-HK-01): forwarded messages, the nightly report, HOUSEKEEPING sheet generation and the photo refresh all stop when this is off, and the routes answer `skipped` without reading or writing anything. Existing events and sheet rows are kept, so turning it back on resumes rather than rebuilds. Only an explicit yes counts. Separate from Scheduled reports, which gates outbound delivery and does not switch housekeeping off — and separate from the two summaries, which have their own flags.",
     },
     // `enabled` covers BOTH scheduled reports, which the old wording hid by
     // naming only one of them. The service runs two routes off one flag:
@@ -681,12 +700,12 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // "Scheduled reports is on" no longer implies a report goes out.
     enable_activity_summary: {
       label: "Activity + manpower report",
-      help: "POST /daily-activity-summary — the morning activity/manpower message. Explicit opt-in: off means this report is not sent, whatever Scheduled reports says.",
+      help: "POST /daily-activity-summary — the morning activity/manpower message. Explicit opt-in: off means this report is not sent, whatever Scheduled reports says. With Scheduled reports off it still reads Sheets and writes its Supabase summary; only delivery is suppressed.",
       showIf: { field: "enabled", equals: true },
     },
     enable_manpower_summary: {
       label: "Manpower + machines report",
-      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Explicit opt-in, independent of the report above: either can run without the other, and with both off the project sends no morning report at all.",
+      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Explicit opt-in, independent of the report above: either can run without the other, and with both off the project sends no morning report at all. With Scheduled reports off it still reads the workbook and writes its summary state; only the message is withheld.",
       showIf: { field: "enabled", equals: true },
     },
     // Both directions since 140b1e9: `housekeepingOutboundIds` now returns
@@ -842,7 +861,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // replies in each issue's originating group.
     daily_safety_summary_enabled: {
       label: "Past-days safety summary",
-      help: "08:00 SGT daily. Read-only report: total, open and closed plus P1/P2/P3 counts across the last few SGT dates, and each date's open count. Needs Project enabled and at least one WhatsApp group ID — a summary is a project-level report, so it always goes to the group list even when Reply in the originating group is on.",
+      help: "08:00 SGT daily. Read-only report: total, open and closed plus P1/P2/P3 counts across the last few SGT dates, and each date's open count. Goes to Summary destination, and falls back to WhatsApp group IDs when that is blank — one of the two has to be set, and a summary is a project-level report, so it never replies in an issue's originating group.",
     },
     daily_safety_company_summary_enabled: {
       label: "Past-days summary by company",
@@ -884,6 +903,26 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     // Not a report: it sends no WhatsApp message and needs no destination, which
     // is why it sits apart from the summaries and their group requirement.
+    safety_summary_whatsapp_group_ids: {
+      label: "Summary destination",
+      widget: "groups",
+      // Added by 807adfc so a daily report can go somewhere other than the
+      // group the chasers use. Blank is not "nowhere": it falls back, which is
+      // what kept every project working when the column was introduced.
+      help: "Where both past-days summaries go. Leave it blank and they fall back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
+      showIf: {
+        anyOf: [
+          { field: "daily_safety_summary_enabled", equals: true },
+          { field: "daily_safety_company_summary_enabled", equals: true },
+        ],
+      },
+    },
+    novade_name_list_check_whatsapp_group_ids: {
+      label: "Reminder destination",
+      widget: "groups",
+      help: "Where the weekly Novade name reminder goes. Blank falls back to WhatsApp group IDs.",
+      showIf: { field: "novade_name_list_check_enabled", equals: true },
+    },
     novade_name_sync_enabled: {
       label: "Write back Novade names",
       help: "Lets `POST /api/sync-novade-names` fill blank `Novade Name` cells in the workbook from `Whatsapp Name`. The only thing in this service that writes to the sheet. Off, the route refuses; on, it is still dry-run unless the request sets `dryRun: false`, and it skips any WhatsApp name that normalises ambiguously. Sends no message, so it needs no group.",
@@ -895,7 +934,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // the migration lands and then appears already labelled.
     novade_name_list_check_enabled: {
       label: "Weekly Novade name reminder",
-      help: "`POST /api/remind-write-novade-names` — one weekly message counting `Novade Name List` rows that have a phone and a WhatsApp name but no Novade name. Read-only, and silent when the count is zero. Needs Project enabled and at least one WhatsApp group, like the summaries: it is a project-level report, not a reply to an issue.",
+      help: "`POST /api/remind-write-novade-names` — one weekly message counting `Novade Name List` rows that have a phone and a WhatsApp name but no Novade name. Read-only, and silent when the count is zero. Goes to Reminder destination, and falls back to WhatsApp group IDs when that is blank — one of the two has to be set, because it is a project-level report rather than a reply to an issue.",
     },
     send_to_originating_groups: {
       label: "Reply in the originating group",
@@ -974,7 +1013,10 @@ const GROUPS: Record<string, FieldGroup[]> = {
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
-    { title: "POC escalation", fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"] },
+    {
+      title: "POC escalation",
+      fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],
+    },
     {
       title: "Manual photo ingestion",
       fields: [
@@ -1153,13 +1195,18 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "daily_safety_summary_enabled",
         "daily_safety_company_summary_enabled",
         "summary_days",
+        "safety_summary_whatsapp_group_ids",
       ],
     },
     // Its own section: one reads the Name List and one writes to it, and neither
     // is a chaser or a summary.
     {
       title: "Novade names",
-      fields: ["novade_name_list_check_enabled", "novade_name_sync_enabled"],
+      fields: [
+        "novade_name_list_check_enabled",
+        "novade_name_list_check_whatsapp_group_ids",
+        "novade_name_sync_enabled",
+      ],
     },
     {
       title: "Delivery",

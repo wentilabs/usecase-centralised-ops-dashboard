@@ -128,6 +128,18 @@ export type OnboardField = {
    * with a default, where null is a constraint violation rather than a blank.
    */
   fromSchema?: boolean;
+  /**
+   * What the COLUMN defaults to, for a `fromSchema` field left blank.
+   *
+   * Not a `fallback`: a fallback is written, and these are deliberately
+   * omitted from the insert so the database's own default applies. It exists
+   * because the two can disagree with each other in a way nobody sees.
+   * `manpower_activity.project_configs.enable_activity_summary` is `default
+   * true` live while the repo's setup.sql says `false`, so the dialog drew an
+   * off switch for a column that stores on — the form said one thing and the
+   * row said another.
+   */
+  schemaDefault?: string;
 };
 
 export type OnboardDefinition = {
@@ -813,12 +825,18 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
       // sends nothing, which is a confusing state to hand someone.
       {
         column: "enable_housekeeping",
-        label: "Housekeeping intake",
+        label: "Housekeeping",
         kind: "toggle",
         required: false,
         notNull: true,
-        fallback: "true",
-        help: "The inbound route: forwarded housekeeping messages are accepted and recorded. Independent of the two summaries, and it does not gate the nightly housekeeping report.",
+        // `false`, matching the live column default and the service, which
+        // reads this as `=== true`. It was `true` here, from when the flag
+        // gated the inbound route alone and leaving it on cost nothing.
+        // 5df3928 widened it to the whole feature (INV-HK-01), so HALO was
+        // creating projects with intake, the nightly report, sheet generation
+        // and the photo refresh all live on day one.
+        fallback: "false",
+        help: "The whole housekeeping feature: forwarded messages, the nightly report, the HOUSEKEEPING sheet and the photo refresh. Off by default, like the service — turn it on once the housekeeping groups below are right, because it starts accepting and reporting immediately.",
       },
       {
         column: "enable_manpower_summary",
@@ -904,15 +922,19 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     description:
       "Creates one disabled row in issue_chaser.project_configs. Enable it first, then switch on a chaser style — a CHECK enforces that order.",
     // issue_chaser_feature_requires_enabled_check, from
-    // supabase/migrate_daily_summary_features.sql:
-    //   not (severity_cadence_chaser_enabled or same_day_open_snapshot_enabled
-    //        or daily_safety_summary_enabled or daily_safety_company_summary_enabled)
-    //   or enabled
+    // supabase/migrate_issue_chaser_latest.sql. Two columns wider than when
+    // this list was written: the Novade pair joined it and nothing here
+    // noticed, so a template carrying `novade_name_sync_enabled` produced a
+    // row the dialog called ready and Postgres refused. Kept in step with
+    // `ROW_RULES.issueChaser` by a test, because the same drift is the only
+    // way this can be wrong.
     requiresEnabled: [
       "severity_cadence_chaser_enabled",
       "same_day_open_snapshot_enabled",
       "daily_safety_summary_enabled",
       "daily_safety_company_summary_enabled",
+      "novade_name_list_check_enabled",
+      "novade_name_sync_enabled",
     ],
     outsideHalo: [
       "Share the Safety workbook with the service account. The service reads the `Safety` tab and any `Safety-MMM YYYY` archives by header name, and never writes to it.",
@@ -1568,6 +1590,8 @@ export function withSchemaFields(
       notNull: false,
       options: field.options ?? undefined,
       fromSchema: true,
+      schemaDefault:
+        field.default === null || field.default === undefined ? undefined : String(field.default),
     });
   }
   return extra.length ? { ...definition, fields: [...definition.fields, ...extra] } : definition;

@@ -163,7 +163,7 @@ export const openapiDocument = {
           "- `onboard` — projects to CREATE. Apply one `createProject` per entry in `services[].ready`, passing that entry's `values` as the `draft`. `values` is the whole row: the model may set any column of the target table, so read it before applying rather than assuming a fixed set of fields.\n" +
           "- `jobs` — a sheet job to run once per project. Apply one `runJob` per entry in `runs` where `ready` is true, passing `job`, that entry's `projectCode`, and the plan's `startDate`/`endDate`. Entries with `ready: false` carry a `reason` and must not be sent. Nothing is triggered by this route: `runJob` needs the `jobs` scope, which `write` does not confer.\n" +
           "- `message` — a question or a refusal, when there is nothing to propose.\n\n" +
-          "The onboarding path counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code alone would create duplicates. A code that matches a site selects it under any of its spellings and the row is created under the canonical one. A code that matches nothing is a site nobody has configured yet: it is proposed as a NEW project with `isNew: true`, because the map is derived from rows that exist and so can never contain a project being created. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because \"34 of 36 need a Safety workbook id\" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.\n\nThe model is given every column of every target table and may fill any of them, including chat ids and sheet ids the request itself supplies. It cannot invent one — there is nothing to invent from — and nothing it produces is written: each row arrives with its values and where each came from, and is confirmed one at a time.\n\n" +
+          "The onboarding path counts SITES rather than project codes, using the cross-service identity map — the estate spells nine sites differently per service, so onboarding by code alone would create duplicates. A code that matches a site selects it under any of its spellings and the row is created under the canonical one. A code that matches nothing is a site nobody has configured yet: it is proposed as a NEW project with `isNew: true`, because the map is derived from rows that exist and so can never contain a project being created. Entries under `services[].blocked` carry `problems` and must not be sent to `createProject`; they are listed rather than dropped because \"34 of 36 need a Safety workbook id\" is the answer to the request. `services[].alreadyThere` reports sites present under a different code.\n\nThe model is given every column of every target table and may fill any of them, including chat ids and sheet ids the request itself supplies. It cannot invent one — there is nothing to invent from — and nothing it produces is written: each row arrives with its values and where each came from, and is confirmed one at a time.\n\nOne value it must NOT supply is a location. A request naming a street address has the address resolved through OneMap on the way to the plan, and the coordinates, the `site_address` and Haze's `nea_region` — derived from the point by the haze repo's own rule — are filled in and attributed in `derived`. Lightning's red and amber radii are client-approved and have no default, so a row is reported short of them unless the request states them; that is the correct answer rather than a failure.\n\n" +
           "Requires an editor session, and `ANTHROPIC_API_KEY` for the two model-backed paths. An agent that already reads `getSchema` should call `updateProjectConfig` directly rather than paying for a model round-trip; the onboarding path is worth calling even so, because the site-matching it does is not reproducible from the schema alone.",
         requestBody: {
           required: true,
@@ -764,10 +764,37 @@ export const openapiDocument = {
         tags: ["onboarding"],
         summary: "Singapore address or postal code to coordinates",
         description:
-          "Looks a location up through OneMap and returns candidates with coordinates. Each carries `valid`, which is false when the result falls outside the service area that Haze and Lightning enforce with a CHECK constraint — do not use an invalid candidate.",
+          "Looks a location up through OneMap and returns candidates with coordinates. Each carries `valid`, which is false when the result falls outside the service area that Haze and Lightning enforce with a CHECK constraint — do not use an invalid candidate.\n\nOneMap's search is brittle about how people write a Singapore address: \"8 Seletar West Rd 1, Singapore 798990\" returns nothing, while the same address without the country-and-postal tail, or the postal code alone, returns the right building. So several spellings are tried in order — as given, the postal code, then the address with that tail removed — and `triedAs` reports which one matched. You do not need to normalise the address before calling.",
         parameters: [{ name: "q", in: "query", required: true, schema: { type: "string" }, description: "Postal code or address." }],
         responses: {
-          "200": { description: "Ranked candidates.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "200": {
+            description: "Ranked candidates.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "The address as you sent it." },
+                    triedAs: { type: "string", description: "The spelling that actually matched, which may differ from `query`." },
+                    results: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          index: { type: "integer" },
+                          address: { type: "string", description: "OneMap's own rendering of the place it found. Read this before using the coordinates." },
+                          postal_code: { type: "string", nullable: true },
+                          latitude: { type: "number" },
+                          longitude: { type: "number" },
+                          valid: { type: "boolean", description: "Inside the service area. A false one will be rejected by the column CHECK." },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           "400": errorResponses["400"],
           "401": errorResponses["401"],
           "504": { description: "OneMap did not respond in time.", content: { "application/json": { schema: { $ref: "#/components/schemas/Problem" } } } },

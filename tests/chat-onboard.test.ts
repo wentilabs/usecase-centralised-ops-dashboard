@@ -653,7 +653,9 @@ test("the prompt promises the shape the parser accepts", () => {
   // and the model kept answering in a shape the parser silently ignored — so
   // two excludes came back as prose notes and the plan covered 35 sites
   // instead of 27. Nothing else catches this.
-  for (const field of ["targets", "scope", "switches", "values", "fallbacks", "carry", "template", "groupPatterns", "notes"]) {
+  for (const field of [
+    "targets", "scope", "switches", "values", "fallbacks", "carry", "template", "addresses", "groupPatterns", "notes",
+  ]) {
     assert.match(ONBOARD_INTENT_PROMPT, new RegExp(`"${field}"`), `the prompt must document "${field}"`);
   }
   for (const kind of ["company", "in-service", "codes"]) {
@@ -688,7 +690,7 @@ test("the prompt promises the shape the parser accepts", () => {
   // The `<filter>` placeholders above the examples are not JSON; a block that
   // is not an intent at all would silently pass as "nothing to check".
   const intents = blocks.filter((block) => block.includes('"targets"'));
-  assert.equal(intents.length, 2, "both worked examples must be found");
+  assert.equal(intents.length, 3, "every worked example must be found");
 
   const parseExample = (json: string) =>
     parseOnboardIntent(JSON.parse(json) as Record<string, unknown>, {
@@ -711,6 +713,18 @@ test("the prompt promises the shape the parser accepts", () => {
   if (!fresh || "question" in fresh) return;
   assert.deepEqual(fresh.scope.include, [{ kind: "codes", codes: ["TEST2"] }]);
   assert.deepEqual(fresh.template, { service: "issueChaser", projectCode: "TEST" });
+
+  // The address example, which is the one that produced four required fields
+  // and zero rows before the lookup step existed.
+  const located = parseExample(intents[2]);
+  assert.ok(located && !("question" in located), "the address example must parse");
+  if (!located || "question" in located) return;
+  assert.deepEqual(located.targets, ["lightning", "haze"]);
+  assert.equal(located.addresses?.length, 1, "one address for a site named in two services");
+  assert.equal(located.addresses?.[0]?.code, "SOILBUILD");
+  // Never in `values`: a latitude the model wrote is a latitude nobody checked.
+  assert.equal(located.values.latitude, undefined);
+  assert.equal(located.values.longitude, undefined);
 });
 
 test("the notes box means 'not applied', not 'mentioned'", () => {
@@ -1055,4 +1069,115 @@ test("a flag that needs an enabled row is refused at creation, in words", () => 
     result.services[0].blocked[0]?.problems.join(" ") ?? "",
     /cannot be switched on while the project is disabled/,
   );
+});
+
+test("an address resolved for a site fills both services, and the region derives from it", () => {
+  // The request that came back with nothing: "I need to add a project code
+  // called SOILBUILD for lightning and haze. 8 Seletar West Rd 1, Singapore
+  // 798990". Both services require latitude and longitude, haze requires an
+  // NEA region derived from them, and the plan reported four required fields
+  // and created zero rows — while the dialog beside it had an address box and
+  // a region autofill that did exactly this.
+  const point = { latitude: "1.41803", longitude: "103.8", site_address: "8 SELETAR WEST ROAD 1" };
+  const run = (resolved?: Parameters<typeof planOnboarding>[0]["resolved"]) =>
+    planOnboarding({
+      prompt: "add SOILBUILD to lightning and haze at 8 Seletar West Rd 1",
+      intent: {
+        targets: ["lightning", "haze"],
+        scope: { include: [{ kind: "codes", codes: ["SOILBUILD"] }], exclude: [] },
+        addresses: [{ code: "SOILBUILD", address: "8 Seletar West Rd 1, Singapore 798990" }],
+        // The radii are client-approved and have no default; supplied here so
+        // the lightning row turns on what the lookup actually changed.
+        values: { red_radius_m: "8000", amber_radius_m: "12000" },
+        switches: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+      },
+      clusters: clusterProjects([]),
+      existingFor: () => [],
+      env: ENV,
+      resolved,
+    });
+
+  // Without the lookup, exactly the screenshot: nothing creatable.
+  const before = run();
+  if (before.kind !== "plan") return assert.fail("expected a plan");
+  assert.deepEqual(
+    before.services.flatMap((entry) => entry.ready),
+    [],
+    "an address nobody resolved leaves both rows short of a location",
+  );
+
+  const after = run({
+    soilbuild: { values: point, why: { latitude: "OneMap: 8 SELETAR WEST ROAD 1" } },
+  });
+  if (after.kind !== "plan") return assert.fail("expected a plan");
+  const byService = Object.fromEntries(after.services.map((entry) => [entry.service, entry]));
+
+  for (const service of ["lightning", "haze"] as const) {
+    const [created] = byService[service].ready;
+    assert.ok(created, `${service}: ${byService[service].blocked[0]?.problems.join(" ")}`);
+    assert.equal(created.values.latitude, "1.41803", `${service} gets the point`);
+    assert.equal(created.values.longitude, "103.8");
+  }
+
+  // Both keep the address they were found at — the column exists in both for
+  // exactly this, and the dialog fills it the same way.
+  assert.equal(byService.lightning.ready[0].values.site_address, "8 SELETAR WEST ROAD 1");
+  assert.equal(byService.haze.ready[0].values.site_address, "8 SELETAR WEST ROAD 1");
+  // A resolved value is offered to every target and lands only where there is
+  // a column for it: `nea_region` is haze's alone.
+  assert.equal(byService.lightning.ready[0].values.nea_region, undefined);
+
+  // And the region, which is a pure function of the point the lookup just
+  // produced. 1.41803/103.8 is the north reference point itself.
+  assert.equal(byService.haze.ready[0].values.nea_region, "north");
+  const note = byService.haze.ready[0].derived.find((entry) => entry.column === "nea_region");
+  assert.ok(note, "the derivation is shown, not silent");
+  assert.equal(note!.from, "derived by HALO");
+
+  // Provenance for the looked-up values, because a wrong OneMap match is
+  // caught by reading the address it matched, not by reading a latitude.
+  const located = byService.lightning.ready[0].derived.find((entry) => entry.column === "latitude");
+  assert.match(located?.from ?? "", /OneMap: 8 SELETAR WEST ROAD 1/);
+});
+
+test("an instruction beats a derived region, because the source repo allows an override", () => {
+  const result = planOnboarding({
+    prompt: "add SOILBUILD to haze at that address but file it under central",
+    intent: {
+      targets: ["haze"],
+      scope: { include: [{ kind: "codes", codes: ["SOILBUILD"] }], exclude: [] },
+      values: { nea_region: "central" },
+      switches: {}, fallbacks: {}, carry: [], addresses: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects([]),
+    existingFor: () => [],
+    env: ENV,
+    resolved: { soilbuild: { values: { latitude: "1.41803", longitude: "103.8" }, why: {} } },
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  assert.equal(result.services[0].ready[0]?.values.nea_region, "central", "not overwritten by the derivation");
+});
+
+test("a derivation that already says 'confirm' is not told to say it twice", () => {
+  // haze's Sengkang rule ends "Confirm against NEA before enabling." and the
+  // review flag appended the same instruction again, so the note read
+  // "…before enabling. — confirm before enabling".
+  const result = planOnboarding({
+    prompt: "add SOILBUILD to haze",
+    intent: {
+      targets: ["haze"],
+      scope: { include: [{ kind: "codes", codes: ["SOILBUILD"] }], exclude: [] },
+      switches: {}, values: {}, fallbacks: {}, carry: [], addresses: [], groupPatterns: [], notes: [],
+    },
+    clusters: clusterProjects([]),
+    existingFor: () => [],
+    env: ENV,
+    // Sengkang: NEA files it North although the nearest reference point is East.
+    resolved: { soilbuild: { values: { latitude: "1.393251", longitude: "103.866293" }, why: {} } },
+  });
+  if (result.kind !== "plan") return assert.fail("expected a plan");
+  const note = result.services[0].ready[0]?.derived.find((entry) => entry.column === "nea_region");
+  assert.equal(note?.value, "north", "the rule that makes this worth porting at all");
+  assert.match(note?.why ?? "", /Confirm against NEA/);
+  assert.equal((note?.why.match(/confirm/gi) ?? []).length, 1, "said once");
 });

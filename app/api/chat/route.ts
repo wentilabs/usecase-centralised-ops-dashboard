@@ -41,7 +41,8 @@ import {
 import { COMPANIES, type ServiceFieldSpec } from "@/lib/field-spec";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import { JOBS, JOB_KEYS, isJobKey, jobTargets, spanDays } from "@/lib/jobs";
-import { clusterProjects, type ServiceRow } from "@/lib/project-identity";
+import { clusterProjects, fold, type ServiceRow } from "@/lib/project-identity";
+import { bestCandidate, resolveAddress } from "@/lib/geocode";
 import { getGroupNames } from "@/lib/group-names";
 import { chatIdsIn } from "@/lib/card-summary";
 import {
@@ -663,6 +664,64 @@ async function onboardingReply(
     }
   }
 
+  /**
+   * The lookup step: an address in the sentence becomes a point on the map.
+   *
+   * The request that exposed the gap gave two services and one address —
+   * "SOILBUILD for lightning and haze, 8 Seletar West Rd 1, Singapore 798990"
+   * — and the plan answered with four required fields and zero rows, because
+   * the model has no way to geocode and code was never asked to. HALO already
+   * proxies OneMap for the dialog's address box; this is the same call, made
+   * on the operator's behalf instead of in front of them.
+   *
+   * Sequentially, because it is at most a handful of addresses and OneMap is
+   * a public service nobody here should hammer. Failures are reported, never
+   * guessed around: an address that does not resolve leaves the columns empty
+   * and the row lands in `blocked`, saying so.
+   */
+  const resolved: Record<string, { values: Record<string, string>; why: Record<string, string> }> = {};
+  /** Addresses that did not resolve. Shown, never silently skipped. */
+  const unresolved: string[] = [];
+  for (const entry of intent?.addresses ?? []) {
+    const lookup = await resolveAddress(entry.address, process.env);
+    if (!lookup.ok) {
+      unresolved.push(`${entry.code}: ${entry.address} could not be looked up — ${lookup.error}`);
+      continue;
+    }
+    const best = bestCandidate(lookup.results);
+    if (!best) {
+      unresolved.push(
+        lookup.results.length
+          ? `${entry.code}: "${entry.address}" matched ${lookup.results.length} place(s), none inside Singapore — ` +
+            `check the address, or set the coordinates by hand`
+          : `${entry.code}: "${entry.address}" matched nothing in OneMap`,
+      );
+      continue;
+    }
+    resolved[fold(entry.code)] = {
+      values: {
+        latitude: String(best.latitude),
+        longitude: String(best.longitude),
+        // Lightning keeps the address it was found at; the column exists for
+        // exactly this and the dialog fills it the same way.
+        site_address: best.address,
+      },
+      why: {
+        latitude: `OneMap: ${best.address}`,
+        longitude: `OneMap: ${best.address}`,
+        // Which spelling actually matched. "Found, but only after dropping
+        // the postal code" is something the operator should see beside the
+        // coordinates rather than have to reconstruct.
+        site_address: `OneMap, searched as "${lookup.triedAs ?? entry.address}"`,
+      },
+    };
+  }
+
+  // Reported through the plan's own "not applied" box rather than a second
+  // channel: an address that did not resolve is precisely a part of the
+  // sentence that was understood and could not be acted on.
+  if (intent && unresolved.length) intent = { ...intent, notes: [...intent.notes, ...unresolved] };
+
   const { map: groupNameMap } = await getGroupNames(
     chatIdsIn(Object.values(rows).flat() as never),
   );
@@ -673,6 +732,7 @@ async function onboardingReply(
     existingFor: (service) => (rows[service] ?? []) as ProjectConfigRow[],
     env: process.env,
     specs,
+    resolved,
     // `.map`, not the result object: getGroupNames returns
     // { configured, storeReady, map, ... } and iterating the wrapper yields
     // its own field names as if they were chat ids. It type-checks, because

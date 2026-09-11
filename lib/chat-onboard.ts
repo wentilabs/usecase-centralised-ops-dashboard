@@ -387,6 +387,22 @@ export type OnboardIntent = {
    * an instruction is more specific than a template.
    */
   template?: { service: ServiceKey; projectCode: string } | null;
+  /**
+   * A site's street address, to be looked up rather than typed.
+   *
+   * Haze and lightning both require latitude and longitude, and haze requires
+   * an NEA region derived from them. A request that supplies the address —
+   * which is what an operator has — used to produce nothing but a list of
+   * required fields, because the model has no field for an address and cannot
+   * geocode. It went in `notes` and the plan created zero rows.
+   *
+   * So the model names the address and code resolves it: OneMap for the
+   * coordinates, the haze repo's own rule for the region. The resolved address
+   * and every value it produced appear in the review list, which is where a
+   * wrong match is caught — a plausible-looking address in the wrong country
+   * is exactly what a service-area check is for.
+   */
+  addresses?: { code: string; address: string }[];
   /** Groups looked up by name, `<site>` standing for any of the site's codes. */
   groupPatterns: { column: string; pattern: string }[];
   /** Anything recognised in the sentence that this shape cannot express. */
@@ -552,6 +568,17 @@ export function parseOnboardIntent(
     });
   }
 
+  const addresses: NonNullable<OnboardIntent["addresses"]> = [];
+  for (const entry of (Array.isArray(parsed.addresses) ? parsed.addresses : []) as Record<string, unknown>[]) {
+    const code = String(entry?.code ?? "").trim();
+    const address = String(entry?.address ?? "").trim();
+    if (!code || !address) {
+      notes.push("an address was given without a project code, so it was not looked up");
+      continue;
+    }
+    addresses.push({ code, address });
+  }
+
   // "the same configuration as TEST". The service defaults to the target,
   // because columns are per-service and a template from elsewhere would mostly
   // not fit; naming one explicitly is still allowed.
@@ -564,7 +591,7 @@ export function parseOnboardIntent(
     template = { service: asService((rawTemplate as Record<string, unknown>)?.service) ?? targets[0], projectCode: templateCode };
   }
 
-  return { targets, scope, switches, values, fallbacks, carry, template, groupPatterns, notes };
+  return { targets, scope, switches, values, fallbacks, carry, template, addresses, groupPatterns, notes };
 }
 
 export type OnboardRow = {
@@ -634,6 +661,8 @@ function draftFor(
   asked: { values: Record<string, string>; fallbacks: Record<string, string> },
   requested: OnboardIntent["carry"],
   template: { service: ServiceKey; row: ProjectConfigRow } | null,
+  /** Values resolved for THIS site — today, an address turned into a point. */
+  site: { values: Record<string, string>; why: Record<string, string> },
 ): { draft: OnboardDraft; derived: OnboardRow["derived"] } {
   const columns = new Set(definition.fields.map((field) => field.column));
   const derived: OnboardRow["derived"] = [];
@@ -736,6 +765,52 @@ function draftFor(
     });
   }
 
+  /**
+   * Values belonging to this site alone, from a lookup rather than a sentence.
+   *
+   * After the carry, because a coordinate resolved for THIS site beats one
+   * copied from a neighbouring service, and after `asked.values` for the same
+   * reason a per-site instruction beats a blanket one.
+   */
+  for (const [column, value] of Object.entries(site.values)) {
+    if (!columns.has(column) || !value) continue;
+    draft[column] = value;
+    derived.push({ column, from: site.why[column] ?? "looked up", value, why: "resolved for this site" });
+  }
+
+  /**
+   * The values the service itself derives, as the dialog derives them.
+   *
+   * haze's `nea_region` is the one that matters: it is required, and it is a
+   * pure function of the coordinates the step above just resolved. The dialog
+   * has run this on every keystroke since it was written; the plan never did,
+   * so a proposal with a perfectly good latitude still came back "NEA region
+   * is required".
+   *
+   * Only into a column nothing else filled — the source repo supports an
+   * override, so an instruction always wins — and `requiresManualReview`
+   * carries into the note rather than being swallowed, because an inferred
+   * region is a guess a human should confirm.
+   */
+  for (const field of definition.fields) {
+    if (!field.autofill || String(draft[field.column] ?? "").trim()) continue;
+    const result = field.autofill(draft);
+    if (!result?.value) continue;
+    draft[field.column] = result.value;
+    derived.push({
+      column: field.column,
+      from: "derived by HALO",
+      value: result.value,
+      // The source note usually says this already — haze's Sengkang rule ends
+      // "Confirm against NEA before enabling." — so only add it when it does
+      // not, rather than printing the instruction twice.
+      why:
+        result.review && !/\bconfirm\b/i.test(result.note)
+          ? `${result.note} — confirm before enabling`
+          : result.note,
+    });
+  }
+
   // Last, and only into a gap: "if no WBGT workbook is configured, use X" must
   // not overwrite the workbook carried for the sites that have one.
   for (const [column, value] of Object.entries(asked.fallbacks)) {
@@ -779,6 +854,7 @@ export function intentFromPrompt(prompt: string): OnboardIntent | { question: st
     fallbacks: {},
     carry: [],
     template: null,
+    addresses: [],
     groupPatterns: [],
     notes: [],
   };
@@ -792,6 +868,7 @@ export function planOnboarding({
   env,
   groupNames,
   specs,
+  resolved,
 }: {
   prompt: string;
   /** The model's reading. Omitted falls back to `intentFromPrompt`. */
@@ -802,6 +879,15 @@ export function planOnboarding({
   env: Record<string, string | undefined>;
   /** Every known chat, for resolving a `<site> x …` group pattern by name. */
   groupNames?: { chatId: string; name: string }[];
+  /**
+   * Per-site values resolved before the plan ran — an address geocoded, today.
+   *
+   * Keyed by folded code so a site named `MBS IR2` in the sentence reaches the
+   * cluster filed under `MBS`. Resolution happens in the route because it is a
+   * network call and this function is pure and synchronous, which is what lets
+   * every rule in it be tested without one.
+   */
+  resolved?: Record<string, { values: Record<string, string>; why: Record<string, string> }>;
   /**
    * Live column lists, so a plan can fill any column the editor could.
    *
@@ -893,6 +979,21 @@ export function planOnboarding({
   const services: ServicePlan[] = [];
   /** Parts of the sentence that were understood but could not be acted on. */
   const unreadRequests: string[] = [...read.notes];
+
+  /**
+   * What a lookup produced for this site, matched by any of its spellings.
+   *
+   * The address is given against the code the operator wrote; the cluster may
+   * be filed under a different one, so this folds both sides rather than
+   * comparing them literally.
+   */
+  const resolvedFor = (cluster: Cluster) => {
+    for (const code of cluster.codes) {
+      const found = resolved?.[fold(code)];
+      if (found) return found;
+    }
+    return { values: {}, why: {} };
+  };
 
   for (const service of targets) {
     const curated = onboardingFor(service);
@@ -998,6 +1099,7 @@ export function planOnboarding({
         { values: read.values, fallbacks: read.fallbacks },
         read.carry,
         template,
+        resolvedFor(cluster),
       );
 
       // "unless you can identify that it's a '<site> x WL coordination' chat".
@@ -1137,6 +1239,7 @@ export const ONBOARD_INTENT_PROMPT = [
   '  "fallbacks": {"<column>": "<value>"},        // used ONLY where nothing else filled that column',
   '  "carry": [{"column":"<col>","from":"<service key>","fromColumn":"<col on that service>"}],',
   '  "template": {"service":"<service key>","projectCode":"<existing code>"},  // copy EVERY column off that row',
+  '  "addresses": [{"code":"<project code>","address":"<street address or postal code>"}],  // looked up for you',
   '  "groupPatterns": [{"column":"<column>","pattern":"<site> x WL coordination"}],',
   '  "notes": ["anything asked for that this shape cannot express"]',
   "}",
@@ -1155,6 +1258,12 @@ export const ONBOARD_INTENT_PROMPT = [
   "  off that one row; `values` and `switches` then override individual columns. `carry` is the different thing:",
   "  ONE column, from the SAME site's row in ANOTHER service. Use `template` when the sentence names a different",
   "  project to imitate, `carry` when it says where a particular value lives.",
+  "- `addresses` is how a site gets its location. NEVER put a latitude or a longitude in `values` — you have no",
+  "  way to know them and a wrong one is a site on the wrong island. Put the address the request gives you in",
+  "  `addresses` and it is looked up through OneMap; the coordinates, and haze's NEA region derived from them,",
+  "  are filled in and shown to the operator with the address they were found at. One entry per site, using the",
+  "  project code the row will be created under. An address given for a site is used for EVERY target service",
+  "  that has those columns, so a request naming two services and one address needs one entry, not two.",
   '- `groupPatterns` choose groups BY NAME. Write `<site>` where the project code goes; give one per column.',
   "- Put every part of the scope into `scope`. A sentence that says which sites to SKIP means an `exclude` filter,",
   "  not a note — a note changes nothing, and the plan would silently cover more sites than were asked for.",
@@ -1177,6 +1286,16 @@ export const ONBOARD_INTENT_PROMPT = [
   '   "template":{"service":"issueChaser","projectCode":"TEST"},',
   '   "switches":{},"values":{},"fallbacks":{},"carry":[],"groupPatterns":[],"notes":[]}',
   "  TEST2 is in no service, and that is the whole point of the request — it is a new site, not a question.",
+  "",
+  '  "I need a project code SOILBUILD for lightning and haze. 8 Seletar West Rd 1, Singapore 798990" becomes:',
+  '  {"targets":["lightning","haze"],',
+  '   "scope":{"include":[{"kind":"codes","codes":["SOILBUILD"]}],"exclude":[]},',
+  '   "addresses":[{"code":"SOILBUILD","address":"8 Seletar West Rd 1, Singapore 798990"}],',
+  '   "switches":{},"values":{},"fallbacks":{},"carry":[],"groupPatterns":[],"notes":[]}',
+  "  One address entry, not two: it is the same site in both services. Latitude, longitude and the NEA region",
+  "  are NOT yours to fill — the lookup does them. Lightning's red and amber radii are not yours either and have",
+  "  no default: they are client-approved numbers, so the row is reported as short of them unless the request",
+  "  actually says what they are. That is a correct answer, not a failure.",
   "",
   '  "leave the groups empty unless you can identify a \'SITE x WL coordination\' chat" IS a groupPattern:',
   '  {"column":"safety_group_ids","pattern":"<site> x WL coordination"}. It is not a request to leave them empty —',

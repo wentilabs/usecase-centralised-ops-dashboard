@@ -388,6 +388,24 @@ Rules that are easy to get wrong and are pinned by tests:
     to be dropped, and the row came back looking created.
   - `enabled` is never settable here. Insert disabled, verify, then enable —
     and several CHECKs are written on that assumption.
+- **A proposal resolves an address rather than asking for coordinates.** Haze
+  and lightning both require latitude and longitude, and haze an NEA region
+  derived from them. The model has no way to know any of those and must not
+  guess — a wrong latitude is a site on the wrong island — so it puts the
+  address in `addresses` and the chat route geocodes it before planning.
+  `draftFor` then runs the definition's `autofill` hooks, which is how
+  `nea_region` gets filled; the dialog had done that on every keystroke since
+  it was written, and the plan never did.
+  - **OneMap is brittle about how people write an address.** Measured:
+    `8 Seletar West Rd 1, Singapore 798990` → 0 results;
+    `8 Seletar West Rd 1, Singapore` → 0; `798990` → 1, right;
+    `8 Seletar West Rd 1` → 1, right. The country-and-postal tail is the thing
+    that breaks it, and it is the form every map app produces. `addressVariants`
+    tries as-given, then the postal code, then the tail stripped, and `triedAs`
+    says which matched. Both the dialog and the plan go through it.
+  - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
+    **no default**. A row short of them is the correct answer, not a gap to
+    fill.
 - **A CHECK that depends on `enabled` goes in `requiresEnabled`.** Rows are
   always created disabled, so a column Postgres only allows on an enabled row
   can never be set at creation. Declared per service, it produces a sentence in

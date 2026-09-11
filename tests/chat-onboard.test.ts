@@ -998,20 +998,18 @@ test("a new code that is already taken is caught before anything is written", ()
   }
 });
 
-test("a template does not copy a flag the database only allows on an enabled row", () => {
-  // Found by running it: the plan said TEST4 was "ready to create" and the
-  // insert came back as a bare 23514 quoting a truncated row.
-  // issue_chaser_feature_requires_enabled_check forbids four flags while
-  // `enabled` is false, and every row here is created disabled — so copying
-  // one from the template guaranteed a failed insert on every templated row.
+test("a template now copies the feature flags it used to have to drop", () => {
+  // This asserted the opposite. issue_chaser_feature_requires_enabled_check
+  // forbade a flag on a disabled row and every row here is created disabled,
+  // so copying one guaranteed a failed insert and the template skipped them.
+  // The constraint was dropped on request — the service gates each feature on
+  // `enabled` at run time anyway — so "exactly like ON" can now mean it.
   const rows = [
     row("issueChaser", "ON", {
       company: "Wohhup",
       safety_sheet_id: SHEET_ID,
       enabled: true,
       severity_cadence_chaser_enabled: true,
-      same_day_open_snapshot_enabled: true,
-      // Not gated, so this one must still come across.
       include_days_before_snapshot: 1,
     }),
   ];
@@ -1021,25 +1019,39 @@ test("a template does not copy a flag the database only allows on an enabled row
       targets: ["issueChaser"],
       scope: { include: [{ kind: "codes", codes: ["NEWSITE"] }], exclude: [] },
       template: { service: "issueChaser", projectCode: "ON" },
-      switches: {}, values: {}, fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+      switches: {}, values: {}, fallbacks: {}, carry: [], addresses: [], groupPatterns: [], notes: [],
     },
     clusters: clusterProjects(rows),
     existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
     env: ENV,
+    // Off the live schema, as the dialog and the route get it — the flags are
+    // not part of the curated flow, so without this they would be skipped for
+    // the unrelated reason that they are not columns at all.
+    specs: {
+      issueChaser: buildFieldSpec("issueChaser", {
+        project_code: { type: "string" },
+        safety_sheet_id: { type: "string" },
+        enabled: { type: "boolean", default: false },
+        severity_cadence_chaser_enabled: { type: "boolean", default: false },
+        include_days_before_snapshot: { type: "integer", default: 0 },
+      }),
+    },
   });
   if (result.kind !== "plan") return assert.fail("expected a plan");
   const [created] = result.services[0].ready;
   assert.ok(created, `should be ready: ${result.services[0].blocked[0]?.problems.join(" ")}`);
-  assert.equal(created.values.severity_cadence_chaser_enabled, undefined, "the gated flag is not copied");
-  assert.equal(created.values.same_day_open_snapshot_enabled, undefined);
-  assert.match(result.unread.join(" "), /severity_cadence_chaser_enabled/, "and the operator is told why");
-  assert.match(result.unread.join(" "), /need it enabled/);
+  assert.equal(created.values.severity_cadence_chaser_enabled, "true", "the flag comes across");
+  assert.equal(created.values.include_days_before_snapshot, "1", "and so does the ungated one");
+  // `enabled` is still never copied: every row is created disabled.
+  assert.equal(created.values.enabled, undefined);
 });
 
-test("a flag that needs an enabled row is refused at creation, in words", () => {
-  // Asked for outright rather than copied. The plan must not call this ready
-  // and let Postgres be the one to explain, because Postgres explains it as
-  // 23514 and a row truncated mid-URL.
+test("a feature flag can be set at creation now the constraint is gone", () => {
+  // It used to be refused: issue_chaser_feature_requires_enabled_check only
+  // allowed a flag on an enabled project, and every row here is created
+  // disabled — so the flag had to be set in a second edit after enabling. The
+  // constraint was dropped on request, and the service gates every feature on
+  // `enabled` at run time regardless, so nothing sends until the project is on.
   const rows = [row("issueChaser", "ZRA", { company: "Wohhup", safety_sheet_id: SHEET_ID })];
   const result = planOnboarding({
     prompt: "add NEWSITE to issue chaser with the daily safety summary on",
@@ -1047,28 +1059,26 @@ test("a flag that needs an enabled row is refused at creation, in words", () => 
       targets: ["issueChaser"],
       scope: { include: [{ kind: "codes", codes: ["NEWSITE"] }], exclude: [] },
       switches: { daily_safety_summary_enabled: true },
-      values: { safety_sheet_id: SHEET_ID },
-      fallbacks: {}, carry: [], groupPatterns: [], notes: [],
+      values: { safety_sheet_id: SHEET_ID, whatsapp_group_ids: "g@g.us" },
+      fallbacks: {}, carry: [], addresses: [], groupPatterns: [], notes: [],
     },
     clusters: clusterProjects(rows),
     existingFor: (service) => rows.filter((r) => r.service === service).map((r) => r.row),
     env: ENV,
-    // The column is not one the curated flow names; it reaches the plan the
-    // same way it reaches the dialog, off the live schema.
     specs: {
       issueChaser: buildFieldSpec("issueChaser", {
         project_code: { type: "string" },
         safety_sheet_id: { type: "string" },
+        whatsapp_group_ids: { type: "string" },
         daily_safety_summary_enabled: { type: "boolean", default: false },
       }),
     },
   });
   if (result.kind !== "plan") return assert.fail("expected a plan");
-  assert.deepEqual(result.services[0].ready, [], "not offered as creatable");
-  assert.match(
-    result.services[0].blocked[0]?.problems.join(" ") ?? "",
-    /only allows it on an enabled project, and new projects are always created disabled/,
-  );
+  const [created] = result.services[0].ready;
+  assert.ok(created, `should be ready: ${result.services[0].blocked[0]?.problems.join(" ")}`);
+  assert.equal(created.values.daily_safety_summary_enabled, "true");
+  assert.equal(created.values.enabled, undefined, "and the row is still created disabled");
 });
 
 test("an address resolved for a site fills both services, and the region derives from it", () => {

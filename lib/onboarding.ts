@@ -921,21 +921,6 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
     title: "Add a new Issue Chaser project",
     description:
       "Creates one disabled row in issue_chaser.project_configs. Enable it first, then switch on a chaser style — a CHECK enforces that order.",
-    // issue_chaser_feature_requires_enabled_check, from
-    // supabase/migrate_issue_chaser_latest.sql. Two columns wider than when
-    // this list was written: the Novade pair joined it and nothing here
-    // noticed, so a template carrying `novade_name_sync_enabled` produced a
-    // row the dialog called ready and Postgres refused. Kept in step with
-    // `ROW_RULES.issueChaser` by a test, because the same drift is the only
-    // way this can be wrong.
-    requiresEnabled: [
-      "severity_cadence_chaser_enabled",
-      "same_day_open_snapshot_enabled",
-      "daily_safety_summary_enabled",
-      "daily_safety_company_summary_enabled",
-      "novade_name_list_check_enabled",
-      "novade_name_sync_enabled",
-    ],
     outsideHalo: [
       "Share the Safety workbook with the service account. The service reads the `Safety` tab and any `Safety-MMM YYYY` archives by header name, and never writes to it.",
       "The sheet needs `Status`, a date column and an issue identifier at minimum. `Message Id Serialized` is what lets a reminder land back in the group the issue came from.",

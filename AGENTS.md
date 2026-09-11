@@ -458,11 +458,22 @@ Rules that are easy to get wrong and are pinned by tests:
 - **A CHECK that depends on `enabled` goes in `requiresEnabled`.** Rows are
   always created disabled, so a column Postgres only allows on an enabled row
   can never be set at creation. Declared per service, it produces a sentence in
-  the checklist and stops a template copying the flag. Found the hard way: the
-  plan said "ready to create" and the insert came back as a bare 23514 quoting
-  a row truncated mid-URL — `issue_chaser_feature_requires_enabled_check`.
-  `describePostgrestError` now puts the constraint name first, which is the
-  only part anyone can act on.
+  the checklist and stops a template copying the flag. No service declares one
+  today: `issue_chaser_feature_requires_enabled_check` was the only case and
+  was dropped on request (11 Sep 2026) because it made turning a project off
+  mean turning five flags off first — and the service gates every feature on
+  `enabled` at run time regardless (`isFeatureEnabled` is
+  `config.enabled && config[column]`), so a disabled project sends nothing
+  either way. A test keeps `requiresEnabled` and its row rule in step for
+  whichever service needs one next.
+- **A rule may explain without blocking.** `RowRule.explain` is used when
+  `check` returns null and Postgres refuses anyway: a constraint being dropped
+  upstream, or one whose presence depends on which migrations a database has
+  run. The dropped issue-chaser constraint keeps an entry for exactly this —
+  until the DROP has been run against a given database, the refusal answers
+  with the DROP rather than a constraint name.
+  `describePostgrestError` handles everything with no rule at all, putting the
+  constraint name first, which is the only part anyone can act on.
 - **The identity map is not a gate on creation.** It is built from rows that
   exist, so a site nobody has configured is absent from it by definition; using
   it to decide what may be created refuses the first project of every new site,

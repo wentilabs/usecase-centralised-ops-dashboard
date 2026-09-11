@@ -43,6 +43,15 @@ export type RowRule = {
    * from the form beside it.
    */
   check: (row: Row, label: (column: string) => string, where?: Where) => string | null;
+  /**
+   * What to say if Postgres raises this constraint anyway.
+   *
+   * For a constraint HALO deliberately does not pre-empt — one being dropped
+   * upstream, or one whose presence depends on which migrations a database
+   * has run. `check` returns null so nothing is blocked here, and this is used
+   * only when the database actually refuses the write.
+   */
+  explain?: string;
 };
 
 type Row = Record<string, unknown>;
@@ -176,35 +185,29 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
   ],
   issueChaser: [
     {
+      /**
+       * Declared, but deliberately not enforced here.
+       *
+       * The constraint said a feature flag could only be on while `enabled`
+       * was true, which meant turning a project off required turning five
+       * flags off first and turning it back on required setting them all
+       * again. The service never needed it: `isFeatureEnabled` in the repo's
+       * config/index.js is `config.enabled && config[column]`, so a disabled
+       * project with every flag on sends exactly nothing either way.
+       *
+       * Dropped from the database on request (11 Sep 2026). `check` returns
+       * null so HALO blocks nothing; `explain` covers the window before the
+       * DROP has been run against a given database, where the write still
+       * fails and the reason is otherwise a constraint name.
+       */
       constraint: "issue_chaser_feature_requires_enabled_check",
-      columns: [
-        "enabled",
-        "severity_cadence_chaser_enabled",
-        "same_day_open_snapshot_enabled",
-        "daily_safety_summary_enabled",
-        "daily_safety_company_summary_enabled",
-        "novade_name_list_check_enabled",
-        "novade_name_sync_enabled",
-      ],
-      check: (row, label, where) => {
-        if (on(row, "enabled")) return null;
-        const features = [
-          "severity_cadence_chaser_enabled",
-          "same_day_open_snapshot_enabled",
-          "daily_safety_summary_enabled",
-          "daily_safety_company_summary_enabled",
-          "novade_name_list_check_enabled",
-          "novade_name_sync_enabled",
-        ].filter((column) => on(row, column));
-        if (!features.length) return null;
-        const it = features.length === 1 ? "it" : "them";
-        const head =
-          `${list(features.map(label))} ${features.length === 1 ? "is" : "are"} on while the project is off. ` +
-          `The database only allows ${it} on an enabled project`;
-        return where === "creating"
-          ? `${head}, and new projects are always created disabled. Create it, verify it, enable it, then turn ${it} on.`
-          : `${head} — turn ${label("enabled")} on in the same save, or turn ${it} off.`;
-      },
+      columns: [],
+      check: () => null,
+      explain:
+        "This database still has issue_chaser_feature_requires_enabled_check, which only allows a feature " +
+        "flag on an enabled project. Run `alter table issue_chaser.project_configs drop constraint if exists " +
+        "issue_chaser_feature_requires_enabled_check;` — the service gates every feature on `enabled` at run " +
+        "time anyway, so nothing sends while the project is off.",
     },
     {
       // issue_chaser_summary_destination_check — two independent clauses, so

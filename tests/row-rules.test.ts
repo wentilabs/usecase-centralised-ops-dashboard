@@ -86,17 +86,26 @@ test("a window needs both ends, and never the same instant", () => {
   assert.deepEqual(rowProblems("issueChaser", {}, label), []);
 });
 
-test("the remedy differs between editing a row and creating one", () => {
+test("a constraint dropped on request blocks nothing, but still explains itself", () => {
+  // issue_chaser_feature_requires_enabled_check only allowed a feature flag on
+  // an enabled project, which meant turning a project off required turning
+  // five flags off first. The service never needed it — `isFeatureEnabled` is
+  // `config.enabled && config[column]`, so a disabled project sends nothing
+  // whatever the flags say — and it was dropped on 11 Sep 2026.
   const row = { enabled: false, daily_safety_summary_enabled: true, whatsapp_group_ids: "g" };
-  const editing = rowProblems("issueChaser", row, label, "editing")[0]?.message ?? "";
-  const creating = rowProblems("issueChaser", row, label, "creating")[0]?.message ?? "";
-  // Same rule, both times.
-  assert.match(editing, /only allows it on an enabled project/);
-  assert.match(creating, /only allows it on an enabled project/);
-  // Different advice: you cannot enable a row that does not exist yet.
-  assert.match(editing, /turn Project enabled on in the same save/);
-  assert.match(creating, /always created disabled/);
-  assert.doesNotMatch(creating, /in the same save/);
+  assert.deepEqual(rowProblems("issueChaser", row, label), [], "nothing is blocked");
+  assert.deepEqual(rowProblems("issueChaser", row, label, "creating"), []);
+
+  // The name is still declared, so a database that has not had the DROP run
+  // against it gets a sentence rather than a constraint name — and the
+  // sentence is the DROP.
+  const rule = explainConstraint(
+    "issueChaser",
+    'violates check constraint "issue_chaser_feature_requires_enabled_check"',
+  );
+  assert.ok(rule, "the constraint must still resolve");
+  assert.equal(rule!.check(row, label), null, "and must not pre-empt");
+  assert.match(rule!.explain ?? "", /drop constraint if exists/);
 });
 
 test("a violation that was already stored does not block an unrelated edit", () => {
@@ -153,7 +162,13 @@ test("every rule is well formed", () => {
   const seen = new Set<string>();
   for (const service of SERVICE_KEYS) {
     for (const rule of ROW_RULES[service] ?? []) {
-      assert.ok(rule.columns.length, `${rule.constraint} points at no field`);
+      // A translation-only rule points at no field on purpose: it blocks
+      // nothing, so there is nothing to highlight.
+      if (rule.check({}, label) !== null || rule.columns.length) {
+        assert.ok(rule.columns.length, `${rule.constraint} points at no field`);
+      } else {
+        assert.ok(rule.explain, `${rule.constraint} neither checks nor explains`);
+      }
       assert.ok(!seen.has(rule.constraint), `${rule.constraint} is declared twice`);
       seen.add(rule.constraint);
       // An empty row must not trip a rule: every one of these is conditional
@@ -168,24 +183,28 @@ test("every rule is well formed", () => {
   }
 });
 
-test("requiresEnabled and the row rule name the same columns", () => {
-  // Two declarations of one constraint: `requiresEnabled` drives the create
-  // dialog's inline warning and the template skip, the row rule drives
-  // validation and the editor. They drifted — the Novade pair joined
-  // issue_chaser_feature_requires_enabled_check and only the rule was updated,
-  // so a template carrying novade_name_sync_enabled produced a row the dialog
-  // called ready and Postgres refused.
+test("requiresEnabled, where a service declares it, matches its row rule", () => {
+  // Two declarations of one constraint drift. issue-chaser's pair did: the
+  // Novade flags joined issue_chaser_feature_requires_enabled_check and only
+  // the rule was updated, so a template carrying novade_name_sync_enabled
+  // produced a row the dialog called ready and Postgres refused. The
+  // constraint has since been dropped and issue-chaser declares neither, but
+  // the guard stays for the next service that needs one.
   for (const service of SERVICE_KEYS) {
     const definition = onboardingFor(service);
     const declared = definition?.requiresEnabled ?? [];
     if (!declared.length) continue;
     const rule = (ROW_RULES[service] ?? []).find((entry) => entry.constraint.includes("requires_enabled"));
     assert.ok(rule, `${service} declares requiresEnabled with no matching row rule`);
-    // The rule's columns are the flags plus `enabled` itself.
     assert.deepEqual(
       [...declared].sort(),
       rule!.columns.filter((column) => column !== "enabled").sort(),
       `${service}: the two lists have drifted`,
     );
   }
+  assert.equal(
+    onboardingFor("issueChaser")?.requiresEnabled,
+    undefined,
+    "issue-chaser's constraint was dropped, so nothing should still declare it",
+  );
 });

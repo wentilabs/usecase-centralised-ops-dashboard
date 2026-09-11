@@ -115,7 +115,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json(
       {
         error: rule
-          ? `${rule.check({ ...(before as Record<string, unknown>), ...patch }, label) ?? raw}`
+          ? (rule.check({ ...(before as Record<string, unknown>), ...patch }, label) ?? rule.explain ?? raw)
           : `Supabase rejected the change: ${raw}`,
         ...(rule ? { problems: [{ columns: rule.columns, message: raw }] } : {}),
       },

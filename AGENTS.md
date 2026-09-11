@@ -406,6 +406,38 @@ Rules that are easy to get wrong and are pinned by tests:
   - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
     **no default**. A row short of them is the correct answer, not a gap to
     fill.
+- **A multi-column CHECK goes in `lib/row-rules.ts`.** These are the rules no
+  single field can express — "red mentions needs both lists", "a summary needs
+  somewhere to go", "both ends of a window or neither". Postgres was the only
+  thing enforcing them, so an operator met one as a rejected save quoting
+  `lightning_red_poc_mentions_check` and a row truncated mid-URL, with nothing
+  on screen saying which field was wrong. HALO already knew the rule — the help
+  text under that very toggle states it — and simply could not act on knowing.
+  - `rowProblems` runs them over the row **as it would be saved**, not over the
+    change-set: each rule spans fields and the other half is usually one nobody
+    touched. The editor shows the sentence on every column the rule names,
+    repeats it in the footer and disables Save; the PATCH route runs the same
+    check and answers 400 with `problems[]`.
+  - `newProblems` only reports what THIS edit breaks. A constraint added to a
+    table that already had rows would otherwise block unrelated edits to
+    exactly the rows that most need them.
+  - `explainConstraint` is the other direction, for a rule this file has not
+    mirrored or has mirrored wrongly: the constraint name Postgres quotes back
+    resolves to the same sentence.
+  - The `where` argument changes only the remedy. "Turn the project on in the
+    same save" is right in the editor and wrong in the create dialog, where
+    every row is created disabled by rule.
+  - It is a **mirror and mirrors drift** — the same bargain as `CHECK_ENUMS`,
+    `codePattern` and the range checks. Getting one wrong costs a rejected
+    save, never bad data, because the database still has the last word.
+- **A comma-list column is normalised on the way in.** `csv`, `groups` and
+  `meters` all hold whitespace-free tokens, and what arrives is a column
+  pasted out of a spreadsheet: `"8335 6391,\n8257 0972,\n…"`. Stored verbatim
+  the service matches none of them and nothing complains, because a text
+  column takes anything. `coerceValue` splits on commas, newlines **and**
+  semicolons, strips whitespace inside each entry, drops blanks and
+  duplicates. Splitting on newlines matters as much as trimming: a pasted
+  column has no commas at all.
 - **A CHECK that depends on `enabled` goes in `requiresEnabled`.** Rows are
   always created disabled, so a column Postgres only allows on an enabled row
   can never be set at creation. Declared per service, it produces a sentence in

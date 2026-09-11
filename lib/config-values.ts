@@ -1,6 +1,15 @@
 import type { FieldSpec } from "./field-spec";
 
 /**
+ * Widgets whose column is a comma-separated list of whitespace-free tokens.
+ *
+ * `multi` is not one of them: it is a real Postgres array and is handled
+ * above, and its members come from a fixed option list rather than being
+ * typed.
+ */
+const LIST_WIDGETS = new Set<FieldSpec["widget"]>(["csv", "groups", "meters"]);
+
+/**
  * Coerce a value from the browser into what Postgres expects, rejecting
  * anything the live schema cannot accept. Pure, so it is unit-tested.
  */
@@ -22,6 +31,35 @@ export function coerceValue(field: FieldSpec, raw: unknown): unknown {
       }
     }
     return arr;
+  }
+
+  /**
+   * Comma lists, as people actually paste them.
+   *
+   * Every one of these columns holds a comma-separated list of tokens that
+   * never contain whitespace — WhatsApp chat ids, Telegram chat ids, NoiseLynx
+   * RecIDs, phone numbers. What arrives is a column copied out of a
+   * spreadsheet or a message:
+   *
+   *   "8335 6391,\n8257 0972,\n8497 2870,\n9247 1931"
+   *
+   * Stored verbatim that way, the service reads four entries with embedded
+   * newlines and spaces and matches none of them. Nothing complained, because
+   * a text column accepts anything.
+   *
+   * So the separators are unified — commas, newlines and semicolons all split
+   * — each entry loses its whitespace, blanks and duplicates go, and the
+   * result is the canonical comma list the services parse. Splitting on
+   * newlines matters as much as trimming: a pasted column has no commas at
+   * all, and would otherwise be stored as one long entry.
+   */
+  if (LIST_WIDGETS.has(field.widget)) {
+    const entries: string[] = [];
+    for (const part of String(raw ?? "").split(/[,;\r\n]+/)) {
+      const token = part.replace(/\s+/g, "");
+      if (token && !entries.includes(token)) entries.push(token);
+    }
+    return entries.length ? entries.join(",") : null;
   }
 
   if (raw === null || raw === undefined || raw === "") return null;

@@ -1,6 +1,7 @@
 import { deriveNeaRegion, withinServiceArea } from "./derive";
 import { COMPANIES, type FieldWidget, type ServiceFieldSpec } from "./field-spec";
 import { readSheetId } from "./jobs";
+import { rowProblems } from "./row-rules";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 /**
@@ -1443,15 +1444,21 @@ export function validateDraft(
     }
   }
 
-  // A flag the database only allows on an enabled row. Rows are always created
-  // disabled, so this is not "not yet valid" but "not settable here at all".
-  for (const column of definition.requiresEnabled ?? []) {
-    if (value(column) !== "true") continue;
-    const field = definition.fields.find((entry) => entry.column === column);
-    problems.push(
-      `${field?.label ?? column} cannot be switched on while the project is disabled, and new projects are ` +
-        `always created disabled. Create it, verify it, enable it, then turn this on.`,
-    );
+  /**
+   * The multi-column CHECKs, from the same file the editor reads.
+   *
+   * A draft is a row with `enabled` false, so the rules apply unchanged — and
+   * stating them here means the dialog and a chat proposal refuse a
+   * combination with the same sentence the editor would use, instead of
+   * letting Postgres answer with a constraint name.
+   */
+  for (const problem of rowProblems(
+    definition.service,
+    { ...draft, enabled: false },
+    (column) => definition.fields.find((field) => field.column === column)?.label ?? column,
+    "creating",
+  )) {
+    problems.push(problem.message);
   }
 
   // Pre-empt the composite unique key rather than surfacing a Postgres error.

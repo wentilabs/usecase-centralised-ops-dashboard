@@ -1067,7 +1067,7 @@ test("a flag that needs an enabled row is refused at creation, in words", () => 
   assert.deepEqual(result.services[0].ready, [], "not offered as creatable");
   assert.match(
     result.services[0].blocked[0]?.problems.join(" ") ?? "",
-    /cannot be switched on while the project is disabled/,
+    /only allows it on an enabled project, and new projects are always created disabled/,
   );
 });
 

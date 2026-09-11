@@ -7,6 +7,7 @@ import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { formatSgt, groupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
+import { newProblems } from "@/lib/row-rules";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 type Draft = Record<string, unknown>;
@@ -271,6 +272,35 @@ export function ConfigEditor({
   const dirtyCount = Object.keys(changes).length;
 
   /**
+   * The cross-field rules this edit would break, live as you type.
+   *
+   * Postgres has always enforced these; nothing here did, so the way you met
+   * one was a rejected save quoting a constraint name and a truncated row.
+   * Evaluated against the row as it WOULD be saved, because every one of them
+   * spans fields and the other half is usually one you did not touch — and
+   * against the stored row too, so a violation that was already there does
+   * not block an unrelated edit.
+   */
+  const problems = useMemo(
+    () =>
+      newProblems(
+        service,
+        current as Record<string, unknown>,
+        values,
+        (column) => spec.fields[column]?.label ?? column,
+      ),
+    [service, current, values, spec.fields],
+  );
+  /** Column → the first problem naming it, for the message under the field. */
+  const problemFor = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const problem of problems) {
+      for (const column of problem.columns) if (!out[column]) out[column] = problem.message;
+    }
+    return out;
+  }, [problems]);
+
+  /**
    * How one column's before-and-after is shown, in both places that show it.
    *
    * Group columns are resolved to chat names: approving or auditing a delivery
@@ -524,7 +554,11 @@ export function ConfigEditor({
                       <div
                         key={name}
                         className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[240px_1fr] md:items-start md:gap-4 md:py-2 ${
-                          changed ? "bg-primary/15" : ""
+                          problemFor[name]
+                            ? "bg-danger/10 ring-1 ring-danger/40"
+                            : changed
+                              ? "bg-primary/15"
+                              : ""
                         }`}
                       >
                         <div className="md:pt-1.5">
@@ -566,6 +600,13 @@ export function ConfigEditor({
                             groupNames={groupNames}
                             projectCode={String(current.project_code ?? rowId)}
                           />
+                          {/* The rule, on the field it is about. A constraint
+                              that spans four columns highlights all four, so
+                              the same sentence appears on each — which is the
+                              point: you cannot fix this one in isolation. */}
+                          {problemFor[name] ? (
+                            <p className="mt-1.5 text-[11px] font-medium text-danger">{problemFor[name]}</p>
+                          ) : null}
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">
                               {field.help}
@@ -581,17 +622,34 @@ export function ConfigEditor({
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">
+        <footer className="flex shrink-0 flex-col gap-2 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">
+          {/* A rule spanning several fields cannot be read off any one of
+              them, so it is stated once here as well as on each field it
+              touches — and it names what to do, not which constraint. */}
+          {problems.length ? (
+            <ul className="rounded-lg border border-danger/40 bg-danger/10 px-2.5 py-2 text-[11px] text-danger">
+              {problems.map((problem) => (
+                <li key={problem.constraint} className="flex gap-1.5">
+                  <span aria-hidden>⚠</span>
+                  <span>{problem.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {error ? (
+            <div className="rounded-lg border border-danger/40 bg-danger/10 px-2.5 py-2 text-[11px] text-danger">
+              {error}
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-3">
           <div
             className={`text-xs ${dirtyCount ? "font-semibold text-primary" : "text-muted-foreground"}`}
           >
-            {error ? (
-              <span className="text-danger">{error}</span>
-            ) : dirtyCount ? (
-              `${dirtyCount} unsaved change${dirtyCount === 1 ? "" : "s"}`
-            ) : (
-              "No changes"
-            )}
+            {problems.length
+              ? `${problems.length} problem${problems.length === 1 ? "" : "s"} to fix`
+              : dirtyCount
+                ? `${dirtyCount} unsaved change${dirtyCount === 1 ? "" : "s"}`
+                : "No changes"}
           </div>
           <div className="flex gap-2">
             <button
@@ -604,12 +662,15 @@ export function ConfigEditor({
             </button>
             <button
               type="button"
-              disabled={!dirtyCount}
+              // Blocked rather than allowed-and-rejected: the database will
+              // refuse it, and refusing here can say which field and why.
+              disabled={!dirtyCount || problems.length > 0}
               onClick={() => setConfirming(true)}
               className="rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-40 md:py-1.5"
             >
               Review &amp; save
             </button>
+          </div>
           </div>
         </footer>
       </aside>

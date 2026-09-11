@@ -4,6 +4,7 @@ import { describePostgrestError } from "@/lib/postgrest-error";
 import type { NextRequest } from "next/server";
 
 import { effectiveChanges, validateChanges } from "@/lib/config-values";
+import { explainConstraint, newProblems } from "@/lib/row-rules";
 import {
   annotateAudit,
   getConfig,
@@ -77,13 +78,48 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true, unchanged: true, row: before });
   }
 
+  /**
+   * The multi-column CHECKs, against the row as it WILL be — not against the
+   * change-set, because each of these rules spans fields and the other half
+   * is usually one nobody touched in this save.
+   *
+   * Refused here so the answer names the fields. The database would refuse it
+   * anyway, in the form of a constraint name and a row truncated mid-URL.
+   */
+  const label = (column: string) => spec.fields[column]?.label ?? column;
+  const problems = newProblems(
+    service,
+    before as Record<string, unknown>,
+    { ...(before as Record<string, unknown>), ...patch },
+    label,
+  );
+  if (problems.length) {
+    return NextResponse.json(
+      {
+        error: problems.map((problem) => problem.message).join(" "),
+        problems: problems.map((problem) => ({ columns: problem.columns, message: problem.message })),
+      },
+      { status: 400 },
+    );
+  }
+
   let rows;
   try {
     rows = await updateConfig(service, rowId, effective, body.baseUpdatedAt ?? null);
   } catch (error) {
+    // A rule this app does not mirror, or mirrors wrongly. Say what the
+    // constraint is about when it is one we know; otherwise pass through the
+    // tidied Postgres text, which at least names the constraint.
+    const raw = describePostgrestError(error);
+    const rule = explainConstraint(service, raw);
     return NextResponse.json(
-      { error: `Supabase rejected the change: ${describePostgrestError(error)}` },
-      { status: 502 },
+      {
+        error: rule
+          ? `${rule.check({ ...(before as Record<string, unknown>), ...patch }, label) ?? raw}`
+          : `Supabase rejected the change: ${raw}`,
+        ...(rule ? { problems: [{ columns: rule.columns, message: raw }] } : {}),
+      },
+      { status: rule ? 400 : 502 },
     );
   }
 

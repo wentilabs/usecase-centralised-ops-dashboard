@@ -898,8 +898,7 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     exclude_whatsapp_group_ids: {
       label: "Excluded from the snapshot",
       widget: "groups",
-      help: "Groups the 09:00/21:00 same-day snapshot skips. Nothing else: severity reminders still reply in each issue's originating group, and both daily summaries still go to the full list. Matching is trimmed and case-insensitive, and an empty list excludes nothing.",
-      showIf: { field: "same_day_open_snapshot_enabled", equals: true },
+      help: "Groups the 09:00/21:00 same-day snapshot skips. Nothing else: severity reminders still reply in each issue's originating group, and both daily summaries still go to their own destination. Matching is trimmed and case-insensitive, and an empty list excludes nothing.",
     },
     // Not a report: it sends no WhatsApp message and needs no destination, which
     // is why it sits apart from the summaries and their group requirement.
@@ -909,19 +908,18 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       // Added by 807adfc so a daily report can go somewhere other than the
       // group the chasers use. Blank is not "nowhere": it falls back, which is
       // what kept every project working when the column was introduced.
-      help: "Where both past-days summaries go. Leave it blank and they fall back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
-      showIf: {
-        anyOf: [
-          { field: "daily_safety_summary_enabled", equals: true },
-          { field: "daily_safety_company_summary_enabled", equals: true },
-        ],
-      },
+      // Shown whether or not the summaries are on. A destination is something
+      // you decide before you switch a report on, not after — and gating it on
+      // the flag meant the only way to set it was to turn the report on first,
+      // which sends it to the fallback in the meantime.
+      help: "Where both past-days summaries go when they are on. Blank falls back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
     },
     novade_name_list_check_whatsapp_group_ids: {
       label: "Reminder destination",
       widget: "groups",
-      help: "Where the weekly Novade name reminder goes. Blank falls back to WhatsApp group IDs.",
-      showIf: { field: "novade_name_list_check_enabled", equals: true },
+      // Same, and more so: no project has the weekly reminder on, so gating
+      // this on the flag hid it on every row in the estate.
+      help: "Where the weekly Novade name reminder goes when it is on. Blank falls back to WhatsApp group IDs.",
     },
     novade_name_sync_enabled: {
       label: "Write back Novade names",
@@ -938,12 +936,16 @@ const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     send_to_originating_groups: {
       label: "Reply in the originating group",
-      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required. Applies to reminders only: the daily summaries ignore this and always use the group list, so one project report is never copied into every issue's origin group.",
+      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required. Applies to reminders only: the daily summaries ignore this and use Summary destination — or the group list when that is blank — so one project report is never copied into every issue's origin group.",
     },
     whatsapp_group_ids: {
       label: "WhatsApp group IDs",
       widget: "groups",
-      help: "Fallback destinations for reminders, and the only destination for the daily summaries. Required to enable the project unless Reply in the originating group is on — and required outright, regardless of that setting, before either summary can be turned on (issue_chaser_summary_destination_check).",
+      // No longer "the only destination for the daily summaries" — 807adfc gave
+      // the summaries and the weekly Novade reminder their own, and this became
+      // the fallback for both. The old wording sent an operator here to fix a
+      // routing problem the two fields below now solve.
+      help: "The default destination: fallback for reminders, and for the two report destinations below when they are blank. Required to enable the project unless Reply in the originating group is on. A report with its own destination set does not need this one as well.",
     },
     // All three are part of issue_chaser_enabled_delivery_check, so a blank one
     // is not a missing nicety — it makes `enabled` unsavable. The URL's shape is
@@ -1195,24 +1197,25 @@ const GROUPS: Record<string, FieldGroup[]> = {
         "daily_safety_summary_enabled",
         "daily_safety_company_summary_enabled",
         "summary_days",
-        "safety_summary_whatsapp_group_ids",
       ],
     },
     // Its own section: one reads the Name List and one writes to it, and neither
     // is a chaser or a summary.
     {
       title: "Novade names",
-      fields: [
-        "novade_name_list_check_enabled",
-        "novade_name_list_check_whatsapp_group_ids",
-        "novade_name_sync_enabled",
-      ],
+      fields: ["novade_name_list_check_enabled", "novade_name_sync_enabled"],
     },
+    // Every destination in one place, because "where does each report go" is
+    // one question and it used to be answered in three sections — two of them
+    // behind a feature flag, so the Novade destination was invisible on every
+    // project in the estate.
     {
       title: "Delivery",
       fields: [
         "send_to_originating_groups",
         "whatsapp_group_ids",
+        "safety_summary_whatsapp_group_ids",
+        "novade_name_list_check_whatsapp_group_ids",
         "exclude_whatsapp_group_ids",
         "instance_name",
         "client_id",

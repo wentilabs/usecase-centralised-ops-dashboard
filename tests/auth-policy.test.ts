@@ -2236,15 +2236,9 @@ test("columns the services added recently are explained and placed", () => {
   const band = buildFieldSpec("wbgt", { poc_alert_minimum_band: text }).fields.poc_alert_minimum_band;
   assert.deepEqual(band.options, ["yellow", "orange", "red"]);
 
-  // Each destination only appears once the report that uses it is on.
-  const summary = buildFieldSpec("issueChaser", { safety_summary_whatsapp_group_ids: text })
-    .fields.safety_summary_whatsapp_group_ids;
-  assert.deepEqual(summary.showIf, {
-    anyOf: [
-      { field: "daily_safety_summary_enabled", equals: true },
-      { field: "daily_safety_company_summary_enabled", equals: true },
-    ],
-  });
+  // Destinations are NOT gated on their report — see the visibility test
+  // below. They were, and it hid the Novade one on every project in the
+  // estate, because none has that report on.
 });
 
 test("a report's help names the destination it now has", () => {
@@ -2261,5 +2255,31 @@ test("a report's help names the destination it now has", () => {
     const help = spec.fields[column].help;
     assert.match(help, /destination/i, `${column} must name the field that routes it`);
     assert.match(help, /fall(s)? back/i, `${column} must say what a blank destination does`);
+  }
+});
+
+test("every issue-chaser destination is visible without turning its report on", () => {
+  // A destination is something you decide BEFORE switching a report on. Both
+  // new ones were gated on their own feature flag, so the only way to set one
+  // was to turn the report on first and let it send to the fallback in the
+  // meantime — and since no project in the estate has the weekly Novade check
+  // on, that field was invisible on every row.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const columns = [
+    "whatsapp_group_ids",
+    "safety_summary_whatsapp_group_ids",
+    "novade_name_list_check_whatsapp_group_ids",
+    "exclude_whatsapp_group_ids",
+  ];
+  const spec = buildFieldSpec("issueChaser", Object.fromEntries(columns.map((c) => [c, text])));
+  for (const column of columns) {
+    assert.equal(spec.fields[column].showIf, null, `${column} is hidden behind a flag`);
+    assert.equal(spec.fields[column].widget, "groups", `${column} must use the picker`);
+  }
+  // And they answer one question, so they are in one place.
+  const delivery = spec.groups.find((group) => group.title === "Delivery");
+  assert.ok(delivery, "Delivery group must exist");
+  for (const column of columns) {
+    assert.ok(delivery!.fields.includes(column), `${column} belongs under Delivery`);
   }
 });

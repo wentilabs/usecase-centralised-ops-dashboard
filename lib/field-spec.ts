@@ -297,7 +297,17 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
 
     whatsapp_wbgt_source_chat_ids: { label: "Photo source chats", widget: "groups", help: "Chats whose meter photos are ingested." },
     whatsapp_manual_sensor_label: { label: "WhatsApp manual sensor label" },
-    telegram_manual_sensor_label: { label: "Telegram manual sensor label" },
+    telegram_manual_sensor_label: {
+      label: "Telegram photo sensor (legacy)",
+      // Reclassified by 64d2145: the new MTProto flow files readings under an
+      // automatic `Telegram alerts — <source_key>` label, so this only still
+      // governs photos arriving through the old Telegram Bot route.
+      help: "Which sensor a photo from the old Telegram Bot route files against. The signed external Telegram flow does not use it — that one labels its own readings `Telegram alerts — <source key>`, so a project on it needs nothing here.",
+    },
+    enable_external_telegram_alerts: {
+      label: "Forward external Telegram readings",
+      help: "Signed external Telegram messages only. Off still parses and stores every reading — it withholds the outbound WhatsApp advisory and nothing else. Which text belongs to which project is decided by the parser registry in the service, not here, so turning this on does not widen what is ingested.",
+    },
     whatsapp_authoritative_client_identifier: {
       label: "Authoritative WhatsApp client",
       help: "Only photos forwarded by this client identifier are accepted for ingestion.",
@@ -833,7 +843,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // four-character cap would silently truncate the value already stored.
     include_days_before_snapshot: {
       label: "Snapshot lookback (days)",
-      help: "How many earlier SGT dates a MANUAL snapshot covers; 0 is today only. A scheduled run ignores this and uses the lookback on the matching Snapshot schedule entry instead, so this is the value for a one-off call and for `include_days_before` to override. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
+      help: "The lookback for an explicit one-off call only — `scheduled: false`, or `include_days_before` overriding it. 0 is today only. Every scheduled run, which is now the default, takes its lookback from the matching Snapshot schedule entry instead and ignores this. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
       showIf: { field: "same_day_open_snapshot_enabled", equals: true },
     },
     severity_p1_window_start: {
@@ -876,7 +886,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     summary_days: {
       label: "Summary window (days)",
-      help: "How many consecutive SGT dates a MANUAL summary covers, counting the end date itself — 5 is today plus the four before it. Shared by both summaries. A scheduled run ignores this and uses the lookback on the matching schedule entry, plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
+      help: "The window for an explicit one-off call only — `scheduled: false` — counting the end date itself, so 5 is today plus the four before it. Shared by both summaries. Every scheduled run, which is now the default, uses the lookback on its own schedule entry plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
       showIf: {
         anyOf: [
           { field: "daily_safety_summary_enabled", equals: true },
@@ -925,15 +935,15 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // comma list into its own shape and destroy the value.
     same_day_open_snapshot_schedule: {
       label: "Snapshot schedule",
-      help: "When the same-day snapshot runs, and how far back each run looks. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the same-day snapshot runs, and how far back each run looks. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
     },
     daily_safety_summary_schedule: {
       label: "Summary schedule",
-      help: "When the plain past-days summary runs, and how many dates each run covers. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the plain past-days summary runs, and how many dates each run covers. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
     },
     daily_safety_company_summary_schedule: {
       label: "Company summary schedule",
-      help: "When the by-company summary runs, and how many dates each run covers. Separate from the plain summary's schedule, so the two can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the by-company summary runs, and how many dates each run covers. Separate from the plain summary's schedule, so the two can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
     },
     novade_name_list_check_whatsapp_group_ids: {
       label: "Reminder destination",
@@ -1056,6 +1066,10 @@ export const GROUPS: Record<string, FieldGroup[]> = {
         "whatsapp_authoritative_client_identifier",
         "whatsapp_manual_sensor_label",
         "telegram_manual_sensor_label",
+        // Not a photo route — a text one — but it is the other half of "what
+        // arrives from Telegram", and a section of its own for one switch
+        // would hide it rather than place it.
+        "enable_external_telegram_alerts",
       ],
     },
     { title: "Sheets", fields: ["monthly_sheet_id", "monthly_sheet_fill_mode"] },

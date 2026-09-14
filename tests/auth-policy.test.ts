@@ -2403,3 +2403,84 @@ test("the card reads the report schedules instead of the times they used to be",
   assert.match(plainOnly, /at 08:00 over 1 day/);
   assert.doesNotMatch(plainOnly, /17:00/);
 });
+
+test("the report schedules are described as the default path, not the exception", () => {
+  // 833ab88 made `scheduled` default to true, so `{}` is a live scheduled run.
+  // The help written three days earlier said the opposite — that the schedule
+  // "applies to the scheduled invocation only" and a manual call was the
+  // ordinary case — which would send someone to `summary_days` to change when
+  // a report covers.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const spec = buildFieldSpec("issueChaser", {
+    same_day_open_snapshot_schedule: text,
+    daily_safety_summary_schedule: text,
+    daily_safety_company_summary_schedule: text,
+    include_days_before_snapshot: { type: "integer" as const, format: "integer", enum: null, default: 0 },
+    summary_days: { type: "integer" as const, format: "integer", enum: null, default: 5 },
+  });
+  for (const column of [
+    "same_day_open_snapshot_schedule",
+    "daily_safety_summary_schedule",
+    "daily_safety_company_summary_schedule",
+  ]) {
+    const help = spec.fields[column].help;
+    assert.match(help, /normal path/i, `${column} must say the schedule is what ordinarily runs`);
+    assert.doesNotMatch(help, /scheduled invocation only/i, `${column} still describes the old default`);
+  }
+  // And the two standing numbers must not claim the scheduled run as theirs.
+  for (const column of ["include_days_before_snapshot", "summary_days"]) {
+    const help = spec.fields[column].help;
+    assert.match(help, /one-off/i, `${column} must say it is the explicit-call value`);
+    assert.match(help, /scheduled run/i, `${column} must say what the scheduled run uses instead`);
+  }
+});
+
+test("wbgt's external Telegram switch is explained and placed", () => {
+  // 64d2145 applied migrate_external_telegram_channels.sql, which had been
+  // sitting unapplied — the column arrived and landed in "Other" with its raw
+  // name, exactly like the three found in the first estate sweep.
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("wbgt", {
+    enable_external_telegram_alerts: bool,
+    telegram_manual_sensor_label: { type: "string" as const, format: "text", enum: null, default: null },
+  });
+  const field = spec.fields.enable_external_telegram_alerts;
+  assert.notEqual(field.label, "enable_external_telegram_alerts");
+  assert.ok(field.help);
+  // Off withholds the SEND, not the ingestion — the distinction the repo makes
+  // and the one an operator would otherwise get backwards.
+  assert.match(field.help, /still parses and stores/i);
+  assert.ok(!spec.groups.find((g) => g.title === "Other")?.fields.includes("enable_external_telegram_alerts"));
+
+  // And the older Telegram label is now legacy, which its help has to say or
+  // someone will keep setting it for a flow that ignores it.
+  assert.match(spec.fields.telegram_manual_sensor_label.label, /legacy/i);
+});
+
+test("a project fed only by external Telegram is working, not idle", () => {
+  // 64d2145's route does not use `telegram_chat_ids` — the service's parser
+  // registry decides which text belongs to which project — so a project on it
+  // has both chat lists empty. With the scraper off that read as idle, which
+  // is the one thing isManualIngestion exists to prevent: a live site whose
+  // readings arrive by hand looking like a dormant one.
+  const base = { enabled: true, enable_scrape: false };
+  assert.equal(isManualIngestion("wbgt", base), false, "no source at all is still idle");
+  assert.equal(isManualIngestion("wbgt", { ...base, enable_external_telegram_alerts: true }), true);
+
+  // The older routes are unchanged.
+  assert.equal(isManualIngestion("wbgt", { ...base, telegram_chat_ids: "123" }), true);
+  assert.equal(isManualIngestion("wbgt", { ...base, whatsapp_wbgt_source_chat_ids: "1@g.us" }), true);
+
+  // And the two conditions that make it manual at all still hold: a scraping
+  // project is not manual, and a disabled one is not working.
+  assert.equal(
+    isManualIngestion("wbgt", { enabled: true, enable_scrape: true, enable_external_telegram_alerts: true }),
+    false,
+    "a scraping project is not manual",
+  );
+  assert.equal(
+    isManualIngestion("wbgt", { enabled: false, enable_scrape: false, enable_external_telegram_alerts: true }),
+    false,
+    "a disabled project is not working",
+  );
+});

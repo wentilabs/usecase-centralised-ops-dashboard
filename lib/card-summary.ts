@@ -815,7 +815,19 @@ export function isManualIngestion(service: ServiceKey, config: ProjectConfigRow)
   // Scrape defaults to on, so only an explicit false means manual.
   if (config.enable_scrape !== false) return false;
   return (
-    splitList(config.whatsapp_wbgt_source_chat_ids).length > 0 || splitList(config.telegram_chat_ids).length > 0
+    splitList(config.whatsapp_wbgt_source_chat_ids).length > 0 ||
+    splitList(config.telegram_chat_ids).length > 0 ||
+    // The signed external Telegram route (64d2145). It does NOT use
+    // `telegram_chat_ids` — the parser registry in the service decides which
+    // text belongs to which project — so a project fed entirely by it has both
+    // chat lists empty and would have read as idle, which is the exact failure
+    // this function exists to prevent.
+    //
+    // Sufficient, not necessary: the flag governs the outbound advisory and
+    // readings are parsed and stored either way, so a project with it OFF may
+    // still be fed this way and cannot be told apart here. On is a deliberate
+    // act and means the project is working.
+    config.enable_external_telegram_alerts === true
   );
 }
 

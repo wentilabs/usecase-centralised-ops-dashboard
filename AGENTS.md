@@ -431,6 +431,20 @@ Rules that are easy to get wrong and are pinned by tests:
   mid-JSON and the operator was told the model "did not answer in a shape this
   could use" — a truncation reported as a misunderstanding. Three request
   builders share one constant, and a test pins them together.
+- **A default that flips is a doc change with no schema change.** 833ab88 made
+  issue-chaser's `scheduled` default to `true`, so `{}` is now a live scheduled
+  run. No column moved, so nothing here noticed, and help written three days
+  earlier still called the schedule the exception and a manual call the norm —
+  sending an operator to `summary_days` to change when a report covers. The
+  three schedule fields now describe themselves as the normal path, and
+  `summary_days` / `include_days_before_snapshot` as the explicit one-off values.
+- **A new ingestion route has to reach `isManualIngestion`.** It decides that a
+  project with the scraper off is working rather than idle, and it did so by
+  looking for a photo source. 64d2145's signed external Telegram route does not
+  use `telegram_chat_ids` — the service's parser registry maps text to projects
+  — so a project fed entirely by it has both chat lists empty and read as idle.
+  The flag counts as a source, one-way: it governs the outbound advisory and
+  readings are stored either way, so ON means working and OFF proves nothing.
 - **A cadence that moved into a column has to move out of the prose too.**
   issue-chaser's ece9060 replaced three fixed times with
   `*_schedule` columns (`HH00,lookback` entries, `;` between them, minutes

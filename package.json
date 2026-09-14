@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
     "groups:backfill": "node --env-file=.env scripts/backfill-group-names.mjs",
-    "openapi": "node scripts/build-openapi.mjs"
+    "openapi": "node scripts/build-openapi.mjs",
+    "contracts:check": "node scripts/service-contracts.mjs",
+    "contracts:refresh": "node scripts/service-contracts.mjs --refresh"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "1.5.4",

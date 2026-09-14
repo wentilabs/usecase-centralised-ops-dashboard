@@ -13,6 +13,8 @@ contract test. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Documentation
 
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — HALO module ownership and safe
+  extension points.
 - **[AGENTS.md](./AGENTS.md)** — architecture, conventions and the traps.
 - **[AGENT_ACCESS.md](./AGENT_ACCESS.md)** — the OpenAPI + MCP surface, tokens
   and scopes, with worked examples.

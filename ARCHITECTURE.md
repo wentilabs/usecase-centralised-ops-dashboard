@@ -1,0 +1,98 @@
+# Architecture
+
+HALO is the configuration control surface for seven independently deployed
+services. This guide maps its local ownership boundaries. The family-wide
+migration contract is in `docs/SERVICE_FAMILY_ARCHITECTURE.md`; `AGENTS.md`
+records the detailed operational invariants.
+
+## Stability contract
+
+- Live PostgREST schema introspection remains the discovery source. Curated
+  metadata enriches it; it must not become a hardcoded replacement.
+- Configuration writes go directly to production and retain validation,
+  read-only filtering, no-op removal, optimistic concurrency, and audit
+  annotation in that order.
+- Audit history remains database-triggered so direct Supabase edits are visible.
+- Node-side authorization fails closed. API-token permissions are enforced by
+  the same HTTP routes whether called directly or through MCP.
+- Local loopback auth bypass remains development-only. It must never admit a
+  bearer request or apply in production.
+- Service schema/table/key names and job payload shapes are external contracts;
+  HALO adapts to them rather than normalizing them at runtime.
+
+## Runtime flow
+
+```text
+browser / API token / MCP
+  -> Next App Router route
+  -> session + route policy
+  -> config/job/onboarding application module
+  -> live schema + curated semantics
+  -> Supabase or service endpoint adapter
+  -> database-triggered audit history
+```
+
+MCP is a translation of the OpenAPI contract back into HALO's own HTTP API. It
+is not a privileged second implementation.
+
+## Ownership map
+
+| Concern | Owner | Direction |
+| --- | --- | --- |
+| UI routes and server handlers | `app/` | Keep handlers thin; call application modules. |
+| Reusable UI | `components/` | Split large service-specific views from shared primitives. |
+| Schema/config repository | `lib/config-repository.ts`, `lib/supabase/` | Preserve live introspection and server-only secrets. |
+| Field semantics | `lib/field-spec.ts` | Split by service, then merge service-contract snapshots. |
+| Validation/coercion | `lib/config-values.ts`, constraint modules | Pure and exhaustive. |
+| Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
+| Cards/search/summaries | `lib/card-summary.ts` and UI modules | Split generic model from per-service capability providers. |
+| Jobs/exports | `lib/jobs.ts`, export modules | Registries with exact service payload builders. |
+| Onboarding/chat planning | `lib/onboarding.ts`, `lib/chat-onboard.ts` | Split deterministic planning from model interpretation. |
+| Agent contract | `lib/openapi.ts`, `lib/mcp.ts` | One OpenAPI source, mechanically mapped to tools. |
+
+## Sources of truth
+
+- Column existence/types/defaults/enums: live PostgREST OpenAPI schema.
+- Column meaning, grouping, conditional display, CHECK options, and read-only
+  classification: curated metadata, migrating to service-owned snapshots.
+- Configuration values: each service's Supabase configuration table.
+- Change history: `ops.config_audit` database triggers.
+- API/agent operations: `lib/openapi.ts`, checked against route handlers and
+  committed YAML.
+- Cross-repository target: `docs/SERVICE_FAMILY_ARCHITECTURE.md`.
+
+## Safe extension rules
+
+- Add a service through one service registry plus its contract snapshot,
+  repository mapping, UI semantics, audit trigger, and tests.
+- Add a field in the owning service first. HALO introspection makes it visible;
+  semantic metadata then supplies label, help, group, constraints, and
+  read-only classification.
+- Add a job as a registry entry with an exact per-endpoint payload builder and
+  precondition. Do not invent a common payload across incompatible services.
+- Add a model-assisted operation as propose/review only; deterministic code
+  validates and executes through existing API routes.
+- Add an agent operation to OpenAPI first and mechanically expose it through
+  MCP; never hand-maintain a second tool contract.
+
+## Highest-priority decomposition
+
+1. Split `field-spec.ts` into one semantic provider per service plus a small
+   merger and fallback.
+2. Split `onboarding.ts` into service definitions, validation, row planning,
+   and persistence plans.
+3. Split `chat-onboard.ts` into interpretation, deterministic resolution, and
+   proposal models.
+4. Split `card-summary.ts` into generic card assembly and service capability
+   summaries.
+5. Decompose `LightningMap.tsx` into map state, geometry, data loading, and
+   presentational components while retaining pure geometry tests.
+6. Add versioned service-contract snapshots and a controlled refresh script.
+
+## Verification
+
+Run `npm run typecheck`, `npm test`, and `npm run build`. Tests must keep auth,
+scope, route/OpenAPI/MCP parity, config validation, audit behavior, mobile
+contracts, service semantics, exact job payloads, onboarding safety, and model
+proposal non-mutation. Production-like writes use disabled projects and are
+reverted with an audit note.

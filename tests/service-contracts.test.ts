@@ -45,6 +45,12 @@ test("the vendored Noise contract identifies an immutable upstream revision", ()
   assert.equal(lock.services.noise.vendoredPath, "contracts/services/noise.contract.json");
 });
 
+test("the vendored WBGT contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.wbgt.repository, "wentilabs/usecase-wohhup-wbgt-alerts");
+  assert.equal(lock.services.wbgt.commit, "2215e8b9336132103bd61d7f0b2474c62135720e");
+  assert.equal(lock.services.wbgt.vendoredPath, "contracts/services/wbgt.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -109,6 +115,16 @@ test("Noise pins all fifteen open routes and distinguishes scheduled from operat
   assert.ok(routes.every((route) => route.authentication === "none"));
   assert.equal(routes.find((route) => route.path === "/api/noise-sheet-export")?.kind, "operator");
   assert.equal(routes.find((route) => route.path === "/api/noise-hourly")?.kind, "scheduled");
+});
+
+test("WBGT pins cron paths while separating HMAC ingress from intentionally open routes", () => {
+  const routes = SERVICE_CONTRACTS.wbgt.routes;
+  const byPath = Object.fromEntries(routes.map((route) => [route.path, route]));
+  assert.equal(routes.length, 15);
+  assert.equal(byPath["/api/wbgt-telegram-external-channels"].authentication, "required-hmac");
+  assert.equal(byPath["/api/wbgt-hourly"].authentication, "none");
+  assert.equal(byPath["/api/water-parade-reminder"].kind, "scheduled");
+  assert.equal(byPath["/api/wbgt/readings"].kind, "read");
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {
@@ -207,4 +223,17 @@ test("Noise contract semantics cover quoted columns, demand-driven scraping, and
   assert.match(spec.fields.lambda_url.help, /(scrape demand|messages stop being stored)/i);
   assert.match(spec.fields.noise_meters_included.help, /(client-facing|outbound)/i);
   assert.equal(spec.fields[assessment].label, "Minute marks");
+});
+
+test("WBGT contract protects job state and exposes its coupled cadence semantics", () => {
+  const spec = buildFieldSpec("wbgt", {
+    enable_hourly: { type: "boolean" },
+    top_of_hour_band: { type: "text" },
+    last_5min_alert_level: { type: "text" },
+    five_min_alert_threshold: { type: "text" },
+  });
+  assert.match(spec.fields.enable_hourly.help, /(sub-hour|intermittent)/i);
+  assert.equal(spec.fields.top_of_hour_band.readonly, true);
+  assert.equal(spec.fields.last_5min_alert_level.readonly, true);
+  assert.deepEqual(spec.fields.five_min_alert_threshold.options, ["yellow", "orange", "red"]);
 });

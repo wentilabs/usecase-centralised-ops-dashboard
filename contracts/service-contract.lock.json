@@ -42,6 +42,13 @@
       "commit": "bc8cf9cf11ed597e1247911234c714137026e91d",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json"
+    },
+    "wbgt": {
+      "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "2215e8b9336132103bd61d7f0b2474c62135720e",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/wbgt.contract.json"
     }
   }
 }

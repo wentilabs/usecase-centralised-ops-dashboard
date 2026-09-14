@@ -4,6 +4,7 @@ import issueChaserContractJson from "../contracts/services/issue-chaser.contract
 import lightningContractJson from "../contracts/services/lightning.contract.json";
 import noiseContractJson from "../contracts/services/noise.contract.json";
 import subconContractJson from "../contracts/services/subcon.contract.json";
+import wbgtContractJson from "../contracts/services/wbgt.contract.json";
 
 export type ContractField = {
   label: string;
@@ -57,6 +58,7 @@ export const SERVICE_CONTRACTS: Readonly<Record<string, ServiceContract>> = Obje
   lightning: validateContract(lightningContractJson, "lightning"),
   noise: validateContract(noiseContractJson, "noise"),
   subcon: validateContract(subconContractJson, "subcon"),
+  wbgt: validateContract(wbgtContractJson, "wbgt"),
 });
 
 export function serviceContractFor(service: string): ServiceContract | null {

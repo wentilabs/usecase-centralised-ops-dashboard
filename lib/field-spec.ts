@@ -216,8 +216,8 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     timezone: { label: "Timezone" },
 
-    enable_scrape: { label: "Scrape CloudLynx", help: "Off = manual-only project; readings arrive via photo ingestion." },
-    enable_hourly: { label: "Hourly message", help: "Baseline :00 heartbeat." },
+    enable_scrape: { label: "Scrape CloudLynx", help: "Off = manual-only project; readings arrive via photo ingestion. When on, scraping runs around the clock — site hours gate notifications, not scraping (INV-WBGT-06)." },
+    enable_hourly: { label: "Hourly message", help: "Loads the project for the :00 heartbeat and all intermittent reports; turning it off also disables :15/:30/:45 (INV-WBGT-01)." },
     // Also governs the 5-minute message whenever `five_min_alert_formatter` is
     // `full`, which is why the help names it: the inheritance is invisible from
     // either field on its own.
@@ -227,7 +227,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
         "wohhup_full → the full MOM advisory, up to ten points. pentaocean_full → same reading and footer, advisory cut to one to three points. wohhup_full_15min_waterparade_photo → wohhup_full plus the Water Parade photo prompt, at or above the POC mention band. Also used by the 5-min alert when its format is `full`; an unrecognised value falls back to wohhup_full rather than failing.",
       showIf: { field: "enable_hourly", equals: true },
     },
-    enable_intermittent_reports: { label: "Intermittent reports", help: "Sub-hour fires at :15/:30/:45." },
+    enable_intermittent_reports: { label: "Intermittent reports", help: "Allows sub-hour fires at :15/:30/:45, but only while Hourly message is also on (INV-WBGT-01)." },
     intermittent_reports_formatter: {
       label: "Intermittent cadence",
       help: "red15 → :30 on Moderate+, :15/:45 on High. red30 → :30 on High only.",
@@ -235,7 +235,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     enable_5min_alerts: {
       label: "5-min exceedance alerts",
-      help: "🟠 >32°C, 🔴 >33°C, 🟢 recovery <31°C. Which of those actually send is set by the minimum severity below.",
+      help: "Edge-triggered: 🟡 from 31°C when selected, 🟠 from 32°C, 🔴 from 33°C, and 🟢 recovery below 31°C. The first evaluation is silent (INV-WBGT-03–05).",
     },
     // Nullable on purpose: blank is not "unset pending a choice", it is the
     // historical orange-only behaviour every project had before the column
@@ -251,8 +251,8 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       showIf: { field: "enable_5min_alerts", equals: true },
     },
 
-    site_hours_start: { label: "Site hours start", help: "SGT hour, 0–23. Scraping opens 10 min earlier.", row: "site_hours" },
-    site_hours_end: { label: "Site hours end", help: "SGT hour, exclusive.", row: "site_hours" },
+    site_hours_start: { label: "Site hours start", help: "First notification hour in SGT, inclusive. It does not gate scraping (INV-WBGT-06).", row: "site_hours" },
+    site_hours_end: { label: "Site hours end", help: "Last notification hour in SGT, exclusive. It does not gate scraping (INV-WBGT-06).", row: "site_hours" },
     skip_lunch_hour: { label: "Skip lunch (12:00)", row: "mutes" },
     remove_sunday_notifications: { label: "Mute Sundays", row: "mutes" },
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },

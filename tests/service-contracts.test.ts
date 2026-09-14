@@ -33,6 +33,12 @@ test("the vendored Lightning contract identifies an immutable upstream revision"
   assert.equal(lock.services.lightning.vendoredPath, "contracts/services/lightning.contract.json");
 });
 
+test("the vendored Issue Chaser contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.issueChaser.repository, "wentilabs/usecase-issue-chaser");
+  assert.equal(lock.services.issueChaser.commit, "0195ac4a101a3e5b620e617ab9a271123fbc0f06");
+  assert.equal(lock.services.issueChaser.vendoredPath, "contracts/services/issue-chaser.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -75,6 +81,20 @@ test("Lightning distinguishes optional service auth, SMS HMAC, and public reads"
   assert.equal(byPath["/api/lightning-kickoff"].kind, "scheduled");
   assert.equal(byPath["/api/lightning-sms"].authentication, "sms-hmac");
   assert.equal(byPath["/api/lightning-report"].authentication, "none");
+});
+
+test("Issue Chaser marks only its token-aware operator routes as optional auth", () => {
+  assert.deepEqual(
+    SERVICE_CONTRACTS.issueChaser.routes
+      .filter((route) => route.authentication === "optional-service-key")
+      .map((route) => route.path),
+    [
+      "/api/sync-novade-names",
+      "/api/issue-chaser-project-check",
+      "/api/issue-chaser-operator-preview",
+      "/api/issue-chaser-operator-send",
+    ],
+  );
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {
@@ -150,4 +170,15 @@ test("Lightning contract semantics preserve the counterintuitive safety levers",
   assert.match(spec.fields.amber_enabled.help, /(straight|directly) to SAFE/i);
   assert.match(spec.fields.config_version.help, /same (save|write)/i);
   assert.deepEqual(spec.fields.red_detection_types.options, ["G", "C"]);
+});
+
+test("Issue Chaser keeps origin routing, delivery-only mutes, and write-capable sync explicit", () => {
+  const spec = buildFieldSpec("issueChaser", {
+    send_to_originating_groups: { type: "boolean" },
+    remove_sunday_notifications: { type: "boolean" },
+    novade_name_sync_enabled: { type: "boolean" },
+  });
+  assert.match(spec.fields.send_to_originating_groups.help, /exactly one/i);
+  assert.match(spec.fields.remove_sunday_notifications.help, /(delivery|outbound)/i);
+  assert.match(spec.fields.novade_name_sync_enabled.help, /(write|replace)/i);
 });

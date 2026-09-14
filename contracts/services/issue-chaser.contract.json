@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "service": { "key": "issueChaser", "displayName": "Issue Chaser" },
+  "runtime": { "handler": "index.handler", "language": "javascript", "moduleFormat": "commonjs" },
+  "routes": [
+    { "method": "POST", "path": "/api/issue-chaser-severity-cadence", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/issue-chaser-same-day-open", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/past-days-safety-summary", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/past-days-company-safety-summary", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/remind-write-novade-names", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/sync-novade-names", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/issue-chaser-preview", "kind": "operator", "authentication": "none" },
+    { "method": "GET", "path": "/api/issue-chaser-health", "kind": "diagnostic", "authentication": "none" },
+    { "method": "POST", "path": "/api/issue-chaser-project-check", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/issue-chaser-operator-preview", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/issue-chaser-operator-send", "kind": "operator", "authentication": "optional-service-key" }
+  ],
+  "configuration": {
+    "schema": "issue_chaser", "table": "project_configs", "identityColumn": "project_code",
+    "fields": {
+      "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Uppercase project identity constrained to letters, digits, and hyphens." },
+      "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; Issue Chaser runtime behavior does not read it." },
+      "safety_sheet_id": { "label": "Safety workbook", "group": "source", "mutable": true, "role": "configuration", "help": "Google workbook containing Safety history and the optional Novade Name List." },
+      "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "HTTPS listener URL ending in /send-message; document and mention endpoints are derived from it." },
+      "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "whatsapp_group_ids": { "label": "Fallback groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Fixed destinations when origin routing is disabled, or the sole safe fallback when origin recovery fails (INV-ICH-08)." },
+      "safety_summary_whatsapp_group_ids": { "label": "Safety summary groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Fixed destinations for both past-days summaries; blank falls back to whatsapp_group_ids (INV-ICH-12)." },
+      "novade_name_list_check_whatsapp_group_ids": { "label": "Name-list audit groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Fixed destinations for the weekly Name List audit; blank falls back to whatsapp_group_ids (INV-ICH-15)." },
+      "exclude_whatsapp_group_ids": { "label": "Snapshot exclusions", "group": "delivery", "mutable": true, "role": "configuration", "help": "Groups excluded only from live same-day snapshot delivery, after final routing (INV-ICH-14)." },
+      "enabled": { "label": "Project enabled", "group": "status", "mutable": true, "role": "feature-flag", "help": "Final project gate; a feature style must also be enabled before anything runs (INV-ICH-01)." },
+      "severity_cadence_chaser_enabled": { "label": "Severity cadence", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables persistent P1/P2/P3 reminders with successful-delivery cursors." },
+      "same_day_open_snapshot_enabled": { "label": "Same-day snapshot", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables project-local same-day open snapshots using the configured lookback and schedule." },
+      "daily_safety_summary_enabled": { "label": "Daily safety summary", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables the read-only past-days safety summary to fixed project destinations (INV-ICH-12)." },
+      "daily_safety_company_summary_enabled": { "label": "Company safety summary", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables the read-only past-days company breakdown to fixed project destinations (INV-ICH-12)." },
+      "novade_name_list_check_enabled": { "label": "Name-list audit", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables the weekly read-only Name List completeness check; a clean result sends nothing (INV-ICH-15)." },
+      "novade_name_sync_enabled": { "label": "Novade name sync", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables the narrow on-demand PIC-cell write route; it sends no WhatsApp and dryRun true previews only (INV-ICH-16)." },
+      "summary_days": { "label": "Summary days", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Positive count of consecutive Singapore dates included by both past-days summaries." },
+      "include_days_before_snapshot": { "label": "Snapshot lookback", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Non-negative number of preceding dates included when the request does not override it (INV-ICH-09)." },
+      "same_day_open_snapshot_schedule": { "label": "Snapshot schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries consulted only for scheduled invocations." },
+      "daily_safety_summary_schedule": { "label": "Safety summary schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries for scheduled plain summaries." },
+      "daily_safety_company_summary_schedule": { "label": "Company summary schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries for scheduled company summaries." },
+      "severity_p1_window_start": { "label": "P1 window start", "group": "cadence", "mutable": true, "role": "policy-selector", "help": "Optional inclusive Singapore-time start; both P1 ends must be null for 24-hour eligibility." },
+      "severity_p1_window_end": { "label": "P1 window end", "group": "cadence", "mutable": true, "role": "policy-selector", "help": "Optional exclusive Singapore-time end; overnight windows are supported." },
+      "severity_p2_p3_window_start": { "label": "P2/P3 window start", "group": "cadence", "mutable": true, "role": "policy-selector", "help": "Optional inclusive Singapore-time start shared by P2 and P3." },
+      "severity_p2_p3_window_end": { "label": "P2/P3 window end", "group": "cadence", "mutable": true, "role": "policy-selector", "help": "Optional exclusive Singapore-time end shared by P2 and P3; overnight windows are supported." },
+      "send_to_originating_groups": { "label": "Send to originating groups", "group": "delivery", "mutable": true, "role": "policy-selector", "help": "Default safety boundary: route to serialized origin and use a configured fallback only when exactly one exists (INV-ICH-08)." },
+      "remove_sunday_notifications": { "label": "Mute Sundays", "group": "mutes", "mutable": true, "role": "policy-selector", "help": "Suppresses live delivery only; workbook reads, previews, and cadence calculations continue (INV-ICH-13)." },
+      "remove_ph_notifications": { "label": "Mute public holidays", "group": "mutes", "mutable": true, "role": "policy-selector", "help": "Suppresses live delivery only using the code-maintained Singapore holiday list (INV-ICH-13)." },
+      "timezone": { "label": "Timezone", "group": "schedule", "mutable": true, "role": "configuration", "help": "Database-constrained to Asia/Singapore." },
+      "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
+      "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned optimistic-concurrency timestamp." }
+    },
+    "constraints": [
+      { "name": "issue_chaser_enabled_delivery_check", "help": "An enabled row requires a workbook and complete listener delivery configuration." },
+      { "name": "issue_chaser_summary_days_check", "help": "Summary days must be at least one." },
+      { "name": "issue_chaser_snapshot_lookback_check", "help": "Snapshot lookback must be non-negative." },
+      { "name": "issue_chaser_p1_window_check", "help": "The P1 time window must be a complete, unequal pair or entirely null." },
+      { "name": "issue_chaser_p2_p3_window_check", "help": "The P2/P3 time window must be a complete, unequal pair or entirely null." },
+      { "name": "issue_chaser_summary_destination_check", "help": "Enabled fixed-destination reports require their dedicated group list or the legacy fallback." }
+    ]
+  }
+}

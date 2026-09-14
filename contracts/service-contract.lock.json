@@ -15,6 +15,13 @@
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json"
     },
+    "issueChaser": {
+      "repository": "wentilabs/usecase-issue-chaser",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "0195ac4a101a3e5b620e617ab9a271123fbc0f06",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/issue-chaser.contract.json"
+    },
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "critical-refactor-for-maintainability",

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "service": { "key": "ailytics", "displayName": "Ailytics" },
+  "runtime": { "handler": "index.handler", "language": "javascript", "moduleFormat": "commonjs" },
+  "routes": [
+    { "method": "GET", "path": "/version", "kind": "diagnostic", "authentication": "none" },
+    { "method": "POST", "path": "/get-supabase-configs", "kind": "diagnostic", "authentication": "none" },
+    { "method": "POST", "path": "/telegram-webhook", "kind": "webhook", "authentication": "none" },
+    { "method": "POST", "path": "/ailytics-safety/whatsapp-events", "kind": "webhook", "authentication": "none" },
+    { "method": "POST", "path": "/ailytics-safety/status-summary", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/ailytics-safety/retry-pending-deliveries", "kind": "scheduled", "authentication": "none" }
+  ],
+  "configuration": {
+    "schema": "ailytics",
+    "table": "project_configs",
+    "identityColumn": "id",
+    "fields": {
+      "id": { "label": "Row ID", "group": "identity", "mutable": false, "role": "identity", "help": "Database-generated UUID referenced by every Ailytics child table." },
+      "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Unique human project identity; unlike sibling services, it is not the primary key." },
+      "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; Ailytics runtime behavior does not read it." },
+      "enabled": { "label": "Telegram intake enabled", "group": "intake", "mutable": true, "role": "feature-flag", "help": "Stops new Telegram alerts but does not prevent existing WhatsApp-linked issues from closing (INV-AIL-15)." },
+      "timezone": { "label": "Timezone", "group": "identity", "mutable": true, "role": "configuration", "help": "Used for sheet timestamp rendering; only Asia/Singapore has been exercised." },
+      "telegram_chat_id": { "label": "Telegram chat ID", "group": "intake", "mutable": true, "role": "configuration", "help": "First half of the Telegram intake match; unknown onboarding values use an empty string (INV-AIL-09)." },
+      "upstream_bot_username": { "label": "Upstream bot username", "group": "intake", "mutable": true, "role": "configuration", "help": "Case-insensitive intake identity with a leading @ ignored; paired uniquely with the chat ID (INV-AIL-09/16)." },
+      "expected_chat_title": { "label": "Expected chat title", "group": "intake", "mutable": true, "role": "configuration", "help": "Informational note only; it is never used to match Telegram intake." },
+      "spreadsheet_id": { "label": "Spreadsheet ID", "group": "sheets", "mutable": true, "role": "configuration", "help": "Workbook for both projections; the service account needs Editor access because tabs are created on demand (INV-AIL-07)." },
+      "activity_history_tab": { "label": "Activity history tab", "group": "sheets", "mutable": true, "role": "configuration", "help": "Projection tab; write the live (CODE) CCTV History convention explicitly rather than relying on the legacy default (INV-AIL-08)." },
+      "safety_sheet_tab": { "label": "Safety sheet tab", "group": "sheets", "mutable": true, "role": "configuration", "help": "Projection tab; write the live (CODE) CCTV Safety Sheet convention explicitly rather than relying on the legacy default (INV-AIL-08)." },
+      "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Text delivery endpoint and the base from which image delivery may be derived." },
+      "lambda_url_image": { "label": "Send-document URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Optional explicit image endpoint; otherwise derived by replacing the lambda_url route." },
+      "reply_lambda_url": { "label": "Reply-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener endpoint used for threaded WhatsApp replies." },
+      "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener instance; unknown onboarding values use an empty string rather than null (INV-AIL-09)." },
+      "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier; unknown onboarding values use an empty string rather than null (INV-AIL-09)." },
+      "whatsapp_group_ids": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations, trimmed and de-duplicated per send (INV-AIL-17)." },
+      "forward_pending_to_whatsapp": { "label": "Forward pending alerts", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Gates only the delivery attempt; capture and history writes continue, and PENDING requires confirmed delivery (INV-AIL-14/19)." },
+      "status_summary_enabled": { "label": "Status summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Allows project-local sheet counts to be sent; this is not an estate-wide aggregate (INV-AIL-18)." },
+      "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
+      "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned optimistic-concurrency timestamp." }
+    },
+    "constraints": [
+      { "name": "project_configs_project_code_key", "help": "Project codes are unique." },
+      { "name": "project_configs_telegram_chat_id_upstream_bot_username_key", "help": "Only one row may use a Telegram chat ID and bot-username pair, including a fully blank draft pair (INV-AIL-09)." }
+    ]
+  }
+}

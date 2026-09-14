@@ -1,6 +1,13 @@
 {
   "schemaVersion": 1,
   "services": {
+    "ailytics": {
+      "repository": "wentilabs/mdw-lambda-ailytics",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "cbf5950a61295dfed1062ba2a89821f4461d5c62",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/ailytics.contract.json"
+    },
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "critical-refactor-for-maintainability",

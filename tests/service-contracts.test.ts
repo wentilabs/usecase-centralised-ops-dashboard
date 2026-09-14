@@ -14,6 +14,13 @@ test("the vendored Haze contract identifies an immutable upstream revision", () 
   assert.equal(lock.services.haze.vendoredPath, "contracts/services/haze.contract.json");
 });
 
+test("the vendored Ailytics contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.ailytics.repository, "wentilabs/mdw-lambda-ailytics");
+  assert.equal(lock.services.ailytics.branch, "critical-refactor-for-maintainability");
+  assert.equal(lock.services.ailytics.commit, "cbf5950a61295dfed1062ba2a89821f4461d5c62");
+  assert.equal(lock.services.ailytics.vendoredPath, "contracts/services/ailytics.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -28,15 +35,31 @@ test("the Haze route contract pins the externally configured endpoint surface", 
   );
 });
 
+test("Ailytics records its externally visible routes and intentionally open authentication", () => {
+  assert.deepEqual(
+    SERVICE_CONTRACTS.ailytics.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
+    [
+      { method: "GET", path: "/version", kind: "diagnostic", authentication: "none" },
+      { method: "POST", path: "/get-supabase-configs", kind: "diagnostic", authentication: "none" },
+      { method: "POST", path: "/telegram-webhook", kind: "webhook", authentication: "none" },
+      { method: "POST", path: "/ailytics-safety/whatsapp-events", kind: "webhook", authentication: "none" },
+      { method: "POST", path: "/ailytics-safety/status-summary", kind: "scheduled", authentication: "none" },
+      { method: "POST", path: "/ailytics-safety/retry-pending-deliveries", kind: "scheduled", authentication: "none" },
+    ],
+  );
+});
+
 test("every contracted field carries the semantic metadata HALO needs", () => {
-  const fields = SERVICE_CONTRACTS.haze.configuration.fields;
-  assert.ok(Object.keys(fields).length > 0);
-  for (const [name, field] of Object.entries(fields)) {
-    assert.ok(field.label, `${name} has no label`);
-    assert.ok(field.help, `${name} has no help`);
-    assert.ok(field.group, `${name} has no group`);
-    assert.ok(field.role, `${name} has no role`);
-    assert.equal(typeof field.mutable, "boolean", `${name} has no ownership`);
+  for (const [service, contract] of Object.entries(SERVICE_CONTRACTS)) {
+    const fields = contract.configuration.fields;
+    assert.ok(Object.keys(fields).length > 0);
+    for (const [name, field] of Object.entries(fields)) {
+      assert.ok(field.label, `${service}.${name} has no label`);
+      assert.ok(field.help, `${service}.${name} has no help`);
+      assert.ok(field.group, `${service}.${name} has no group`);
+      assert.ok(field.role, `${service}.${name} has no role`);
+      assert.equal(typeof field.mutable, "boolean", `${service}.${name} has no ownership`);
+    }
   }
 });
 
@@ -62,4 +85,16 @@ test("service semantics enrich introspection without displacing HALO curation", 
 
 test("the contract and local policy agree on Haze-owned columns", () => {
   assert.deepEqual(contractReadonlyFields("haze").sort(), ["created_at", "project_code", "updated_at"]);
+});
+
+test("Ailytics keeps UUID and business identity read-only without mislabelling its intake switch", () => {
+  const spec = buildFieldSpec("ailytics", {
+    id: { type: "uuid" },
+    project_code: { type: "text" },
+    enabled: { type: "boolean" },
+  });
+  assert.equal(spec.fields.id.readonly, true);
+  assert.equal(spec.fields.project_code.readonly, true);
+  assert.match(spec.fields.enabled.help, /Telegram intake/);
+  assert.match(spec.fields.enabled.help, /existing issues can still be closed/i);
 });

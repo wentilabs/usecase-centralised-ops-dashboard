@@ -302,8 +302,10 @@ schema enrichment, value resolution, and disabled-row planning have named
 generic modules behind a small façade. Card summaries now separate group
 resolution, schedules, pills, search, links, emphasis, and diffs. Each service
 owns its pill provider and its schedule/cadence provider; shared card helpers
-contain cross-service mechanics only. The remaining high context pressure is
-in chat planning and the Lightning map. Live
+contain cross-service mechanics only. Chat planning now separates its proposal
+model and language/model-output interpretation from the deterministic planner;
+the remaining high context pressure is in estate resolution and the Lightning
+map. Live
 introspection remains the existence/type/default authority while
 contracts provide meaning, ownership, and options. The dashboard must adapt to
 historical service schemas rather than force runtime renames.

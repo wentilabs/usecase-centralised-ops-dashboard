@@ -48,7 +48,7 @@ is not a privileged second implementation.
 | Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
 | Cards/search/summaries | `lib/card-summary/`, exported by `lib/card-summary.ts` | Group resolution, search, links, emphasis, and diffs have explicit owners; pills and schedule/cadence semantics are service-owned providers. |
 | Jobs/exports | `lib/jobs.ts`, export modules | Registries with exact service payload builders. |
-| Onboarding/chat planning | `lib/onboarding/providers/`, `lib/onboarding/`, `lib/chat-onboard.ts` | Definitions, validation, schema enrichment, value resolution, and insert planning have explicit owners; next isolate model interpretation. |
+| Onboarding/chat planning | `lib/onboarding/providers/`, `lib/onboarding/`, `lib/chat-onboard/`, exported by `lib/chat-onboard.ts` | Definitions, validation, schema enrichment, value resolution, intent interpretation, proposal models, and insert planning have explicit boundaries; deterministic estate resolution remains in the façade. |
 | Agent contract | `lib/openapi.ts`, `lib/mcp.ts` | One OpenAPI source, mechanically mapped to tools. |
 
 ## Sources of truth
@@ -87,8 +87,10 @@ is not a privileged second implementation.
    resolution, and disabled-row planning are separate named modules behind the
    stable `lib/onboarding.ts` façade. Route-level persistence remains the
    deliberate side-effect boundary.
-3. Split `chat-onboard.ts` into interpretation, deterministic resolution, and
-   proposal models.
+3. **In progress:** proposal types and language/model-output interpretation now
+   have dedicated modules behind the stable `lib/chat-onboard.ts` façade. Next
+   extract deterministic estate resolution and draft construction from that
+   façade.
 4. **Complete:** `card-summary.ts` is a compatibility façade over named concern
    modules. Every service owns both its pill provider and its schedule/cadence
    provider; shared helpers contain formatting and cross-service mechanics only.

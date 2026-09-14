@@ -300,10 +300,10 @@ HALO has strong tests and security boundaries. Field semantics and onboarding
 definitions now live in one provider per service. Onboarding validation,
 schema enrichment, value resolution, and disabled-row planning have named
 generic modules behind a small façade. Card summaries now separate group
-resolution, schedules, pills, search, links, emphasis, and diffs, and each
-service owns its pill provider. The schedule dispatcher still needs the same
-treatment. The remaining
-high context pressure is in chat planning and the Lightning map. Live
+resolution, schedules, pills, search, links, emphasis, and diffs. Each service
+owns its pill provider and its schedule/cadence provider; shared card helpers
+contain cross-service mechanics only. The remaining high context pressure is
+in chat planning and the Lightning map. Live
 introspection remains the existence/type/default authority while
 contracts provide meaning, ownership, and options. The dashboard must adapt to
 historical service schemas rather than force runtime renames.
@@ -318,9 +318,9 @@ historical service schemas rather than force runtime renames.
 ### H–I. Target and incremental plan
 
 Keep the Next.js/TypeScript base. Field semantics are now split per service and
-service/SQL contracts have a controlled immutable refresh/check command. Next,
-finish splitting schedule summaries per service; split model interpretation from
-deterministic proposal execution; and decompose the map by
+service/SQL contracts have a controlled immutable refresh/check command, and
+card pills plus schedule/cadence summaries are service-owned. Next, split model
+interpretation from deterministic proposal execution; and decompose the map by
 state/geometry/loading/presentation. Never let a model write directly.
 
 ## J. Concrete follow-up actions

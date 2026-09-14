@@ -497,6 +497,37 @@ export type BulkOp =
    */
   | { kind: "onboard"; summary: string }
   | { kind: "set"; changes: Record<string, unknown>; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
+  /**
+   * A different change per project, in one request.
+   *
+   * `set` applies ONE change-set to a scope, which is most bulk edits — "mute
+   * Sundays everywhere". It cannot express the other common shape: a table of
+   * settings, one row per project, each with its own values. Twelve projects
+   * each needing their own WhatsApp group list meant twelve separate
+   * proposals, pasted and confirmed one at a time.
+   *
+   * The model already receives every project with its current values, so it can
+   * read that table and say what each row becomes. Which projects exist, which
+   * columns are real, and what each change would overwrite are all still
+   * decided here against the live rows — the model supplies the pairing and
+   * nothing else, and the operator confirms the lot in one review dialog.
+   */
+  | {
+      kind: "set-each";
+      /**
+       * The one service these codes belong to.
+       *
+       * Not optional in spirit: a project code is only unique WITHIN a service.
+       * `AST` is a project in five of them and noise spells one of its sites
+       * `CR 106` where issue-chaser has `CR106`, so resolving a code against
+       * every service in scope produced five edits per project and pulled in a
+       * neighbouring service's row. Null means the caller must decide, and it
+       * asks rather than guessing.
+       */
+      service: string | null;
+      projects: { code: string; changes: Record<string, unknown> }[];
+      summary: string;
+    }
   /** Remove delivery groups whose name matches `phrase`. Matching happens in code. */
   | { kind: "remove-groups"; phrase: string; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
   | { kind: "defaults"; summary: string; where: RowCondition[]; scope: ScopeOverride | null }
@@ -568,6 +599,25 @@ export function parseBulkOp(parsed: Record<string, unknown> | null): BulkOp | nu
     if (!job || !isIsoDate(startDate) || !isIsoDate(endDate)) return null;
     if (startDate > endDate) return null;
     return { kind: "job", job, startDate, endDate, summary, where, scope };
+  }
+  if (op === "set-each") {
+    const projects: { code: string; changes: Record<string, unknown> }[] = [];
+    for (const entry of (Array.isArray(parsed.projects) ? parsed.projects : []) as Record<string, unknown>[]) {
+      const code = String(entry?.code ?? entry?.project_code ?? entry?.projectCode ?? "").trim();
+      const changes = entry?.changes;
+      if (!code || !changes || typeof changes !== "object" || Array.isArray(changes)) continue;
+      const own = Object.fromEntries(
+        Object.entries(changes as Record<string, unknown>).filter(([column]) => column.trim()),
+      );
+      if (!Object.keys(own).length) continue;
+      projects.push({ code, changes: own });
+    }
+    // An empty list is not a bulk edit of nothing — it is a misread, and
+    // falling through to `set` would apply an absent change-set to the whole
+    // scope. Refused, so the caller asks rather than guesses.
+    if (!projects.length) return null;
+    const service = String(parsed.service ?? "").trim();
+    return { kind: "set-each", service: service || null, projects, summary };
   }
   if (op === "onboard") return { kind: "onboard", summary };
   if (op === "defaults") return { kind: "defaults", summary, where, scope };
@@ -736,6 +786,7 @@ export const BULK_SYSTEM_PROMPT = [
   "",
   "Reply with JSON only, no prose, in one of these shapes:",
   '  {"op":"set","changes":{"<column>":<value>},"where":[<condition>],"scope":<scope>,"summary":"<one sentence>"}',
+  '  {"op":"set-each","service":"<service key>","projects":[{"code":"<project code>","changes":{"<column>":<value>}}],"summary":"<one sentence>"}',
   '  {"op":"remove-groups","phrase":"<the group name as the person described it>","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"defaults","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"job","job":"<job key>","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","scope":<scope>,"summary":"<one sentence>"}',
@@ -745,6 +796,18 @@ export const BULK_SYSTEM_PROMPT = [
   '  {"question":"<what you need to know>"}',
   "",
   "Rules:",
+  '- `set` applies ONE change-set to a scope. `set-each` gives every project its OWN — use it whenever the',
+  "  request is a table, a list, or a paragraph per project, where the values differ row by row. A request",
+  "  naming twelve projects with twelve different group lists is ONE `set-each`, not twelve replies and not a",
+  "  `set` of whatever they happen to share. Name every project the request covers, including the ones whose",
+  "  values match another's.",
+  '- `set-each` takes a `service` and you must give it. A project code is only unique within one service — `AST`',
+  "  exists in five of them — so a list of codes without a service names nothing in particular.",
+  "- `set-each` carries no `scope` and no `where`: the projects you name ARE the scope. A code that matches no",
+  "  project stops the whole thing and is reported, so name them exactly as they appear in the rows below —",
+  '  if the request says "C992-SYT" and the rows have "C992", use "C992".',
+  '- Leave a project out of `set-each` entirely when the request says nothing should change for it. "nothing"',
+  "  beside a project means leave it alone, not switch everything off.",
   '- If the request is to CREATE projects that do not exist yet — "onboard", "add rows for", "we need issue',
   '  chaser set up for every Wohhup site" — answer {"op":"onboard"}. The request is then re-read by the part',
   "  that plans creations. Do not try to express it as a change to the rows below: those are the projects that",

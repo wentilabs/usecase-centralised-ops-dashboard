@@ -53,7 +53,7 @@ import {
   shouldFallBack,
 } from "@/lib/chat-provider";
 import { getConfig, getFieldSpec, listConfigs } from "@/lib/config-repository";
-import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
+import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey, isServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -334,6 +334,110 @@ async function bulkReply({
   // The model read the request and says these projects do not exist yet. It has
   // seen the rows, so it is better placed to know that than a keyword was.
   if (op.kind === "onboard") return onboardingReply(prompt, rows as never);
+
+  /**
+   * A different change per project, named by the model, resolved here.
+   *
+   * Handled before the scope is worked out because this op carries no scope:
+   * the projects ARE the scope, and running them through a keyword-derived one
+   * would drop the codes it did not happen to match. Everything else is the
+   * same as `set` — the columns are checked against the live spec, the values
+   * against the live row, and the result is the ordinary review dialog.
+   */
+  if (op.kind === "set-each") {
+    /**
+     * One service, decided before any code is looked up.
+     *
+     * A project code is unique only within a service: `AST` is a project in
+     * five of them, and noise spells a site `CR 106` where issue-chaser has
+     * `CR106`. Resolving each code against every service in scope produced
+     * five edits per project and pulled in a neighbouring service's row.
+     */
+    const named = op.service && isServiceKey(op.service) ? op.service : null;
+    const service = named ?? (services.length === 1 ? services[0] : null);
+    if (!service) {
+      return reply({
+        message:
+          `Which service are these projects in? ${scopeLine} covers ` +
+          `${services.map((key) => SERVICES[key].label).join(", ")}, and a project code means a different ` +
+          `project in each. Name the service and ask again.`,
+      });
+    }
+
+    const edits: RowEdit[] = [];
+    const unknownCodes: string[] = [];
+    const droppedColumns: string[] = [];
+    const spec = await getFieldSpec(service);
+
+    for (const entry of op.projects) {
+      const row = (rows[service] ?? []).find(
+        (candidate) => fold(String(candidate.project_code ?? "")) === fold(entry.code),
+      );
+      if (!row) {
+        unknownCodes.push(entry.code);
+        continue;
+      }
+      const mine = Object.fromEntries(
+        Object.entries(entry.changes).filter(([column]) => spec.fields[column] && !spec.fields[column].readonly),
+      );
+      const missing = Object.keys(entry.changes).filter(
+        (column) => !spec.fields[column] || spec.fields[column].readonly,
+      );
+      if (missing.length) droppedColumns.push(`${entry.code}: no ${missing.join(", ")} on this service`);
+      if (!Object.keys(mine).length) continue;
+      // The same check the single-project path runs, against THIS project's own
+      // row — a value one project cannot take must not fail the other eleven.
+      const { problems } = checkProposal(spec, row, { changes: mine, summary: op.summary });
+      const usable = Object.fromEntries(
+        Object.entries(mine).filter(([column]) => !problems.some((problem) => problem.column === column)),
+      );
+      for (const problem of problems) droppedColumns.push(`${entry.code}: ${problem.column} (${problem.reason})`);
+      if (!Object.keys(usable).length) continue;
+      edits.push({
+        service,
+        projectCode: String(row.project_code ?? entry.code),
+        rowId: String((row as Record<string, unknown>)[SERVICES[service].idColumn] ?? ""),
+        changes: usable,
+      });
+    }
+
+    // A code that matches no project is the one failure worth stopping for: it
+    // usually means a typo or a project that was never created, and applying
+    // the other eleven silently would leave somebody believing all twelve
+    // landed.
+    if (unknownCodes.length) {
+      return reply({
+        message:
+          `${unknownCodes.join(", ")} ${unknownCodes.length === 1 ? "is not a project" : "are not projects"} in ` +
+          `${SERVICES[service].label}. Nothing was proposed — check the ` +
+          `code${unknownCodes.length === 1 ? "" : "s"} and ask again.`,
+      });
+    }
+    if (!edits.length) {
+      return reply({
+        message: `Nothing to change — every project named already reads that way${
+          droppedColumns.length ? `. ${droppedColumns.join("; ")}` : "."
+        }`,
+      });
+    }
+
+    return reply({
+      batch: {
+        scope: `${edits.length} named project${edits.length === 1 ? "" : "s"} in ${SERVICES[service].label}`,
+        inScope: edits.length,
+        summary: op.summary || "Proposed per-project changes",
+        edits: edits.map((edit) => ({
+          service: edit.service,
+          serviceLabel: SERVICES[edit.service].label,
+          projectCode: edit.projectCode,
+          rowId: edit.rowId,
+          changes: edit.changes,
+          ...(edit.detail ? { detail: edit.detail } : {}),
+        })),
+        ...(droppedColumns.length ? { notes: droppedColumns } : {}),
+      },
+    });
+  }
 
   let edits: RowEdit[] = [];
   /** Parts of the change one service could not take. Shown, not swallowed. */

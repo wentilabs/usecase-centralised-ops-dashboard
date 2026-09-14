@@ -58,6 +58,22 @@ export type ProviderRequest = { url: string; headers: Record<string, string>; bo
  * parameter an unfamiliar model rejects fails the whole call, and the model id
  * here is deliberately configurable.
  */
+/**
+ * How much the model is allowed to write back.
+ *
+ * The old ceiling was sized when every answer was one change-set — a handful
+ * of columns and a sentence. `set-each` answers with a change-set PER PROJECT,
+ * and a real request is a pasted table: twelve projects, one of them carrying
+ * nine WhatsApp group ids. That runs to a couple of thousand tokens, the reply
+ * was cut off mid-JSON, and the operator saw "the model did not answer in a
+ * shape this could use" — a truncation reported as a misunderstanding.
+ *
+ * Sized to fit roughly thirty such projects. It is a ceiling, not a cost: a
+ * one-line change still answers in a few dozen tokens, and nothing here is
+ * written without a human confirming it.
+ */
+const MAX_OUTPUT_TOKENS = 8192;
+
 export function buildRequest(
   choice: Extract<ProviderChoice, { provider: Provider }>,
   { system, user }: { system: string; user: string },
@@ -70,7 +86,7 @@ export function buildRequest(
         model: choice.model,
         instructions: system,
         input: user,
-        max_output_tokens: 1024,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
       },
     };
   }
@@ -83,7 +99,7 @@ export function buildRequest(
     },
     body: {
       model: choice.model,
-      max_tokens: 1024,
+      max_tokens: MAX_OUTPUT_TOKENS,
       system,
       messages: [{ role: "user", content: user }],
     },
@@ -108,7 +124,7 @@ export function fallbackRequest(
     headers: { "content-type": "application/json", authorization: `Bearer ${choice.apiKey}` },
     body: {
       model: choice.model,
-      max_completion_tokens: 1024,
+      max_completion_tokens: MAX_OUTPUT_TOKENS,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },

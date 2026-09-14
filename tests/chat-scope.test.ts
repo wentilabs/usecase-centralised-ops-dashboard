@@ -603,3 +603,65 @@ test("the bulk prompt documents the job op it will be sent", () => {
   // given, because it has none of its own: "30 Aug to 10 Sep" came back as 2025.
   assert.match(BULK_SYSTEM_PROMPT, /no clock/);
 });
+
+test("the bulk prompt documents every op the parser accepts", () => {
+  // Same recurring failure, one level up: a new op is added, the prompt never
+  // mentions it, and the model can never choose it — so the shape exists and
+  // nothing reaches it. `set-each` is the one that matters, because without it
+  // a per-project request silently degrades into a `set` applying one
+  // change-set to everybody.
+  for (const op of ["set", "set-each", "remove-groups", "defaults", "job", "onboard"]) {
+    assert.match(BULK_SYSTEM_PROMPT, new RegExp(`"op":"${op}"`), `the prompt must offer ${op}`);
+  }
+  assert.match(BULK_SYSTEM_PROMPT, /"projects":\[\{"code"/, "and the shape set-each is parsed from");
+  // The distinction is the whole point of having both, so it is stated.
+  assert.match(BULK_SYSTEM_PROMPT, /`set` applies ONE change-set/);
+  assert.match(BULK_SYSTEM_PROMPT, /carries no `scope` and no `where`/);
+  // The service is the field a per-project list cannot do without: `AST` is a
+  // project in five services, and noise spells a site `CR 106` where
+  // issue-chaser has `CR106`, so a list of codes alone resolved to both.
+  assert.match(BULK_SYSTEM_PROMPT, /takes a `service` and you must give it/);
+  assert.match(BULK_SYSTEM_PROMPT, /"service":"<service key>"/);
+});
+
+test("set-each pairs each project with its own changes", () => {
+  const op = parseBulkOp({
+    op: "set-each",
+    summary: "Stage the reports without enabling anything",
+    projects: [
+      { code: "AST", changes: { enabled: false, whatsapp_group_ids: "a@g.us,b@g.us" } },
+      { code: "CFC", changes: { enabled: false, daily_safety_summary_schedule: "0900,0" } },
+    ],
+  });
+  assert.equal(op?.kind, "set-each");
+  if (op?.kind !== "set-each") return;
+  assert.equal(op.projects.length, 2);
+  // Null when the model does not say — a code is unique only within a service,
+  // and the caller asks rather than picking one.
+  assert.equal(op.service, null);
+  const named = parseBulkOp({
+    op: "set-each",
+    service: "issueChaser",
+    projects: [{ code: "AST", changes: { enabled: false } }],
+  });
+  assert.equal(named?.kind === "set-each" ? named.service : null, "issueChaser");
+  assert.deepEqual(op.projects[1], { code: "CFC", changes: { enabled: false, daily_safety_summary_schedule: "0900,0" } });
+
+  // The model may name the code field any of the obvious ways.
+  const alt = parseBulkOp({ op: "set-each", projects: [{ project_code: "ZRB", changes: { enabled: false } }] });
+  assert.equal(alt?.kind === "set-each" ? alt.projects[0].code : null, "ZRB");
+
+  // An entry with nothing to change carries no information and is dropped;
+  // one with no code cannot be resolved.
+  const partial = parseBulkOp({
+    op: "set-each",
+    projects: [{ code: "A", changes: {} }, { code: "", changes: { enabled: false } }, { code: "B", changes: { enabled: false } }],
+  });
+  assert.deepEqual(partial?.kind === "set-each" ? partial.projects.map((p) => p.code) : null, ["B"]);
+
+  // An empty list is a misread, not a bulk edit of nothing. Falling through to
+  // `set` would apply an absent change-set to the entire scope.
+  assert.equal(parseBulkOp({ op: "set-each", projects: [] }), null);
+  assert.equal(parseBulkOp({ op: "set-each" }), null);
+  assert.equal(parseBulkOp({ op: "set-each", projects: [{ code: "A", changes: "nope" }] }), null);
+});

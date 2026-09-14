@@ -54,7 +54,7 @@ test("each request goes to that vendor's endpoint, with the instruction in the r
     model: "gpt-5.6-terra",
     instructions: "be careful",
     input: "CFC on Sundays",
-    max_output_tokens: 1024,
+    max_output_tokens: 8192,
   });
 
   const anthropic = buildRequest({ provider: "anthropic", apiKey: "sk-a", model: "claude-sonnet-5" }, turn);
@@ -130,4 +130,23 @@ test("JSON is recovered even when the model wraps it in prose", () => {
   for (const junk of ["no json here", "{ not: valid }", "", "{{{"]) {
     assert.equal(parseModelJson(junk), null, junk);
   }
+});
+
+test("every provider shape asks for the same output ceiling", () => {
+  // A per-project answer is long: twelve projects, one carrying nine group
+  // ids. At the old 1024 the reply was cut off mid-JSON and the operator was
+  // told the model "did not answer in a shape this could use" — a truncation
+  // reported as a misunderstanding. Three request builders, and a cap raised
+  // in only two of them fails on whichever provider is configured that day.
+  const turn = { system: "s", user: "u" };
+  const anthropic = buildRequest({ provider: "anthropic", apiKey: "k", model: "m" }, turn);
+  const openai = buildRequest({ provider: "openai", apiKey: "k", model: "m" }, turn);
+  const completions = fallbackRequest({ provider: "openai", apiKey: "k", model: "m" }, turn);
+  const caps = [
+    (anthropic.body as Record<string, unknown>).max_tokens,
+    (openai.body as Record<string, unknown>).max_output_tokens,
+    (completions?.body as Record<string, unknown>)?.max_completion_tokens,
+  ];
+  assert.equal(new Set(caps).size, 1, `the three builders disagree: ${JSON.stringify(caps)}`);
+  assert.ok(Number(caps[0]) >= 4096, "a pasted per-project table does not fit in less");
 });

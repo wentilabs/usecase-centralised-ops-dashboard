@@ -406,6 +406,26 @@ Rules that are easy to get wrong and are pinned by tests:
   - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
     **no default**. A row short of them is the correct answer, not a gap to
     fill.
+- **`set` is one change-set for a scope; `set-each` is one per project.** A
+  request shaped like a table — twelve projects, twelve different WhatsApp
+  group lists — could only be expressed as twelve separate proposals. The model
+  already receives every project with its current values, so it can read the
+  table; the op just gives it somewhere to put the answer.
+  - It takes a **`service`** and the caller refuses to guess one. A project code
+    is unique only within a service: `AST` exists in five, and noise spells a
+    site `CR 106` where issue-chaser has `CR106`. Resolving codes across every
+    service in scope produced 66 edits for 13 projects and pulled in a
+    neighbouring service's row.
+  - It carries no `scope` and no `where` — the named projects ARE the scope — so
+    it is handled before scope resolution, where the type checker insists on it.
+  - A code matching no project stops the whole proposal. Applying the other
+    eleven silently would leave somebody believing all twelve landed.
+- **The model's output ceiling is sized for the longest op, not the commonest.**
+  It was 1024, from when every answer was one change-set. A twelve-project
+  `set-each` runs to a couple of thousand tokens, so the reply was cut off
+  mid-JSON and the operator was told the model "did not answer in a shape this
+  could use" — a truncation reported as a misunderstanding. Three request
+  builders share one constant, and a test pins them together.
 - **A cadence that moved into a column has to move out of the prose too.**
   issue-chaser's ece9060 replaced three fixed times with
   `*_schedule` columns (`HH00,lookback` entries, `;` between them, minutes

@@ -39,6 +39,12 @@ test("the vendored Issue Chaser contract identifies an immutable upstream revisi
   assert.equal(lock.services.issueChaser.vendoredPath, "contracts/services/issue-chaser.contract.json");
 });
 
+test("the vendored Noise contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.noise.repository, "wentilabs/usecase-wohhup-noise-meter-alerts");
+  assert.equal(lock.services.noise.commit, "98a932086ca295a12118f723e28c84bd23645f49");
+  assert.equal(lock.services.noise.vendoredPath, "contracts/services/noise.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -95,6 +101,14 @@ test("Issue Chaser marks only its token-aware operator routes as optional auth",
       "/api/issue-chaser-operator-send",
     ],
   );
+});
+
+test("Noise pins all fifteen open routes and distinguishes scheduled from operator jobs", () => {
+  const routes = SERVICE_CONTRACTS.noise.routes;
+  assert.equal(routes.length, 15);
+  assert.ok(routes.every((route) => route.authentication === "none"));
+  assert.equal(routes.find((route) => route.path === "/api/noise-sheet-export")?.kind, "operator");
+  assert.equal(routes.find((route) => route.path === "/api/noise-hourly")?.kind, "scheduled");
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {
@@ -181,4 +195,16 @@ test("Issue Chaser keeps origin routing, delivery-only mutes, and write-capable 
   assert.match(spec.fields.send_to_originating_groups.help, /exactly one/i);
   assert.match(spec.fields.remove_sunday_notifications.help, /(delivery|outbound)/i);
   assert.match(spec.fields.novade_name_sync_enabled.help, /(write|replace)/i);
+});
+
+test("Noise contract semantics cover quoted columns, demand-driven scraping, and message-only filters", () => {
+  const assessment = 'assessment_readings_mm_array("35,45,55")';
+  const spec = buildFieldSpec("noise", {
+    lambda_url: { type: "text" },
+    noise_meters_included: { type: "text" },
+    [assessment]: { type: "text" },
+  });
+  assert.match(spec.fields.lambda_url.help, /(scrape demand|messages stop being stored)/i);
+  assert.match(spec.fields.noise_meters_included.help, /(client-facing|outbound)/i);
+  assert.equal(spec.fields[assessment].label, "Minute marks");
 });

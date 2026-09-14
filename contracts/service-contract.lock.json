@@ -29,6 +29,13 @@
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json"
     },
+    "noise": {
+      "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "98a932086ca295a12118f723e28c84bd23645f49",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/noise.contract.json"
+    },
     "subcon": {
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "branch": "critical-refactor-for-maintainability",

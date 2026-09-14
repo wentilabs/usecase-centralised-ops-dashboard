@@ -2,6 +2,7 @@ import ailyticsContractJson from "../contracts/services/ailytics.contract.json";
 import hazeContractJson from "../contracts/services/haze.contract.json";
 import issueChaserContractJson from "../contracts/services/issue-chaser.contract.json";
 import lightningContractJson from "../contracts/services/lightning.contract.json";
+import noiseContractJson from "../contracts/services/noise.contract.json";
 import subconContractJson from "../contracts/services/subcon.contract.json";
 
 export type ContractField = {
@@ -54,6 +55,7 @@ export const SERVICE_CONTRACTS: Readonly<Record<string, ServiceContract>> = Obje
   haze: validateContract(hazeContractJson, "haze"),
   issueChaser: validateContract(issueChaserContractJson, "issueChaser"),
   lightning: validateContract(lightningContractJson, "lightning"),
+  noise: validateContract(noiseContractJson, "noise"),
   subcon: validateContract(subconContractJson, "subcon"),
 });
 

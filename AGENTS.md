@@ -77,7 +77,7 @@ annotate the audit row. Keep that order.
 
 **History is written by a Postgres trigger, not by this app.**
 `supabase/config_audit_setup.sql` creates `ops.config_audit` and an
-`after update` trigger on all six config tables, so a change made directly in
+`after update` trigger on all seven config tables, so a change made directly in
 the Supabase table editor is recorded too. **Adding a service means re-running
 that file** — the trigger is what makes its history work at all. The dashboard only *annotates* the
 row its own write produced (matched on the returned `updated_at`) with the
@@ -146,8 +146,8 @@ any of them plainly "enabled" would say the opposite of what is true:
 
 | Service | Column | Off still does |
 |---|---|---|
-| Subcon | `enabled` | the whole housekeeping intake — it gates the morning report only |
-| Subcon | `enable_housekeeping` | the morning report — it gates the intake only |
+| Subcon | `enabled` | housekeeping intake and state processing; it gates scheduled outbound delivery |
+| Subcon | `enable_housekeeping` | both morning summaries; it gates intake, nightly report, sheet generation, and photo refresh |
 | WBGT | `water_parade_enabled` | cycles, roster snapshots, inbound events, photo decisions, reminder audits |
 | Ailytics | `forward_pending_to_whatsapp` | stores the PENDING activity and writes activity history |
 | Ailytics | `enabled` | lets existing issues still be closed over WhatsApp — it gates Telegram intake only |
@@ -158,13 +158,15 @@ Each one's `help` text says what carries on regardless. `hasCadence` counts
 `water_parade_enabled`, because a project with no WBGT cadence but Water Parade
 on is still sending reminders and must not be scrimmed as idle.
 
-**Subcon has no master switch at all.** Its two routes are independent:
-`enable_housekeeping` gates `POST /housekeeping-intake` and `enabled` gates
-`POST /daily-activity-manpower-summary`. `isProjectOn` in `ProjectCard` therefore
-asks per service rather than reading `config.enabled`, and the badge says
-`BOTH ROUTES OFF` rather than `DISABLED`, because that is what it means. This
-column set has changed twice — it briefly had no `enabled` column at all — so
-check the live schema before trusting any description of it, including this one.
+**Subcon has no single switch that disables every operation.** `enabled` is the
+permission gate for scheduled outbound delivery; `enable_housekeeping` owns the
+complete housekeeping capability; and `enable_activity_summary` /
+`enable_manpower_summary` independently select the morning summaries. Turning
+`enabled` off does not stop intake or housekeeping state processing. Turning
+`enable_housekeeping` off does not disable either morning summary. `isProjectOn`
+in `ProjectCard` therefore evaluates the service-specific combination rather
+than reading `config.enabled` as a universal master flag. This column set has
+changed repeatedly, so the service contract and INV-HK-01 are authoritative.
 
 ## Outbound meter selection (noise)
 

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "schema": "wbgts",
+  "freshInstall": "setup.sql",
+  "freshInstallAllowedDestructiveOperations": ["drop-column", "drop-table"],
+  "freshInstallPrecondition": "On an existing database, back up the schema and confirm the retired top-of-hour snapshot columns and table are no longer consumed before re-running setup.sql.",
+  "upgrades": [
+    { "id": "raw-readings", "file": "migrate_raw_readings.sql", "requires": [], "precondition": "Run outside operating hours and deploy the matching raw-reading code before scraping resumes." },
+    { "id": "enable-scrape-and-fill-mode", "file": "migrate_enable_scrape_and_fill_mode.sql", "requires": [] },
+    { "id": "silence-green-alerts", "file": "migrate_silence_green_alerts.sql", "requires": [] },
+    { "id": "hourly-message-formatter", "file": "migrate_hourly_message_formatter.sql", "requires": [] },
+    { "id": "onboarding-rpc", "file": "migrate_onboarding_rpc.sql", "requires": ["raw-readings"] },
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    { "id": "water-parade", "file": "migrate_water_parade.sql", "requires": [] },
+    { "id": "water-parade-single-group", "file": "migrate_water_parade_single_group.sql", "requires": ["water-parade"], "supersededBy": "water-parade-multiple-groups" },
+    { "id": "manpower-wohhup-filter", "file": "migrate_manpower_wohhup_filter.sql", "requires": ["water-parade"] },
+    { "id": "five-min-alert-threshold", "file": "migrate_five_min_alert_threshold.sql", "requires": [] },
+    { "id": "water-parade-multiple-groups", "file": "migrate_water_parade_multiple_groups.sql", "requires": ["water-parade-single-group"] },
+    { "id": "poc-alert-minimum-band", "file": "migrate_poc_alert_minimum_band.sql", "requires": [] },
+    { "id": "hourly-water-parade-photo-formatter", "file": "migrate_hourly_waterparade_photo_formatter.sql", "requires": ["hourly-message-formatter", "poc-alert-minimum-band"] },
+    { "id": "water-parade-photo-refresh", "file": "migrate_water_parade_photo_refresh.sql", "requires": ["water-parade"] },
+    { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] }
+  ],
+  "operationalUtilities": [
+    { "file": "schedule_job_runs_cleanup.sql", "purpose": "Install the named pg_cron job that deletes WBGT job-run audit rows older than 30 days.", "targetSchemas": ["cron"] }
+  ],
+  "destructiveUtilities": []
+}

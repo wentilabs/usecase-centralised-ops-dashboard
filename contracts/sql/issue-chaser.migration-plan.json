@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "schema": "issue_chaser",
+  "freshInstall": "setup.sql",
+  "upgrades": [
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    {
+      "id": "remove-legacy-delivery-flags",
+      "file": "migrate_remove_legacy_delivery_flags.sql",
+      "requires": [],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Confirm current application and HALO metadata no longer read the four legacy delivery flags; take a schema backup before applying."
+    },
+    { "id": "cadence-configuration", "file": "migrate_cadence_configuration.sql", "requires": [] },
+    { "id": "daily-summary-features", "file": "migrate_daily_summary_features.sql", "requires": [] },
+    { "id": "past-days-summary", "file": "migrate_past_days_summary.sql", "requires": [] },
+    {
+      "id": "consolidated-reconciliation",
+      "file": "migrate_issue_chaser_latest.sql",
+      "requires": ["company-column", "remove-legacy-delivery-flags", "cadence-configuration", "daily-summary-features", "past-days-summary"],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Confirm current application and HALO metadata no longer read the five legacy delivery flags; take a schema backup before applying."
+    },
+    { "id": "notification-calendar", "file": "migrate_notification_calendar.sql", "requires": ["consolidated-reconciliation"] },
+    { "id": "exclude-daily-open-groups", "file": "migrate_exclude_daily_open_groups.sql", "requires": ["consolidated-reconciliation"] },
+    { "id": "novade-name-list-check", "file": "migrate_novade_name_list_check.sql", "requires": ["consolidated-reconciliation"] },
+    { "id": "novade-name-sync", "file": "migrate_novade_name_sync.sql", "requires": ["novade-name-list-check"] },
+    { "id": "feature-destination-groups", "file": "migrate_feature_destination_groups.sql", "requires": ["daily-summary-features", "novade-name-list-check"] },
+    { "id": "hourly-report-schedules", "file": "migrate_hourly_report_schedules.sql", "requires": ["cadence-configuration", "daily-summary-features"] }
+  ],
+  "destructiveUtilities": []
+}

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "schema": "lightning",
+  "freshInstall": "setup.sql",
+  "freshInstallAllowedDestructiveOperations": ["drop-column"],
+  "freshInstallPrecondition": "On an existing database, confirm customer_code, customer_name, site_name, and postal_code are retired and back up the schema before re-running setup.sql.",
+  "upgrades": [
+    { "id": "stop-directive-deadline", "file": "stop-directive-deadline.sql", "requires": [] },
+    { "id": "tick-audit", "file": "tick-audit.sql", "requires": [] },
+    { "id": "notification-calendar", "file": "notification-calendar.sql", "requires": [] },
+    { "id": "amber-enabled", "file": "amber-enabled.sql", "requires": [] },
+    { "id": "amber-notification-debounce", "file": "amber-notification-debounce.sql", "requires": ["stop-directive-deadline"] },
+    { "id": "stop-runtime-safety", "file": "stop-runtime-safety.sql", "requires": ["stop-directive-deadline"] },
+    { "id": "poc-mentions", "file": "poc-mentions.sql", "requires": [] },
+    {
+      "id": "drop-policy-note",
+      "file": "drop_policy_note.sql",
+      "requires": [],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Deploy code and HALO metadata that no longer read policy_note, verify the archive table, and take a schema backup before applying."
+    },
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    { "id": "lightning-sms", "file": "lightning-sms.sql", "requires": ["notification-calendar"] }
+  ],
+  "dataMigrations": [
+    {
+      "file": "migrate_legacy.sql",
+      "purpose": "Import the original Lightning schema into the central schema with every migrated project disabled.",
+      "precondition": "Apply setup.sql first, keep every imported project disabled, and run yarn verify:lightning before activation."
+    },
+    {
+      "file": "onboard-all-projects.sql",
+      "purpose": "Seed and normalize the shared Lightning and Haze project fleet while keeping all rows disabled.",
+      "targetSchemas": ["haze"],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Back up both schemas and confirm the four Lightning metadata columns are retired; review all overwritten delivery configuration before applying."
+    }
+  ],
+  "operationalUtilities": [
+    { "file": "readable_timestamps.sql", "purpose": "Create read-only SGT timestamp views without changing runtime epoch columns." }
+  ],
+  "destructiveUtilities": []
+}

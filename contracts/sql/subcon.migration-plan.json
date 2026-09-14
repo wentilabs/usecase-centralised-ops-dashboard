@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "schema": "manpower_activity",
+  "freshInstall": "setup.sql",
+  "freshInstallAllowedDestructiveOperations": ["drop-column", "drop-table"],
+  "freshInstallPrecondition": "On an existing database, back up the schema and confirm the retired Water Parade, projection, routing, and legacy configuration objects are no longer consumed before re-running setup.sql.",
+  "upgrades": [
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    {
+      "id": "housekeeping-and-daily-summary",
+      "file": "migrations/20260825_housekeeping_and_daily_summary.sql",
+      "requires": [],
+      "allowedDestructiveOperations": ["drop-column", "drop-table"],
+      "precondition": "Back up the schema and confirm outbound_message_links plus the renamed routing columns have no remaining consumers."
+    },
+    {
+      "id": "remove-water-parade-ownership",
+      "file": "migrations/20260825_remove_water_parade_ownership.sql",
+      "requires": ["housekeeping-and-daily-summary"],
+      "allowedDestructiveOperations": ["drop-column", "drop-table"],
+      "precondition": "Verify Water Parade has cut over to WBGT, back up its tables and configuration, and confirm no active code or HALO metadata consumes them."
+    },
+    {
+      "id": "drop-client-identifier-number",
+      "file": "migrations/20260826_drop_client_identifier_number.sql",
+      "requires": ["housekeeping-and-daily-summary"],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Back up the schema and verify safety_group_ids is the sole project-routing source before dropping both client identifier variants."
+    },
+    { "id": "supabase-activity-truth", "file": "migrations/20260826_supabase_activity_truth.sql", "requires": ["housekeeping-and-daily-summary"] },
+    { "id": "daily-housekeeping-roster", "file": "migrations/20260831_daily_housekeeping_roster.sql", "requires": ["supabase-activity-truth"] },
+    { "id": "exclude-wohhup-from-manpower", "file": "migrations/20260831_exclude_wohhup_from_manpower.sql", "requires": [] },
+    {
+      "id": "remove-sheet-projection-state",
+      "file": "migrations/20260901_remove_sheet_projection_state.sql",
+      "requires": ["supabase-activity-truth"],
+      "allowedDestructiveOperations": ["drop-column"],
+      "precondition": "Back up the schema and verify no runtime or repair workflow consumes inbound_events.sheet_row_refs."
+    },
+    { "id": "independent-summary-switches", "file": "migrations/20260902_independent_summary_switches.sql", "requires": ["housekeeping-and-daily-summary"] },
+    { "id": "morning-report-start-hour", "file": "migrations/20260903_morning_report_start_hour.sql", "requires": ["independent-summary-switches"] },
+    { "id": "daily-manpower-summary-state", "file": "migrations/20260904_daily_manpower_summary_state.sql", "requires": ["supabase-activity-truth"] },
+    { "id": "notification-mutes", "file": "migrations/20260905_notification_mutes.sql", "requires": [] },
+    { "id": "housekeeping-opt-in", "file": "migrations/20260911_housekeeping_opt_in.sql", "requires": ["housekeeping-and-daily-summary"] },
+    { "id": "housekeeping-outcomes", "file": "migrations/20260911_housekeeping_outcomes.sql", "requires": ["supabase-activity-truth"] }
+  ],
+  "destructiveUtilities": []
+}

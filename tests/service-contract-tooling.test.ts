@@ -17,4 +17,6 @@ test("contract verification compares immutable git content rather than sibling w
   assert.match(script, /\["show", `\$\{entry\.commit\}:\$\{entry\.path\}`\]/);
   assert.match(script, /vendored !== upstream/);
   assert.match(script, /full commit SHA/);
+  assert.match(script, /vendored migration plan differs from its pinned source revision/);
+  assert.match(script, /migration schema .* differs from service contract/);
 });

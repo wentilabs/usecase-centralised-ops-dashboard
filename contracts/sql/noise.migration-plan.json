@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "schema": "noise-meters",
+  "freshInstall": "main_setup.sql",
+  "upgrades": [
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    { "id": "onboarding-rpc", "file": "migrate_onboarding_rpc.sql", "requires": [] },
+    { "id": "half-hourly-exceedance-routing", "file": "migrate_half_hourly_exceedance_routing.sql", "requires": [] }
+  ],
+  "destructiveUtilities": []
+}

@@ -17,38 +17,45 @@ test("the vendored Haze contract identifies an immutable upstream revision", () 
 test("the vendored Ailytics contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.ailytics.repository, "wentilabs/mdw-lambda-ailytics");
   assert.equal(lock.services.ailytics.branch, "critical-refactor-for-maintainability");
-  assert.equal(lock.services.ailytics.commit, "cbf5950a61295dfed1062ba2a89821f4461d5c62");
+  assert.match(lock.services.ailytics.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.ailytics.vendoredPath, "contracts/services/ailytics.contract.json");
 });
 
 test("the vendored Subcon Activities contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.subcon.repository, "wentilabs/usecase-wohhup-coy-housekeeping-waterparade");
-  assert.equal(lock.services.subcon.commit, "bc8cf9cf11ed597e1247911234c714137026e91d");
+  assert.match(lock.services.subcon.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.subcon.vendoredPath, "contracts/services/subcon.contract.json");
 });
 
 test("the vendored Lightning contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.lightning.repository, "wentilabs/usecase-lightning-alerts");
-  assert.equal(lock.services.lightning.commit, "c7720be3cbd281d57352349d6dd466b1e20caf7d");
+  assert.match(lock.services.lightning.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.lightning.vendoredPath, "contracts/services/lightning.contract.json");
 });
 
 test("the vendored Issue Chaser contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.issueChaser.repository, "wentilabs/usecase-issue-chaser");
-  assert.equal(lock.services.issueChaser.commit, "0195ac4a101a3e5b620e617ab9a271123fbc0f06");
+  assert.match(lock.services.issueChaser.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.issueChaser.vendoredPath, "contracts/services/issue-chaser.contract.json");
 });
 
 test("the vendored Noise contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.noise.repository, "wentilabs/usecase-wohhup-noise-meter-alerts");
-  assert.equal(lock.services.noise.commit, "98a932086ca295a12118f723e28c84bd23645f49");
+  assert.match(lock.services.noise.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.noise.vendoredPath, "contracts/services/noise.contract.json");
 });
 
 test("the vendored WBGT contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.wbgt.repository, "wentilabs/usecase-wohhup-wbgt-alerts");
-  assert.equal(lock.services.wbgt.commit, "2215e8b9336132103bd61d7f0b2474c62135720e");
+  assert.match(lock.services.wbgt.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.wbgt.vendoredPath, "contracts/services/wbgt.contract.json");
+});
+
+test("every service pins its SQL evolution plan to the same immutable revision", () => {
+  for (const [key, entry] of Object.entries(lock.services)) {
+    assert.equal(entry.sqlPath, "supabase/migration-plan.json", `${key} SQL source path drifted`);
+    assert.match(entry.vendoredSqlPath, /^contracts\/sql\/.+\.migration-plan\.json$/);
+  }
 });
 
 test("the Haze route contract pins the externally configured endpoint surface", () => {

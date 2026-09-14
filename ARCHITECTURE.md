@@ -56,6 +56,9 @@ is not a privileged second implementation.
 - Column existence/types/defaults/enums: live PostgREST OpenAPI schema.
 - Column meaning, grouping, conditional display, CHECK options, and read-only
   classification: curated metadata, migrating to service-owned snapshots.
+- SQL baseline, lifecycle classification, ordering, supersession, and explicit
+  destructive preconditions: service-owned migration plans vendored at the same
+  immutable commit as each service contract.
 - Configuration values: each service's Supabase configuration table.
 - Change history: `ops.config_audit` database triggers.
 - API/agent operations: `lib/openapi.ts`, checked against route handlers and
@@ -97,3 +100,8 @@ scope, route/OpenAPI/MCP parity, config validation, audit behavior, mobile
 contracts, service semantics, exact job payloads, onboarding safety, and model
 proposal non-mutation. Production-like writes use disabled projects and are
 reverted with an audit note.
+
+Run `npm run contracts:check` to verify both the service contract and SQL
+evolution plan for every service against one pinned upstream commit. Refresh is
+explicit and service-scoped with `npm run contracts:refresh -- <service...>`;
+never copy either artifact by hand or pin them to different revisions.

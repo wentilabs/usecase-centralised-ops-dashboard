@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "schema": "ailytics",
+  "freshInstall": "ailytics_safety_setup.sql",
+  "upgrades": [
+    { "id": "pending-whatsapp", "file": "migrate_pending_whatsapp.sql", "requires": [] },
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    { "id": "status-summary", "file": "migrate_status_summary.sql", "requires": ["pending-whatsapp"] },
+    { "id": "public-media-urls", "file": "migrate_public_media_urls.sql", "requires": [], "targetSchemas": ["storage"] },
+    { "id": "rectification-media", "file": "migrate_rectification_media.sql", "requires": [] },
+    { "id": "pending-delivery-gate", "file": "migrate_pending_delivery_gate.sql", "requires": ["pending-whatsapp"] },
+    { "id": "activity-event-repair-helper", "file": "migrate_activity_event_repair.sql", "requires": ["pending-whatsapp"] },
+    {
+      "id": "activity-event-idempotency",
+      "file": "migrate_activity_event_idempotency.sql",
+      "requires": ["activity-event-repair-helper", "pending-delivery-gate"],
+      "precondition": "Run yarn activities:dedupe and resolve every duplicate before applying."
+    },
+    { "id": "activity-message-refs", "file": "migrate_activity_message_refs.sql", "requires": ["pending-whatsapp", "activity-event-idempotency"] }
+  ],
+  "destructiveUtilities": [
+    { "file": "ailytics_safety_reset.sql", "purpose": "Empty-environment reset only; never part of an upgrade." }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "schema": "haze",
+  "freshInstall": "setup.sql",
+  "upgrades": [
+    { "id": "alert-threshold", "file": "alert-only-when-at-least.sql", "requires": [] },
+    { "id": "advisory-format", "file": "advisory-format.sql", "requires": [] },
+    { "id": "poc-mentions", "file": "poc-mentions.sql", "requires": [] },
+    { "id": "four-hourly", "file": "four-hourly.sql", "requires": [] },
+    { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
+    { "id": "retry", "file": "retry.sql", "requires": [] }
+  ],
+  "destructiveUtilities": []
+}

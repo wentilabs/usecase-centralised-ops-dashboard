@@ -43,6 +43,7 @@ is not a privileged second implementation.
 | Reusable UI | `components/` | Split large service-specific views from shared primitives. |
 | Schema/config repository | `lib/config-repository.ts`, `lib/supabase/` | Preserve live introspection and server-only secrets. |
 | Field semantics | `lib/field-spec.ts` | Split by service, then merge service-contract snapshots. |
+| Runtime-state audit filtering | `lib/job-state-policy.ts` | Typed pure policy shared by field read-only rules and history display. |
 | Validation/coercion | `lib/config-values.ts`, constraint modules | Pure and exhaustive. |
 | Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
 | Cards/search/summaries | `lib/card-summary.ts` and UI modules | Split generic model from per-service capability providers. |

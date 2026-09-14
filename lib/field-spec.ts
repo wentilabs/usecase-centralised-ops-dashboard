@@ -1,5 +1,7 @@
 import type { ServiceKey } from "./services";
 import { contractFieldFor, contractOptionsFor, contractReadonlyFields } from "./service-contracts";
+import { JOB_STATE_COLUMNS } from "./job-state-policy";
+export { JOB_STATE_COLUMNS, auditChangesWithoutJobState } from "./job-state-policy";
 
 export type FieldWidget =
   | "toggle"
@@ -78,56 +80,6 @@ export type IntrospectedColumn = {
  * a hand-set value outside the list is stored and shown rather than rejected.
  */
 export const COMPANIES = ["Wohhup", "Obayashi", "PentaOcean"] as const;
-
-/**
- * Columns a service writes to ITSELF as it runs. Not settings, and not an
- * operator's doing: WBGT stamps `top_of_hour_band` on every :00 fire and the
- * two `last_5min_alert_*` columns on every zone crossing, which that repo's own
- * CONFIG_SCHEMA.md calls job state.
- *
- * They are read-only in the editor, and — the reason this list is exported —
- * excluded from the audit trail, where they were 1187 of the first 1730 rows.
- * A card's history was a machine log with the occasional human edit buried in
- * it, every entry marked "changed outside the dashboard", which was true and
- * useless.
- *
- * The Postgres trigger in supabase/config_audit_setup.sql skips the same names,
- * so nothing new is recorded. This list is what keeps rows recorded BEFORE that
- * ran from rendering, and a test asserts the two agree.
- */
-export const JOB_STATE_COLUMNS = [
-  "top_of_hour_band",
-  "last_5min_alert_level",
-  "last_5min_alert_at",
-  // `noise_limits.imported_at`, stamped by the limits refresh on every row it
-  // merges — including the protected rows whose values it left alone. Without
-  // it, every refresh would write one audit entry per protected row saying
-  // nothing but "imported_at moved".
-  "imported_at",
-] as const;
-
-/**
- * One audit entry's `changes` with the job-state keys removed, or null when
- * nothing else was in it — the entry is then a service stamping its own scratch
- * column, which is not a change anyone made.
- *
- * Keys are dropped rather than whole rows. The services write these columns on
- * their own today, so in practice an affected entry holds nothing else, but an
- * entry that did carry a real edit alongside one keeps the edit.
- *
- * It lives here rather than in the repository because the repository is
- * `server-only` and this is a policy about a list, testable on its own.
- */
-export function auditChangesWithoutJobState<T>(
-  changes: Record<string, T> | null | undefined,
-): Record<string, T> | null {
-  const entries = Object.entries(changes ?? {});
-  if (!entries.some(([column]) => (JOB_STATE_COLUMNS as readonly string[]).includes(column))) {
-    return changes ?? {};
-  }
-  const kept = entries.filter(([column]) => !(JOB_STATE_COLUMNS as readonly string[]).includes(column));
-  return kept.length ? Object.fromEntries(kept) : null;
-}
 
 const READONLY: Record<string, string[]> = {
   // Job state is read-only for the same reason it goes unaudited: nobody sets it.

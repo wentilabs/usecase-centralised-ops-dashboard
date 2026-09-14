@@ -562,7 +562,11 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no lightning alert is sent." },
     timezone: { label: "Timezone" },
-    config_version: { label: "Config version", widget: "number", help: "Bump when policy changes; recorded on alerts." },
+    config_version: {
+      label: "Config version",
+      widget: "number",
+      help: "Bump this in the same save as every policy change. No trigger increments it; leaving it unchanged makes later evidence claim an old policy meaning (INV-LTG-16).",
+    },
 
     site_address: { label: "Site address" },
     latitude: { label: "Latitude", widget: "number", row: "latlng" },
@@ -577,7 +581,10 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       help: "G = cloud-to-ground, C = intra-cloud.",
     },
 
-    amber_enabled: { label: "Amber alerts enabled", help: "Off = red-only site; amber thresholds are ignored." },
+    amber_enabled: {
+      label: "Amber alerts enabled",
+      help: "Off = red-only site: amber detections are not evaluated, amber thresholds are ignored, and STOP clears directly to SAFE without an intermediate WATCH (INV-LTG-13).",
+    },
     amber_radius_m: {
       label: "🟠 Amber radius (m)",
       widget: "number",

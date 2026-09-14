@@ -27,6 +27,12 @@ test("the vendored Subcon Activities contract identifies an immutable upstream r
   assert.equal(lock.services.subcon.vendoredPath, "contracts/services/subcon.contract.json");
 });
 
+test("the vendored Lightning contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.lightning.repository, "wentilabs/usecase-lightning-alerts");
+  assert.equal(lock.services.lightning.commit, "c7720be3cbd281d57352349d6dd466b1e20caf7d");
+  assert.equal(lock.services.lightning.vendoredPath, "contracts/services/lightning.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -61,6 +67,14 @@ test("Subcon Activities pins all five external schedules and its webhook", () =>
   assert.equal(routes.filter((route) => route.kind === "scheduled").length, 5);
   assert.ok(routes.some((route) => route.path === "/housekeeping-intake" && route.kind === "webhook"));
   assert.ok(routes.every((route) => route.authentication === "none"));
+});
+
+test("Lightning distinguishes optional service auth, SMS HMAC, and public reads", () => {
+  const byPath = Object.fromEntries(SERVICE_CONTRACTS.lightning.routes.map((route) => [route.path, route]));
+  assert.equal(byPath["/api/lightning-tick"].authentication, "optional-service-key");
+  assert.equal(byPath["/api/lightning-kickoff"].kind, "scheduled");
+  assert.equal(byPath["/api/lightning-sms"].authentication, "sms-hmac");
+  assert.equal(byPath["/api/lightning-report"].authentication, "none");
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {
@@ -123,4 +137,17 @@ test("Subcon Activities keeps its two independent switches and bidirectional gro
   assert.match(spec.fields.enable_housekeeping.help, /whole housekeeping feature/i);
   assert.match(spec.fields.safety_group_ids.help, /Inbound:/i);
   assert.match(spec.fields.safety_group_ids.help, /Outbound:/i);
+});
+
+test("Lightning contract semantics preserve the counterintuitive safety levers", () => {
+  const spec = buildFieldSpec("lightning", {
+    ground_uncertainty_m: { type: "integer" },
+    amber_enabled: { type: "boolean" },
+    config_version: { type: "integer" },
+    red_detection_types: { type: "array" },
+  });
+  assert.match(spec.fields.ground_uncertainty_m.help, /more (stops|qualifiers)/i);
+  assert.match(spec.fields.amber_enabled.help, /(straight|directly) to SAFE/i);
+  assert.match(spec.fields.config_version.help, /same (save|write)/i);
+  assert.deepEqual(spec.fields.red_detection_types.options, ["G", "C"]);
 });

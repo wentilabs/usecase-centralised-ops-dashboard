@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "service": { "key": "lightning", "displayName": "Lightning" },
+  "runtime": { "handler": "index.handler", "language": "javascript", "moduleFormat": "commonjs" },
+  "routes": [
+    { "method": "POST", "path": "/api/lightning-tick", "kind": "scheduled", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/lightning-sms", "kind": "webhook", "authentication": "sms-hmac" },
+    { "method": "POST", "path": "/api/lightning-kickoff", "kind": "scheduled", "authentication": "optional-service-key" },
+    { "method": "GET", "path": "/api/lightning-report", "kind": "read", "authentication": "none" },
+    { "method": "POST", "path": "/api/episodes-list", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/episodes-evidence", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "GET", "path": "/health", "kind": "diagnostic", "authentication": "none" },
+    { "method": "GET", "path": "/version", "kind": "diagnostic", "authentication": "none" }
+  ],
+  "configuration": {
+    "schema": "lightning",
+    "table": "lightning_project_configs",
+    "identityColumn": "project_code",
+    "fields": {
+      "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Uppercase project identity constrained to letters, digits, and hyphens." },
+      "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; Lightning runtime behavior does not read it." },
+      "site_address": { "label": "Site address", "group": "identity", "mutable": true, "role": "configuration", "help": "Human-readable location; routing and evaluation use coordinates." },
+      "latitude": { "label": "Latitude", "group": "geometry", "mutable": true, "role": "configuration", "help": "Singapore site latitude constrained to 1.10–1.50." },
+      "longitude": { "label": "Longitude", "group": "geometry", "mutable": true, "role": "configuration", "help": "Singapore site longitude constrained to 103.55–104.15." },
+      "site_extent_radius_m": { "label": "Site extent", "group": "geometry", "mutable": true, "role": "policy-selector", "help": "Distance from centroid to site boundary; it widens every qualifying ring (INV-LTG-02)." },
+      "red_radius_m": { "label": "Red radius", "group": "red", "mutable": true, "role": "policy-selector", "help": "STOP radius before site extent and uncertainty are added; valid range 1–100000 metres (INV-LTG-02)." },
+      "red_detection_types": { "label": "Red detection types", "group": "red", "mutable": true, "role": "policy-selector", "help": "Non-empty subset of G ground and C cloud detections; ground-only by default.", "options": ["G", "C"] },
+      "red_dwell_seconds": { "label": "Red dwell", "group": "red", "mutable": true, "role": "policy-selector", "help": "STOP persists while a qualifying detection is strictly younger than this duration (INV-LTG-03)." },
+      "amber_radius_m": { "label": "Amber radius", "group": "amber", "mutable": true, "role": "policy-selector", "help": "WATCH radius; a red radius wider than amber is permitted (INV-LTG-14)." },
+      "amber_detection_types": { "label": "Amber detection types", "group": "amber", "mutable": true, "role": "policy-selector", "help": "Non-empty subset of G ground and C cloud detections; both by default.", "options": ["G", "C"] },
+      "amber_dwell_seconds": { "label": "Amber dwell", "group": "amber", "mutable": true, "role": "policy-selector", "help": "WATCH persistence and amber-delivery debounce interval (INV-LTG-10)." },
+      "amber_enabled": { "label": "Amber enabled", "group": "amber", "mutable": true, "role": "feature-flag", "help": "Disables amber evaluation entirely and makes STOP clear directly to SAFE; it is not merely a message mute (INV-LTG-13)." },
+      "ground_uncertainty_m": { "label": "Ground uncertainty", "group": "geometry", "mutable": true, "role": "policy-selector", "help": "Added to the G trigger ring; raising it produces more qualifiers, not fewer (INV-LTG-02)." },
+      "cloud_uncertainty_m": { "label": "Cloud uncertainty", "group": "geometry", "mutable": true, "role": "policy-selector", "help": "Added to the C trigger ring; raising it produces more qualifiers, not fewer (INV-LTG-02)." },
+      "feed_stale_after_seconds": { "label": "Feed stale after", "group": "health", "mutable": true, "role": "policy-selector", "help": "Feed age that adds the DEGRADED overlay; degradation never downgrades STOP (INV-LTG-05)." },
+      "max_consecutive_fetch_failures": { "label": "Maximum fetch failures", "group": "health", "mutable": true, "role": "policy-selector", "help": "Consecutive source failures tolerated before the DEGRADED overlay." },
+      "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "HTTPS listener endpoint required before enabled can become true." },
+      "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "whatsapp_group_id": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Delivery destinations required and non-blank before enablement." },
+      "poc_phone_numbers": { "label": "POC phone numbers", "group": "mentions", "mutable": true, "role": "configuration", "help": "Comma-separated international numbers used for red-band mentions." },
+      "poc_alert_wa_groups": { "label": "POC mention groups", "group": "mentions", "mutable": true, "role": "configuration", "help": "Only these destinations may receive red mentions; blank fails closed to no mentions." },
+      "enable_red_band_poc_mentions": { "label": "Red POC mentions", "group": "mentions", "mutable": true, "role": "feature-flag", "help": "Requires both POC lists to be non-blank in the same database write." },
+      "enable_sms_lightning_alerts": { "label": "SMS lightning forwarding", "group": "delivery", "mutable": true, "role": "feature-flag", "help": "Allows signed SMS alerts to be forwarded; it is separate from enabled and never feeds NEA state (INV-LTG-23)." },
+      "enabled": { "label": "Project enabled", "group": "delivery", "mutable": true, "role": "feature-flag", "help": "Master processing switch; the database requires complete HTTPS delivery configuration before enabling (INV-LTG-17)." },
+      "working_hours_start_hhmm": { "label": "Working-hours start", "group": "schedule", "mutable": true, "role": "configuration", "help": "HHMM start; must be configured together with the end." },
+      "working_hours_end_hhmm": { "label": "Working-hours end", "group": "schedule", "mutable": true, "role": "configuration", "help": "Exclusive HHMM end; equal values are rejected and overnight windows are supported." },
+      "remove_sunday_notifications": { "label": "Mute Sundays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses ordinary Sunday notifications but never a green that closes a delivered STOP (INV-LTG-11)." },
+      "remove_ph_notifications": { "label": "Mute public holidays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses ordinary holiday notifications; the built-in Singapore list ends after 2027 (INV-LTG-12)." },
+      "timezone": { "label": "Timezone", "group": "schedule", "mutable": true, "role": "configuration", "help": "Database-constrained to Asia/Singapore." },
+      "config_version": { "label": "Config version", "group": "identity", "mutable": true, "role": "runtime-state", "help": "Evidence version that must be bumped in the same write as every policy edit; no trigger does it automatically (INV-LTG-16)." },
+      "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
+      "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned optimistic-concurrency timestamp." }
+    },
+    "constraints": [
+      { "name": "lightning_enabled_delivery_check", "help": "An enabled row requires an HTTPS lambda_url and non-blank instance_name, client_id, and whatsapp_group_id." },
+      { "name": "lightning_red_poc_mentions_check", "help": "Red mentions require both phone and destination lists." },
+      { "name": "lightning_working_hours_check", "help": "Working-hours start and end must both be null or both valid, unequal HHMM values." }
+    ]
+  }
+}

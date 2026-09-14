@@ -15,6 +15,13 @@
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json"
     },
+    "lightning": {
+      "repository": "wentilabs/usecase-lightning-alerts",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "c7720be3cbd281d57352349d6dd466b1e20caf7d",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/lightning.contract.json"
+    },
     "subcon": {
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "branch": "critical-refactor-for-maintainability",

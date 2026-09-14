@@ -1,5 +1,6 @@
 import ailyticsContractJson from "../contracts/services/ailytics.contract.json";
 import hazeContractJson from "../contracts/services/haze.contract.json";
+import lightningContractJson from "../contracts/services/lightning.contract.json";
 import subconContractJson from "../contracts/services/subcon.contract.json";
 
 export type ContractField = {
@@ -50,6 +51,7 @@ function validateContract(value: unknown, expectedKey: string): ServiceContract 
 export const SERVICE_CONTRACTS: Readonly<Record<string, ServiceContract>> = Object.freeze({
   ailytics: validateContract(ailyticsContractJson, "ailytics"),
   haze: validateContract(hazeContractJson, "haze"),
+  lightning: validateContract(lightningContractJson, "lightning"),
   subcon: validateContract(subconContractJson, "subcon"),
 });
 

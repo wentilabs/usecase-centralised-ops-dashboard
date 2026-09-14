@@ -46,7 +46,7 @@ is not a privileged second implementation.
 | Runtime-state audit filtering | `lib/job-state-policy.ts` | Typed pure policy shared by field read-only rules and history display. |
 | Validation/coercion | `lib/config-values.ts`, constraint modules | Pure and exhaustive. |
 | Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
-| Cards/search/summaries | `lib/card-summary/`, exported by `lib/card-summary.ts` | Group resolution, schedules, pills, search, links, emphasis, and diffs have explicit owners; per-service schedule/pill providers are the next refinement. |
+| Cards/search/summaries | `lib/card-summary/`, exported by `lib/card-summary.ts` | Group resolution, search, links, emphasis, and diffs have explicit owners; pills are service-owned providers; per-service schedule providers are next. |
 | Jobs/exports | `lib/jobs.ts`, export modules | Registries with exact service payload builders. |
 | Onboarding/chat planning | `lib/onboarding/providers/`, `lib/onboarding/`, `lib/chat-onboard.ts` | Definitions, validation, schema enrichment, value resolution, and insert planning have explicit owners; next isolate model interpretation. |
 | Agent contract | `lib/openapi.ts`, `lib/mcp.ts` | One OpenAPI source, mechanically mapped to tools. |
@@ -90,8 +90,8 @@ is not a privileged second implementation.
 3. Split `chat-onboard.ts` into interpretation, deterministic resolution, and
    proposal models.
 4. **In progress:** `card-summary.ts` is now a compatibility façade over named
-   concern modules. Next split the remaining schedule and pill dispatchers into
-   per-service capability providers.
+   concern modules, and every service owns its pill provider. Next split the
+   remaining schedule/cadence dispatcher into per-service providers.
 5. Decompose `LightningMap.tsx` into map state, geometry, data loading, and
    presentational components while retaining pure geometry tests.
 6. **Complete:** versioned service-contract and SQL-evolution snapshots share

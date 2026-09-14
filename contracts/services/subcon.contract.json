@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "service": { "key": "subcon", "displayName": "Subcon Activities" },
+  "runtime": { "handler": "index.handler", "language": "javascript", "moduleFormat": "commonjs" },
+  "routes": [
+    { "method": "POST", "path": "/housekeeping-intake", "kind": "webhook", "authentication": "none" },
+    { "method": "POST", "path": "/daily-manpower-summary", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/daily-activity-summary", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/daily-housekeeping-report", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/daily-housekeeping-sheet", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/refresh-housekeeping-photos", "kind": "scheduled", "authentication": "none" }
+  ],
+  "configuration": {
+    "schema": "manpower_activity",
+    "table": "project_configs",
+    "identityColumn": "id",
+    "fields": {
+      "id": { "label": "Row ID", "group": "identity", "mutable": false, "role": "identity", "help": "Database-generated UUID referenced by Subcon Activities state tables." },
+      "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Unique project identity used by scheduled requests and HALO." },
+      "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; service runtime behavior does not read it." },
+      "enabled": { "label": "Scheduled delivery enabled", "group": "reports", "mutable": true, "role": "feature-flag", "help": "Gates scheduled outbound delivery but does not disable housekeeping intake or state processing (INV-HK-01)." },
+      "safety_group_ids": { "label": "Housekeeping groups", "group": "housekeeping", "mutable": true, "role": "configuration", "help": "Comma-separated groups used both for inbound project routing and nightly housekeeping delivery; there is no client-ID fallback (INV-HK-10)." },
+      "spreadsheet_id": { "label": "Manpower workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Existing workbook read by reports and updated only on the HOUSEKEEPING projection; Editor access is required." },
+      "exclude_wohhup_from_manpower": { "label": "Exclude Woh Hup from roster", "group": "sheets", "mutable": true, "role": "policy-selector", "help": "Default-on per-project filter applied to every central Manpower read (INV-HK-13)." },
+      "enable_housekeeping": { "label": "Housekeeping enabled", "group": "housekeeping", "mutable": true, "role": "feature-flag", "help": "Master switch for housekeeping intake, nightly report, sheet generation, and photo refresh; existing state is retained (INV-HK-01)." },
+      "enable_activity_summary": { "label": "Activity and manpower report", "group": "reports", "mutable": true, "role": "feature-flag", "help": "Explicit opt-in for POST /daily-activity-summary; scheduled delivery also requires enabled." },
+      "enable_manpower_summary": { "label": "Manpower and machines report", "group": "reports", "mutable": true, "role": "feature-flag", "help": "Explicit opt-in for POST /daily-manpower-summary; unchanged successful reruns are suppressed (INV-HK-18)." },
+      "morning_report_start_hour": { "label": "Morning report start hour", "group": "reports", "mutable": true, "role": "policy-selector", "help": "Optional Singapore hour 0–23; null removes the gate and an explicit replay date bypasses it (INV-HK-16)." },
+      "remove_sunday_notifications": { "label": "Mute Sundays", "group": "mutes", "mutable": true, "role": "policy-selector", "help": "Suppresses scheduled notification delivery only; reads, state writes, and intake continue (INV-HK-19)." },
+      "remove_ph_notifications": { "label": "Mute public holidays", "group": "mutes", "mutable": true, "role": "policy-selector", "help": "Suppresses scheduled notification delivery only using the code-maintained Singapore calendar (INV-HK-19)." },
+      "manpower_activity_outbound_group_id": { "label": "Morning report groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Destination for both morning summaries; an enabled report with an empty destination performs no delivery and raises no error (INV-HK-09)." },
+      "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener text endpoint; housekeeping derives the mentions endpoint when PIC tags are present." },
+      "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener instance used for scheduled delivery." },
+      "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier; it is not an inbound project-routing key." },
+      "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
+      "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "HALO-managed optimistic-concurrency timestamp; the service does not refresh it automatically." }
+    },
+    "constraints": [
+      { "name": "project_configs_project_code_key", "help": "Project codes are unique." },
+      { "name": "project_configs_morning_report_start_hour_check", "help": "The optional morning start hour must be between 0 and 23." }
+    ]
+  }
+}

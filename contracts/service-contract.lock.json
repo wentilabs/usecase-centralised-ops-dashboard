@@ -14,6 +14,13 @@
       "commit": "c13418c0da256739a5165f80ac65d96323dd623f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json"
+    },
+    "subcon": {
+      "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "bc8cf9cf11ed597e1247911234c714137026e91d",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/subcon.contract.json"
     }
   }
 }

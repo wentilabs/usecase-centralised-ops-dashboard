@@ -21,6 +21,12 @@ test("the vendored Ailytics contract identifies an immutable upstream revision",
   assert.equal(lock.services.ailytics.vendoredPath, "contracts/services/ailytics.contract.json");
 });
 
+test("the vendored Subcon Activities contract identifies an immutable upstream revision", () => {
+  assert.equal(lock.services.subcon.repository, "wentilabs/usecase-wohhup-coy-housekeeping-waterparade");
+  assert.equal(lock.services.subcon.commit, "bc8cf9cf11ed597e1247911234c714137026e91d");
+  assert.equal(lock.services.subcon.vendoredPath, "contracts/services/subcon.contract.json");
+});
+
 test("the Haze route contract pins the externally configured endpoint surface", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
@@ -47,6 +53,14 @@ test("Ailytics records its externally visible routes and intentionally open auth
       { method: "POST", path: "/ailytics-safety/retry-pending-deliveries", kind: "scheduled", authentication: "none" },
     ],
   );
+});
+
+test("Subcon Activities pins all five external schedules and its webhook", () => {
+  const routes = SERVICE_CONTRACTS.subcon.routes;
+  assert.equal(routes.length, 6);
+  assert.equal(routes.filter((route) => route.kind === "scheduled").length, 5);
+  assert.ok(routes.some((route) => route.path === "/housekeeping-intake" && route.kind === "webhook"));
+  assert.ok(routes.every((route) => route.authentication === "none"));
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {
@@ -97,4 +111,16 @@ test("Ailytics keeps UUID and business identity read-only without mislabelling i
   assert.equal(spec.fields.project_code.readonly, true);
   assert.match(spec.fields.enabled.help, /Telegram intake/);
   assert.match(spec.fields.enabled.help, /existing issues can still be closed/i);
+});
+
+test("Subcon Activities keeps its two independent switches and bidirectional group meaning explicit", () => {
+  const spec = buildFieldSpec("subcon", {
+    enabled: { type: "boolean" },
+    enable_housekeeping: { type: "boolean" },
+    safety_group_ids: { type: "text" },
+  });
+  assert.match(spec.fields.enabled.help, /intake/i);
+  assert.match(spec.fields.enable_housekeeping.help, /whole housekeeping feature/i);
+  assert.match(spec.fields.safety_group_ids.help, /Inbound:/i);
+  assert.match(spec.fields.safety_group_ids.help, /Outbound:/i);
 });

@@ -48,7 +48,7 @@ is not a privileged second implementation.
 | Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
 | Cards/search/summaries | `lib/card-summary.ts` and UI modules | Split generic model from per-service capability providers. |
 | Jobs/exports | `lib/jobs.ts`, export modules | Registries with exact service payload builders. |
-| Onboarding/chat planning | `lib/onboarding.ts`, `lib/chat-onboard.ts` | Split deterministic planning from model interpretation. |
+| Onboarding/chat planning | `lib/onboarding/providers/`, `lib/onboarding/`, `lib/chat-onboard.ts` | Definitions, validation, schema enrichment, value resolution, and insert planning have explicit owners; next isolate model interpretation. |
 | Agent contract | `lib/openapi.ts`, `lib/mcp.ts` | One OpenAPI source, mechanically mapped to tools. |
 
 ## Sources of truth
@@ -83,8 +83,10 @@ is not a privileged second implementation.
 
 1. **Complete:** field semantics live in one provider per service behind a small
    merger and live-introspection fallback.
-2. Split `onboarding.ts` into service definitions, validation, row planning,
-   and persistence plans.
+2. **Complete:** service definitions, validation, schema enrichment, value
+   resolution, and disabled-row planning are separate named modules behind the
+   stable `lib/onboarding.ts` façade. Route-level persistence remains the
+   deliberate side-effect boundary.
 3. Split `chat-onboard.ts` into interpretation, deterministic resolution, and
    proposal models.
 4. Split `card-summary.ts` into generic card assembly and service capability

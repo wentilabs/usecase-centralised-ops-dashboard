@@ -305,8 +305,10 @@ order:
    what each is for), `pillsFor`, `firesAt`, `hasCadence`, and `autoLinks` if it
    derives sheet links.
 5. `components/ProjectCard.tsx` — `TAG_TONE`.
-6. `lib/onboarding.ts` — an `ONBOARDING` definition, if the service should offer
-   `＋ Add project`. A test asserts every registered service has one.
+6. `lib/onboarding/providers/<service>.ts` — the service's onboarding
+   definition. Register it in `lib/onboarding/providers/index.ts`; a test
+   asserts every registered service has one. Generic validation and row
+   construction stay in `lib/onboarding.ts`.
 7. Nothing, for chat-name resolution: `app/page.tsx` feeds the alias store from
    `chatIdsIn`, which derives its columns from `GROUP_COLUMNS`. Step 4 is the
    only place a new group-id column has to be named.
@@ -352,9 +354,9 @@ editor.
 
 ## Creating a project
 
-`＋ Add project` on every service tab. `lib/onboarding.ts` holds one definition
-per service and is the only place that knows what creating a row involves — the
-route and the dialog are generic over it.
+`＋ Add project` appears on every service tab. Each file under
+`lib/onboarding/providers/` owns what creating that service's row involves;
+`lib/onboarding.ts`, the route, and the dialog are generic over those contracts.
 
 **Rows are always created disabled**, and `enabled` is not settable from the
 dialog. Every service's own docs prescribe that order, and it is the only safe

@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useLightningDetections } from "@/components/lightning-map/use-detections";
 import {
   DETECTION_CAP,
   EVIDENCE_BOX_FACTOR,
   EVIDENCE_CAP,
   WINDOWS,
-  boxContains,
   countedTypes,
-  boundsAround,
   evidenceFor,
   formatDistance,
   formatSgtClock,
@@ -22,9 +21,7 @@ import {
   screenPoint,
   sgtInputToMs,
   sgtInputValue,
-  viewportBounds,
   widestRingM,
-  type Box,
   type Detection,
   type WindowKey,
 } from "@/lib/lightning-map";
@@ -90,44 +87,6 @@ const PIN_LIFT = 12;
 /** Zoom at which a project earns its code label. Below it, 28 labels is soup. */
 const LABEL_ZOOM = 12;
 
-type Payload = {
-  from: number;
-  to: number;
-  total: number;
-  truncated: boolean;
-  detections: Detection[];
-};
-
-async function fetchDetections(params: {
-  at: number;
-  window: WindowKey;
-  bbox?: { south: number; west: number; north: number; east: number };
-  types?: string[];
-  limit?: number;
-  signal: AbortSignal;
-}): Promise<Payload> {
-  const query = new URLSearchParams({
-    at: String(params.at),
-    window: params.window,
-  });
-  if (params.limit) query.set("limit", String(params.limit));
-  if (params.types?.length) query.set("types", params.types.join(","));
-  if (params.bbox) {
-    const { south, west, north, east } = params.bbox;
-    query.set(
-      "bbox",
-      [south, west, north, east].map((value) => value.toFixed(5)).join(","),
-    );
-  }
-  const response = await fetch(`/api/lightning/detections?${query}`, {
-    signal: params.signal,
-  });
-  const body = await response.json();
-  if (!response.ok)
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
-  return body as Payload;
-}
-
 export function LightningMap({
   projects,
   initialFocus,
@@ -166,21 +125,6 @@ export function LightningMap({
   const [windowKey, setWindowKey] = useState<WindowKey>("1h");
   /** null means "now", and keeps refreshing. A number pins the map to an instant. */
   const [anchor, setAnchor] = useState<number | null>(null);
-  const [tick, setTick] = useState(0);
-  /**
-   * "Now", resolved once per refresh rather than once per request.
-   *
-   * Both layers used to call `Date.now()` inside their own fetch, which left
-   * them describing windows a second apart — enough for the map and the
-   * evidence sentence to disagree about a strike on the boundary, which is
-   * precisely the strike anyone would be arguing about.
-   */
-  const [liveAt, setLiveAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (anchor === null) setLiveAt(Date.now());
-  }, [anchor, tick]);
-  const at = anchor ?? liveAt;
-
   const [centre, setCentre] = useState(() => {
     const start = initialFocus
       ? projects.find((row) => row.project_code === initialFocus)
@@ -191,6 +135,14 @@ export function LightningMap({
   });
   const [zoom, setZoom] = useState(initialFocus ? 14 : MIN_ZOOM);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const { at, view, evidence, loading, error, refresh } = useLightningDetections({
+    centre,
+    zoom,
+    size,
+    windowKey,
+    anchor,
+    focus,
+  });
 
   /**
    * The map box is cut to Singapore's own proportions, so the whole island
@@ -202,13 +154,6 @@ export function LightningMap({
   /** Zoom is continuous; this only keeps it inside the usable range. */
   const hold = (value: number) => Math.min(MAX_ZOOM, Math.max(minZoom, value));
 
-  const [view, setView] = useState<Payload | null>(null);
-  const [evidence, setEvidence] = useState<{
-    payload: Payload;
-    code: string;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<{
     index: number;
     x: number;
@@ -228,12 +173,6 @@ export function LightningMap({
   const canvas = useRef<HTMLCanvasElement | null>(null);
   /** Where each drawn strike landed, so the pointer can be matched to one. */
   const plotted = useRef<{ x: number; y: number }[]>([]);
-  /**
-   * The box the last complete map fetch covered, and the query it answered.
-   * A pan or zoom that stays inside it needs no request — see `boxContains`.
-   */
-  const held = useRef<{ box: Box; window: WindowKey; at: number } | null>(null);
-
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -279,119 +218,6 @@ export function LightningMap({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-
-  // Live mode re-asks once a minute. Detections publish two to four minutes
-  // after the strike, so anything faster would mostly redraw the same picture.
-  useEffect(() => {
-    if (anchor !== null) return;
-    const timer = setInterval(() => setTick((value) => value + 1), 60_000);
-    return () => clearInterval(timer);
-  }, [anchor]);
-
-  /**
-   * The map layer: whatever is in view, capped.
-   *
-   * Debounced because panning and zooming change the box continuously, and each
-   * intermediate frame would otherwise be a query. 160ms against a query that
-   * measures around 100ms: long enough to coalesce a drag, short enough that
-   * releasing the map feels like it had already loaded.
-   */
-  useEffect(() => {
-    if (size.width === 0) return;
-    const bbox = viewportBounds(centre, zoom, size.width, size.height);
-
-    // Already held, in full, for this same question: redraw and skip the round
-    // trip. Zooming in and small pans land here, which is most of the
-    // interaction once someone is looking at one site.
-    const cached = held.current;
-    if (
-      cached &&
-      cached.window === windowKey &&
-      cached.at === at &&
-      boxContains(cached.box, bbox)
-    ) {
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      setLoading(true);
-      fetchDetections({
-        at,
-        window: windowKey,
-        bbox,
-        signal: controller.signal,
-      })
-        .then((payload) => {
-          // Only an untruncated result covers its box; a capped one is a
-          // sample, and reusing it while panning would quietly lose strikes.
-          held.current = payload.truncated
-            ? null
-            : { box: bbox, window: windowKey, at };
-          setView(payload);
-          setError(null);
-        })
-        .catch((cause: unknown) => {
-          if (controller.signal.aborted) return;
-          setError(cause instanceof Error ? cause.message : String(cause));
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
-        });
-    }, 160);
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [centre, zoom, size.width, size.height, windowKey, at]);
-
-  /**
-   * The evidence layer: a second, tight query around the focused project.
-   *
-   * Deliberately not derived from the map layer. That one is capped at 500 and
-   * bounded by wherever the operator panned, so counting hits from it would
-   * produce a number that changes when you scroll — and this number is the one
-   * that gets read out to a client. A box a few kilometres wide effectively
-   * never reaches the cap, and `truncated` is surfaced if it somehow does.
-   */
-  useEffect(() => {
-    if (!focus) {
-      setEvidence(null);
-      return;
-    }
-    const controller = new AbortController();
-    const radius = Math.max(1000, widestRingM(focus));
-
-    fetchDetections({
-      at,
-      window: windowKey,
-      // Only a little wider than the widest ring: enough that "nearest strike"
-      // has something to report when nothing came close, and tight enough that
-      // a busy hour still fits under the cap. A box three times the ring did
-      // not, and the panel then declared an all-clear over a strike it had
-      // simply not fetched.
-      bbox: boundsAround(
-        {
-          latitude: Number(focus.latitude),
-          longitude: Number(focus.longitude),
-        },
-        radius * EVIDENCE_BOX_FACTOR,
-      ),
-      // Only the types this project's tiers count. Everything else is noise
-      // that can only push a qualifying strike out of a capped result.
-      types: countedTypes(focus),
-      limit: EVIDENCE_CAP,
-      signal: controller.signal,
-    })
-      .then((payload) =>
-        setEvidence({ payload, code: String(focus.project_code) }),
-      )
-      .catch(() => {
-        if (!controller.signal.aborted) setEvidence(null);
-      });
-    return () => controller.abort();
-  }, [focus, windowKey, at]);
 
   const detections = view?.detections ?? [];
 
@@ -1138,7 +964,7 @@ export function LightningMap({
             type="button"
             onClick={() => {
               setAnchor(null);
-              setTick((value) => value + 1);
+              refresh();
             }}
             className={`h-9 shrink-0 rounded-lg border px-3 text-xs md:h-8 md:px-2.5 ${
               anchor === null

@@ -431,6 +431,14 @@ Rules that are easy to get wrong and are pinned by tests:
   mid-JSON and the operator was told the model "did not answer in a shape this
   could use" — a truncation reported as a misunderstanding. Three request
   builders share one constant, and a test pins them together.
+- **`enabled` is the first control on every service, and is called "Project
+  enabled".** It is the highest level of control on a row — off means nothing
+  scheduled goes out, whatever the switches below say — so reading it after the
+  company, or four sections down, invites the reading that it governs only what
+  surrounds it. Subcon had it inside "Scheduled reports" AND labelled
+  "Scheduled reports", which said outright that it was about reports; since
+  5df3928 it gates the nightly housekeeping report too. A test pins the
+  position, the single placement and the label across all seven.
 - **A default that flips is a doc change with no schema change.** 833ab88 made
   issue-chaser's `scheduled` default to `true`, so `{}` is now a live scheduled
   run. No column moved, so nothing here noticed, and help written three days

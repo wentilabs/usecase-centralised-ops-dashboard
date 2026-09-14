@@ -708,8 +708,13 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // gated by `project.enabled !== false` and each falling back to the same
     // outbound group.
     enabled: {
-      label: "Scheduled reports",
-      help: "Gates outbound delivery of both morning reports, but does not select them — each is its own opt-in below, and with both off this being on sends nothing. Intake continues either way; this is not a master switch (INV-HK-01).",
+      label: "Project enabled",
+      // It was labelled "Scheduled reports", inside a group of the same name,
+      // which read as a switch about reports — and since 5df3928 it gates the
+      // nightly housekeeping report too, so that reading cost more than it
+      // used to. The old help also led with "this is not a master switch",
+      // which is true of intake and false of everything that sends.
+      help: "Nothing scheduled goes out while this is off — neither morning report, and not the nightly housekeeping report either. It does not SELECT the reports: each is its own opt-in below, so this being on with all of them off sends nothing. Housekeeping intake and state processing continue regardless, which is the one thing it does not govern (INV-HK-01).",
     },
     // Each report is an explicit opt-in: the service checks
     // `config[column] === true`, so off is the safe state and a project can be
@@ -1035,7 +1040,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
  */
 export const GROUPS: Record<string, FieldGroup[]> = {
   wbgt: [
-    { title: "Status", fields: ["company", "enabled", "source_type", "timezone"] },
+    { title: "Status", fields: ["enabled", "company", "source_type", "timezone"] },
     {
       title: "Cadences",
       fields: [
@@ -1085,7 +1090,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
     },
   ],
   noise: [
-    { title: "Status", fields: ["company", "enabled", "source_type", "timezone"] },
+    { title: "Status", fields: ["enabled", "company", "source_type", "timezone"] },
     // Each cadence keeps its own flag, format and window together, so turning
     // one off collapses everything that belongs to it.
     {
@@ -1137,7 +1142,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
   haze: [
     {
       title: "Status",
-      fields: ["company", "enabled", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
+      fields: ["enabled", "company", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
     },
     { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
@@ -1149,7 +1154,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   lightning: [
-    { title: "Status", fields: ["company", "enabled", "timezone", "config_version"] },
+    { title: "Status", fields: ["enabled", "company", "timezone", "config_version"] },
     { title: "Site", fields: ["site_address", "latitude", "longitude", "site_extent_radius_m"] },
     { title: "🔴 Red threshold", fields: ["red_radius_m", "red_dwell_seconds", "red_detection_types"] },
     {
@@ -1175,7 +1180,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   ailytics: [
-    { title: "Status", fields: ["company", "enabled", "timezone"] },
+    { title: "Status", fields: ["enabled", "company", "timezone"] },
     { title: "Telegram source", fields: ["telegram_chat_id", "upstream_bot_username", "expected_chat_title"] },
     { title: "Google Sheet", fields: ["spreadsheet_id", "safety_sheet_tab", "activity_history_tab"] },
     {
@@ -1194,7 +1199,11 @@ export const GROUPS: Record<string, FieldGroup[]> = {
   ],
 
   subcon: [
-    { title: "Project", fields: ["company", "project_code"] },
+    // `enabled` leads, here and in every other service: it is the highest
+    // level of control on the row, and reading it after the company — or, as
+    // it was, four sections down inside "Scheduled reports" — invites the
+    // reading that it governs only what surrounds it.
+    { title: "Project", fields: ["enabled", "company", "project_code"] },
     // Renamed from "Intake": the group list in here is now a destination too,
     // so filing it under intake alone understated what editing it does.
     { title: "Housekeeping", fields: ["enable_housekeeping", "safety_group_ids"] },
@@ -1205,7 +1214,6 @@ export const GROUPS: Record<string, FieldGroup[]> = {
     {
       title: "Scheduled reports",
       fields: [
-        "enabled",
         "enable_activity_summary",
         "enable_manpower_summary",
         "manpower_activity_outbound_group_id",
@@ -1220,7 +1228,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
     { title: "Mutes", fields: ["remove_sunday_notifications", "remove_ph_notifications"] },
   ],
   issueChaser: [
-    { title: "Status", fields: ["company", "enabled", "timezone"] },
+    { title: "Status", fields: ["enabled", "company", "timezone"] },
     { title: "Safety sheet", fields: ["safety_sheet_id"] },
     {
       title: "Chaser styles",

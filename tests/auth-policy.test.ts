@@ -2484,3 +2484,27 @@ test("a project fed only by external Telegram is working, not idle", () => {
     "a disabled project is not working",
   );
 });
+
+test("`enabled` is the first control on every service", () => {
+  // It is the highest level of control on a row — off means nothing goes out,
+  // whatever the switches below say. Subcon had it four sections down inside
+  // "Scheduled reports", labelled "Scheduled reports", which read as a switch
+  // about reports; since 5df3928 it gates the nightly housekeeping report too.
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: true };
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  for (const service of SERVICE_KEYS) {
+    const columns = (GROUPS[service] ?? []).flatMap((group) => group.fields);
+    const spec = buildFieldSpec(
+      service,
+      Object.fromEntries(columns.map((column) => [column, column === "enabled" ? bool : text])),
+    );
+    const first = spec.groups[0];
+    assert.ok(first, `${service} renders no groups`);
+    assert.equal(first.fields[0], "enabled", `${service} opens with ${first.fields[0]}, not enabled`);
+    // And exactly once, so no section can claim it as its own.
+    const placements = spec.groups.filter((group) => group.fields.includes("enabled"));
+    assert.equal(placements.length, 1, `${service} places enabled in ${placements.length} groups`);
+    // Named for the row, not for whatever surrounds it.
+    assert.equal(spec.fields.enabled.label, "Project enabled", `${service} calls it something else`);
+  }
+});

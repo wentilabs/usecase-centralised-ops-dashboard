@@ -303,9 +303,9 @@ generic modules behind a small façade. Card summaries now separate group
 resolution, schedules, pills, search, links, emphasis, and diffs. Each service
 owns its pill provider and its schedule/cadence provider; shared card helpers
 contain cross-service mechanics only. Chat planning now separates its proposal
-model and language/model-output interpretation from the deterministic planner;
-the remaining high context pressure is in estate resolution and the Lightning
-map. Live
+model, language/model-output interpretation, deterministic estate resolution
+and draft construction, and prompt rendering behind a compatibility façade.
+The remaining high context pressure is in the Lightning map. Live
 introspection remains the existence/type/default authority while
 contracts provide meaning, ownership, and options. The dashboard must adapt to
 historical service schemas rather than force runtime renames.
@@ -321,9 +321,10 @@ historical service schemas rather than force runtime renames.
 
 Keep the Next.js/TypeScript base. Field semantics are now split per service and
 service/SQL contracts have a controlled immutable refresh/check command, and
-card pills plus schedule/cadence summaries are service-owned. Next, split model
-interpretation from deterministic proposal execution; and decompose the map by
-state/geometry/loading/presentation. Never let a model write directly.
+card pills plus schedule/cadence summaries are service-owned. Model
+interpretation is also separated from deterministic proposal execution. Next,
+decompose the map by state/geometry/loading/presentation. Never let a model
+write directly.
 
 ## J. Concrete follow-up actions
 

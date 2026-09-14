@@ -17,6 +17,9 @@ contract test. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 - **[AGENT_ACCESS.md](./AGENT_ACCESS.md)** — the OpenAPI + MCP surface, tokens
   and scopes, with worked examples.
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Amplify.
+- **[docs/SERVICE_FAMILY_ARCHITECTURE.md](./docs/SERVICE_FAMILY_ARCHITECTURE.md)** —
+  compatibility rules and the incremental TypeScript architecture shared by
+  HALO and all seven services.
 
 ## Run locally
 

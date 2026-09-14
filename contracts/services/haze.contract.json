@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "service": {
+    "key": "haze",
+    "displayName": "Haze"
+  },
+  "runtime": {
+    "handler": "index.handler",
+    "language": "javascript",
+    "moduleFormat": "commonjs"
+  },
+  "routes": [
+    { "method": "POST", "path": "/api/haze-ingest", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/haze-hourly", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/haze-kickoff", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/haze-retry", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/haze-report-now", "kind": "operator", "authentication": "none" },
+    { "method": "GET", "path": "/api/haze-readings", "kind": "read", "authentication": "none" }
+  ],
+  "configuration": {
+    "schema": "haze",
+    "table": "haze_project_configs",
+    "identityColumn": "project_code",
+    "fields": {
+      "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Uppercase project identity; never changed after creation." },
+      "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; Haze runtime behavior does not read it." },
+      "site_address": { "label": "Site address", "group": "identity", "mutable": true, "role": "configuration", "help": "Human-readable location; it does not select the NEA region." },
+      "latitude": { "label": "Latitude", "group": "identity", "mutable": true, "role": "configuration", "help": "Singapore site latitude used for onboarding and display, not PSI selection." },
+      "longitude": { "label": "Longitude", "group": "identity", "mutable": true, "role": "configuration", "help": "Singapore site longitude used for onboarding and display, not PSI selection." },
+      "nea_region": { "label": "NEA region", "group": "behavior", "mutable": true, "role": "configuration", "help": "Explicit regional PSI source; coordinates do not change it.", "options": ["north", "south", "east", "west", "central"] },
+      "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "HTTPS listener endpoint; mention delivery derives the mentions endpoint from it." },
+      "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Required and non-blank before the project can be enabled." },
+      "wa_group_ids": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations; required and non-blank before enablement." },
+      "alert_only_when_at_least": { "label": "Minimum alert band", "group": "behavior", "mutable": true, "role": "policy-selector", "help": "Hourly alert floor; null and good both send every band.", "options": ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"] },
+      "poc_phone_numbers": { "label": "POC phone numbers", "group": "mentions", "mutable": true, "role": "configuration", "help": "Comma-separated international numbers used only for opted-in mentions." },
+      "poc_alert_wa_groups": { "label": "POC mention groups", "group": "mentions", "mutable": true, "role": "configuration", "help": "Only these destination groups receive mentions; blank fails closed to no mentions." },
+      "enable_poc_mentions": { "label": "Mention POCs", "group": "mentions", "mutable": true, "role": "feature-flag", "help": "Enables severity-gated mentions without changing ordinary delivery." },
+      "poc_mentions_at_least": { "label": "Minimum mention band", "group": "mentions", "mutable": true, "role": "policy-selector", "help": "Independent severity floor for POC mentions.", "options": ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"] },
+      "advisory_format": { "label": "Advisory format", "group": "behavior", "mutable": true, "role": "renderer-selector", "help": "Named message strategy; an unknown value is rejected rather than silently defaulted.", "options": ["default", "wohhup"] },
+      "enabled": { "label": "Project enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Master Haze processing switch; the database requires complete delivery configuration before enabling." },
+      "four_hourly": { "label": "Two-hourly override", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Historical column name: guarantees 08:00–20:00 two-hourly slots that bypass band and working-hour gates, but not calendar mutes." },
+      "working_hours_start_hhmm": { "label": "Working-hours start", "group": "schedule", "mutable": true, "role": "configuration", "help": "HHMM start; must be set together with the end." },
+      "working_hours_end_hhmm": { "label": "Working-hours end", "group": "schedule", "mutable": true, "role": "configuration", "help": "Exclusive HHMM end; an end before start wraps overnight." },
+      "remove_sunday_notifications": { "label": "Mute Sundays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses scheduled notifications on Singapore Sundays; report-now ignores it." },
+      "remove_ph_notifications": { "label": "Mute public holidays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses scheduled notifications on configured Singapore public holidays; report-now ignores it." },
+      "timezone": { "label": "Timezone", "group": "schedule", "mutable": true, "role": "configuration", "help": "Database-constrained to Asia/Singapore." },
+      "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
+      "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned optimistic-concurrency timestamp." }
+    },
+    "constraints": [
+      { "name": "haze_enabled_delivery_check", "help": "An enabled row requires an HTTPS lambda_url and non-blank instance_name, client_id, and wa_group_ids." },
+      { "name": "haze_working_hours_check", "help": "Working-hours start and end must both be null or both valid, unequal HHMM values." }
+    ]
+  }
+}

@@ -1,4 +1,5 @@
 import type { ServiceKey } from "./services";
+import { contractFieldFor, contractOptionsFor, contractReadonlyFields } from "./service-contracts";
 
 export type FieldWidget =
   | "toggle"
@@ -1292,14 +1293,15 @@ export function buildFieldSpec(
   usecase: ServiceKey | string,
   introspected: Record<string, IntrospectedColumn>,
 ): ServiceFieldSpec {
-  const readonly = new Set(READONLY[usecase] || []);
-  const checkEnums = CHECK_ENUMS[usecase] || {};
+  const readonly = new Set([...(READONLY[usecase] || []), ...contractReadonlyFields(usecase)]);
+  const checkEnums = { ...contractOptionsFor(usecase), ...(CHECK_ENUMS[usecase] || {}) };
   const hints = FIELDS[usecase] || {};
   const groups = GROUPS[usecase] || [];
 
   const fields: Record<string, FieldSpec> = {};
   for (const [name, col] of Object.entries(introspected)) {
     const hint = hints[name] || {};
+    const contractHint = contractFieldFor(usecase, name);
     const options = col.enum || checkEnums[name] || null;
     let widget: FieldWidget | undefined = hint.widget;
     if (!widget) {
@@ -1310,8 +1312,8 @@ export function buildFieldSpec(
     }
     fields[name] = {
       name,
-      label: hint.label || name,
-      help: hint.help || "",
+      label: hint.label || contractHint?.label || name,
+      help: hint.help || contractHint?.help || "",
       type: col.type,
       widget,
       options,

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "services": {
+    "haze": {
+      "repository": "wentilabs/usecase-haze-alerts",
+      "branch": "critical-refactor-for-maintainability",
+      "commit": "c13418c0da256739a5165f80ac65d96323dd623f",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/haze.contract.json"
+    }
+  }
+}

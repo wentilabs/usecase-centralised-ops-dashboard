@@ -7,6 +7,7 @@
     "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": false,
     "types": [
@@ -24,6 +25,7 @@
     "lib/route-policy.ts",
     "lib/services.ts",
     "lib/field-spec.ts",
+    "lib/service-contracts.ts",
     "lib/card-summary.ts",
     "lib/jobs.ts",
     "lib/meter-selection.ts",

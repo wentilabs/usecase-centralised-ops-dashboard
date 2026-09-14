@@ -819,11 +819,11 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "P1 every 3 hours, P2 daily, P3 weekly — all round the clock by default. The old fixed 07:00–19:00 hours were retired when per-priority send windows became configurable; where those columns exist they appear here, and a due time outside a set window waits for the next in-window tick. Cannot be turned on until Project enabled is on.",
+      help: "P1 every 3 hours, P2 daily, P3 weekly — all round the clock by default. The old fixed 07:00–19:00 hours were retired when per-priority send windows became configurable; where those columns exist they appear here, and a due time outside a set window waits for the next in-window tick.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
-      help: "09:00 and 21:00 SGT. Issues opened today and still open — deliberately does not chase older ones. Cannot be turned on until Project enabled is on.",
+      help: "Issues opened today and still open — deliberately does not chase older ones. When it runs is set by Snapshot schedule below, which every project was migrated to with its old 09:00 and 21:00 times.",
     },
     // Each style's own settings sit directly under it and are hidden until the
     // style is on, so the group reads as three cadences rather than eleven
@@ -833,7 +833,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     // four-character cap would silently truncate the value already stored.
     include_days_before_snapshot: {
       label: "Snapshot lookback (days)",
-      help: "How many earlier SGT dates the snapshot also covers. 0 — the default — is today only. A request may override it per call with `include_days_before`; this is the standing value. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
+      help: "How many earlier SGT dates a MANUAL snapshot covers; 0 is today only. A scheduled run ignores this and uses the lookback on the matching Snapshot schedule entry instead, so this is the value for a one-off call and for `include_days_before` to override. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
       showIf: { field: "same_day_open_snapshot_enabled", equals: true },
     },
     severity_p1_window_start: {
@@ -876,7 +876,7 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
     },
     summary_days: {
       label: "Summary window (days)",
-      help: "How many consecutive SGT dates each summary covers, counting the end date itself — so 5, the default, is today plus the four before it. Shared by both summaries. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
+      help: "How many consecutive SGT dates a MANUAL summary covers, counting the end date itself — 5 is today plus the four before it. Shared by both summaries. A scheduled run ignores this and uses the lookback on the matching schedule entry, plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
       showIf: {
         anyOf: [
           { field: "daily_safety_summary_enabled", equals: true },
@@ -920,6 +920,20 @@ export const FIELDS: Record<string, Record<string, Partial<FieldSpec>>> = {
       // the flag meant the only way to set it was to turn the report on first,
       // which sends it to the fallback in the meantime.
       help: "Where both past-days summaries go when they are on. Blank falls back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
+    },
+    // Text, not `csv`: the separator is `;` and `coerceValue` would rewrite a
+    // comma list into its own shape and destroy the value.
+    same_day_open_snapshot_schedule: {
+      label: "Snapshot schedule",
+      help: "When the same-day snapshot runs, and how far back each run looks. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+    },
+    daily_safety_summary_schedule: {
+      label: "Summary schedule",
+      help: "When the plain past-days summary runs, and how many dates each run covers. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+    },
+    daily_safety_company_summary_schedule: {
+      label: "Company summary schedule",
+      help: "When the by-company summary runs, and how many dates each run covers. Separate from the plain summary's schedule, so the two can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. Applies to the scheduled invocation only — a manual call sends once and takes its window from the number below. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
     },
     novade_name_list_check_whatsapp_group_ids: {
       label: "Reminder destination",
@@ -1203,6 +1217,7 @@ export const GROUPS: Record<string, FieldGroup[]> = {
         "severity_p2_p3_window_start",
         "severity_p2_p3_window_end",
         "same_day_open_snapshot_enabled",
+        "same_day_open_snapshot_schedule",
         "include_days_before_snapshot",
       ],
     },
@@ -1210,9 +1225,11 @@ export const GROUPS: Record<string, FieldGroup[]> = {
       title: "Daily summaries",
       fields: [
         "daily_safety_summary_enabled",
+        "daily_safety_summary_schedule",
         "daily_safety_company_summary_enabled",
-        "safety_summary_whatsapp_group_ids",
+        "daily_safety_company_summary_schedule",
         "summary_days",
+        "safety_summary_whatsapp_group_ids",
       ],
     },
     // Its own section: one reads the Name List and one writes to it, and neither

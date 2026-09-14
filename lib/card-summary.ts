@@ -336,13 +336,16 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (config.same_day_open_snapshot_enabled) {
-      const lookback = Number(config.include_days_before_snapshot ?? 0);
+      // The schedule decides both when it runs and how far each run looks
+      // back; `include_days_before_snapshot` is only the manual-call value now.
+      const schedule = reportSchedule(config.same_day_open_snapshot_schedule);
+      const lookback = schedule.lookback ?? Number(config.include_days_before_snapshot ?? 0);
       // The exclusion list belongs on this clause and no other: it narrows the
       // snapshot alone, so putting it in the shared suffix would read as a
       // project-wide mute.
       const excluded = splitList(config.exclude_whatsapp_group_ids).length;
       parts.push(
-        "same-day open snapshot at 09:00 and 21:00" +
+        `same-day open snapshot${schedule.times.length ? ` at ${schedule.times.join(" and ")}` : ""}` +
           (Number.isFinite(lookback) && lookback > 0
             ? ` covering the previous ${lookback} day${lookback === 1 ? "" : "s"} too`
             : "") +
@@ -374,10 +377,21 @@ export function firesAt(service: ServiceKey, config: ProjectConfigRow): string {
       );
     }
     if (summaries.length) {
-      const days = Number(config.summary_days ?? 5);
+      // Both summaries have their own schedule and can run at different hours.
+      // Named once when they agree, which is every project today.
+      const plans = [
+        config.daily_safety_summary_enabled ? reportSchedule(config.daily_safety_summary_schedule) : null,
+        config.daily_safety_company_summary_enabled
+          ? reportSchedule(config.daily_safety_company_summary_schedule)
+          : null,
+      ].filter((plan): plan is { times: string[]; lookback: number | null } => Boolean(plan));
+      const times = [...new Set(plans.flatMap((plan) => plan.times))];
+      const lookbacks = [...new Set(plans.map((plan) => plan.lookback))];
+      const scheduled = lookbacks.length === 1 && lookbacks[0] !== null ? lookbacks[0] + 1 : null;
+      const days = scheduled ?? Number(config.summary_days ?? 5);
       const span = Number.isFinite(days) && days > 0 ? days : 5;
       clauses.push(
-        `${summaries.join(" and ")} at 08:00 over ${span} day${span === 1 ? "" : "s"}` +
+        `${summaries.join(" and ")}${times.length ? ` at ${times.join(" and ")}` : ""} over ${span} day${span === 1 ? "" : "s"}` +
           // Never the originating group, and since 807adfc not necessarily the
           // main list either — the summaries have their own destination, with
           // the main list as the fallback.
@@ -821,6 +835,33 @@ export function cardEmphasis(service: ServiceKey, config: ProjectConfigRow): Car
 export function emphasisRank(service: ServiceKey, config: ProjectConfigRow): number {
   const order: Record<CardEmphasis, number> = { active: 2, manual: 1, idle: 0 };
   return order[cardEmphasis(service, config)];
+}
+
+/**
+ * A report's hourly schedule, as the card says it.
+ *
+ * `HH00,lookback` entries separated by `;`, added by the issue-chaser repo's
+ * ece9060 and backfilled from the old fixed times — so every project reads the
+ * same as before until someone changes one, and ten of them already have. The
+ * card used to write "09:00 and 21:00" and "at 08:00" as literals, which stopped
+ * being true for those ten the moment the migration ran.
+ *
+ * Parsing mirrors `lib/hourly-schedule.js`: minutes are always `00` and only
+ * the hour is matched, so an entry that does not fit the shape is one the
+ * service will refuse. Those are dropped here rather than guessed at, and the
+ * clause falls back to naming no time at all.
+ */
+export function reportSchedule(value: unknown): { times: string[]; lookback: number | null } {
+  const entries = String(value ?? "")
+    .split(";")
+    .map((part) => /^(2[0-3]|[01]\d)00\s*,\s*(\d+)$/.exec(part.trim()))
+    .filter((match): match is RegExpExecArray => Boolean(match));
+  if (!entries.length) return { times: [], lookback: null };
+  const times = entries.map((match) => `${match[1]}:00`);
+  const lookbacks = [...new Set(entries.map((match) => Number(match[2])))];
+  // One number only when every run agrees; mixed lookbacks are reported per
+  // entry by the editor, not summarised into a figure that is true of neither.
+  return { times, lookback: lookbacks.length === 1 ? lookbacks[0] : null };
 }
 
 /**

@@ -406,6 +406,24 @@ Rules that are easy to get wrong and are pinned by tests:
   - Lightning's `red_radius_m` / `amber_radius_m` are client-approved and have
     **no default**. A row short of them is the correct answer, not a gap to
     fill.
+- **A cadence that moved into a column has to move out of the prose too.**
+  issue-chaser's ece9060 replaced three fixed times with
+  `*_schedule` columns (`HH00,lookback` entries, `;` between them, minutes
+  always `00`, matched on the SGT hour, applied only to a `scheduled: true`
+  invocation). The migration backfilled every project from its old times, so
+  nothing looked different — and ten projects have since changed, while the
+  card still wrote "09:00 and 21:00" and "at 08:00" as literals. `firesAt` now
+  reads them through `reportSchedule`. The lookback on the matching entry also
+  beats `include_days_before_snapshot` / `summary_days`, which are now the
+  MANUAL-call values; ten live projects already disagree.
+  - These columns are plain `text`, so keep them on the `text` widget:
+    `coerceValue` rewrites `csv`/`groups`/`meters` into a comma list and would
+    destroy a `;`-separated schedule.
+  - A bad entry is not a database error. Postgres stores `08:00,4` happily and
+    the service then refuses the WHOLE schedule with `invalid_project_schedule`,
+    so the report stops with only a log line. `row-rules.ts` mirrors
+    `lib/hourly-schedule.js` to catch it at save time — which is why not every
+    rule in that file is a database constraint.
 - **A report's destination sits under the switch that turns the report on.**
   Not with the other group columns: you are choosing where THIS report goes,
   and reading the two side by side is what makes the fallback legible. What

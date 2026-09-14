@@ -208,3 +208,44 @@ test("requiresEnabled, where a service declares it, matches its row rule", () =>
     "issue-chaser's constraint was dropped, so nothing should still declare it",
   );
 });
+
+test("a schedule the service would refuse is caught before it is saved", () => {
+  // issue-chaser's ece9060 moved the three report cadences into text columns.
+  // Postgres has no opinion on them — `08:00` and `0800,-1` both store fine —
+  // and the service refuses the WHOLE schedule over one bad entry, so the
+  // report stops and the only trace is an `invalid_project_schedule` log line.
+  const at = (value: string) =>
+    rowProblems("issueChaser", { same_day_open_snapshot_schedule: value }, (c) =>
+      c === "same_day_open_snapshot_schedule" ? "Snapshot schedule" : c,
+    );
+
+  assert.deepEqual(at("0900,0;2100,0"), [], "the migrated default is valid");
+  assert.deepEqual(at("0800,4"), []);
+  assert.deepEqual(at(""), [], "blank is not an error — it means no scheduled run");
+  assert.deepEqual(at("  0900 , 1 ; 2100 , 1 "), [], "spacing is tolerated, as the service tolerates it");
+
+  // A time written the way a person writes one.
+  const colon = at("09:00,0");
+  assert.match(colon[0]?.message ?? "", /"09:00,0" is not a valid entry/);
+  assert.match(colon[0]?.message ?? "", /HH00,days/);
+  assert.deepEqual(colon[0]?.columns, ["same_day_open_snapshot_schedule"]);
+
+  // Minutes that are not 00, an hour that does not exist, a missing lookback,
+  // and a negative one — all refused by `lib/hourly-schedule.js`.
+  for (const value of ["0830,0", "2400,0", "0900", "0900,-1"]) {
+    assert.equal(at(value).length, 1, `${value} must be refused`);
+  }
+
+  // One bad entry among good ones is still fatal, and only the bad one is named.
+  const mixed = at("0900,0;2500,1;2100,0");
+  assert.match(mixed[0]?.message ?? "", /"2500,1"/);
+  assert.doesNotMatch(mixed[0]?.message ?? "", /"0900,0"/);
+
+  // All three columns are covered, not just the one that was easy to reach.
+  for (const column of [
+    "daily_safety_summary_schedule",
+    "daily_safety_company_summary_schedule",
+  ]) {
+    assert.equal(rowProblems("issueChaser", { [column]: "nope" }, label).length, 1, `${column} is unchecked`);
+  }
+});

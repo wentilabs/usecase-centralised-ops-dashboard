@@ -2351,3 +2351,55 @@ test("a hinted column is placed, not left to fall through to Other", () => {
     }
   }
 });
+
+test("the card reads the report schedules instead of the times they used to be", () => {
+  // ece9060 moved the cadences into columns and backfilled them from the old
+  // fixed times, so every project read the same as before — but ten of them
+  // have since been changed, and the card was still writing "09:00 and 21:00"
+  // and "at 08:00" as literals.
+  const snapshot = (extra: Record<string, unknown>) =>
+    firesAt("issueChaser", { same_day_open_snapshot_enabled: true, ...extra });
+
+  assert.match(
+    snapshot({ same_day_open_snapshot_schedule: "0900,0;2100,0" }),
+    /snapshot at 09:00 and 21:00/,
+  );
+  // A project that moved its runs. Nothing else in HALO would have shown this.
+  assert.match(snapshot({ same_day_open_snapshot_schedule: "0700,0;1900,0" }), /at 07:00 and 19:00/);
+
+  // The lookback comes from the schedule entry, not from the standing column —
+  // and they disagree on ten live projects, where the column is 0 and the
+  // schedule says 1.
+  assert.match(
+    snapshot({ same_day_open_snapshot_schedule: "0900,1;2100,1", include_days_before_snapshot: 0 }),
+    /covering the previous 1 day too/,
+  );
+  // Entries that disagree are not averaged into a number true of neither; the
+  // times are still named.
+  // Ordered with the NON-zero entry first, so taking "the first one" would
+  // produce a visible wrong answer rather than the same answer by luck.
+  const mixed = snapshot({ same_day_open_snapshot_schedule: "0900,3;2100,0" });
+  assert.match(mixed, /at 09:00 and 21:00/);
+  assert.doesNotMatch(mixed, /covering the previous/);
+  // An unparseable schedule names no time rather than inventing one.
+  assert.doesNotMatch(snapshot({ same_day_open_snapshot_schedule: "whenever" }), /\bat \d/);
+
+  // Summaries: each has its own schedule and they can run at different hours.
+  const both = firesAt("issueChaser", {
+    daily_safety_summary_enabled: true,
+    daily_safety_company_summary_enabled: true,
+    daily_safety_summary_schedule: "0800,4",
+    daily_safety_company_summary_schedule: "1700,4",
+  });
+  assert.match(both, /at 08:00 and 17:00/);
+  assert.match(both, /over 5 days/, "lookback 4 plus the current date");
+  // A disabled report's schedule is not read — naming an hour nothing fires at
+  // is worse than naming none.
+  const plainOnly = firesAt("issueChaser", {
+    daily_safety_summary_enabled: true,
+    daily_safety_summary_schedule: "0800,0",
+    daily_safety_company_summary_schedule: "1700,4",
+  });
+  assert.match(plainOnly, /at 08:00 over 1 day/);
+  assert.doesNotMatch(plainOnly, /17:00/);
+});

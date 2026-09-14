@@ -24,6 +24,12 @@ import type { ServiceKey } from "./services";
  * same sentence, for the case where Postgres rejects something this file has
  * not mirrored or has mirrored wrongly.
  *
+ * Not every rule here is a database constraint. A service that refuses a value
+ * at run time leaves the same operator in the same place — a saved row and a
+ * report that quietly stops — so those are checked here too, and `constraint`
+ * names the service check rather than a Postgres one. `explainConstraint` will
+ * never match those names, which is correct: Postgres cannot raise them.
+ *
  * **This is a mirror, and mirrors drift.** It is the same bargain already made
  * by `CHECK_ENUMS`, `codePattern` and the range checks: getting one wrong
  * costs a rejected save, never bad data, because the database still has the
@@ -249,6 +255,41 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
         return said.length ? said.join(" ") : null;
       },
     },
+    /**
+     * The three report schedules, mirroring `lib/hourly-schedule.js`.
+     *
+     * Not a database constraint — the column is plain text and Postgres will
+     * store `08:00` or `0800,-1` happily. The service parses it on every
+     * scheduled invocation and a single bad entry fails the whole run with
+     * `invalid_project_schedule`, so the report stops and the only trace is a
+     * log line. Caught here, the save says which entry and why.
+     */
+    ...(
+      [
+        ["same_day_open_snapshot_schedule", "Snapshot schedule"],
+        ["daily_safety_summary_schedule", "Summary schedule"],
+        ["daily_safety_company_summary_schedule", "Company summary schedule"],
+      ] as const
+    ).map(([column]) => ({
+      constraint: `issue_chaser_${column}_format`,
+      columns: [column],
+      check: (row: Row, label: (column: string) => string) => {
+        const text = String(row[column] ?? "").trim();
+        if (!text) return null;
+        const bad = text
+          .split(";")
+          .map((part) => part.trim())
+          .filter((part) => part && !/^(2[0-3]|[01]\d)00\s*,\s*\d+$/.test(part));
+        if (!bad.length) return null;
+        return (
+          `${label(column)}: ${bad.map((part) => `"${part}"`).join(", ")} ` +
+          `${bad.length === 1 ? "is not" : "are not"} a valid entry. Each one is an hour and a lookback — ` +
+          `\`HH00,days\`, minutes always 00 — and several are separated by semicolons, as in ` +
+          `\`0900,0;2100,0\`. The service refuses the whole schedule over one bad entry, so the report ` +
+          `would stop sending.`
+        );
+      },
+    })),
     {
       constraint: "issue_chaser_p1_window_check",
       columns: ["severity_p1_window_start", "severity_p1_window_end"],

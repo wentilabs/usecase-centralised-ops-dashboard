@@ -42,7 +42,7 @@ is not a privileged second implementation.
 | UI routes and server handlers | `app/` | Keep handlers thin; call application modules. |
 | Reusable UI | `components/` | Split large service-specific views from shared primitives. |
 | Schema/config repository | `lib/config-repository.ts`, `lib/supabase/` | Preserve live introspection and server-only secrets. |
-| Field semantics | `lib/field-spec.ts` | Split by service, then merge service-contract snapshots. |
+| Field semantics | `lib/field-spec/providers/`, merged by `lib/field-spec.ts` | Each service owns one semantic provider; the merger combines it with live introspection and service-contract snapshots. |
 | Runtime-state audit filtering | `lib/job-state-policy.ts` | Typed pure policy shared by field read-only rules and history display. |
 | Validation/coercion | `lib/config-values.ts`, constraint modules | Pure and exhaustive. |
 | Auth/route policy | `lib/auth-policy.ts`, `lib/route-policy.ts` | Pure policy with Node-side enforcement. |
@@ -81,8 +81,8 @@ is not a privileged second implementation.
 
 ## Highest-priority decomposition
 
-1. Split `field-spec.ts` into one semantic provider per service plus a small
-   merger and fallback.
+1. **Complete:** field semantics live in one provider per service behind a small
+   merger and live-introspection fallback.
 2. Split `onboarding.ts` into service definitions, validation, row planning,
    and persistence plans.
 3. Split `chat-onboard.ts` into interpretation, deterministic resolution, and
@@ -91,7 +91,8 @@ is not a privileged second implementation.
    summaries.
 5. Decompose `LightningMap.tsx` into map state, geometry, data loading, and
    presentational components while retaining pure geometry tests.
-6. Add versioned service-contract snapshots and a controlled refresh script.
+6. **Complete:** versioned service-contract and SQL-evolution snapshots share
+   one immutable upstream revision and a controlled refresh/check script.
 
 ## Verification
 

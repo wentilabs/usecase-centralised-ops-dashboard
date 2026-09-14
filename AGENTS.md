@@ -47,9 +47,10 @@ a write, use a project with `enabled = false` and revert it afterwards.
 
 **The schema is introspected, not hardcoded.** `lib/config-repository.ts` reads
 PostgREST's OpenAPI document for column types, defaults and pg-enum values.
-`lib/field-spec.ts` is only a *human overlay* on top: labels, help text,
-grouping, conditional visibility, and the allowed values of CHECK-constrained
-columns (introspection cannot see those). A column added to Supabase is
+`lib/field-spec/providers/<service>.ts` is only a *human overlay* on top:
+labels, help text, grouping, conditional visibility, and the allowed values of
+CHECK-constrained columns (introspection cannot see those). `lib/field-spec.ts`
+merges that provider with introspection. A column added to Supabase is
 therefore editable immediately — it simply appears under "Other" until someone
 gives it a label. **Do not replace this with a hardcoded field list**; the whole
 point is that the alerts repos add columns often and the dashboard must not
@@ -130,7 +131,7 @@ would drop to dashboard-only edits.
   scrim, a MANUAL badge and a middle sort rank. `hasCadence()` stays a pure "is
   anything scheduled" test; use `emphasisRank()` for ordering.
 - **Chat ids are chosen by name, stored as ids.** Any column holding WhatsApp
-  group ids gets `widget: "groups"` (see `lib/field-spec.ts`), which renders the
+  group ids gets `widget: "groups"` in its service field provider, which renders the
   `GroupPicker`: type a group name, pick from the matches, get a pill. What is
   written is unchanged — the same comma-separated id list every service already
   parses. Names come from `ops.whatsapp_group_names`; a column using the picker
@@ -295,10 +296,11 @@ order:
 2. `lib/services.ts` — the `SERVICES` entry and the `ServiceKey` union. Add
    `shortLabel` if the full name will not fit beside a project code; there is a
    12-character ceiling on the card tag, enforced by a test.
-3. `lib/field-spec.ts` — `READONLY` (identity + audit stamps), `CHECK_ENUMS`
-   (values behind a CHECK rather than a pg enum), `FIELDS` (labels, widgets,
-   `showIf`), `GROUPS` (order). Anything unlisted lands under "Other". Include
-   `company` in both, or it lands there too.
+3. `lib/field-spec/providers/<service>.ts` — `readonlyFields` (identity + audit
+   stamps), `checkEnums` (values behind a CHECK rather than a pg enum), `fields`
+   (labels, widgets, `showIf`), and `groups` (order). Register the provider in
+   `lib/field-spec/providers/index.ts`. Anything unlisted lands under "Other".
+   Include `company` in both fields and groups, or it lands there too.
 4. `lib/card-summary.ts` — `GROUP_COLUMNS` (which columns hold chat ids, and
    what each is for), `pillsFor`, `firesAt`, `hasCadence`, and `autoLinks` if it
    derives sheet links.
@@ -330,8 +332,9 @@ so prefer `allSettled` for anything that fans out across services.
 
 ## Editing the field spec
 
-Adding a column to a service means adding an entry to `FIELDS[service]` and
-listing it in `GROUPS[service]` in `lib/field-spec.ts`. Useful keys:
+Adding a column to a service means editing only that service's file under
+`lib/field-spec/providers/`: add an entry to `fields` and list it in `groups`.
+Useful keys:
 
 - `hidden` — never render (identity, audit stamps, job-owned runtime state)
 - `showIf: { field, equals }` — render only while another field holds a value;
@@ -655,8 +658,8 @@ Two things to keep right when adding one:
 `tests/message-previews.test.ts` asserts the inventory explicitly rather than deriving
 it. That is deliberate: a new formatter value ships in a service repo, the dropdown
 picks it up from the live schema automatically, and the panel would silently not list
-it. A second test reads the formatter-shaped keys back out of `FIELDS` in
-`lib/field-spec.ts` and fails unless each one has a preview or an entry in that file's
+it. A second test reads the formatter-shaped keys from the exported semantic
+model and fails unless each one has a preview or an entry in that test's
 `KNOWN_WITHOUT_PREVIEW` map — so the trigger is "someone added the field", which is
 exactly when the preview should be written. Record a gap there with its reason rather
 than inventing an example; a stale entry fails too, once the preview exists.

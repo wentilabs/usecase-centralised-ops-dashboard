@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { deliveryGroups, pillsFor } from "../lib/card-summary";
+import { COMPANIES } from "../lib/field-spec";
 
 /**
  * Guards the mobile layer.
@@ -208,9 +209,7 @@ test("every company in the dropdown has an asset that exists on disk", async () 
   // A missing file renders a broken image, not a fallback — the fallback branch
   // only catches a company with no entry at all. So the files are checked.
   const mark = await source("components/CompanyMark.tsx");
-  const spec = await source("lib/field-spec.ts");
-  const companies = [...spec.matchAll(/COMPANIES = \[([^\]]+)\]/g)][0]?.[1] ?? "";
-  const names = [...companies.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const names = [...COMPANIES];
   assert.deepEqual(names, ["Wohhup", "Obayashi", "PentaOcean"], "the dropdown list");
 
   const assets = Object.fromEntries(

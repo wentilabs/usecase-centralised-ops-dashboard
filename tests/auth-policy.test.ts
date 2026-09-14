@@ -1604,8 +1604,13 @@ test("an invariant id cited in help text names a real invariant in that service'
     "INV-ICH": "usecase-issue-chaser",
   };
 
-  const source = await readFile(resolve(process.cwd(), "lib/field-spec.ts"), "utf8");
-  const cited = [...new Set(source.match(/INV-[A-Z]+-\d+/g) ?? [])];
+  const cited = [
+    ...new Set(
+      Object.values(FIELDS)
+        .flatMap((fields) => Object.values(fields))
+        .flatMap((field) => field.help?.match(/INV-[A-Z]+-\d+/g) ?? []),
+    ),
+  ];
   assert.ok(cited.length >= 5, `expected the spec to cite some invariants, found ${cited.length}`);
 
   const agents = new Map<string, string>();
@@ -1630,8 +1635,7 @@ test("an invariant id cited in help text names a real invariant in that service'
 
   // And the citation has to sit on the service it belongs to. Existence alone
   // let INV-LTG-10 be cited on a subcon field and pass, because that id is real
-  // — just not lightning's business to explain a housekeeping column. Attributed
-  // by slicing the FIELDS blocks, which are the service keys at two-space indent.
+  // — just not lightning's business to explain a housekeeping column.
   const PREFIX: Record<string, string> = Object.fromEntries(
     Object.entries(OWNER).map(([prefix, repo]) => [repo, prefix]),
   );
@@ -1645,19 +1649,13 @@ test("an invariant id cited in help text names a real invariant in that service'
     issueChaser: "usecase-issue-chaser",
   };
 
-  const fieldsStart = source.indexOf("const FIELDS:");
-  assert.notEqual(fieldsStart, -1, "FIELDS block not found — was it renamed?");
-  const fieldsBody = source.slice(fieldsStart);
-  const blocks = [...fieldsBody.matchAll(/^ {2}(\w+): \{$/gm)];
-  assert.ok(blocks.length >= 7, `expected a FIELDS block per service, found ${blocks.length}`);
-
-  for (const [index, block] of blocks.entries()) {
-    const service = block[1];
+  assert.ok(Object.keys(FIELDS).length >= 7, "expected a semantic provider per service");
+  for (const [service, fields] of Object.entries(FIELDS)) {
     const repo = SERVICE_REPO[service];
     if (!repo) continue;
-    const body = fieldsBody.slice(block.index!, blocks[index + 1]?.index ?? fieldsBody.length);
     const expected = PREFIX[repo];
-    for (const id of new Set(body.match(/INV-[A-Z]+-\d+/g) ?? [])) {
+    const ids = Object.values(fields).flatMap((field) => field.help?.match(/INV-[A-Z]+-\d+/g) ?? []);
+    for (const id of new Set(ids)) {
       assert.equal(
         id.replace(/-\d+$/, ""),
         expected,

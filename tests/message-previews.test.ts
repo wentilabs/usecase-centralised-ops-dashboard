@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewsFor } from "../lib/message-previews";
+import { FIELDS } from "../lib/field-spec";
 import type { ServiceKey } from "../lib/services";
 
 /**
@@ -20,7 +21,7 @@ import type { ServiceKey } from "../lib/services";
  * fails here until the preview is written.
  */
 
-/** Every formatter value the six services accept, as of the schema behind this build. */
+/** Every formatter value the seven services accept, as of the schema behind this build. */
 const EXPECTED: Record<string, string[]> = {
   "noise:five_min_formatter": [
     "exceedance_only",
@@ -225,36 +226,22 @@ const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
   // failed until the note came out.
 };
 
-test("every formatter field in the spec has a preview, or a recorded reason", async () => {
+test("every formatter field in the spec has a preview, or a recorded reason", () => {
   // The failure mode this closes: a formatter column is added to the field spec,
-  // the dropdown renders, and the `?` panel silently does not list it. Read from
-  // the spec source so the trigger is "someone added the field", which is exactly
-  // when the preview should be written.
-  const source = await readFile(resolve("lib/field-spec.ts"), "utf8");
-  const fieldsBlock = source.slice(
-    source.indexOf("const FIELDS:"),
-    source.indexOf("const GROUPS:"),
-  );
-
-  // Service blocks are the two-space-indented keys inside FIELDS.
-  const services = [...fieldsBlock.matchAll(/^ {2}([a-z]+): \{$/gm)];
-  assert.ok(services.length >= 6, "expected one FIELDS block per service");
+  // the dropdown renders, and the `?` panel silently does not list it. Inspect
+  // the exported model so service providers can move without weakening this
+  // coverage.
+  assert.ok(Object.keys(FIELDS).length >= 7, "expected one semantic provider per service");
 
   const missing: string[] = [];
-  services.forEach((match, index) => {
-    const service = match[1] as ServiceKey;
-    const start = match.index ?? 0;
-    const end = index + 1 < services.length ? (services[index + 1].index ?? fieldsBlock.length) : fieldsBlock.length;
-    const block = fieldsBlock.slice(start, end);
-
-    for (const field of block.matchAll(/^ {4}([a-z0-9_]*(?:formatter|_format)): \{?/gm)) {
-      const column = field[1];
+  for (const [service, fields] of Object.entries(FIELDS)) {
+    for (const column of Object.keys(fields).filter((name) => /(?:formatter|_format)$/.test(name))) {
       const key = `${service}:${column}`;
-      if (previewsFor(service, column).length) continue;
+      if (previewsFor(service as ServiceKey, column).length) continue;
       if (KNOWN_WITHOUT_PREVIEW[key]) continue;
       missing.push(key);
     }
-  });
+  }
 
   assert.deepEqual(
     missing,

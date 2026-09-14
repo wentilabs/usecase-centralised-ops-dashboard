@@ -140,8 +140,9 @@ Take a real request: *"CFC shouldn't send WBGT messages on Sundays any more."*
 5. The audit row records `agent:<name>`, the note, and the before/after.
 
 **The part that makes this work is not the protocol.** It is the help text. HALO's
-`lib/field-spec.ts` carries, for every column, a human sentence about what it does
-and what it does *not* do — and those sentences are the reason a model can map
+`lib/field-spec/providers/<service>.ts` carries, for every curated column, a
+human sentence about what it does and what it does *not* do — and those
+sentences are the reason a model can map
 "stop Sunday messages" onto one specific boolean out of forty-two, instead of
 guessing between `enabled`, `remove_sunday_notifications` and
 `site_hours_start`. Every invariant written into a repo's `AGENTS.md` and every
@@ -343,5 +344,6 @@ lands — which is a good reason to keep that help text honest.
 3. `lib/openapi.ts` — the contract
 4. `lib/mcp.ts` — the derivation, and `toCallPlan`
 5. `app/api/mcp/route.ts` — the JSON-RPC surface and the re-dispatch
-6. `lib/field-spec.ts` — the semantic layer that makes any of it usable
+6. `lib/field-spec/providers/<service>.ts` — the service-owned semantics;
+   `lib/field-spec.ts` — the merger that makes them usable
 7. `tests/openapi.test.ts`, `tests/mcp.test.ts` — what is actually enforced

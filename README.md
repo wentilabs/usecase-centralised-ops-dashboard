@@ -46,8 +46,9 @@ Set `LOCAL_AUTH_BYPASS=false` to exercise the real login flow.
 ## How it works
 
 - **Schema is introspected**, not hardcoded: PostgREST's OpenAPI doc supplies
-  column types, defaults and enum values, and `lib/field-spec.ts` adds labels,
-  grouping, conditional visibility and the values of CHECK-constrained columns.
+  column types, defaults and enum values. One file per service under
+  `lib/field-spec/providers/` adds labels, grouping, conditional visibility and
+  the values of CHECK-constrained columns; `lib/field-spec.ts` merges them.
   A column added to Supabase becomes editable immediately — it appears under
   "Other" until it is given a label.
 - **Writes are guarded**: unknown/read-only columns refused, values coerced and

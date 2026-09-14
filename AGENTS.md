@@ -411,11 +411,16 @@ Rules that are easy to get wrong and are pinned by tests:
   group lists — could only be expressed as twelve separate proposals. The model
   already receives every project with its current values, so it can read the
   table; the op just gives it somewhere to put the answer.
-  - It takes a **`service`** and the caller refuses to guess one. A project code
-    is unique only within a service: `AST` exists in five, and noise spells a
-    site `CR 106` where issue-chaser has `CR106`. Resolving codes across every
-    service in scope produced 66 edits for 13 projects and pulled in a
-    neighbouring service's row.
+  - It resolves against **one service**. A project code is unique only within
+    one: `AST` exists in five, and noise spells a site `CR 106` where
+    issue-chaser has `CR106`. Resolving codes across every service in scope
+    produced 66 edits for 13 projects and pulled in a neighbouring service's
+    row. The model names the service; when it does not, the service holding the
+    most of the named codes wins, and only a genuine tie asks.
+  - The scope handed to `bulkReply` is a deliberately broad candidate set — that
+    is by design, and `kind` only shapes the sentence. So `services` there spans
+    more than the request names, and anything resolving codes against it has to
+    narrow first.
   - It carries no `scope` and no `where` — the named projects ARE the scope — so
     it is handled before scope resolution, where the type checker insists on it.
   - A code matching no project stops the whole proposal. Applying the other

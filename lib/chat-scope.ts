@@ -743,7 +743,18 @@ export function describeScope(
   scope: Scope,
   serviceLabelFor: (service: ServiceKey) => string,
 ): string {
-  const count = "targets" in scope ? scope.targets.length : 0;
+  /**
+   * Counted within the services the sentence names, not across the candidate
+   * set. `targets` is deliberately broad — the model narrows it — but the
+   * sentence reads "all N <service> projects", and pairing a whole-estate
+   * count with one service's name produced "all 89 Issue Chaser projects"
+   * when that service has 34.
+   */
+  const named = "services" in scope ? new Set<ServiceKey>(scope.services) : null;
+  const count =
+    "targets" in scope
+      ? (named ? scope.targets.filter((target) => named.has(target.service)) : scope.targets).length
+      : 0;
   const plural = count === 1 ? "project" : "projects";
   switch (scope.kind) {
     case "projects":

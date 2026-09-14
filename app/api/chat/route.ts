@@ -354,13 +354,35 @@ async function bulkReply({
      * five edits per project and pulled in a neighbouring service's row.
      */
     const named = op.service && isServiceKey(op.service) ? op.service : null;
-    const service = named ?? (services.length === 1 ? services[0] : null);
+    /**
+     * Where the named codes actually live, when the model does not say.
+     *
+     * The scope handed in is a deliberately broad candidate set — it is the
+     * model's job to narrow it, and for this op the codes do that better than
+     * any keyword could. The service holding the most of them wins, and a tie
+     * is the only case with nothing to go on.
+     */
+    const resolveService = (): ServiceKey | null => {
+      if (named) return named;
+      if (services.length === 1) return services[0];
+      const hits = services
+        .map((key) => ({
+          key,
+          count: op.projects.filter((entry) =>
+            (rows[key] ?? []).some((row) => fold(String(row.project_code ?? "")) === fold(entry.code)),
+          ).length,
+        }))
+        .sort((a, b) => b.count - a.count);
+      if (!hits.length || !hits[0].count) return null;
+      return hits[1]?.count === hits[0].count ? null : hits[0].key;
+    };
+    const service = resolveService();
     if (!service) {
       return reply({
         message:
-          `Which service are these projects in? ${scopeLine} covers ` +
-          `${services.map((key) => SERVICES[key].label).join(", ")}, and a project code means a different ` +
-          `project in each. Name the service and ask again.`,
+          `Which service are these projects in? A project code means a different project in each, and these ` +
+          `resolve equally well in ${services.map((key) => SERVICES[key].label).join(", ")}. ` +
+          `Name the service and ask again.`,
       });
     }
 

@@ -665,3 +665,27 @@ test("set-each pairs each project with its own changes", () => {
   assert.equal(parseBulkOp({ op: "set-each" }), null);
   assert.equal(parseBulkOp({ op: "set-each", projects: [{ code: "A", changes: "nope" }] }), null);
 });
+
+test("a service scope counts its own projects, not the candidate set", () => {
+  // `targets` is deliberately broad — the model narrows it — but the sentence
+  // reads "all N <service> projects", and pairing a whole-estate count with
+  // one service's name produced "all 89 Issue Chaser projects" for a service
+  // that has 34.
+  const targets = [
+    { service: "issueChaser" as const, projectCode: "AST", rowId: "AST" },
+    { service: "issueChaser" as const, projectCode: "ZRB", rowId: "ZRB" },
+    { service: "noise" as const, projectCode: "AST", rowId: "AST" },
+    { service: "wbgt" as const, projectCode: "AST", rowId: "AST" },
+  ];
+  const line = describeScope(
+    { kind: "service", services: ["issueChaser"], targets },
+    (key) => (key === "issueChaser" ? "Issue Chaser" : key),
+  );
+  assert.match(line, /all 2 Issue Chaser projects/, `counted the whole candidate set: ${line}`);
+
+  // An estate scope names no service, so every candidate is in fact its scope.
+  assert.match(
+    describeScope({ kind: "estate", targets }, (key) => key),
+    /all 4 projects, every service/,
+  );
+});

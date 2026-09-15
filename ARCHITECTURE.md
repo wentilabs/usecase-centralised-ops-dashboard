@@ -49,7 +49,7 @@ is not a privileged second implementation.
 | Cards/search/summaries | `lib/card-summary/`, exported by `lib/card-summary.ts` | Group resolution, search, links, emphasis, and diffs have explicit owners; pills and schedule/cadence semantics are service-owned providers. |
 | Jobs/exports | `lib/jobs.ts`, export modules | Registries with exact service payload builders. |
 | Onboarding/chat planning | `lib/onboarding/providers/`, `lib/onboarding/`, `lib/chat-onboard/`, exported by `lib/chat-onboard.ts` | `interpretation.ts` constrains language/model output, `types.ts` owns proposal models, `planner.ts` resolves the estate and constructs validated drafts, and `prompt.ts` renders model context. The façade only preserves imports. |
-| Lightning evidence map | `components/LightningMap.tsx`, `components/lightning-map/`, `lib/lightning-map.ts`, `lib/slippy-map.ts` | Pure qualification/projection geometry lives in `lib/`; the detection hook owns both read-only query layers and their cache; the component owns interaction and presentation. |
+| Lightning evidence map | `components/LightningMap.tsx`, `components/lightning-map/`, `lib/lightning-map.ts`, `lib/slippy-map.ts` | Pure qualification/projection geometry lives in `lib/`; hooks own both read-only query layers, caching, and canvas drawing/hit-test coordinates; the component owns interaction and presentation. |
 | Agent contract | `lib/openapi.ts`, `lib/mcp.ts` | One OpenAPI source, mechanically mapped to tools. |
 
 ## Sources of truth
@@ -94,10 +94,10 @@ is not a privileged second implementation.
 4. **Complete:** `card-summary.ts` is a compatibility façade over named concern
    modules. Every service owns both its pill provider and its schedule/cadence
    provider; shared helpers contain formatting and cross-service mechanics only.
-5. **In progress:** qualification/projection geometry is pure and tested, and
-   detection loading/caching now lives in `components/lightning-map/`. Next
-   extract canvas drawing and gesture state from `LightningMap.tsx` before
-   splitting its presentational shell.
+5. **In progress:** qualification/projection geometry is pure and tested;
+   detection loading/caching and imperative canvas drawing now live in
+   `components/lightning-map/`. Next extract gesture state from
+   `LightningMap.tsx`, then split its presentational shell.
 6. **Complete:** versioned service-contract and SQL-evolution snapshots share
    one immutable upstream revision and a controlled refresh/check script.
 

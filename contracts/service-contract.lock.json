@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "cb5d1a5e5381e9e0d7801ea766d5fcb5f2193908",
+      "commit": "62121450dbdb92326c585a0dfb27a7bc38de7dd1",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "a44139fe22fc10a8b3413d5867c3e9a4b188bc2b",
+      "commit": "114c8c4d292572885ffbee74a2b859eff16a1022",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",

@@ -169,8 +169,13 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       title: "Hourly messages",
       fields: ["enable_hourly", "hourly_formatter", "hourly_start_hhmm", "hourly_end_hhmm", "hourly_exceedance_only", "hourly_exceeded_meters_only"],
     },
+    // Was one section called "Unique configs", which named nothing and held
+    // five separate cadences — while the 5-minute, half-hourly and hourly ones
+    // each had a section of their own. Split the way they actually differ:
+    // three periodic summaries, then the two Leq12h tables, which report a
+    // twelve-hour figure rather than summarising a window.
     {
-      title: "Unique configs",
+      title: "Summaries",
       fields: [
         "enable_three_hour_summary",
         "three_hour_formatter",
@@ -179,12 +184,16 @@ export const noiseFieldProvider: ServiceFieldProvider = {
         "morning_summary_start_hhmm",
         "enable_evening_summary",
         "evening_formatter",
-        "enable_sunday_leq12h_hourly",
-        "enable_7am_7pm_leq12hr_table",
       ],
     },
+    {
+      title: "Leq12h tables",
+      fields: ["enable_sunday_leq12h_hourly", "enable_7am_7pm_leq12hr_table"],
+    },
     { title: "Mutes", fields: ["remove_sunday_notifications", "remove_ph_notifications"] },
-    { title: "Meters sent to the client", fields: ["noise_meters_included"] },
+    // Titled for the decision, not repeated from the field: a section and a
+    // control with the same words read as a rendering mistake.
+    { title: "Meters", fields: ["noise_meters_included"] },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },

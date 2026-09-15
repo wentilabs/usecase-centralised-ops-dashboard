@@ -85,11 +85,18 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     updated_at: { hidden: true },
   },
   groups: [
+    // Identity only, as on every other service. It used to carry the band
+    // gate, the two-hourly override and the wording as well — four settings
+    // that decide what this project sends, filed under the heading a reader
+    // skims past looking for the company.
+    { title: "Status", fields: ["enabled", "company", "timezone"] },
+    // The region is derived FROM the point, so it belongs with it rather than
+    // three fields away among the alerting settings.
+    { title: "Site", fields: ["site_address", "latitude", "longitude", "nea_region"] },
     {
-      title: "Status",
-      fields: ["enabled", "company", "nea_region", "four_hourly", "alert_only_when_at_least", "advisory_format", "timezone"],
+      title: "When it sends",
+      fields: ["alert_only_when_at_least", "four_hourly", "advisory_format"],
     },
-    { title: "Site", fields: ["site_address", "latitude", "longitude"] },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },
     {

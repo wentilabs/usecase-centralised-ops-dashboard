@@ -162,9 +162,24 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
   groups: [
     { title: "Status", fields: ["enabled", "company", "source_type", "timezone"] },
     {
-      title: "Cadences",
+      // Every way a reading can arrive, in one place. `enable_scrape` used to
+      // sit under "Cadences" — it is not a cadence, it is where the numbers
+      // come from, and a project with it off is fed entirely by the routes
+      // below. Splitting the two halves across sections meant "how does this
+      // project get its readings" could not be answered from one screen.
+      title: "Where readings come from",
       fields: [
         "enable_scrape",
+        "whatsapp_wbgt_source_chat_ids",
+        "telegram_chat_ids",
+        "whatsapp_authoritative_client_identifier",
+        "whatsapp_manual_sensor_label",
+        "telegram_manual_sensor_label",
+        "enable_external_telegram_alerts",
+      ],
+    },    {
+      title: "Cadences",
+      fields: [
         "enable_hourly",
         "hourly_message_formatter",
         "enable_intermittent_reports",
@@ -183,20 +198,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],
     },
-    {
-      title: "Manual photo ingestion",
-      fields: [
-        "whatsapp_wbgt_source_chat_ids",
-        "telegram_chat_ids",
-        "whatsapp_authoritative_client_identifier",
-        "whatsapp_manual_sensor_label",
-        "telegram_manual_sensor_label",
-        // Not a photo route — a text one — but it is the other half of "what
-        // arrives from Telegram", and a section of its own for one switch
-        // would hide it rather than place it.
-        "enable_external_telegram_alerts",
-      ],
-    },
+
     { title: "Sheets", fields: ["monthly_sheet_id", "monthly_sheet_fill_mode"] },
     {
       title: "Water Parade",

@@ -140,14 +140,16 @@ export const subconFieldProvider: ServiceFieldProvider = {
     { title: "Google Sheets", fields: ["spreadsheet_id", "exclude_wohhup_from_manpower"] },
     {
       title: "Scheduled reports",
-      fields: [
-        "enable_activity_summary",
-        "enable_manpower_summary",
-        "manpower_activity_outbound_group_id",
-        "instance_name",
-        "client_id",
-        "lambda_url",
-      ],
+      fields: ["enable_activity_summary", "enable_manpower_summary", "manpower_activity_outbound_group_id"],
+    },
+    // The delivery trio had been folded into the reports section, so this was
+    // the one service where "where do the WhatsApp credentials live" had a
+    // different answer. It is the same plumbing every other service shows on
+    // its own, and it serves the housekeeping report too — not only the two
+    // named here.
+    {
+      title: "Delivery",
+      fields: ["instance_name", "client_id", "lambda_url"],
     },
     // Their own section rather than a line inside "Scheduled reports": they
     // also silence the nightly housekeeping report, which is configured two

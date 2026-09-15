@@ -2602,3 +2602,62 @@ test("the chat group summary is a first-class third report", () => {
     /past-days safety summary and the same split by chat group/,
   );
 });
+
+test("sections group what belongs together and separate what does not", () => {
+  // Structural, not aesthetic. Each of these was a real misfiling found by
+  // reading all seven services side by side, and each has the same shape: a
+  // reader looking for one decision had to know which unrelated section it had
+  // been filed under.
+  const together: { service: ServiceKey; columns: string[]; why: string }[] = [
+    // Every way a WBGT reading can arrive. `enable_scrape` sat under
+    // "Cadences" — it is not a cadence — while the manual routes sat
+    // elsewhere, so the question "how is this project fed" spanned two
+    // sections.
+    {
+      service: "wbgt",
+      columns: ["enable_scrape", "whatsapp_wbgt_source_chat_ids", "telegram_chat_ids", "enable_external_telegram_alerts"],
+      why: "ingestion",
+    },
+    // The region is derived from the point, so it belongs beside it.
+    { service: "haze", columns: ["latitude", "longitude", "nea_region"], why: "the site and what is derived from it" },
+  ];
+  const apart: { service: ServiceKey; a: string; b: string; why: string }[] = [
+    // Identity is not behaviour. Haze's Status held the band gate and the
+    // two-hourly override, which decide what the project sends.
+    { service: "haze", a: "company", b: "alert_only_when_at_least", why: "identity vs alerting" },
+    { service: "haze", a: "company", b: "four_hourly", why: "identity vs cadence" },
+    // A feature switch is not delivery plumbing.
+    { service: "ailytics", a: "status_summary_enabled", b: "lambda_url", why: "behaviour vs wiring" },
+    { service: "ailytics", a: "forward_pending_to_whatsapp", b: "client_id", why: "behaviour vs wiring" },
+    // Subcon folded the delivery trio into its reports section, so this was
+    // the one service where the WhatsApp credentials lived somewhere else.
+    { service: "subcon", a: "enable_activity_summary", b: "lambda_url", why: "reports vs wiring" },
+  ];
+
+  const groupOf = (service: ServiceKey, column: string) =>
+    (GROUPS[service] ?? []).find((group) => group.fields.includes(column))?.title;
+
+  for (const { service, columns, why } of together) {
+    const titles = [...new Set(columns.map((column) => groupOf(service, column)))];
+    assert.equal(titles.length, 1, `${service}: ${why} is split across ${titles.join(" / ")}`);
+  }
+  for (const { service, a, b, why } of apart) {
+    assert.notEqual(groupOf(service, a), groupOf(service, b), `${service}: ${why} share a section`);
+  }
+
+  // And no section repeats a field's own label as its title, which reads as a
+  // rendering fault rather than a heading.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  for (const service of SERVICE_KEYS) {
+    const columns = (GROUPS[service] ?? []).flatMap((group) => group.fields);
+    const spec = buildFieldSpec(service, Object.fromEntries(columns.map((c) => [c, text])));
+    for (const group of spec.groups) {
+      if (group.fields.length !== 1) continue;
+      assert.notEqual(
+        group.title.toLowerCase(),
+        (spec.fields[group.fields[0]]?.label ?? "").toLowerCase(),
+        `${service}: section "${group.title}" repeats its only field's label`,
+      );
+    }
+  }
+});

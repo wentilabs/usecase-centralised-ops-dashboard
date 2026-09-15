@@ -53,12 +53,16 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
     { title: "Status", fields: ["enabled", "company", "timezone"] },
     { title: "Telegram source", fields: ["telegram_chat_id", "upstream_bot_username", "expected_chat_title"] },
     { title: "Google Sheet", fields: ["spreadsheet_id", "safety_sheet_tab", "activity_history_tab"] },
+    // What this project SENDS, separated from the plumbing it sends through.
+    // Both switches were filed among four proxy URLs, where a decision about
+    // behaviour reads as one more piece of wiring.
+    {
+      title: "What gets sent",
+      fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "whatsapp_group_ids"],
+    },
     {
       title: "Delivery",
       fields: [
-        "whatsapp_group_ids",
-        "forward_pending_to_whatsapp",
-        "status_summary_enabled",
         "instance_name",
         "client_id",
         "lambda_url",

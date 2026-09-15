@@ -441,6 +441,25 @@ Rules that are easy to get wrong and are pinned by tests:
   mid-JSON and the operator was told the model "did not answer in a shape this
   could use" — a truncation reported as a misunderstanding. Three request
   builders share one constant, and a test pins them together.
+- **A section is a question, not a drawer.** Connected settings share one, and
+  a section holds one kind of decision. Pinned by a test, because the failures
+  are invisible until someone reads all seven side by side:
+  - Every way a WBGT reading can arrive is one section, and it comes before the
+    cadences. `enable_scrape` used to sit under "Cadences" — it is not a
+    cadence, it is where the numbers come from — so "how is this project fed"
+    spanned two sections and was answered after the sending had been described.
+  - Haze's `nea_region` sits with the point it is derived from, not with the
+    alerting settings; and Status is identity on every service, so haze's band
+    gate, two-hourly override and wording moved out of it into "When it sends".
+  - A feature switch is not delivery plumbing. Ailytics had two of them filed
+    among four proxy URLs; subcon had the delivery trio folded into its reports
+    section, which made it the one service where the WhatsApp credentials lived
+    somewhere unexpected.
+  - A title that names nothing groups nothing: noise's "Unique configs" held
+    five separate cadences while the other three each had a section. It is now
+    "Summaries" and "Leq12h tables".
+  - A one-field section must not repeat its field's label — it reads as a
+    rendering fault rather than a heading.
 - **`enabled` is the first control on every service, and is called "Project
   enabled".** It is the highest level of control on a row — off means nothing
   scheduled goes out, whatever the switches below say — so reading it after the

@@ -2,24 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { LightningEvidenceFooter } from "@/components/lightning-map/LightningEvidenceFooter";
+import { LightningMapHeader } from "@/components/lightning-map/LightningMapHeader";
 import { useLightningCanvas } from "@/components/lightning-map/use-canvas";
 import { useLightningDetections } from "@/components/lightning-map/use-detections";
 import { useLightningGestures } from "@/components/lightning-map/use-gestures";
 import {
-  DETECTION_CAP,
-  EVIDENCE_BOX_FACTOR,
-  EVIDENCE_CAP,
-  WINDOWS,
-  countedTypes,
-  evidenceFor,
   formatDistance,
   formatSgtClock,
   haversineMetres,
   publishLagSeconds,
-  ringsFor,
-  sgtInputToMs,
-  sgtInputValue,
-  widestRingM,
   type WindowKey,
 } from "@/lib/lightning-map";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -241,26 +233,6 @@ export function LightningMap({
   );
   const hovered = hover ? orderedForHover[hover.index] : null;
 
-  const summary =
-    evidence && focus && evidence.code === focus.project_code
-      ? evidenceFor(focus, evidence.payload.detections)
-      : null;
-  /**
-   * How far out the evidence query actually looked.
-   *
-   * Not a threshold — it is the widest ring the project runs, times
-   * `EVIDENCE_BOX_FACTOR`. A 6 km amber ring searches 7.5 km, and the margin
-   * exists so "closest strike" still has something to report when nothing came
-   * near the ring itself. Quoted in the sentence because a distance with no
-   * stated origin invites exactly the question of where it came from, and
-   * because it is the honest bound on the claim: nothing beyond it was checked.
-   *
-   * Built from the same expression as the query, so the two cannot disagree.
-   */
-  const searchRadiusM = focus
-    ? Math.max(1000, widestRingM(focus)) * EVIDENCE_BOX_FACTOR
-    : 0;
-
   const zoomControl = (
     <>
       <button
@@ -303,107 +275,19 @@ export function LightningMap({
         physical top of the screen, behind the notch. Every other overlay in the
         app already used this helper — this one had simply never been told.
       */}
-      <header className="shrink-0 border-b border-border px-3 pb-2 pt-safe md:flex md:flex-wrap md:items-center md:gap-2 md:px-4 md:py-2">
-        <div className="flex items-center gap-2 md:mr-auto md:contents">
-          <div className="mr-auto flex items-baseline gap-2 md:mr-auto">
-            <h2 className="text-sm font-semibold">Singapore lightning map</h2>
-            <span className="hidden text-[11px] text-muted-foreground lg:inline">
-              NEA detections, by the time they reached us
-            </span>
-          </div>
-          {/* Thumb-sized on a phone, and first in the DOM so it is also the
-              first thing a screen reader reaches after the title. */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 shrink-0 rounded-lg border border-border px-3 text-xs hover:border-danger hover:text-danger md:order-last md:h-8"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-2 flex items-center gap-2 md:mt-0 md:contents">
-          <select
-            value={focusCode ?? ""}
-            onChange={(event) => {
-              const code = event.target.value;
-              focusOn(
-                code
-                  ? (sited.find((row) => row.project_code === code) ?? null)
-                  : null,
-              );
-            }}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-xs md:h-8 md:flex-none"
-          >
-            <option value="">All {sited.length} projects</option>
-            {sited.map((row) => (
-              <option
-                key={String(row.project_code)}
-                value={String(row.project_code)}
-              >
-                {String(row.project_code)}
-              </option>
-            ))}
-          </select>
-
-          {/* The anchor is the END of the window, in Singapore time whatever the
-              phone is set to — see `sgtInputToMs`. */}
-          <input
-            type="datetime-local"
-            value={sgtInputValue(anchor ?? view?.to ?? Date.now())}
-            onChange={(event) => setAnchor(sgtInputToMs(event.target.value))}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-xs md:h-8 md:flex-none"
-            aria-label="End of window, Singapore time"
-          />
-        </div>
-
-        <div className="mt-2 flex items-center gap-2 md:mt-0 md:contents">
-          <div className="flex flex-1 overflow-hidden rounded-lg border border-border md:flex-none">
-            {WINDOWS.map((entry) => (
-              <button
-                key={entry.key}
-                type="button"
-                onClick={() => setWindowKey(entry.key)}
-                className={`flex-1 px-2.5 py-2 text-xs md:flex-none md:py-1.5 ${
-                  windowKey === entry.key
-                    ? "bg-primary/20 text-primary"
-                    : "hover:bg-muted/40"
-                }`}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAnchor(null);
-              refresh();
-            }}
-            className={`h-9 shrink-0 rounded-lg border px-3 text-xs md:h-8 md:px-2.5 ${
-              anchor === null
-                ? "border-on/40 bg-on/10 text-on"
-                : "border-border bg-card hover:border-primary hover:text-primary"
-            }`}
-            title={
-              anchor === null
-                ? "Following the clock, refreshing every minute"
-                : "Jump back to now"
-            }
-          >
-            {anchor === null ? "● Live" : "Now"}
-          </button>
-
-          {/* Desktop keeps its zoom buttons in the header, where there is room
-              for them. A phone gets them floated on the map instead — see
-              below — because a phone pinches, and a header row spent on two
-              small buttons is a row not spent on the map. */}
-          <div className="hidden shrink-0 items-center gap-1 md:flex">
-            {zoomControl}
-          </div>
-        </div>
-      </header>
+      <LightningMapHeader
+        sited={sited}
+        focusCode={focusCode}
+        focusOn={focusOn}
+        anchor={anchor}
+        viewTo={view?.to}
+        setAnchor={setAnchor}
+        windowKey={windowKey}
+        setWindowKey={setWindowKey}
+        refresh={refresh}
+        zoomControl={zoomControl}
+        onClose={onClose}
+      />
 
       {/* The map is cut to Singapore's own proportions and centred, rather than
           stretched to whatever shape the window is. The island is about 1.55:1,
@@ -540,124 +424,14 @@ export function LightningMap({
         </div>
       </div>
 
-      <footer className="shrink-0 space-y-1.5 border-t border-border px-3 pt-2 text-[11px] pb-safe md:px-4 md:py-2">
-        {error ? <p className="text-danger">{error}</p> : null}
-
-        {summary && focus ? (
-          <p className="text-xs">
-            {/* The claim, in one sentence, phrased so it can be read out. */}
-            <span className="font-semibold">
-              {String(focus.project_code)}
-            </span>{" "}
-            {evidence?.payload.truncated ? (
-              // An all-clear from a truncated read is a false statement, not a
-              // hedged one. When the query hit its cap the panel says only what
-              // it actually saw, and asks for a narrower window.
-              <span className="text-warn">
-                cannot be cleared for this window — the query hit its{" "}
-                {EVIDENCE_CAP}-row cap with {evidence.payload.total} detections
-                nearby, so anything earlier in the window was not read. Narrow
-                the window and check again.
-                {summary.red + summary.amber > 0
-                  ? ` (${summary.red} red and ${summary.amber} amber already found in what was read.)`
-                  : ""}
-              </span>
-            ) : summary.red === 0 && summary.amber === 0 ? (
-              <span className="text-on">
-                had no qualifying strike in this window —{" "}
-                {summary.total === 0 ? "no" : summary.total}{" "}
-                {countedTypes(focus).join("/")} detection
-                {summary.total > 1 ? "s" : ""}{" "}
-                {summary.total > 1 ? "were" : "was"} published anywhere in the{" "}
-                {formatDistance(searchRadiusM)} searched around the site
-                {summary.nearestM === null
-                  ? ""
-                  : `, closest ${formatDistance(summary.nearestM)}`}
-                .
-              </span>
-            ) : (
-              <span>
-                had{" "}
-                <span className="font-semibold text-danger">
-                  {summary.red} red
-                </span>{" "}
-                and{" "}
-                <span className="font-semibold text-warn">
-                  {summary.amber} amber
-                </span>{" "}
-                qualifying strike{summary.red + summary.amber === 1 ? "" : "s"},
-                closest {formatDistance(summary.nearestM)}.
-              </span>
-            )}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-          {/* The focused project's rings in words. The on-canvas labels can be
-              pushed out of view by a ring wider than the map; this row cannot,
-              so "does this ring count intra-cloud" always has an answer. */}
-          {focus
-            ? ringsFor(focus).map((ring) => (
-                <span
-                  key={`${ring.tier}-${ring.types}-${ring.radiusM}`}
-                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ${
-                    ring.tier === "red"
-                      ? "bg-danger/10 text-danger"
-                      : "bg-warn/10 text-warn"
-                  }`}
-                >
-                  {ring.tier.toUpperCase()}{" "}
-                  {(ring.radiusM / 1000).toFixed(ring.radiusM % 1000 ? 2 : 0)}{" "}
-                  km · {ring.types}
-                </span>
-              ))
-            : null}
-          {focus && !ringsFor(focus).length ? (
-            <span className="text-warn">
-              No ring is being evaluated for this project.
-            </span>
-          ) : null}
-          <span className="inline-flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded-full border border-[#5c3c05] bg-[#c8860d]" />{" "}
-            G — cloud-to-ground
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded-full border border-[#1e40af] bg-[#93c5fd]" />{" "}
-            C — intra-cloud
-          </span>
-          {/* The ring swatches restate what the RED/AMBER chips above already
-              say, so the phone drops them rather than spending a line. */}
-          <span className="hidden items-center gap-1 md:inline-flex">
-            <span className="h-2 w-3 rounded-sm border border-[#f87171] bg-[#f87171]/20" />{" "}
-            red ring
-          </span>
-          <span className="hidden items-center gap-1 md:inline-flex">
-            <span className="h-2 w-3 rounded-sm border border-[#fbbf24] bg-[#fbbf24]/20" />{" "}
-            amber ring
-          </span>
-          <span className="hidden md:inline">
-            faded = earlier in the window
-          </span>
-          <span className="ml-auto font-mono">
-            {loading ? "loading…" : `${detections.length} shown`}
-            {view && view.total > detections.length
-              ? ` of ${view.total} (cap ${DETECTION_CAP} — zoom in)`
-              : ""}
-            {view
-              ? ` · ${formatSgtClock(view.from)} → ${formatSgtClock(view.to)} SGT`
-              : ""}
-          </span>
-        </div>
-
-        {/* Rings are the engine's, not the raw columns. Said out loud because the
-            difference is invisible today — every project runs zero margins — and
-            would otherwise look like a bug the first time someone sets one. */}
-        <p className="hidden text-[10px] text-muted-foreground md:block">
-          Windows filter on when NEA published a detection, not when it struck.
-          Rings include site extent and type uncertainty, so they are the
-          distances that actually trigger an alert.
-        </p>
-      </footer>
+      <LightningEvidenceFooter
+        focus={focus}
+        evidence={evidence}
+        error={error}
+        loading={loading}
+        detectionsLength={detections.length}
+        view={view}
+      />
     </div>
   );
 }

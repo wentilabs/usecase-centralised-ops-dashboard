@@ -422,7 +422,15 @@ test("the phone gets the chat, and thumb-sized actions on a rail", async () => {
  * rather than quietly needing an inset it does not declare.
  */
 const OVERLAYS = [
-  { file: "components/LightningMap.tsx", top: true, bottom: true },
+  {
+    file: "components/LightningMap.tsx",
+    safeAreaFiles: [
+      "components/lightning-map/LightningMapHeader.tsx",
+      "components/lightning-map/LightningEvidenceFooter.tsx",
+    ],
+    top: true,
+    bottom: true,
+  },
   { file: "components/ConfigEditor.tsx", top: true, bottom: true },
   { file: "components/ServiceDrawer.tsx", top: true, bottom: true },
   // A bottom sheet, capped at 90vh, so its top never comes near the notch.
@@ -430,10 +438,14 @@ const OVERLAYS = [
 ];
 
 test("an overlay clears whichever screen edge it reaches", async () => {
-  for (const { file, top, bottom } of OVERLAYS) {
+  for (const { file, top, bottom, safeAreaFiles = [file] } of OVERLAYS) {
     const text = await source(file);
     // Comments stripped: a note explaining the helper is not the helper.
     const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const safeAreaCode = (await Promise.all(safeAreaFiles.map(source)))
+      .join("\n")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
 
     // The claim, verified against the panel's own positioning. Scrims are
     // skipped: they are all `fixed inset-0` and would make every overlay look
@@ -450,7 +462,7 @@ test("an overlay clears whichever screen edge it reaches", async () => {
     assert.equal(reaches("bottom"), bottom, `${file}: positioning disagrees with the table above`);
 
     assert.equal(
-      /className="[^"]*\bpt-safe\b/.test(code),
+      /className="[^"]*\bpt-safe\b/.test(safeAreaCode),
       top,
       top
         ? `${file} reaches the status bar but nothing clears it`
@@ -458,7 +470,7 @@ test("an overlay clears whichever screen edge it reaches", async () => {
     );
     if (bottom) {
       assert.ok(
-        /className="[^"]*\bpb-safe\b/.test(code),
+        /className="[^"]*\bpb-safe\b/.test(safeAreaCode),
         `${file} reaches the home indicator but nothing clears it`,
       );
     }

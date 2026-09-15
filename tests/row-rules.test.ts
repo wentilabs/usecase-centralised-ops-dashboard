@@ -277,3 +277,35 @@ test("the third summary is covered by both issue-chaser rules", () => {
   const schedules = (ROW_RULES.issueChaser ?? []).filter((r) => r.constraint.endsWith("_schedule_format"));
   assert.equal(schedules.length, 4, `expected four schedule rules, found ${schedules.length}`);
 });
+
+test("each summary's own destination satisfies the constraint on its own", () => {
+  // The destination check became per-style: each enabled summary needs its own
+  // field, the shared one, or the legacy fallback. A rule still asking only
+  // about the shared field would refuse a project that routes the company
+  // summary to its own group and leaves the shared one blank — a save Postgres
+  // accepts, which is the one failure a mirror must not have.
+  const at = (row: Record<string, unknown>) => rowProblems("issueChaser", row, label);
+
+  for (const [flag, own] of [
+    ["daily_safety_summary_enabled", "daily_safety_summary_whatsapp_group_ids"],
+    ["daily_safety_company_summary_enabled", "daily_safety_company_summary_whatsapp_group_ids"],
+    ["daily_safety_chatgroup_summary_enabled", "daily_safety_chatgroup_summary_whatsapp_group_ids"],
+  ] as const) {
+    assert.equal(at({ [flag]: true }).length, 1, `${flag} with no destination must be refused`);
+    assert.deepEqual(at({ [flag]: true, [own]: "g@g.us" }), [], `${own} alone must satisfy it`);
+    assert.deepEqual(at({ [flag]: true, safety_summary_whatsapp_group_ids: "g@g.us" }), [], "shared covers it");
+    assert.deepEqual(at({ [flag]: true, whatsapp_group_ids: "g@g.us" }), [], "legacy covers it");
+  }
+
+  // One summary's field does not cover another's.
+  const crossed = at({
+    daily_safety_summary_enabled: true,
+    daily_safety_company_summary_enabled: true,
+    daily_safety_company_summary_whatsapp_group_ids: "g@g.us",
+  });
+  assert.equal(crossed.length, 1);
+  // Named by label, as the editor shows it — "Daily safety summary" is the
+  // plain one; the company flag has no entry in LABELS and stays raw.
+  assert.match(crossed[0].message, /Daily safety summary needs somewhere to go/);
+  assert.doesNotMatch(crossed[0].message, /company/);
+});

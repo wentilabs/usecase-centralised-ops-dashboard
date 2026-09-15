@@ -2576,7 +2576,9 @@ test("the chat group summary is a first-class third report", () => {
   const group = spec.groups.find((g) => g.fields.includes("daily_safety_chatgroup_summary_enabled"));
   assert.equal(group?.title, "Daily summaries");
   assert.match(spec.fields.summary_days.help, /all three summaries/);
-  assert.match(spec.fields.safety_summary_whatsapp_group_ids.help, /all three/);
+  // The shared destination is the MIDDLE of three levels now, not the one
+  // place every summary goes — each style got its own field.
+  assert.match(spec.fields.safety_summary_whatsapp_group_ids.help, /has not got one of its own/);
 
   // The card names it, gives it its own hour, and counts it as scheduled work.
   const line = firesAt("issueChaser", {

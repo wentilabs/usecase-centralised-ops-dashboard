@@ -223,28 +223,39 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
         "daily_safety_summary_enabled",
         "daily_safety_company_summary_enabled",
         "daily_safety_chatgroup_summary_enabled",
+        "daily_safety_summary_whatsapp_group_ids",
+        "daily_safety_company_summary_whatsapp_group_ids",
+        "daily_safety_chatgroup_summary_whatsapp_group_ids",
         "novade_name_list_check_enabled",
-        "safety_summary_whatsapp_group_ids",
         "novade_name_list_check_whatsapp_group_ids",
+        "safety_summary_whatsapp_group_ids",
         "whatsapp_group_ids",
       ],
       check: (row, label) => {
         const said: string[] = [];
-        const summaries = [
-          "daily_safety_summary_enabled",
-          "daily_safety_company_summary_enabled",
-          // Added to issue_chaser_summary_destination_check by 1b7975c, so a
-          // ChatGroup summary with nowhere to go is refused like the others.
-          "daily_safety_chatgroup_summary_enabled",
-        ].filter((column) => on(row, column));
-        if (
-          summaries.length &&
-          blank(row, "safety_summary_whatsapp_group_ids") &&
-          blank(row, "whatsapp_group_ids")
-        ) {
+        /**
+         * One clause per summary, each with its own three-level fallback.
+         *
+         * The constraint used to ask whether the SHARED field or the legacy
+         * one was set, for the summaries as a group. Each style now has its
+         * own field first, so a project routing only the company summary — its
+         * own field set, the shared one blank — satisfies Postgres. A rule
+         * still checking the shared field would refuse that save, which is the
+         * one failure a mirror must not have.
+         */
+        for (const [flag, own] of [
+          ["daily_safety_summary_enabled", "daily_safety_summary_whatsapp_group_ids"],
+          ["daily_safety_company_summary_enabled", "daily_safety_company_summary_whatsapp_group_ids"],
+          ["daily_safety_chatgroup_summary_enabled", "daily_safety_chatgroup_summary_whatsapp_group_ids"],
+        ] as const) {
+          if (!on(row, flag)) continue;
+          if (!blank(row, own) || !blank(row, "safety_summary_whatsapp_group_ids") || !blank(row, "whatsapp_group_ids")) {
+            continue;
+          }
           said.push(
-            `${list(summaries.map(label))} needs somewhere to go: fill in ` +
-              `${label("safety_summary_whatsapp_group_ids")}, or ${label("whatsapp_group_ids")} as the fallback.`,
+            `${label(flag)} needs somewhere to go: fill in ${label(own)}, or ` +
+              `${label("safety_summary_whatsapp_group_ids")} to cover every summary, or ` +
+              `${label("whatsapp_group_ids")} as the last fallback.`,
           );
         }
         if (
@@ -261,7 +272,7 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
       },
     },
     /**
-     * The three report schedules, mirroring `lib/hourly-schedule.js`.
+     * The four report schedules, mirroring `lib/hourly-schedule.js`.
      *
      * Not a database constraint — the column is plain text and Postgres will
      * store `08:00` or `0800,-1` happily. The service parses it on every

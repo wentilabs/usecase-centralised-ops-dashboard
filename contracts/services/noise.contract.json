@@ -44,6 +44,7 @@
       "remove_sunday_notifications": { "label": "Mute Sundays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses delivery from Sunday 07:00 through Monday 06:59, not calendar Sunday (INV-NOISE-04)." },
       "remove_ph_notifications": { "label": "Mute public holidays", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Suppresses delivery only; public-holiday assessments still select Sun/PH limits (INV-NOISE-03)." },
       "hourly_exceedance_only": { "label": "Hourly exceedance only", "group": "cadences", "mutable": true, "role": "policy-selector", "help": "Suppresses all-clear client hourly messages without suppressing independent ops failsafes (INV-NOISE-09)." },
+      "hourly_exceeded_meters_only": { "label": "Only exceeded meters", "group": "cadences", "mutable": true, "role": "policy-selector", "help": "Filters hourly message rows to meters with a five-minute, Leq1hr, or Leq12hr exceedance; storage and calculations are unchanged." },
       "half_hourly_send_if_exceed": { "label": "Relay in-hour exceedances", "group": "delivery", "mutable": true, "role": "feature-flag", "help": "Also sends an existing half-hourly exceedance message to alternate groups; it creates no extra assessment." },
       "exceedance_half_hourly_wa_groups": { "label": "In-hour exceedance groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Additional half-hourly exceedance destinations, de-duplicated against ordinary groups." },
       "five_min_start_hhmm": { "label": "5-minute window start", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Optional HHMM start; a one-sided or overnight window is valid (INV-NOISE-05)." },
@@ -63,7 +64,7 @@
       "debug_google_sheet_id": { "label": "Debug workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Optional diagnostic sheet sink; it is not the operational message log." },
       "google_sheet_id": { "label": "Noise analysis workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Persistent workbook used by Noise sheet jobs." },
       "timezone": { "label": "Timezone", "group": "schedule", "mutable": true, "role": "configuration", "help": "Timezone used for windows and timestamps; production behavior assumes Asia/Singapore." },
-      "source_type": { "label": "Login profile", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the credential/browser-context profile rather than which meters are stored.", "options": ["default", "whgd", "svs", "pentaocean"] },
+      "source_type": { "label": "Upstream source", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the upstream adapter and its isolated credential/browser context; legacy noiselynx normalizes to default.", "options": ["default", "whgd", "svs", "geoscan", "trackmaster", "alphalab"] },
       "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
       "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Bookkeeping timestamp not maintained automatically by a trigger." }
     },

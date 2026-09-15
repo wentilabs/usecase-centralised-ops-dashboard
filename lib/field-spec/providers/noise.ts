@@ -6,7 +6,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "created_at", "updated_at"],
   checkEnums: {
     company: [...COMPANIES],
-    source_type: ["default", "whgd", "svs", "pentaocean"],
+    source_type: ["default", "whgd", "svs", "geoscan", "trackmaster", "alphalab"],
   },
   fields: {
     company: {
@@ -22,8 +22,8 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       help: "Master switch for the notification cadences — off means none of them run, whatever the toggles below say. One exception: the scrape endpoint still scrapes the internal TEST project while it is disabled.",
     },
     source_type: {
-      label: "Login profile",
-      help: "Which NoiseLynx account this project logs in with — `default`, `whgd`, `svs` or `pentaocean`. A grouping of credentials and a Browserbase context: not a data source and not a gate, so changing it does not change which meters are read, only who reads them. `pentaocean` needs its own credentials configured; the legacy value `noiselynx` normalises to `default`.",
+      label: "Upstream source",
+      help: "Selects the upstream adapter and its isolated credentials or browser context. NoiseLynx profiles are `default`, `whgd`, and `svs`; the other supported adapters are `geoscan`, `trackmaster`, and `alphalab`. The legacy value `noiselynx` normalises to `default`; unknown values are rejected rather than silently routed.",
     },
     timezone: { label: "Timezone" },
 
@@ -68,6 +68,11 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     hourly_exceedance_only: {
       label: "Exceedances only",
       help: "Suppress the hourly message unless a limit was exceeded.",
+      showIf: { field: "enable_hourly", equals: true },
+    },
+    hourly_exceeded_meters_only: {
+      label: "Only exceeded meters",
+      help: "Filters rows in an hourly message to meters with a five-minute, Leq1hr, or Leq12hr exceedance. It does not change scraping, calculations, or stored readings.",
       showIf: { field: "enable_hourly", equals: true },
     },
 
@@ -162,7 +167,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     },
     {
       title: "Hourly messages",
-      fields: ["enable_hourly", "hourly_formatter", "hourly_start_hhmm", "hourly_end_hhmm", "hourly_exceedance_only"],
+      fields: ["enable_hourly", "hourly_formatter", "hourly_start_hhmm", "hourly_end_hhmm", "hourly_exceedance_only", "hourly_exceeded_meters_only"],
     },
     {
       title: "Unique configs",

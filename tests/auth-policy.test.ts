@@ -2533,6 +2533,26 @@ test("lightning's SMS destination is explained, placed and ungated", () => {
   assert.ok(!spec.groups.find((g) => g.title === "Other"));
 });
 
+test("noise exposes every supported source and keeps hourly row filtering distinct", () => {
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("noise", {
+    enable_hourly: bool,
+    source_type: text,
+    hourly_exceedance_only: bool,
+    hourly_exceeded_meters_only: bool,
+  });
+
+  assert.deepEqual(spec.fields.source_type.options, [
+    "default", "whgd", "svs", "geoscan", "trackmaster", "alphalab",
+  ]);
+  assert.match(spec.fields.source_type.help, /unknown values are rejected/i);
+  assert.match(spec.fields.hourly_exceeded_meters_only.help, /does not change scraping/i);
+  assert.deepEqual(spec.fields.hourly_exceeded_meters_only.showIf, { field: "enable_hourly", equals: true });
+  const group = spec.groups.find((candidate) => candidate.fields.includes("hourly_exceeded_meters_only"));
+  assert.equal(group?.title, "Hourly messages");
+});
+
 test("the chat group summary is a first-class third report", () => {
   // 1b7975c. It is not an option on the plain route — its own flag, its own
   // schedule, its own place in the card — so anything that enumerated two

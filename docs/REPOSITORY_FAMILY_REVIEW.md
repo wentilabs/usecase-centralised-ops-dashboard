@@ -306,8 +306,9 @@ contain cross-service mechanics only. Chat planning now separates its proposal
 model, language/model-output interpretation, deterministic estate resolution
 and draft construction, and prompt rendering behind a compatibility façade.
 The Lightning map keeps qualification/projection geometry pure and now isolates
-both detection-query layers, viewport caching, and imperative canvas drawing in
-client hooks. Its remaining high context pressure is gestures and presentation. Live
+both detection-query layers, viewport caching, imperative canvas drawing, and
+pointer/pinch/wheel navigation in client hooks. Its remaining high context
+pressure is the presentational shell. Live
 introspection remains the existence/type/default authority while
 contracts provide meaning, ownership, and options. The dashboard must adapt to
 historical service schemas rather than force runtime renames.
@@ -325,8 +326,8 @@ Keep the Next.js/TypeScript base. Field semantics are now split per service and
 service/SQL contracts have a controlled immutable refresh/check command, and
 card pills plus schedule/cadence summaries are service-owned. Model
 interpretation is also separated from deterministic proposal execution. Map
-geometry, detection loading, and canvas drawing are separated; next extract
-gesture state and presentation. Never let a model write directly.
+geometry, detection loading, canvas drawing, and gesture state are separated;
+next split the presentational shell. Never let a model write directly.
 
 ## J. Concrete follow-up actions
 

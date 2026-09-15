@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+Follow the authoritative feature workflow in **[docs/FEATURE_DEVELOPMENT.md](./docs/FEATURE_DEVELOPMENT.md)**.
+Investigate and brief the developer before implementing; ask only unresolved product questions.
+
 See **[AGENTS.md](./AGENTS.md)** — it is the single source of truth for what
 this repo is, its architecture decisions, conventions and known traps. This
 file only adds notes specific to working here interactively.

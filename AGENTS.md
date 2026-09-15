@@ -1,5 +1,8 @@
 # AGENTS.md
 
+For every feature request, follow the authoritative investigation, briefing, questioning,
+compatibility, and verification workflow in [docs/FEATURE_DEVELOPMENT.md](docs/FEATURE_DEVELOPMENT.md).
+
 Read this before editing. It records the decisions that are easy to break and
 expensive to debug.
 

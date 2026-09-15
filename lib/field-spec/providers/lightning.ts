@@ -73,6 +73,13 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       help: "Controls signed SMS Gateway thunderstorm alerts only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
       row: "sms",
     },
+    sms_whatsapp_group_id: {
+      label: "SMS destination",
+      widget: "groups",
+      // Shown whether or not forwarding is on, like every other destination:
+      // where a thing goes is decided before it is switched on.
+      help: "Where forwarded SMS alerts go. Blank falls back to the WhatsApp group IDs above. It is SMS-only in both directions — normal NEA alerts, kickoffs and every other message always use the main list and never this one, so a group here receives SMS traffic and nothing else.",
+    },
 
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
@@ -127,7 +134,7 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       ],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
-    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts"] },
+    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_whatsapp_group_id"] },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"],

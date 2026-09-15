@@ -2506,3 +2506,29 @@ test("`enabled` is the first control on every service", () => {
     assert.equal(spec.fields.enabled.label, "Project enabled", `${service} calls it something else`);
   }
 });
+
+test("lightning's SMS destination is explained, placed and ungated", () => {
+  // `sms_whatsapp_group_id` reached the live table (36 columns) while the
+  // vendored contract still describes 34 — the contract branch has not caught
+  // up with main — so it arrived with its raw name under "Other".
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("lightning", {
+    enable_sms_lightning_alerts: bool,
+    sms_whatsapp_group_id: text,
+    whatsapp_group_id: text,
+  });
+  const field = spec.fields.sms_whatsapp_group_id;
+  assert.notEqual(field.label, "sms_whatsapp_group_id");
+  assert.equal(field.widget, "groups", "it is a group list, singular name notwithstanding");
+  assert.equal(field.showIf, null, "a destination is set before the feature is switched on");
+  // The two facts an operator would otherwise get wrong: it falls back, and it
+  // is SMS-only in both directions.
+  assert.match(field.help, /falls back/i);
+  assert.match(field.help, /never/i);
+  // Beside the switch it belongs to, not in Delivery with the main list.
+  const group = spec.groups.find((g) => g.fields.includes("sms_whatsapp_group_id"));
+  assert.equal(group?.title, "SMS Gateway");
+  assert.ok(group?.fields.includes("enable_sms_lightning_alerts"));
+  assert.ok(!spec.groups.find((g) => g.title === "Other"));
+});

@@ -2532,3 +2532,51 @@ test("lightning's SMS destination is explained, placed and ungated", () => {
   assert.ok(group?.fields.includes("enable_sms_lightning_alerts"));
   assert.ok(!spec.groups.find((g) => g.title === "Other"));
 });
+
+test("the chat group summary is a first-class third report", () => {
+  // 1b7975c. It is not an option on the plain route — its own flag, its own
+  // schedule, its own place in the card — so anything that enumerated two
+  // summaries had to learn about a third.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("issueChaser", {
+    daily_safety_summary_enabled: bool,
+    daily_safety_company_summary_enabled: bool,
+    daily_safety_chatgroup_summary_enabled: bool,
+    daily_safety_chatgroup_summary_schedule: text,
+    summary_days: { type: "integer" as const, format: "integer", enum: null, default: 5 },
+    safety_summary_whatsapp_group_ids: text,
+  });
+  assert.notEqual(spec.fields.daily_safety_chatgroup_summary_enabled.label, "daily_safety_chatgroup_summary_enabled");
+  // The one thing that is not obvious: a blank cell is counted, not dropped.
+  assert.match(spec.fields.daily_safety_chatgroup_summary_enabled.help, /Invalid chatgroup/);
+  assert.match(spec.fields.daily_safety_chatgroup_summary_schedule.help, /HH00,lookback/);
+  assert.ok(!spec.groups.find((g) => g.title === "Other"));
+  // Placed with the other two, and the shared fields now count three.
+  const group = spec.groups.find((g) => g.fields.includes("daily_safety_chatgroup_summary_enabled"));
+  assert.equal(group?.title, "Daily summaries");
+  assert.match(spec.fields.summary_days.help, /all three summaries/);
+  assert.match(spec.fields.safety_summary_whatsapp_group_ids.help, /all three/);
+
+  // The card names it, gives it its own hour, and counts it as scheduled work.
+  const line = firesAt("issueChaser", {
+    daily_safety_chatgroup_summary_enabled: true,
+    daily_safety_chatgroup_summary_schedule: "1700,0",
+  });
+  assert.match(line, /past-days summary by chat group/);
+  assert.match(line, /at 17:00/);
+  assert.equal(hasCadence("issueChaser", { daily_safety_chatgroup_summary_enabled: true }), true);
+  assert.ok(
+    pillsFor("issueChaser", { daily_safety_chatgroup_summary_enabled: true }).some(
+      (pill) => pill.label === "summary by chat group" && pill.on,
+    ),
+  );
+  // Alongside the plain summary it reads as a split of the same report.
+  assert.match(
+    firesAt("issueChaser", {
+      daily_safety_summary_enabled: true,
+      daily_safety_chatgroup_summary_enabled: true,
+    }),
+    /past-days safety summary and the same split by chat group/,
+  );
+});

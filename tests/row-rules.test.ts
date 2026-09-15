@@ -249,3 +249,31 @@ test("a schedule the service would refuse is caught before it is saved", () => {
     assert.equal(rowProblems("issueChaser", { [column]: "nope" }, label).length, 1, `${column} is unchecked`);
   }
 });
+
+test("the third summary is covered by both issue-chaser rules", () => {
+  // 1b7975c added a ChatGroup breakdown as a third route with its own flag and
+  // its own schedule, and added the flag to
+  // issue_chaser_summary_destination_check. A rule that still knows two
+  // summaries lets the third save with nowhere to send and a schedule the
+  // service cannot parse.
+  const chat = (row: Record<string, unknown>) => rowProblems("issueChaser", row, label);
+
+  // Destination: on with no destination at all is refused.
+  assert.equal(chat({ daily_safety_chatgroup_summary_enabled: true }).length, 1);
+  // Either destination satisfies it, as for the other two.
+  assert.deepEqual(chat({ daily_safety_chatgroup_summary_enabled: true, whatsapp_group_ids: "g@g.us" }), []);
+  assert.deepEqual(
+    chat({ daily_safety_chatgroup_summary_enabled: true, safety_summary_whatsapp_group_ids: "g@g.us" }),
+    [],
+  );
+
+  // Schedule: same format as the other three, same refusal.
+  const bad = chat({ daily_safety_chatgroup_summary_schedule: "8am" });
+  assert.equal(bad.length, 1, "a malformed chat group schedule must be caught");
+  assert.match(bad[0].message, /"8am" is not a valid entry/);
+  assert.deepEqual(chat({ daily_safety_chatgroup_summary_schedule: "0800,4" }), []);
+
+  // All four schedule columns have a rule, so none is checked by accident.
+  const schedules = (ROW_RULES.issueChaser ?? []).filter((r) => r.constraint.endsWith("_schedule_format"));
+  assert.equal(schedules.length, 4, `expected four schedule rules, found ${schedules.length}`);
+});

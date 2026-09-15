@@ -94,7 +94,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     summary_days: {
       label: "Summary window (days)",
-      help: "The window for an explicit one-off call only — `scheduled: false` — counting the end date itself, so 5 is today plus the four before it. Shared by both summaries. Every scheduled run, which is now the default, uses the lookback on its own schedule entry plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
+      help: "The window for an explicit one-off call only — `scheduled: false` — counting the end date itself, so 5 is today plus the four before it. Shared by all three summaries. Every scheduled run, which is now the default, uses the lookback on its own schedule entry plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
       showIf: {
         anyOf: [
           { field: "daily_safety_summary_enabled", equals: true },
@@ -137,7 +137,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       // you decide before you switch a report on, not after — and gating it on
       // the flag meant the only way to set it was to turn the report on first,
       // which sends it to the fallback in the meantime.
-      help: "Where both past-days summaries go when they are on. Blank falls back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
+      help: "Where the past-days summaries go when they are on — all three of them. Blank falls back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
     },
     // Text, not `csv`: the separator is `;` and `coerceValue` would rewrite a
     // comma list into its own shape and destroy the value.
@@ -148,6 +148,14 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     daily_safety_summary_schedule: {
       label: "Summary schedule",
       help: "When the plain past-days summary runs, and how many dates each run covers. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+    },
+    daily_safety_chatgroup_summary_enabled: {
+      label: "Past-days summary by chat group",
+      help: "The same report with an Open issues by ChatGroup section under each date. A third route and flag, independent of the other two — any combination can run. A row whose ChatGroup cell is blank, or a workbook with no ChatGroup column at all, is counted under `Invalid chatgroup` rather than dropped, so the totals still add up.",
+    },
+    daily_safety_chatgroup_summary_schedule: {
+      label: "Chat group summary schedule",
+      help: "When the by-chat-group summary runs, and how many dates each run covers. Its own schedule, so all three summaries can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
     },
     daily_safety_company_summary_schedule: {
       label: "Company summary schedule",
@@ -253,6 +261,8 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
         "daily_safety_summary_schedule",
         "daily_safety_company_summary_enabled",
         "daily_safety_company_summary_schedule",
+        "daily_safety_chatgroup_summary_enabled",
+        "daily_safety_chatgroup_summary_schedule",
         "summary_days",
         "safety_summary_whatsapp_group_ids",
       ],

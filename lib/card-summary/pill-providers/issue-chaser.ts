@@ -19,6 +19,9 @@ export function issueChaserPills(config: ProjectConfigRow): Pill[] {
     ...(config.daily_safety_summary_enabled
       ? [{ label: "daily summary", on: true, tone: "info" as const }]
       : []),
+    ...(config.daily_safety_chatgroup_summary_enabled
+      ? [{ label: "summary by chat group", on: true, tone: "info" as const }]
+      : []),
     ...(config.daily_safety_company_summary_enabled
       ? [{ label: "summary by company", on: true, tone: "info" as const }]
       : []),

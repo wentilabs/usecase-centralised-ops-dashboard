@@ -222,6 +222,7 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
       columns: [
         "daily_safety_summary_enabled",
         "daily_safety_company_summary_enabled",
+        "daily_safety_chatgroup_summary_enabled",
         "novade_name_list_check_enabled",
         "safety_summary_whatsapp_group_ids",
         "novade_name_list_check_whatsapp_group_ids",
@@ -229,9 +230,13 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
       ],
       check: (row, label) => {
         const said: string[] = [];
-        const summaries = ["daily_safety_summary_enabled", "daily_safety_company_summary_enabled"].filter((column) =>
-          on(row, column),
-        );
+        const summaries = [
+          "daily_safety_summary_enabled",
+          "daily_safety_company_summary_enabled",
+          // Added to issue_chaser_summary_destination_check by 1b7975c, so a
+          // ChatGroup summary with nowhere to go is refused like the others.
+          "daily_safety_chatgroup_summary_enabled",
+        ].filter((column) => on(row, column));
         if (
           summaries.length &&
           blank(row, "safety_summary_whatsapp_group_ids") &&
@@ -269,6 +274,7 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
         ["same_day_open_snapshot_schedule", "Snapshot schedule"],
         ["daily_safety_summary_schedule", "Summary schedule"],
         ["daily_safety_company_summary_schedule", "Company summary schedule"],
+        ["daily_safety_chatgroup_summary_schedule", "Chat group summary schedule"],
       ] as const
     ).map(([column]) => ({
       constraint: `issue_chaser_${column}_format`,

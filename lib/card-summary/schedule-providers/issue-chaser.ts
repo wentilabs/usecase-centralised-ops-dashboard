@@ -42,6 +42,9 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
     if (config.daily_safety_company_summary_enabled) {
           summaries.push(summaries.length ? "the same split by company" : "past-days summary by company");
         }
+    if (config.daily_safety_chatgroup_summary_enabled) {
+          summaries.push(summaries.length ? "the same split by chat group" : "past-days summary by chat group");
+        }
     if (!parts.length && !summaries.length) return "No chaser style enabled — nothing is sent";
     const clauses: string[] = [];
     if (parts.length) {
@@ -61,6 +64,9 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
             config.daily_safety_summary_enabled ? reportSchedule(config.daily_safety_summary_schedule) : null,
             config.daily_safety_company_summary_enabled
               ? reportSchedule(config.daily_safety_company_summary_schedule)
+              : null,
+            config.daily_safety_chatgroup_summary_enabled
+              ? reportSchedule(config.daily_safety_chatgroup_summary_schedule)
               : null,
           ].filter((plan): plan is { times: string[]; lookback: number | null } => Boolean(plan));
           const times = [...new Set(plans.flatMap((plan) => plan.times))];
@@ -88,7 +94,8 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
             // only the 08:00 report would sink to the bottom as "nothing
             // scheduled" while it is messaging a site every morning.
             config.daily_safety_summary_enabled ||
-            config.daily_safety_company_summary_enabled,
+            config.daily_safety_company_summary_enabled ||
+            config.daily_safety_chatgroup_summary_enabled,
         );
   },
 };

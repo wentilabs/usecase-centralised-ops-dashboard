@@ -43,6 +43,12 @@ const COMPANY_ALIASES: Record<string, string> = {
   pentaocean: "PentaOcean",
   "penta ocean": "PentaOcean",
   penta: "PentaOcean",
+  soilbuild: "Soilbuild",
+  // The company writes it as one word; "Soil Build" and "Soilbuild Group" are
+  // both how it gets typed, and `companyIn` normalises punctuation away before
+  // matching, so both reach the same alias.
+  "soil build": "Soilbuild",
+  "soilbuild group": "Soilbuild",
 };
 
 /** The company a sentence names, or null. Longest alias first, so "penta ocean" beats "penta". */

@@ -13,6 +13,7 @@ import {
 import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { readJson, summariseJobResult } from "../lib/read-json";
+import { companyIn } from "../lib/chat-scope";
 import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
 import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
@@ -1234,7 +1235,11 @@ test("company is offered on every service, as guidance rather than a constraint"
   // Identity only: no code reads it. The column is plain nullable text with no
   // CHECK so a new company needs no migration — these values exist so the editor
   // can offer a dropdown and a typo is unlikely from the UI.
-  assert.deepEqual([...COMPANIES], ["Wohhup", "Obayashi", "PentaOcean"]);
+  // Not a fixed list — the column has no CHECK, so adding a company is a HALO
+  // change and this would only restate it. What matters is that the list is
+  // non-empty, unique, and offered identically everywhere.
+  assert.ok(COMPANIES.length >= 3);
+  assert.equal(new Set(COMPANIES).size, COMPANIES.length, "a duplicate would show twice in the dropdown");
 
   const columns = {
     project_code: { type: "string" as const, format: "text", enum: null, default: null },
@@ -2709,4 +2714,32 @@ test("noise's source_type lists the adapters that exist now", () => {
   assert.doesNotMatch(help, /pentaocean/, "noise no longer offers it");
   // WBGT still does, and is a different service with its own list.
   assert.match(buildFieldSpec("wbgt", { source_type: text }).fields.source_type.help, /pentaocean/);
+});
+
+test("a new company is offered everywhere the old ones are", () => {
+  // Adding one is a HALO change — the column is nullable text with no CHECK on
+  // any service, and each migrate_company_column.sql says so outright. So the
+  // only way to get it wrong is to add it in one place and not the others.
+  assert.ok(COMPANIES.includes("Soilbuild"), "Soilbuild must be in the list");
+
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  for (const service of SERVICE_KEYS) {
+    // The editor's dropdown.
+    const spec = buildFieldSpec(service, { company: text });
+    assert.deepEqual(
+      spec.fields.company.options,
+      [...COMPANIES],
+      `${service}'s editor offers a different list`,
+    );
+    // And the create dialog's, which carries a leading blank for "not set".
+    const field = onboardingFor(service)?.fields.find((entry) => entry.column === "company");
+    if (field) assert.deepEqual(field.options, ["", ...COMPANIES], `${service}'s create dialog differs`);
+  }
+
+  // The chat resolves the spellings a person actually types.
+  for (const written of ["soilbuild", "Soil Build", "SOILBUILD", "the soilbuild sites"]) {
+    assert.equal(companyIn(written), "Soilbuild", `"${written}" must resolve`);
+  }
+  // And does not match it inside an unrelated word.
+  assert.equal(companyIn("topsoil building works"), null);
 });

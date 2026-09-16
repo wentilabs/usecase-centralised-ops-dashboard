@@ -53,4 +53,4 @@ export type ServiceFieldProvider = {
  * Advisory values for a plain-text company column. Values outside this list
  * remain valid and visible because the database deliberately has no CHECK.
  */
-export const COMPANIES = ["Wohhup", "Obayashi", "PentaOcean"] as const;
+export const COMPANIES = ["Wohhup", "Obayashi", "PentaOcean", "Soilbuild"] as const;

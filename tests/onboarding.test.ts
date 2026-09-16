@@ -12,7 +12,7 @@ import {
   validateDraft,
   withSchemaFields,
 } from "../lib/onboarding";
-import { buildFieldSpec } from "../lib/field-spec";
+import { COMPANIES, buildFieldSpec } from "../lib/field-spec";
 import { CHAT_ID_COLUMNS } from "../lib/card-summary";
 
 /** Real-shaped, because validateDraft checks a sheet id looks like one. */
@@ -741,7 +741,10 @@ test("every onboarding flow offers the company, and lightning hides what it stil
     assert.ok(field, `${key} must offer company`);
     assert.equal(field!.kind, "select");
     assert.equal(field!.required, false, "identity, and a new operating company arrives before the list does");
-    assert.deepEqual(field!.options, ["", "Wohhup", "Obayashi", "PentaOcean"]);
+    // Derived from COMPANIES rather than retyped, so adding a company does not
+    // mean editing three test files that only restate it. The blank leads: it
+    // is how "not set" is chosen.
+    assert.deepEqual(field!.options, ["", ...COMPANIES]);
     // A blank stays null rather than "", since nothing reads the column and an
     // empty string would look like a company named "".
     assert.equal(buildInsertRow(onboardingFor(key)!, { project_code: "ZZT" }).company, null);

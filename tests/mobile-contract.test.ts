@@ -206,18 +206,17 @@ test("the company watermark cannot swallow a click, and stays readable to a read
 });
 
 test("every company in the dropdown has an asset that exists on disk", async () => {
-  // A missing file renders a broken image, not a fallback — the fallback branch
-  // only catches a company with no entry at all. So the files are checked.
+  // A missing FILE renders a broken image; a missing ENTRY renders the text
+  // chip CompanyMark falls back to on purpose, so a company can be registered
+  // before its artwork arrives. So: every entry must point at a file that
+  // exists, and every asset must belong to a company that is still offered.
   const mark = await source("components/CompanyMark.tsx");
-  const names = [...COMPANIES];
-  assert.deepEqual(names, ["Wohhup", "Obayashi", "PentaOcean"], "the dropdown list");
-
   const assets = Object.fromEntries(
     [...mark.matchAll(/(\w+): \{ src: "(\/company\/[^"]+)"/g)].map((m) => [m[1], m[2]]),
   );
-  for (const name of names) {
-    const path = assets[name];
-    assert.ok(path, `${name} needs an entry in ASSETS`);
+  assert.ok(Object.keys(assets).length, "no logos are wired at all");
+  for (const [name, path] of Object.entries(assets)) {
+    assert.ok(COMPANIES.includes(name as (typeof COMPANIES)[number]), `${name} has a logo but is not offered`);
     assert.equal(await fileExists(`public${path}`), true, `${path} must exist in public/`);
   }
 });

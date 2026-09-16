@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "83482ffa0fb926298f50b95174c7d3064179c53b",
+      "commit": "86359d4cd6e08f45eb92a7581e329e54f81fc27c",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "7605bfffb39bce27ae360a87f8bb2dda87171c8a",
+      "commit": "e506c5c5d9dfded83f54e4bae576162266663dfe",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -49,7 +49,7 @@
     "subcon": {
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "dd3bfa3b3c689d36501e95bb77a94aa06a917e41",
+      "commit": "a87eb7814bc43c16eb85a9a6c72acb75ed90f9e8",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -58,7 +58,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "9b074a0011162e695eb236e7d1be763f78c1840d",
+      "commit": "cb6c99cbaf48b7d7ad6241d28cfa8089e3cf7557",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

@@ -14,10 +14,11 @@
     { "id": "cadence-configuration", "file": "migrate_cadence_configuration.sql", "requires": [] },
     { "id": "daily-summary-features", "file": "migrate_daily_summary_features.sql", "requires": [] },
     { "id": "past-days-summary", "file": "migrate_past_days_summary.sql", "requires": [] },
+    { "id": "chatgroup-summary", "file": "migrate_chatgroup_summary.sql", "requires": ["daily-summary-features", "past-days-summary"] },
     {
       "id": "consolidated-reconciliation",
       "file": "migrate_issue_chaser_latest.sql",
-      "requires": ["company-column", "remove-legacy-delivery-flags", "cadence-configuration", "daily-summary-features", "past-days-summary"],
+      "requires": ["company-column", "remove-legacy-delivery-flags", "cadence-configuration", "daily-summary-features", "past-days-summary", "chatgroup-summary"],
       "allowedDestructiveOperations": ["drop-column"],
       "precondition": "Confirm current application and HALO metadata no longer read the five legacy delivery flags; take a schema backup before applying."
     },
@@ -26,7 +27,8 @@
     { "id": "novade-name-list-check", "file": "migrate_novade_name_list_check.sql", "requires": ["consolidated-reconciliation"] },
     { "id": "novade-name-sync", "file": "migrate_novade_name_sync.sql", "requires": ["novade-name-list-check"] },
     { "id": "feature-destination-groups", "file": "migrate_feature_destination_groups.sql", "requires": ["daily-summary-features", "novade-name-list-check"] },
-    { "id": "hourly-report-schedules", "file": "migrate_hourly_report_schedules.sql", "requires": ["cadence-configuration", "daily-summary-features"] }
+    { "id": "hourly-report-schedules", "file": "migrate_hourly_report_schedules.sql", "requires": ["cadence-configuration", "daily-summary-features", "chatgroup-summary"] },
+    { "id": "summary-destination-groups", "file": "migrate_summary_destination_groups.sql", "requires": ["feature-destination-groups", "chatgroup-summary"] }
   ],
   "destructiveUtilities": []
 }

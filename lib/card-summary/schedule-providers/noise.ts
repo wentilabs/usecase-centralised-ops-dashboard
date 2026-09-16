@@ -11,7 +11,14 @@ export const noiseScheduleProvider: ScheduleProvider = {
     // Its own three minute marks, and no window of its own — it averages the
     // 5-minute readings that just closed, whether or not the 5-minute message
     // is being sent.
-    if (config.enable_15min_average_exceedance) parts.push("15-min average exceedance @ :17 :32 :47");
+    if (config.enable_15min_average_exceedance) {
+          parts.push(
+            `15-min average exceedance @ :17 :32 :47${window(
+              config.fifteen_min_average_start_hhmm,
+              config.fifteen_min_average_end_hhmm,
+            )}`,
+          );
+        }
     if (config.enable_half_hourly) {
           const marks = String(config[ASSESS_COL] ?? "30")
             .split(",")

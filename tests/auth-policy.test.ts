@@ -2743,3 +2743,50 @@ test("a new company is offered everywhere the old ones are", () => {
   // And does not match it inside an unrelated word.
   assert.equal(companyIn("topsoil building works"), null);
 });
+
+test("every noise cadence with a window shows it the same way", () => {
+  // The 15-minute average alert gained `fifteen_min_average_start_hhmm` /
+  // `_end_hhmm`, the fourth such pair. They arrived under "Other" unlabelled
+  // while the other three cadences had theirs beside the switch they gate.
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const pairs = [
+    ["enable_5min", "five_min_start_hhmm", "five_min_end_hhmm"],
+    ["enable_half_hourly", "half_hourly_start_hhmm", "half_hourly_end_hhmm"],
+    ["enable_hourly", "hourly_start_hhmm", "hourly_end_hhmm"],
+    ["enable_15min_average_exceedance", "fifteen_min_average_start_hhmm", "fifteen_min_average_end_hhmm"],
+  ] as const;
+  const spec = buildFieldSpec(
+    "noise",
+    Object.fromEntries(pairs.flatMap(([flag, a, b]) => [[flag, bool], [a, text], [b, text]])),
+  );
+
+  for (const [flag, start, end] of pairs) {
+    for (const column of [start, end]) {
+      const field = spec.fields[column];
+      assert.equal(field.widget, "hhmm", `${column} must use the time control`);
+      assert.deepEqual(field.showIf, { field: flag, equals: true }, `${column} must follow ${flag}`);
+      // Beside the cadence it gates, never swept into Other.
+      const group = spec.groups.find((g) => g.fields.includes(column));
+      assert.ok(group?.fields.includes(flag), `${column} is not with ${flag}`);
+    }
+    // Both ends share a row, so the pair reads as one window.
+    assert.equal(spec.fields[start].row, spec.fields[end].row, `${flag}'s window is split across rows`);
+  }
+  assert.ok(!spec.groups.find((g) => g.title === "Other"));
+
+  // And the card renders the window for the new one as it does for the rest.
+  assert.match(
+    firesAt("noise", {
+      enable_15min_average_exceedance: true,
+      fifteen_min_average_start_hhmm: "1900",
+      fifteen_min_average_end_hhmm: "0700",
+    }),
+    /15-min average exceedance @ :17 :32 :47 \(19:00–07:00\)/,
+  );
+  // Blank means unrestricted, and the card says nothing rather than "–".
+  assert.match(
+    firesAt("noise", { enable_15min_average_exceedance: true }),
+    /15-min average exceedance @ :17 :32 :47(?! \()/,
+  );
+});

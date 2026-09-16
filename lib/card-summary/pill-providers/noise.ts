@@ -7,6 +7,7 @@ export function noisePills(config: ProjectConfigRow): Pill[] {
   const on = (value: unknown) => Boolean(value);
   return [
     { label: "5-min", on: on(config.enable_5min) },
+    { label: "15-min avg", on: on(config.enable_15min_average_exceedance) },
     { label: "half-hourly", on: on(config.enable_half_hourly) },
     { label: "hourly", on: on(config.enable_hourly) },
     { label: "3-hr summary", on: on(config.enable_three_hour_summary) },

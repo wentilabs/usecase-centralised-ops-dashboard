@@ -2661,3 +2661,52 @@ test("sections group what belongs together and separate what does not", () => {
     }
   }
 });
+
+test("noise's 15-minute average exceedance is a cadence of its own", () => {
+  // 4080201. It averages the three 5-minute readings that just closed and
+  // sends only the meters over their Leq5min limit — a separate opt-in route,
+  // not a format and not part of the 5-minute cadence, so it can be the only
+  // thing a project runs.
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("noise", {
+    enable_15min_average_exceedance: bool,
+    enable_5min: bool,
+    enable_half_hourly: bool,
+    enable_hourly: bool,
+  });
+  const field = spec.fields.enable_15min_average_exceedance;
+  assert.notEqual(field.label, "enable_15min_average_exceedance");
+  // The three facts that are not guessable from the name.
+  assert.match(field.help, /:17/);
+  assert.match(field.help, /Leq5min limit/);
+  assert.match(field.help, /left out of the average rather than counted as zero/);
+  assert.ok(!spec.groups.find((g) => g.title === "Other"));
+  // Its own section, not folded into any other cadence — it fires on its own
+  // minute marks and runs whether or not the others do.
+  const group = spec.groups.find((g) => g.fields.includes("enable_15min_average_exceedance"));
+  for (const other of ["enable_5min", "enable_half_hourly", "enable_hourly"]) {
+    assert.ok(!group?.fields.includes(other), `it is filed under the ${other} cadence`);
+  }
+
+  // The card names it, gives its minute marks, and counts it as work.
+  const line = firesAt("noise", { enable_15min_average_exceedance: true });
+  assert.match(line, /15-min average exceedance @ :17 :32 :47/);
+  assert.equal(hasCadence("noise", { enable_15min_average_exceedance: true }), true);
+  assert.ok(
+    pillsFor("noise", { enable_15min_average_exceedance: true }).some((p) => p.label === "15-min avg" && p.on),
+  );
+});
+
+test("noise's source_type lists the adapters that exist now", () => {
+  // Three adapters were added and `pentaocean` is no longer among them, so a
+  // help text naming the old four sends someone looking for a profile that is
+  // not offered — and omits three that are.
+  const text = { type: "string" as const, format: "text", enum: null, default: "default" };
+  const help = buildFieldSpec("noise", { source_type: text }).fields.source_type.help;
+  for (const adapter of ["geoscan", "trackmaster", "alphalab"]) {
+    assert.match(help, new RegExp(adapter), `${adapter} is offered but unexplained`);
+  }
+  assert.doesNotMatch(help, /pentaocean/, "noise no longer offers it");
+  // WBGT still does, and is a different service with its own list.
+  assert.match(buildFieldSpec("wbgt", { source_type: text }).fields.source_type.help, /pentaocean/);
+});

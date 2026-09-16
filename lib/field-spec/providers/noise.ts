@@ -34,6 +34,10 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     five_min_end_hhmm: { label: "Window end", widget: "hhmm", row: "5min_window", showIf: { field: "enable_5min", equals: true } },
 
     // --- Half-hourly cadence
+    enable_15min_average_exceedance: {
+      label: "15-min average exceedance",
+      help: "An extra alert at :17, :32 and :47 SGT. Each run averages the three 5-minute readings that just closed — :05/:10/:15, then :20/:25/:30, then :35/:40/:45 — and sends only the meters whose average is over their Leq5min limit. Additive and opt-in: it is a route of its own, not a format, and it changes nothing about the 5-minute messages. A slot with no reading is left out of the average rather than counted as zero.",
+    },
     enable_half_hourly: { label: "Half-hourly messages" },
     half_hourly_formatter: { label: "Half-hourly format", showIf: { field: "enable_half_hourly", equals: true } },
     half_hourly_start_hhmm: { label: "Window start", widget: "hhmm", row: "hh_window", showIf: { field: "enable_half_hourly", equals: true } },
@@ -148,6 +152,10 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       title: "5-minute messages",
       fields: ["enable_5min", "five_min_formatter", "five_min_start_hhmm", "five_min_end_hhmm"],
     },
+    // Its own section: it averages the 5-minute readings but is not the
+    // 5-minute cadence, fires on its own three minute marks, and can run with
+    // every other cadence off.
+    { title: "15-minute average exceedance", fields: ["enable_15min_average_exceedance"] },
     {
       title: "Half-hourly messages",
       fields: [

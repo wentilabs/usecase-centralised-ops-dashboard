@@ -8,6 +8,10 @@ export const noiseScheduleProvider: ScheduleProvider = {
   firesAt(config: ProjectConfigRow): string {
     const parts: string[] = [];
     if (config.enable_5min) parts.push(`5-min${window(config.five_min_start_hhmm, config.five_min_end_hhmm)}`);
+    // Its own three minute marks, and no window of its own — it averages the
+    // 5-minute readings that just closed, whether or not the 5-minute message
+    // is being sent.
+    if (config.enable_15min_average_exceedance) parts.push("15-min average exceedance @ :17 :32 :47");
     if (config.enable_half_hourly) {
           const marks = String(config[ASSESS_COL] ?? "30")
             .split(",")
@@ -34,6 +38,8 @@ export const noiseScheduleProvider: ScheduleProvider = {
   hasCadence(config: ProjectConfigRow): boolean {
     return Boolean(
           config.enable_5min ||
+            // A project running only this one is working, not idle.
+            config.enable_15min_average_exceedance ||
             config.enable_half_hourly ||
             config.enable_hourly ||
             config.enable_three_hour_summary ||

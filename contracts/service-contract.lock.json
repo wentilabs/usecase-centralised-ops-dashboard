@@ -58,7 +58,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "ee958d8a4ed50b9ae651b7c7b7b4745e1189a07b",
+      "commit": "08e9eaca9cee42a303cbc852a94a897e58b340f8",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

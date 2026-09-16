@@ -12,8 +12,8 @@
     },
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
-      "branch": "critical-refactor-for-maintainability",
-      "commit": "3b12a6cf81eb3c5aef7675e2bb72104f16f1fd18",
+      "branch": "main",
+      "commit": "969c3002b7f6ef47a9e9d5ff2b6a83f9ed0fc833",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -21,8 +21,8 @@
     },
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
-      "branch": "critical-refactor-for-maintainability",
-      "commit": "4fbb437f69a8f0b01c4616675fab9982151da4f4",
+      "branch": "main",
+      "commit": "23211f97af2e27b6bbcce84cbc5e012cee001b18",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -30,8 +30,8 @@
     },
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
-      "branch": "critical-refactor-for-maintainability",
-      "commit": "997052124550e614238c140ff0d7d3630eab9a46",
+      "branch": "main",
+      "commit": "7479d7c26c7ab433796000fca4158886eb820cfe",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -48,7 +48,8 @@
     },
     "subcon": {
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
-      "branch": "critical-refactor-for-maintainability",
+      "localDirectory": "usecase-subcon-manpower-activities",
+      "branch": "main",
       "commit": "a87eb7814bc43c16eb85a9a6c72acb75ed90f9e8",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json",
@@ -58,7 +59,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "cb6c99cbaf48b7d7ad6241d28cfa8089e3cf7557",
+      "commit": "daef8b96f8d3af5853b27e552058d4352b269a7d",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

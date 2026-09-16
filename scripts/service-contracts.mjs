@@ -19,7 +19,11 @@ function git(repo, args) {
 }
 
 function repositoryPath(entry) {
-  const directory = entry.repository.split("/").at(-1);
+  // A repository can be renamed without every developer renaming an existing
+  // checkout. Keep the GitHub identity in the lock, but make the local path
+  // explicit when it differs so checks do not silently depend on one machine's
+  // folder naming.
+  const directory = entry.localDirectory || entry.repository.split("/").at(-1);
   const repo = path.join(familyRoot, directory);
   if (!existsSync(repo)) fail(`missing sibling checkout ${repo}`);
   return repo;

@@ -8,10 +8,10 @@ the evidence behind it.
 
 Review baseline:
 
-- services: `critical-refactor-for-maintainability`, based on the latest
-  `origin/main` obtained for this effort;
-- HALO: `critical-refactor-for-maintainability`, based on
-  `origin/feat/nextjs-port`;
+- promoted services (Haze, Issue Chaser, Lightning, and Subcon): `main`;
+- WBGT: `critical-refactor-for-maintainability` at the same tip as `main`;
+- held services (Noise and Ailytics): `critical-refactor-for-maintainability`;
+- HALO: `feat/nextjs-port`, based on `origin/feat/nextjs-port`;
 - endpoint names and methods are compatibility contracts because schedules and
   webhooks are configured outside these repositories;
 - open mode when an optional secret is blank is intentional. The review records

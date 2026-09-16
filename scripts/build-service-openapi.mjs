@@ -38,7 +38,7 @@ const REPOS = [
     blurb: "NEA lightning detections against each project's widened rings, episode tracking and evidence." },
   { dir: "usecase-issue-chaser", title: "Issue Chaser",
     blurb: "Reads a Safety workbook and chases open issues on per-severity cadences, plus read-only daily summaries." },
-  { dir: "usecase-wohhup-coy-housekeeping-waterparade", title: "Subcon Activities",
+  { dir: "usecase-subcon-manpower-activities", title: "Subcon Activities",
     blurb: "Housekeeping intake from forwarded WhatsApp, and the morning manpower/activity reports." },
   { dir: "mdw-lambda-ailytics", title: "Ailytics",
     blurb: "Ailytics safety-tracking webhooks, Telegram relay and delivery retry." },
@@ -223,10 +223,18 @@ function yamlString(value) {
 }
 
 function openapiType(declared) {
-  const t = String(declared || "").toLowerCase();
-  if (t.includes("boolean")) return { type: "boolean" };
-  if (t.includes("string[]") || t.includes("[]")) return { type: "array", items: { type: "string" } };
-  if (t.includes("number") || t.includes("integer")) return { type: "number" };
+  const raw = String(declared || "").trim().toLowerCase();
+  // Most historical docblocks use a single coarse type. Handle only the
+  // explicit unions needed by a boundary that genuinely accepts two JSON
+  // primitives; treating every prose `|` as a union would rewrite unrelated
+  // generated specs. `object` is likewise kept narrow for nested envelopes.
+  if (raw.replace(/\s+/g, "") === "string|number") {
+    return { oneOf: [{ type: "string" }, { type: "number" }] };
+  }
+  if (raw === "object") return { type: "object" };
+  if (raw.includes("boolean")) return { type: "boolean" };
+  if (raw.includes("string[]") || raw.includes("[]")) return { type: "array", items: { type: "string" } };
+  if (raw.includes("number") || raw.includes("integer")) return { type: "number" };
   return { type: "string" };
 }
 
@@ -342,8 +350,16 @@ for (const repo of REPOS) {
       for (const p of named) {
         const t = openapiType(p.type);
         lines.push(`                ${p.name}:`);
-        lines.push(`                  type: ${t.type}`);
-        if (t.items) lines.push("                  items:\n                    type: string");
+        if (t.oneOf) {
+          lines.push("                  oneOf:");
+          for (const variant of t.oneOf) {
+            lines.push(`                    - type: ${variant.type}`);
+            if (variant.items) lines.push("                      items:\n                        type: string");
+          }
+        } else {
+          lines.push(`                  type: ${t.type}`);
+          if (t.items) lines.push("                  items:\n                    type: string");
+        }
         if (p.description) lines.push(`                  description: ${yamlString(p.description)}`);
         if (route.enforced && !route.enforced.includes(p.name)) {
           lines.push(`                  x-documented-but-rejected: ${yamlString("named in the docblock but not in allowedKeys — the route would 400 on it")}`);

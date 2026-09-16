@@ -8,7 +8,7 @@ import { SERVICE_CONTRACTS, contractReadonlyFields } from "../lib/service-contra
 test("the vendored Haze contract identifies an immutable upstream revision", () => {
   assert.equal(lock.schemaVersion, 1);
   assert.equal(lock.services.haze.repository, "wentilabs/usecase-haze-alerts");
-  assert.equal(lock.services.haze.branch, "critical-refactor-for-maintainability");
+  assert.equal(lock.services.haze.branch, "main");
   assert.match(lock.services.haze.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.haze.path, "contracts/service.contract.json");
   assert.equal(lock.services.haze.vendoredPath, "contracts/services/haze.contract.json");
@@ -23,6 +23,7 @@ test("the vendored Ailytics contract identifies an immutable upstream revision",
 
 test("the vendored Subcon Activities contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.subcon.repository, "wentilabs/usecase-wohhup-coy-housekeeping-waterparade");
+  assert.equal(lock.services.subcon.localDirectory, "usecase-subcon-manpower-activities");
   assert.match(lock.services.subcon.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.subcon.vendoredPath, "contracts/services/subcon.contract.json");
 });
@@ -116,9 +117,9 @@ test("Issue Chaser marks only its token-aware operator routes as optional auth",
   );
 });
 
-test("Noise pins all fifteen open routes and distinguishes scheduled from operator jobs", () => {
+test("Noise pins all sixteen open routes and distinguishes scheduled from operator jobs", () => {
   const routes = SERVICE_CONTRACTS.noise.routes;
-  assert.equal(routes.length, 15);
+  assert.equal(routes.length, 16);
   assert.ok(routes.every((route) => route.authentication === "none"));
   assert.equal(routes.find((route) => route.path === "/api/noise-sheet-export")?.kind, "operator");
   assert.equal(routes.find((route) => route.path === "/api/noise-hourly")?.kind, "scheduled");

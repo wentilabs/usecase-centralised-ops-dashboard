@@ -17,7 +17,10 @@ The service refactors start from the latest `main` branch:
 - WBGT and Water Parade
 
 HALO starts from `feat/nextjs-port`, which is its current application branch.
-Work is carried on `critical-refactor-for-maintainability` in every repository.
+The current service baselines are explicit: Haze, Issue Chaser, Lightning, and
+Subcon are on `main`; WBGT's accepted commits are at the same tip on its
+critical branch and `main`; Noise and Ailytics remain on
+`critical-refactor-for-maintainability` while their work is intentionally held.
 
 ## Non-negotiable compatibility contract
 

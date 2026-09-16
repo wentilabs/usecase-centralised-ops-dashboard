@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "dbc639aefd20f9607e49a37a66ff2f4e01341908",
+      "commit": "4fbb437f69a8f0b01c4616675fab9982151da4f4",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "critical-refactor-for-maintainability",
-      "commit": "114c8c4d292572885ffbee74a2b859eff16a1022",
+      "commit": "ca98c28888bb7236f6d7f482f1a7b7f7b14dbe3f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",

@@ -14,9 +14,10 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { readJson, summariseJobResult } from "../lib/read-json";
 import { companyIn } from "../lib/chat-scope";
+
 import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
-import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput } from "../lib/jobs";
+import { EXPORT_FORMATS, EXPORTS, JOBS, eachChunk, exportsForService, jobTargets, jobsForService, readSheetId, spanDays, validateJobInput, budgetFor } from "../lib/jobs";
 import {
   buildToggles,
   describeSelection,
@@ -2156,20 +2157,52 @@ test("a long range is split so no single request depends on the platform's timeo
   // A single day is one chunk however the job is configured.
   assert.equal(eachChunk("2026-07-01", "2026-07-01", 14).length, 1);
 
-  // The jobs that write a workbook all declare one, because they are the slow
-  // ones. A new sheet job without a chunk size is the same trap again.
-  for (const key of ["noise-bootstrap", "noise-sync", "wbgt-fill"] as const) {
+  // The ADDITIVE sheet jobs declare one, because they are the slow ones and
+  // each request extends what the last wrote. A new additive sheet job without
+  // a chunk size is the same trap again.
+  for (const key of ["noise-sync", "wbgt-fill"] as const) {
     assert.ok(JOBS[key].chunkDays, `${key} must say how much it will do in one request`);
   }
 
   // Sized from a measurement, not a guess: 8 days of noise-sync on the heaviest
   // project took 23.3s against a platform limit of about 30. A chunk that grows
   // past a week is one that starts being killed mid-write.
-  for (const key of ["noise-bootstrap", "noise-sync"] as const) {
-    assert.ok(
-      (JOBS[key].chunkDays ?? 0) <= 7,
-      `${key} asks for ${JOBS[key].chunkDays} days in one request; 8 measured 23.3s and 15 measured 30.1s`,
-    );
+  assert.ok(
+    (JOBS["noise-sync"].chunkDays ?? 0) <= 7,
+    `noise-sync asks for ${JOBS["noise-sync"].chunkDays} days in one request; 8 measured 23.3s and 15 measured 30.1s`,
+  );
+});
+
+test("bootstrap is one request, because chunking it corrupts the workbook", () => {
+  // Chunking is only safe for a job that ADDS to what the last request wrote.
+  // Bootstrap lays the workbook out from a fixed origin, so every call writes
+  // the same columns whatever start_date it is given. Recorded against SKW by
+  // stubbing the Sheets client and reading the request plan:
+  //
+  //   Sep 1–7    Overview!BE4:BK4
+  //   Sep 8–14   Overview!BE4:BK4   <- the same cells, not the next seven
+  //   Sep 1–14   Overview!AX4:BK4   <- what one call does
+  //
+  // The visible symptom was a Google error — "You must select all cells in a
+  // merged range" — because each call also rebuilds the month-band header
+  // merges sized from its own range, so the second call's bands partially
+  // overlap the first's. batchUpdate stops at the failing request, which left
+  // the sheet half-written and made it look intermittent.
+  assert.equal(JOBS["noise-bootstrap"].chunkDays, undefined, "bootstrap must not be chunked");
+  assert.deepEqual(eachChunk("2026-07-01", "2026-12-31", JOBS["noise-bootstrap"].chunkDays), [
+    { startDate: "2026-07-01", endDate: "2026-12-31" },
+  ]);
+
+  // Not chunkable means it needs the longer single-request budget instead, and
+  // the route's maxDuration has to cover whatever it asks for.
+  const budget = JOBS["noise-bootstrap"].timeoutMs ?? 0;
+  assert.ok(budget > 25_000, "an unchunked bootstrap needs more than the 25s default");
+  assert.ok(budget <= 60_000, `maxDuration is 60s; ${budget}ms would be cut off by the platform first`);
+
+  // And no job may declare both: chunking is what makes a long budget
+  // unnecessary, so asking for both means one of them is wrong.
+  for (const [key, job] of Object.entries(JOBS)) {
+    assert.ok(!(job.chunkDays && job.timeoutMs), `${key} declares both chunkDays and timeoutMs`);
   }
 });
 
@@ -2789,4 +2822,15 @@ test("every noise cadence with a window shows it the same way", () => {
     firesAt("noise", { enable_15min_average_exceedance: true }),
     /15-min average exceedance @ :17 :32 :47(?! \()/,
   );
+});
+
+test("a job's declared budget is the one the route applies", () => {
+  // `timeoutMs` is only worth declaring if something reads it. Removing the
+  // route's use of it broke nothing, which is how a field ends up accepted and
+  // ignored — the same shape as the noise endpoint's `dryRun`.
+  assert.equal(budgetFor({ timeoutMs: 55_000 }), 55_000);
+  assert.equal(budgetFor({}), 25_000, "a job without one keeps the short default");
+  // The job that actually needs it gets it.
+  assert.equal(budgetFor(JOBS["noise-bootstrap"]), JOBS["noise-bootstrap"].timeoutMs);
+  assert.ok(budgetFor(JOBS["noise-bootstrap"]) > budgetFor(JOBS["noise-sync"]));
 });

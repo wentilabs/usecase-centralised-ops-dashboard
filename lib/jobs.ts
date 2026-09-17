@@ -99,9 +99,27 @@ export type JobDefinition = {
    * needing to.
    *
    * Absent means the whole range goes in one request, which is right for the
-   * jobs that finish quickly.
+   * jobs that finish quickly — and REQUIRED for any job that is not additive.
+   *
+   * Chunking is only safe when each request adds to what the last one left. A
+   * job that lays a range out from a fixed origin writes the same cells every
+   * time, so two chunks overwrite each other:
+   *
+   *   Sep 1–7   → Overview!BE4:BK4      7 columns
+   *   Sep 8–14  → Overview!BE4:BK4      the SAME 7 columns
+   *   Sep 1–14  → Overview!AX4:BK4      14 columns, one call
+   *
+   * That is measured, not assumed. Before adding `chunkDays` to a job, send it
+   * two consecutive ranges and check the second writes different cells.
    */
   chunkDays?: number;
+  /**
+   * How long one request to this job may take, when 25s is not enough.
+   *
+   * Only for a job that cannot be chunked — see `chunkDays`. The platform caps
+   * this regardless of what is asked for, so it buys headroom, not a promise.
+   */
+  timeoutMs?: number;
   /** Optional booleans the endpoint accepts. */
   flags?: JobFlag[];
   /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
@@ -189,12 +207,24 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     baseUrlEnv: "NOISE_API_URL",
     path: "/api/noise-sheet-bootstrap",
     precondition: sheetPrecondition("google_sheet_id", "Analysis sheet ID"),
-    // A week per request. Not measured directly — bootstrapping rewrites a
-    // workbook's structure and is not something to time against a live one — but
-    // the sync numbers next door put the heaviest project at 2–3s per day, and a
-    // fortnight at that rate would sit past the platform's limit. Seven is the
-    // conservative read of a measurement taken on the neighbouring job.
-    chunkDays: 7,
+    // NOT chunked, and it must stay that way. Bootstrap lays the workbook out
+    // from a fixed origin: the date columns start at the same place whatever
+    // start_date it is given, so a second chunk rewrites the first one's
+    // columns rather than extending them. Recorded against SKW —
+    //
+    //   Sep 1–7   Overview!BE4:BK4
+    //   Sep 8–14  Overview!BE4:BK4   <- same cells
+    //   Sep 1–14  Overview!AX4:BK4   <- what one call does
+    //
+    // It also rebuilds the month-band header merges per call, sized from the
+    // range, so the second call's bands partially overlap the first's and
+    // Google rejects the batch: "You must select all cells in a merged range".
+    // That is the error a chunked bootstrap produces, and it leaves the sheet
+    // half-written because batchUpdate stops at the failing request.
+    //
+    // Sync IS additive — it writes the dates it is given — so it keeps its
+    // chunking. This job trades that for one longer request.
+    timeoutMs: 55_000,
     buildPayload: ({ projectCode, startDate, endDate }) => ({
       project_code: projectCode,
       start_date: startDate,
@@ -423,6 +453,24 @@ export function isJobKey(value: string): value is JobKey {
 }
 
 /** Jobs offered on a given service's tab, in display order. */
+/**
+ * How long one request to a job may take.
+ *
+ * 25s is the default and the right answer for a chunked job: each request
+ * stays short and the run takes as long as the range needs. A job that cannot
+ * be chunked — see `chunkDays` — has to do the whole range in one call
+ * instead, so it declares its own budget.
+ *
+ * The platform caps this regardless. Amplify runs the route on SSR compute,
+ * and `maxDuration` in the jobs route is a request rather than a guarantee, so
+ * a budget here buys headroom and never a promise.
+ */
+export const DEFAULT_JOB_TIMEOUT_MS = 25_000;
+
+export function budgetFor(job: { timeoutMs?: number }): number {
+  return job.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
+}
+
 export function jobsForService(service: ServiceKey): JobDefinition[] {
   return JOB_KEYS.map((key) => JOBS[key]).filter((job) => job.service === service);
 }

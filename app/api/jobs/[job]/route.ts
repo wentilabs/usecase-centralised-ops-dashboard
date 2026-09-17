@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { JOBS, isJobKey, validateJobInput } from "@/lib/jobs";
+import { DEFAULT_JOB_TIMEOUT_MS, JOBS, budgetFor, isJobKey, validateJobInput } from "@/lib/jobs";
 import { listConfigs } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -19,7 +19,8 @@ export const dynamic = "force-dynamic";
  * A `perDay` job is therefore expanded by the CALLER — one request per date —
  * rather than looped here. See `eachDate` and JobBatch/JobDialog.
  */
-const TIMEOUT_MS = 25_000;
+const TIMEOUT_MS = DEFAULT_JOB_TIMEOUT_MS;
+
 
 /**
  * The longest a single request may take.
@@ -29,7 +30,7 @@ const TIMEOUT_MS = 25_000;
  * `chunkDays` keeps each request to a slice the endpoint answers quickly, and
  * the client walks the slices for as long as the work takes.
  */
-export const maxDuration = 60;
+export const maxDuration = 60;   // must stay >= the largest `timeoutMs` in lib/jobs.ts
 
 /**
  * The sentence a service returned, from wherever it put it.
@@ -134,7 +135,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
   // the job's `chunkDays`. The loop is kept for a caller that sends more than a
   // chunk anyway, so the answer is partial-and-resumable rather than truncated.
   const dates = [null];
-  const deadline = Date.now() + TIMEOUT_MS;
+  const budgetMs = budgetFor(job);
+  const deadline = Date.now() + budgetMs;
   const perDate: { date: string | null; status: number; result: unknown }[] = [];
   let lastPayload: Record<string, unknown> = {};
 
@@ -215,7 +217,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     return NextResponse.json(
       {
         error: aborted
-          ? `The ${job.service} service did not respond within ${TIMEOUT_MS / 1000}s. It may still be running — check its CloudWatch logs before retrying.`
+          ? `The ${job.service} service did not respond within ${budgetMs / 1000}s. It may still be running — check its CloudWatch logs before retrying, and do not assume nothing was written.`
           : error instanceof Error
             ? error.message
             : String(error),

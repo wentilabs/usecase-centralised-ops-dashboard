@@ -12,7 +12,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no advisory is sent." },
     nea_region: { label: "NEA region", help: "Which of the five regional 24-hour PSI readings this site follows." },
@@ -23,7 +23,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     four_hourly: {
       label: "Four-hourly override (now every 2 hours)",
       help:
-        "Guarantees a send every two hours — 08:00, 10:00, 12:00, 14:00, 16:00, 18:00 and 20:00 SGT — on top of the hourly advisory. Seven slots, not four: the column is still called `four_hourly` but was widened as an interim measure for periods of high haze frequency. Those hours ignore both the band gate below and the working-hours window, so 20:00 fires even on a site that closes at 19:00. Every other hour follows the ordinary rules. The check is on the hour, not the minute, and the cron runs at :02, so the messages land at 08:02, 10:02 and so on. The project is also left out of the once-a-day kickoff message.",
+        "A guaranteed send at 08:00, 10:00, 12:00, 14:00, 16:00, 18:00 and 20:00 SGT, on top of the hourly advisory, landing two minutes past the hour. These seven ignore the band gate below and the working-hours window, so 20:00 fires even on a site that closes at 19:00; every other hour follows the ordinary rules. The project is also left out of the daily kickoff message. Seven slots despite the `four_hourly` name, which was widened for high-haze periods.",
     },
     alert_only_when_at_least: {
       label: "Alert only when at least",

@@ -7,6 +7,7 @@ import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { formatSgt, groupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
+import { helpSegments } from "@/lib/help-text";
 import { newProblems } from "@/lib/row-rules";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -609,7 +610,23 @@ export function ConfigEditor({
                           ) : null}
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">
-                              {field.help}
+                              {/* Values the operator has to type exactly are
+                                  marked with backticks in the help string. They
+                                  reached the screen as backtick characters until
+                                  this split existed — punctuation where the
+                                  writer meant emphasis. */}
+                              {helpSegments(field.help).map((segment, index) =>
+                                segment.code ? (
+                                  <code
+                                    key={index}
+                                    className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground"
+                                  >
+                                    {segment.text}
+                                  </code>
+                                ) : (
+                                  <span key={index}>{segment.text}</span>
+                                ),
+                              )}
                             </p>
                           ) : null}
                         </div>

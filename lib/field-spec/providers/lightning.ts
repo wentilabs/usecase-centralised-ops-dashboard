@@ -12,7 +12,7 @@ export const lightningFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no lightning alert is sent." },
     timezone: { label: "Timezone" },
@@ -78,7 +78,7 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       widget: "groups",
       // Shown whether or not forwarding is on, like every other destination:
       // where a thing goes is decided before it is switched on.
-      help: "Where forwarded SMS alerts go. Blank falls back to the WhatsApp group IDs above. It is SMS-only in both directions — normal NEA alerts, kickoffs and every other message always use the main list and never this one, so a group here receives SMS traffic and nothing else.",
+      help: "Where forwarded SMS alerts go. Blank falls back to the WhatsApp group IDs above. SMS-only in both directions: normal NEA alerts, kickoffs and everything else always use the main list and never this one.",
     },
 
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },

@@ -8,7 +8,7 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     enabled: {
       label: "Project enabled",
@@ -36,7 +36,7 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
     // Added by supabase/migrate_status_summary.sql in the ailytics repo.
     status_summary_enabled: {
       label: "Daily status summary",
-      help: "Lets POST /ailytics-safety/status-summary read this project's sheets and send its own Pending/open counts to the WhatsApp groups above. Project-local — it never aggregates across projects, and a disabled project is not sent one.",
+      help: "Sends this project's own Pending and open counts to the WhatsApp groups above. Project-local — it never aggregates across projects, and a disabled project is not sent one.",
     },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },

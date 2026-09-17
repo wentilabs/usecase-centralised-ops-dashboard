@@ -14,6 +14,7 @@ import { isApiPath, isPublicPath, isWriteRequest } from "../lib/route-policy";
 import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-values";
 import { readJson, summariseJobResult } from "../lib/read-json";
 import { companyIn } from "../lib/chat-scope";
+import { helpSegments } from "../lib/help-text";
 
 import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
@@ -2460,7 +2461,10 @@ test("the report schedules are described as the default path, not the exception"
     "daily_safety_company_summary_schedule",
   ]) {
     const help = spec.fields[column].help;
-    assert.match(help, /normal path/i, `${column} must say the schedule is what ordinarily runs`);
+    // Was pinned on the literal phrase "normal path". The help now opens by
+    // saying when the report runs, which carries the same point in the house
+    // style — the guard below is what actually catches the old inversion.
+    assert.match(help, /^When the .+ runs/i, `${column} must open by saying when it runs`);
     assert.doesNotMatch(help, /scheduled invocation only/i, `${column} still describes the old default`);
   }
   // And the two standing numbers must not claim the scheduled run as theirs.
@@ -2616,7 +2620,7 @@ test("the chat group summary is a first-class third report", () => {
   assert.match(spec.fields.summary_days.help, /all three summaries/);
   // The shared destination is the MIDDLE of three levels now, not the one
   // place every summary goes — each style got its own field.
-  assert.match(spec.fields.safety_summary_whatsapp_group_ids.help, /has not got one of its own/);
+  assert.match(spec.fields.safety_summary_whatsapp_group_ids.help, /no destination of its own/);
 
   // The card names it, gives it its own hour, and counts it as scheduled work.
   const line = firesAt("issueChaser", {
@@ -2833,4 +2837,40 @@ test("a job's declared budget is the one the route applies", () => {
   // The job that actually needs it gets it.
   assert.equal(budgetFor(JOBS["noise-bootstrap"]), JOBS["noise-bootstrap"].timeoutMs);
   assert.ok(budgetFor(JOBS["noise-bootstrap"]) > budgetFor(JOBS["noise-sync"]));
+});
+
+test("help text marks its literal values instead of showing backticks", () => {
+  // 32 of the help strings quote a value the operator has to type exactly — a
+  // format like `HH00,lookback`, a tab name, an enum value. React renders a
+  // string verbatim, so before this they reached the screen as backticks.
+  assert.deepEqual(helpSegments("runs at `0800,4` daily"), [
+    { text: "runs at ", code: false },
+    { text: "0800,4", code: true },
+    { text: " daily", code: false },
+  ]);
+
+  // An unclosed backtick is a typo in the help string. Marking everything after
+  // it would make the mistake look intentional, so the run stays plain.
+  assert.deepEqual(helpSegments("a `b"), [
+    { text: "a ", code: false },
+    { text: "b", code: false },
+  ]);
+
+  // Adjacent marks produce an empty run between them, which would render as an
+  // empty code chip.
+  assert.deepEqual(helpSegments("`a``b`"), [
+    { text: "a", code: true },
+    { text: "b", code: true },
+  ]);
+
+  // Every real help string survives a round trip: nothing is dropped or added.
+  for (const [service, fields] of Object.entries(FIELDS)) {
+    for (const [column, field] of Object.entries(fields)) {
+      if (!field.help) continue;
+      const rebuilt = helpSegments(field.help)
+        .map((segment) => (segment.code ? `\`${segment.text}\`` : segment.text))
+        .join("");
+      assert.equal(rebuilt, field.help, `${service}.${column} does not round-trip`);
+    }
+  }
 });

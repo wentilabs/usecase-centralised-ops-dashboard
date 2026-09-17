@@ -74,7 +74,7 @@ export const subconOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "false",
-        help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab. Explicit opt-in: off means it is never sent.",
+        help: "The plain per-company headcount, which also reads the `Machines` tab. Its own opt-in: off means it is never sent.",
       },
       {
         column: "enable_activity_summary",
@@ -83,7 +83,7 @@ export const subconOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "false",
-        help: "POST /daily-activity-summary — the morning activity/manpower message. Independent of the report above; either can run without the other.",
+        help: "The morning activity and manpower message. Independent of the report above; either can run without the other.",
       },
       {
         column: "safety_group_ids",

@@ -11,7 +11,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     // Not quite a master switch any more: the scrape endpoint deliberately
     // includes TEST even when disabled, so it can mirror ZRA's live locations
@@ -19,7 +19,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     // TEST"). Everything else still stops.
     enabled: {
       label: "Project enabled",
-      help: "Master switch for the notification cadences — off means none of them run, whatever the toggles below say. One exception: the scrape endpoint still scrapes the internal TEST project while it is disabled.",
+      help: "Master switch for the notification cadences — off means none of them run, whatever the toggles below say. One exception: scraping continues for the internal TEST project while it is disabled.",
     },
     source_type: {
       label: "Upstream source",
@@ -50,7 +50,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     },
     enable_15min_average_exceedance: {
       label: "15-min average exceedance",
-      help: "An extra alert at :17, :32 and :47 SGT. Each run averages the three 5-minute readings that just closed — :05/:10/:15, then :20/:25/:30, then :35/:40/:45 — and sends only the meters whose average is over their Leq5min limit. Additive and opt-in: it is a route of its own, not a format, and it changes nothing about the 5-minute messages. A slot with no reading is left out of the average rather than counted as zero.",
+      help: "An extra alert at :17, :32 and :47 SGT. Each run averages the three 5-minute readings that just closed and sends only the meters whose average is over their Leq5min limit. Opt-in and additive — it changes nothing about the 5-minute messages. A slot with no reading is left out of the average rather than counted as zero.",
     },
     enable_half_hourly: { label: "Half-hourly messages" },
     half_hourly_formatter: { label: "Half-hourly format", showIf: { field: "enable_half_hourly", equals: true } },

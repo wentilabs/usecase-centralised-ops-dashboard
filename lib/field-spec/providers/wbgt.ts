@@ -16,12 +16,12 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
     source_type: {
       label: "Login profile",
-      help: "Which CloudLynx account this project logs in with — `default`, `whgd`, `svs` or `pentaocean`. A grouping of credentials and a Browserbase context: not a data source and not a gate, so changing it does not change which meters are read, only who reads them. `pentaocean` needs its own credentials configured; the legacy value `noiselynx` normalises to `default`.",
+      help: "Which CloudLynx login this project uses: `default`, `whgd`, `svs` or `pentaocean`. It changes who reads the meters, not which meters are read, so switching it does not change the data. `pentaocean` needs its own credentials set up first; the old value `noiselynx` behaves as `default`.",
     },
     timezone: { label: "Timezone" },
 
@@ -44,14 +44,14 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     },
     enable_5min_alerts: {
       label: "5-min exceedance alerts",
-      help: "Edge-triggered: 🟡 from 31°C when selected, 🟠 from 32°C, 🔴 from 33°C, and 🟢 recovery below 31°C. The first evaluation is silent (INV-WBGT-03–05).",
+      help: "Alerts when a band is crossed: 🟡 from 31°C when selected, 🟠 from 32°C, 🔴 from 33°C, and 🟢 recovery below 31°C. The first reading after switching on is silent (INV-WBGT-03–05).",
     },
     // Nullable on purpose: blank is not "unset pending a choice", it is the
     // historical orange-only behaviour every project had before the column
     // existed. Saying so here stops a blank reading as a misconfiguration.
     five_min_alert_threshold: {
       label: "5-min minimum severity",
-      help: "Lowest crossing that sends. Blank = orange, the long-standing behaviour. yellow also alerts on entering 31–<32°C, the band that is otherwise silent; red waits for 33°C. A filtered crossing still records its zone, so a later move into a higher zone alerts, and recovery is sent only on leaving a zone that met this threshold.",
+      help: "The lowest band that sends. Blank = orange and above. yellow adds the 31–<32°C band, which is otherwise silent; red waits for 33°C. A filtered crossing is still recorded, so a later move to a higher band alerts, and recovery is sent only for a band that met this threshold.",
       showIf: { field: "enable_5min_alerts", equals: true },
     },
     five_min_alert_formatter: {
@@ -112,11 +112,11 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       // Reclassified by 64d2145: the new MTProto flow files readings under an
       // automatic `Telegram alerts — <source_key>` label, so this only still
       // governs photos arriving through the old Telegram Bot route.
-      help: "Which sensor a photo from the old Telegram Bot route files against. The signed external Telegram flow does not use it — that one labels its own readings `Telegram alerts — <source key>`, so a project on it needs nothing here.",
+      help: "Which sensor a photo from the old Telegram Bot route is filed against. The newer signed Telegram flow labels its own readings, so a project on that one can leave this blank.",
     },
     enable_external_telegram_alerts: {
       label: "Forward external Telegram readings",
-      help: "Signed external Telegram messages only. Off still parses and stores every reading — it withholds the outbound WhatsApp advisory and nothing else. Which text belongs to which project is decided by the parser registry in the service, not here, so turning this on does not widen what is ingested.",
+      help: "Sends the WhatsApp advisory for signed external Telegram messages. Off still parses and stores every reading — only the outbound advisory stops. It does not widen what is ingested: which text belongs to which project is decided in the service, not here.",
     },
     whatsapp_authoritative_client_identifier: {
       label: "Authoritative WhatsApp client",
@@ -130,15 +130,15 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     water_parade_outbound_group_id: {
       label: "Water Parade reminder group",
       widget: "groups",
-      help: "Where the reminder goes. A comma-separated list since migrate_water_parade_multiple_groups.sql dropped the single-group CHECK: ids are trimmed and de-duplicated, each group gets its own reminder, and each keeps its own delivery row and outbound message id so quoted replies correlate per group. Often NOT one of the alert groups.",
+      help: "Where the Water Parade reminder goes. A comma-separated list: each group gets its own reminder and its own message, so quoted replies stay matched to the right group. Often not one of the alert groups.",
     },
     water_parade_cooldown_enabled: {
       label: "Cooldown between cycles",
-      help: "Off by default. On, a new cycle is not created when one already exists in either of the two preceding hour bands of the same day — so a long hot spell asks the site once, not every hour. Suppressed cycles are logged as `cooldown_active`; nothing is sent and no reminder is due.",
+      help: "Off by default. On, no new cycle starts if one already ran in either of the two previous hour bands that day — so a long hot spell asks the site once, not every hour. Suppressed cycles are logged; nothing is sent and no reminder is due.",
     },
     exclude_wohhup_from_manpower: {
       label: "Exclude Woh Hup from the roster",
-      help: "On by default, which is the historical behaviour: Woh Hup, Wohhup and WHPL rows are dropped when the `Manpower` tab is read, because Woh Hup is the main contractor rather than a Water Parade participant. Off includes them — MBS is the project that needs that. Affects the Water Parade roster AND `manpower-sheet` POC resolution, since both read the same tab.",
+      help: "On by default: Woh Hup, Wohhup and WHPL rows are dropped when the Manpower tab is read, because Woh Hup is the main contractor rather than a Water Parade participant. Off includes them — MBS is the project that needs that. Affects both the Water Parade roster and manpower POC resolution.",
     },
     manpower_spreadsheet_id: {
       label: "Manpower spreadsheet ID",

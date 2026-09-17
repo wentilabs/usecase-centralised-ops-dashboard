@@ -21,7 +21,7 @@ export const lightningOnboarding: OnboardDefinition = {
         kind: "text",
         required: true,
         notNull: true,
-        help: "Uppercase. Enforced by a CHECK on the column.",
+        help: "Uppercase only — anything else is refused.",
       },
       {
         column: "company",
@@ -110,7 +110,7 @@ export const lightningOnboarding: OnboardDefinition = {
         // someone makes rather than inherits.
         fallback: "G",
         options: ["G", "C"],
-        help: "Ground-only to start with, matching red. The column's own default is C,G — widen it here or in the editor once the site wants cloud activity to raise a watch.",
+        help: "Ground-only to start with, matching red. Widen it here or in the editor once the site wants cloud activity to raise a watch.",
       },
       {
         column: "feed_stale_after_seconds",

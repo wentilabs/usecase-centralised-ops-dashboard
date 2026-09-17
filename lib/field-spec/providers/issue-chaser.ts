@@ -11,7 +11,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     // Two CHECK constraints shape everything here, and both bite on save rather
     // than at run time:
@@ -22,12 +22,12 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     //     service, where you configure first and switch on last.
     enabled: {
       label: "Project enabled",
-      help: "Refused unless the Safety sheet ID, an https send URL, instance and client are all set. Must be on before any chaser style can be turned on.",
+      help: "Nothing runs while this is off. It cannot be switched on until the Safety workbook, an https send URL, instance and client are all set — and every chaser style below needs this on first.",
     },
     safety_sheet_id: {
       label: "Safety workbook",
       widget: "sheet",
-      help: "Source of all issue state. The service finds the `Safety` tab and any `Safety-MMM YYYY` archives and reads rows by header name. It also WRITES to one column of it now — `POST /api/sync-novade-names` fills blank `Novade Name` cells from `Whatsapp Name`, and only when the sync below is switched on. Nothing else in the service writes here.",
+      help: "Where every issue is read from: the `Safety` tab plus any `Safety-MMM YYYY` archives, matched by column header. The only thing ever written back is blank `Novade Name` cells, and only while Write back Novade names is on.",
     },
     // Each style says it needs `enabled` first, on the style itself. Saying it
     // only on `enabled` was not enough: the operator toggling a style is looking
@@ -37,7 +37,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "P1 every 3 hours, P2 daily, P3 weekly — all round the clock by default. The old fixed 07:00–19:00 hours were retired when per-priority send windows became configurable; where those columns exist they appear here, and a due time outside a set window waits for the next in-window tick.",
+      help: "Chases open issues until they are closed: P1 every 3 hours, P2 daily, P3 weekly. Round the clock unless you set a send window below, in which case anything due outside it waits for the next hour inside it.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
@@ -51,13 +51,13 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     // four-character cap would silently truncate the value already stored.
     include_days_before_snapshot: {
       label: "Snapshot lookback (days)",
-      help: "The lookback for an explicit one-off call only — `scheduled: false`, or `include_days_before` overriding it. 0 is today only. Every scheduled run, which is now the default, takes its lookback from the matching Snapshot schedule entry instead and ignores this. Negative is refused by the database (issue_chaser_snapshot_lookback_check).",
+      help: "Only used for a manual one-off run — scheduled runs take their lookback from Snapshot schedule above. 0 is today only. Negative is refused.",
       showIf: { field: "same_day_open_snapshot_enabled", equals: true },
     },
     severity_p1_window_start: {
       label: "P1 window start",
       row: "p1_window",
-      help: "Optional SGT gate for the P1 cadence, which otherwise runs round the clock. Enter it as four digits — 0700, 1900 — though Supabase shows the stored value back as 07:00:00 and the service reads either. The window is half-open [start, end), so 0700 is eligible and 1900 is not, and an overnight pair like 2200–0600 is supported. Set BOTH ends or neither, and they must differ: the database refuses one alone or two the same (issue_chaser_p1_window_check).",
+      help: "Limits the P1 cadence to these hours, SGT. Enter four digits — 0700, 1900 — and it reads back as 07:00:00. The start hour counts and the end hour does not, so 0700–1900 stops at 18:59; overnight pairs like 2200–0600 work. Set both ends or neither, and they must differ.",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p1_window_end: {
@@ -69,7 +69,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     severity_p2_p3_window_start: {
       label: "P2/P3 window start",
       row: "p2p3_window",
-      help: "Optional SGT gate shared by the P2 and P3 cadences. Same rules as P1 — four digits, half-open, overnight allowed, both ends or neither and they must differ (issue_chaser_p2_p3_window_check).",
+      help: "The same gate, shared by P2 and P3. Four digits, start hour counts and end hour does not, overnight allowed; set both ends or neither and they must differ.",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p2_p3_window_end: {
@@ -86,15 +86,15 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     // replies in each issue's originating group.
     daily_safety_summary_enabled: {
       label: "Past-days safety summary",
-      help: "08:00 SGT daily. Read-only report: total, open and closed plus P1/P2/P3 counts across the last few SGT dates, and each date's open count. Goes to Summary destination, and falls back to WhatsApp group IDs when that is blank — one of the two has to be set, and a summary is a project-level report, so it never replies in an issue's originating group.",
+      help: "A daily 08:00 SGT report: totals, open and closed, and P1/P2/P3 counts for each of the last few days. It never chases anyone. Goes to Plain summary destination; blank falls back to the shared destination, then to WhatsApp group IDs.",
     },
     daily_safety_company_summary_enabled: {
       label: "Past-days summary by company",
-      help: "The same 08:00 SGT report with an Open issues by company section under each date. A separate route and flag, so it can run instead of, or alongside, the plain summary. A row naming several companies counts once for each, so company totals can exceed the project total; blank cells show as Unknown company, and a workbook with no Company column produces the plain report.",
+      help: "The same 08:00 report with an Open issues by company section under each date. Runs instead of, or alongside, the plain summary. An issue naming several companies counts once for each, so company totals can exceed the project total; blank cells show as Unknown company.",
     },
     summary_days: {
       label: "Summary window (days)",
-      help: "The window for an explicit one-off call only — `scheduled: false` — counting the end date itself, so 5 is today plus the four before it. Shared by all three summaries. Every scheduled run, which is now the default, uses the lookback on its own schedule entry plus the current date. Must be at least 1; the database refuses 0 (issue_chaser_summary_days_check).",
+      help: "Only used for a manual one-off run — scheduled runs take their window from their own schedule entry. Counts the end date itself, so 5 is today plus the four before it. Shared by all three summaries, and must be at least 1.",
       showIf: {
         anyOf: [
           { field: "daily_safety_summary_enabled", equals: true },
@@ -123,7 +123,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     exclude_whatsapp_group_ids: {
       label: "Excluded from the snapshot",
       widget: "groups",
-      help: "Groups the 09:00/21:00 same-day snapshot skips. Nothing else: severity reminders still reply in each issue's originating group, and both daily summaries still go to their own destination. Matching is trimmed and case-insensitive, and an empty list excludes nothing.",
+      help: "Groups the same-day snapshot skips. Nothing else changes: severity reminders still reply where each issue came from, and the summaries still go to their own destination. Matching ignores case and spacing, and an empty list excludes nothing.",
     },
     // Not a report: it sends no WhatsApp message and needs no destination, which
     // is why it sits apart from the summaries and their group requirement.
@@ -137,13 +137,13 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       // you decide before you switch a report on, not after — and gating it on
       // the flag meant the only way to set it was to turn the report on first,
       // which sends it to the fallback in the meantime.
-      help: "A destination for every summary that has not got one of its own — the middle of three levels, under each summary's own field and above WhatsApp group IDs. Blank falls back to WhatsApp group IDs, which is what every project did before this field existed. Separate from the chaser groups on purpose: a management summary and an issue reminder rarely belong in the same chat.",
+      help: "Where a summary goes when it has no destination of its own — the middle of three levels, below each summary's own field and above WhatsApp group IDs. Blank falls back to WhatsApp group IDs. Kept separate because a management summary and an issue reminder rarely belong in the same chat.",
     },
     // Text, not `csv`: the separator is `;` and `coerceValue` would rewrite a
     // comma list into its own shape and destroy the value.
     same_day_open_snapshot_schedule: {
       label: "Snapshot schedule",
-      help: "When the same-day snapshot runs, and how far back each run looks. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the snapshot runs, in SGT. `HH00,lookback`, semicolon-separated: `0900,0;2100,0` is 9am and 9pm each covering today only; `0800,4` is 8am covering today plus the 4 days before. Whole hours only — an entry that cannot be read stops the run, so nothing is sent.",
     },
     daily_safety_summary_whatsapp_group_ids: {
       label: "Plain summary destination",
@@ -152,11 +152,11 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     daily_safety_summary_schedule: {
       label: "Summary schedule",
-      help: "When the plain past-days summary runs, and how many dates each run covers. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the plain summary runs, in SGT. `HH00,lookback`, semicolon-separated: `0800,4` is 8am covering today plus the 4 days before; `0900,0;2100,0` is 9am and 9pm each covering today only. Whole hours only — an entry that cannot be read stops the run, so nothing is sent.",
     },
     daily_safety_chatgroup_summary_enabled: {
       label: "Past-days summary by chat group",
-      help: "The same report with an Open issues by ChatGroup section under each date. A third route and flag, independent of the other two — any combination can run. A row whose ChatGroup cell is blank, or a workbook with no ChatGroup column at all, is counted under `Invalid chatgroup` rather than dropped, so the totals still add up.",
+      help: "The same report with an Open issues by ChatGroup section under each date. A third report with its own switch, independent of the other two — any combination can run. A row with a blank ChatGroup, or a workbook with no ChatGroup column, is counted under `Invalid chatgroup` rather than dropped, so the totals still add up.",
     },
     daily_safety_chatgroup_summary_whatsapp_group_ids: {
       label: "Chat group summary destination",
@@ -165,7 +165,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     daily_safety_chatgroup_summary_schedule: {
       label: "Chat group summary schedule",
-      help: "When the by-chat-group summary runs, and how many dates each run covers. Its own schedule, so all three summaries can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the by-chat-group summary runs, in SGT. Its own schedule, so the three summaries can differ. `HH00,lookback`, semicolon-separated: `0800,4` is 8am covering today plus the 4 days before; `0900,0;2100,0` is 9am and 9pm each covering today only. Whole hours only — an entry that cannot be read stops the run, so nothing is sent.",
     },
     daily_safety_company_summary_whatsapp_group_ids: {
       label: "Company summary destination",
@@ -174,7 +174,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     daily_safety_company_summary_schedule: {
       label: "Company summary schedule",
-      help: "When the by-company summary runs, and how many dates each run covers. Separate from the plain summary's schedule, so the two can run at different hours. Semicolon-separated `HH00,lookback` entries — `0900,0;2100,0` is two runs a day covering today only, `0800,4` is one run covering today plus the four dates before it. The lookback counts PRECEDING dates; the current date is always included, so the number is one less than the number of days reported. Minutes are always `00`: the cron may fire at any minute in the hour and only the hour is matched, in SGT. This is the normal path: an invocation that says nothing is a live scheduled run (833ab88 made `scheduled` default to true), so the cron fires hourly and this decides which hours do anything. Only an explicit `scheduled: false` bypasses it for a one-off. An entry the service cannot parse fails the whole run with `invalid_project_schedule`, so nothing is sent.",
+      help: "When the by-company summary runs, in SGT. Its own schedule, so it can differ from the plain summary. `HH00,lookback`, semicolon-separated: `0800,4` is 8am covering today plus the 4 days before; `0900,0;2100,0` is 9am and 9pm each covering today only. Whole hours only — an entry that cannot be read stops the run, so nothing is sent.",
     },
     novade_name_list_check_whatsapp_group_ids: {
       label: "Reminder destination",
@@ -185,7 +185,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     novade_name_sync_enabled: {
       label: "Write back Novade names",
-      help: "Lets `POST /api/sync-novade-names` fill blank `Novade Name` cells in the workbook from `Whatsapp Name`. The only thing in this service that writes to the sheet. Off, the route refuses; on, it is still dry-run unless the request sets `dryRun: false`, and it skips any WhatsApp name that normalises ambiguously. Sends no message, so it needs no group.",
+      help: "Fills blank `Novade Name` cells in the workbook from `Whatsapp Name` — the only thing here that writes to the sheet. Off, nothing is written. On, it still only previews unless the run explicitly asks to write, and it skips any name that is ambiguous.",
     },
     // The column does not exist in Supabase yet — supabase/migrate_novade_name_list_check.sql
     // in the issue-chaser repo is unrun, so `row.novade_name_list_check_enabled`
@@ -194,11 +194,11 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     // the migration lands and then appears already labelled.
     novade_name_list_check_enabled: {
       label: "Weekly Novade name reminder",
-      help: "`POST /api/remind-write-novade-names` — one weekly message counting `Novade Name List` rows that have a phone and a WhatsApp name but no Novade name. Read-only, and silent when the count is zero. Goes to Reminder destination, and falls back to WhatsApp group IDs when that is blank — one of the two has to be set, because it is a project-level report rather than a reply to an issue.",
+      help: "One weekly message counting people on the Novade Name List who have a phone and a WhatsApp name but no Novade name. Read-only, and silent when there are none. Goes to Reminder destination; blank falls back to WhatsApp group IDs — one of the two is needed.",
     },
     send_to_originating_groups: {
       label: "Reply in the originating group",
-      help: "On, each reminder goes to the group recovered from the sheet's `Message Id Serialized`. When that cannot be recovered it falls back to the group list below ONLY if exactly one group is configured — with several it is reported as an ambiguous-routing error and skipped, rather than guessed at. Off, everything goes to the group list, which is then required. Applies to reminders only: the daily summaries ignore this and use Summary destination — or the group list when that is blank — so one project report is never copied into every issue's origin group.",
+      help: "On, each reminder goes back to the group the issue came from. When that cannot be worked out it falls back to the group list below, but only if exactly one group is set — with several it is reported as ambiguous and skipped rather than guessed at. Off, everything goes to the group list. The summaries ignore this.",
     },
     whatsapp_group_ids: {
       label: "WhatsApp group IDs",
@@ -207,7 +207,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       // the summaries and the weekly Novade reminder their own, and this became
       // the fallback for both. The old wording sent an operator here to fix a
       // routing problem the two fields below now solve.
-      help: "The default destination: fallback for reminders, and for the two report destinations below when they are blank. Required to enable the project unless Reply in the originating group is on. A report with its own destination set does not need this one as well.",
+      help: "The default destination: used for reminders, and for any report whose own destination is blank. Required before the project can be enabled, unless Reply in the originating group is on.",
     },
     // All three are part of issue_chaser_enabled_delivery_check, so a blank one
     // is not a missing nicety — it makes `enabled` unsavable. The URL's shape is
@@ -225,7 +225,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     lambda_url: {
       label: "Send-message proxy URL",
-      help: "Must be https and end in /send-message — the database checks the shape, so a trailing slash or an http URL makes Project enabled unsavable.",
+      help: "Must be https and end in /send-message. A trailing slash or an http URL blocks the project from being enabled.",
     },
     // Delivery-only, and unlike the chaser styles they are NOT gated by
     // `enabled` — the service evaluates them at send time in both runProject and
@@ -237,7 +237,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     remove_sunday_notifications: {
       label: "Mute Sundays",
       row: "mutes",
-      help: "Suppresses every outbound message on SGT Sundays — reminders and both daily summaries. The sheet is still read and the run still reports what it would have sent, so a Sunday looks like a suppression in the logs, not like an empty day.",
+      help: "Nothing is sent on Sundays, SGT — reminders and both summaries. Only delivery stops: issues are still read, and the run still reports what it would have sent.",
     },
     remove_ph_notifications: {
       label: "Mute public holidays",
@@ -246,7 +246,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     },
     timezone: {
       label: "Timezone",
-      help: "Pinned to Asia/Singapore by a CHECK; the reference projects are all SGT and nothing else will save.",
+      help: "Fixed to Asia/Singapore — every project runs on SGT, and nothing else will save.",
     },
 
     project_code: { hidden: true },

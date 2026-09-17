@@ -21,7 +21,7 @@ export const issueChaserOnboarding: OnboardDefinition = {
         kind: "text",
         required: true,
         notNull: true,
-        help: "Uppercase. Enforced by a CHECK on the column.",
+        help: "Uppercase only — anything else is refused.",
       },
       {
         column: "company",

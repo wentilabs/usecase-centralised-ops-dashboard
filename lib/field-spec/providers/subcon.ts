@@ -8,7 +8,7 @@ export const subconFieldProvider: ServiceFieldProvider = {
   fields: {
     company: {
       label: "Company",
-      help: "Identity only — no code reads it. Backfilled from instance_name; blank means instance_name did not imply one.",
+      help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
     },
     // Two routes: POST /housekeeping-intake accepts forwarded messages, and
     // POST /daily-activity-manpower-summary sends the morning report. Water
@@ -20,7 +20,7 @@ export const subconFieldProvider: ServiceFieldProvider = {
       // alone, and this help said so — which is now the opposite of what the
       // service does. INV-HK-01 exists because the surface reading is still
       // the old one.
-      help: "The whole housekeeping feature, not just intake (INV-HK-01): forwarded messages, the nightly report, HOUSEKEEPING sheet generation and the photo refresh all stop when this is off, and the routes answer `skipped` without reading or writing anything. Existing events and sheet rows are kept, so turning it back on resumes rather than rebuilds. Only an explicit yes counts. Separate from Scheduled reports, which gates outbound delivery and does not switch housekeeping off — and separate from the two summaries, which have their own flags.",
+      help: "Off, the whole housekeeping feature stops: forwarded messages are ignored, and the nightly report, the HOUSEKEEPING sheet and the photo refresh all stop. Existing events and sheet rows are kept, so switching it back on resumes rather than rebuilds. Separate from Project enabled, which only stops what is sent (INV-HK-01).",
     },
     // `enabled` covers BOTH scheduled reports, which the old wording hid by
     // naming only one of them. The service runs two routes off one flag:
@@ -34,7 +34,7 @@ export const subconFieldProvider: ServiceFieldProvider = {
       // nightly housekeeping report too, so that reading cost more than it
       // used to. The old help also led with "this is not a master switch",
       // which is true of intake and false of everything that sends.
-      help: "Nothing scheduled goes out while this is off — neither morning report, and not the nightly housekeeping report either. It does not SELECT the reports: each is its own opt-in below, so this being on with all of them off sends nothing. Housekeeping intake and state processing continue regardless, which is the one thing it does not govern (INV-HK-01).",
+      help: "Nothing scheduled is sent while this is off — not the morning reports, not the nightly housekeeping report. It does not choose which reports run: each is its own opt-in below, so this on with all of them off still sends nothing. Housekeeping intake carries on either way (INV-HK-01).",
     },
     // Each report is an explicit opt-in: the service checks
     // `config[column] === true`, so off is the safe state and a project can be
@@ -42,12 +42,12 @@ export const subconFieldProvider: ServiceFieldProvider = {
     // "Scheduled reports is on" no longer implies a report goes out.
     enable_activity_summary: {
       label: "Activity + manpower report",
-      help: "POST /daily-activity-summary — the morning activity/manpower message. Explicit opt-in: off means this report is not sent, whatever Scheduled reports says. With Scheduled reports off it still reads Sheets and writes its Supabase summary; only delivery is suppressed.",
+      help: "The morning activity and manpower message. Its own opt-in: off means it is not sent whatever Project enabled says. With Project enabled off it still reads the workbook and records its summary — only the message is held back.",
       showIf: { field: "enabled", equals: true },
     },
     enable_manpower_summary: {
       label: "Manpower + machines report",
-      help: "POST /daily-manpower-summary — the plain per-company headcount, which also reads the `Machines` tab when it exists. Explicit opt-in, independent of the report above: either can run without the other, and with both off the project sends no morning report at all. With Scheduled reports off it still reads the workbook and writes its summary state; only the message is withheld.",
+      help: "The plain per-company headcount, which also reads the `Machines` tab when there is one. Its own opt-in, independent of the report above: either can run without the other, and with both off no morning report goes out at all. With Project enabled off it still reads and records — only the message is held back.",
       showIf: { field: "enabled", equals: true },
     },
     // Both directions since 140b1e9: `housekeepingOutboundIds` now returns
@@ -58,17 +58,17 @@ export const subconFieldProvider: ServiceFieldProvider = {
     safety_group_ids: {
       label: "Housekeeping groups (in and out)",
       widget: "groups",
-      help: "Both directions. Inbound: the only thing that routes a forwarded message to this project — no client-identifier fallback, and several project codes may share a listener client (INV-HK-10). Outbound: where the nightly housekeeping report is sent. Editing this list changes both at once. Comma-separated; empty means nothing arrives AND the housekeeping report has nowhere to go, which is the default on a fresh row.",
+      help: "Works in both directions. Inbound: the only thing that routes a forwarded message to this project. Outbound: where the nightly housekeeping report is sent. Editing the list changes both at once. Comma-separated; empty means nothing arrives and the report has nowhere to go, which is how a new row starts (INV-HK-10).",
     },
     spreadsheet_id: {
       label: "Manpower workbook",
       widget: "sheet",
-      help: "Required, and must be shared with the service account — read access is enough. It initialises the housekeeping roster once per project per SGT date and remains the morning report's input (INV-HK-05, INV-HK-12). Read-only since Supabase became canonical: the service no longer creates or writes any tab, including the `Daily Activity` projection it used to maintain. It reads `Manpower`, and `Machines` when present; both belong to the base template.",
+      help: "Required, and must be shared with the service account — read access is enough. It sets up the housekeeping roster once per day and is the morning report's input. Nothing is ever written back to it: the service reads `Manpower`, and `Machines` when present (INV-HK-05, INV-HK-12).",
     },
     manpower_activity_outbound_group_id: {
       label: "Morning report group",
       widget: "groups",
-      help: "Where the two morning summaries are sent — and only those. The nightly housekeeping report stopped falling back to this column in 140b1e9 and now uses the housekeeping groups instead. Empty by default while Scheduled reports defaults on, so a fresh row is switched on with nowhere to send and nothing errors (INV-HK-09). A report request may override it with groupId/groupIds.",
+      help: "Where the two morning summaries are sent, and only those — the nightly housekeeping report goes to the housekeeping groups instead. Empty on a new row, so a project can be switched on with nowhere to send and nothing will error (INV-HK-09).",
     },
     // Same column name as WBGT's, and a DIFFERENT filter: this one governs the
     // housekeeping roster and the manpower summary, WBGT's governs the Water
@@ -76,7 +76,7 @@ export const subconFieldProvider: ServiceFieldProvider = {
     // contractor rather than a participant.
     exclude_wohhup_from_manpower: {
       label: "Exclude Woh Hup from the roster",
-      help: "On by default, which is the historical behaviour: Woh Hup, Wohhup and WHPL rows are dropped when the central `Manpower` tab is read. Applies to the plain report, the activity + manpower summary, and the first housekeeping-roster capture of the day (INV-HK-12). Off only where those rows are genuine participants.",
+      help: "On by default: Woh Hup, Wohhup and WHPL rows are dropped when the central `Manpower` tab is read. Applies to the plain report, the activity and manpower summary, and the first roster capture of the day. Turn it off only where those rows are genuine participants (INV-HK-12).",
     },
 
     // Delivery-only, and they cover all THREE outbound reports — the two
@@ -88,12 +88,12 @@ export const subconFieldProvider: ServiceFieldProvider = {
     remove_sunday_notifications: {
       label: "Mute Sundays",
       row: "mutes",
-      help: "Suppresses all three outbound reports on SGT Sundays. Intake, the Supabase record and the roster capture continue, and a dry run still returns its message. Only checked when Scheduled reports is on, so it changes nothing on a project that sends nothing.",
+      help: "Nothing is sent on Sundays, SGT — all three reports. Intake, the stored record and the roster capture carry on, and a dry run still returns its message. Only consulted when Project enabled is on.",
     },
     remove_ph_notifications: {
       label: "Mute public holidays",
       row: "mutes",
-      help: "The same, for the Singapore holiday list kept in the service's `utils/notification-calendar.js`, which currently ends on 2027-12-25. A date past the end of that list is treated as an ordinary working day rather than guessed at, so the list has to be extended before it can be relied on for a later year.",
+      help: "The same, for the Singapore public holiday list built into the service, which currently runs to 25 Dec 2027. A date past the end of that list is treated as an ordinary working day rather than guessed at, so the list has to be extended before a later year can rely on it.",
     },
 
     // The delivery trio, on every service. Named here because a blank one is

@@ -35,10 +35,13 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
   // transparent margin, trimmed to the mark and stored at its own 1.66:1, which
   // is almost exactly the box's 1.56:1. So it fills the box where the three
   // square marks have to be scaled up into it, and at full size it read as
-  // twice the weight of Wohhup on the same row — scale-90 settles it back to a
-  // peer. Green and gold already read on a dark card, so unlike PentaOcean it
-  // needs no brightness lift.
-  Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-90" },
+  // twice the weight of Wohhup on the same row. 0.63 is a deliberate step down
+  // from the 0.9 that merely made it a peer: the wordmark is long enough that
+  // matching the others' presence still let it carry the card. Arbitrary rather
+  // than a scale-* step because none lands here, the same reason brightness-[2.2]
+  // is written out above. Green and gold already read on a dark card, so unlike
+  // PentaOcean it needs no brightness lift.
+  Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-[0.63]" },
 };
 
 /**

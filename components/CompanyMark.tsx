@@ -21,7 +21,7 @@
  * wordmark is dark navy, which on a dark card at watermark opacity disappears
  * entirely — only the cyan pentagon survives, and the name is the half that
  * makes it recognisable to someone who has not seen the mark. A brightness lift
- * brings the navy up without touching the two logos that already read.
+ * brings the navy up without touching the logos that already read.
  */
 const ASSETS: Record<string, { src: string; tweak?: string }> = {
   // Per-logo scale, because one box means something different for each: the
@@ -31,6 +31,14 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
   Wohhup: { src: "/company/wohhup.png", tweak: "scale-75" },
   Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125" },
   PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125" },
+  // The only horizontal lockup of the four: supplied as a square with a wide
+  // transparent margin, trimmed to the mark and stored at its own 1.66:1, which
+  // is almost exactly the box's 1.56:1. So it fills the box where the three
+  // square marks have to be scaled up into it, and at full size it read as
+  // twice the weight of Wohhup on the same row — scale-90 settles it back to a
+  // peer. Green and gold already read on a dark card, so unlike PentaOcean it
+  // needs no brightness lift.
+  Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-90" },
 };
 
 /**

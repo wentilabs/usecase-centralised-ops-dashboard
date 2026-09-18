@@ -3,8 +3,8 @@
   "services": {
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
-      "branch": "critical-refactor-for-maintainability",
-      "commit": "86359d4cd6e08f45eb92a7581e329e54f81fc27c",
+      "branch": "main",
+      "commit": "b9196be28a461e6b2c78a98914844c3369b41cd5",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",

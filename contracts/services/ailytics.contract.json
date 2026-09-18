@@ -5,6 +5,7 @@
   "routes": [
     { "method": "GET", "path": "/version", "kind": "diagnostic", "authentication": "none" },
     { "method": "POST", "path": "/get-supabase-configs", "kind": "diagnostic", "authentication": "none" },
+    { "method": "POST", "path": "/get-telegram-group-discoveries", "kind": "diagnostic", "authentication": "none" },
     { "method": "POST", "path": "/telegram-webhook", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/whatsapp-events", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/status-summary", "kind": "scheduled", "authentication": "none" },

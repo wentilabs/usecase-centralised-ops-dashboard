@@ -16,7 +16,9 @@ test("the vendored Haze contract identifies an immutable upstream revision", () 
 
 test("the vendored Ailytics contract identifies an immutable upstream revision", () => {
   assert.equal(lock.services.ailytics.repository, "wentilabs/mdw-lambda-ailytics");
-  assert.equal(lock.services.ailytics.branch, "critical-refactor-for-maintainability");
+  // Repinned to main on 2026-09-18: the refactor branch merged, and main is
+  // where the Telegram group discovery inbox landed.
+  assert.equal(lock.services.ailytics.branch, "main");
   assert.match(lock.services.ailytics.commit, /^[0-9a-f]{40}$/);
   assert.equal(lock.services.ailytics.vendoredPath, "contracts/services/ailytics.contract.json");
 });
@@ -79,6 +81,10 @@ test("Ailytics records its externally visible routes and intentionally open auth
     [
       { method: "GET", path: "/version", kind: "diagnostic", authentication: "none" },
       { method: "POST", path: "/get-supabase-configs", kind: "diagnostic", authentication: "none" },
+      // b9196be. Reads the inbox of Telegram groups the bot has been added to,
+      // so a chat id can be picked rather than pasted. Diagnostic and open like
+      // its neighbour: it returns no project configuration.
+      { method: "POST", path: "/get-telegram-group-discoveries", kind: "diagnostic", authentication: "none" },
       { method: "POST", path: "/telegram-webhook", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/whatsapp-events", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/status-summary", kind: "scheduled", authentication: "none" },

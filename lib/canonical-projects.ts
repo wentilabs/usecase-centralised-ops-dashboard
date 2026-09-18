@@ -82,7 +82,24 @@ function emptyDraft(primaryAlias = ""): CanonicalProjectDraft {
 
 type CommonField = Exclude<keyof CanonicalProjectDraft, "primary_alias" | "alternate_aliases" | "service_aliases" | "site_name" | "public_holiday_region" | "general_notes">;
 
-type FieldSource = { service: ServiceKey; column: string };
+type DeliverySibling = "reply-message" | "send-document";
+
+type FieldSource = {
+  service: ServiceKey;
+  column: string;
+  /** Derive only from the listener contract's exact /send-message route. */
+  deliverySibling?: DeliverySibling;
+};
+
+function siblingDeliveryUrl(value: string, sibling: DeliverySibling): string | null {
+  return /\/send-message\/?$/i.test(value)
+    ? value.replace(/\/send-message\/?$/i, `/${sibling}`)
+    : null;
+}
+
+function deliverySiblingSources(sibling: DeliverySibling): FieldSource[] {
+  return SERVICE_KEYS.map((service) => ({ service, column: "lambda_url", deliverySibling: sibling }));
+}
 
 /** Only exact semantic equivalences are suggested. Similar names are not enough. */
 const COMMON_FIELD_SOURCES: Record<CommonField, FieldSource[]> = {
@@ -105,8 +122,14 @@ const COMMON_FIELD_SOURCES: Record<CommonField, FieldSource[]> = {
     { service: "wbgt", column: "manpower_spreadsheet_id" },
   ],
   send_message_url: SERVICE_KEYS.map((service) => ({ service, column: "lambda_url" })),
-  reply_message_url: [{ service: "ailytics", column: "reply_lambda_url" }],
-  send_document_url: [{ service: "ailytics", column: "lambda_url_image" }],
+  reply_message_url: [
+    { service: "ailytics", column: "reply_lambda_url" },
+    ...deliverySiblingSources("reply-message"),
+  ],
+  send_document_url: [
+    { service: "ailytics", column: "lambda_url_image" },
+    ...deliverySiblingSources("send-document"),
+  ],
   whatsapp_instance_name: SERVICE_KEYS.map((service) => ({ service, column: "instance_name" })),
   whatsapp_client_id: SERVICE_KEYS.map((service) => ({ service, column: "client_id" })),
   timezone: SERVICE_KEYS.map((service) => ({ service, column: "timezone" })),
@@ -128,8 +151,18 @@ function collectValues(
     const member = cluster.members.find((entry) => entry.service === source.service);
     if (!member) continue;
     const row = rows.get(`${member.service}\u0000${member.projectCode}`);
-    const value = text(row?.[source.column]);
-    if (value) found.push({ value, source: `${source.service}.${source.column}` });
+    const rawValue = text(row?.[source.column]);
+    const value = rawValue && source.deliverySibling
+      ? siblingDeliveryUrl(rawValue, source.deliverySibling)
+      : rawValue;
+    if (value) {
+      found.push({
+        value,
+        source: source.deliverySibling
+          ? `${source.service}.${source.column} → /${source.deliverySibling}`
+          : `${source.service}.${source.column}`,
+      });
+    }
   }
   return found;
 }

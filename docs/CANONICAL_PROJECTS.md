@@ -26,6 +26,15 @@ not a replacement for any service configuration table.
 The reconstruction view reads live service rows and writes nothing until an
 operator creates an entry. It never renames, enables, or alters a service row.
 
+The three delivery URLs are reconstructed as one listener family. Every
+service's `lambda_url` may contribute the send-message URL. When that value
+ends exactly in `/send-message` (an optional trailing slash is accepted), HALO
+also proposes the same base with `/reply-message` and `/send-document`.
+Ailytics' explicit `reply_lambda_url` and `lambda_url_image` remain independent
+evidence: if they disagree with the derived siblings, the field is left blank
+as a conflict for the operator. Blank values, the legacy `-` placeholder, and
+URLs that do not end in `/send-message` are never guessed into sibling routes.
+
 ## Onboarding from a canonical project
 
 The project page's **Add this service** link opens the existing service-owned

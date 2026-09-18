@@ -26,6 +26,32 @@ test("canonical candidates preserve each service's exact alias", () => {
   assert.deepEqual(candidates[0].draft.service_aliases, { wbgt: "CR 106", noise: "CR106" });
   assert.equal(candidates[0].draft.company, "Woh Hup");
   assert.equal(candidates[0].draft.send_message_url, "https://proxy/send-message");
+  assert.equal(candidates[0].draft.reply_message_url, "https://proxy/reply-message");
+  assert.equal(candidates[0].draft.send_document_url, "https://proxy/send-document");
+});
+
+test("delivery sibling URLs are derived only from the exact send-message route", () => {
+  const [candidate] = canonicalProjectCandidates([
+    row("wbgt", "CFC", { lambda_url: "https://proxy.example/proxy" }),
+    row("noise", "CFC", { lambda_url: "-" }),
+  ]);
+  assert.equal(candidate.draft.send_message_url, "https://proxy.example/proxy");
+  assert.equal(candidate.draft.reply_message_url, null);
+  assert.equal(candidate.draft.send_document_url, null);
+});
+
+test("explicit Ailytics delivery URLs must agree with sibling URLs derived from other services", () => {
+  const [candidate] = canonicalProjectCandidates([
+    row("wbgt", "CFC", { lambda_url: "https://proxy.example/proxy/send-message" }),
+    row("ailytics", "CFC", {
+      lambda_url: "https://proxy.example/proxy/send-message",
+      reply_lambda_url: "https://different.example/reply-message",
+      lambda_url_image: "https://proxy.example/proxy/send-document",
+    }),
+  ]);
+  assert.equal(candidate.draft.reply_message_url, null);
+  assert.ok(candidate.conflicts.some((conflict) => conflict.field === "reply_message_url"));
+  assert.equal(candidate.draft.send_document_url, "https://proxy.example/proxy/send-document");
 });
 
 test("a disagreement is a review conflict, never an automatic common value", () => {

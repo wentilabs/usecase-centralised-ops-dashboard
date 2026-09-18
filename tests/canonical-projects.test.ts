@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canonicalSheetHref,
   canonicalProjectCandidates,
   validateCanonicalProjectDraft,
 } from "../lib/canonical-projects";
@@ -14,6 +15,13 @@ import type { ProjectConfigRow, ServiceKey } from "../lib/services";
 function row(service: ServiceKey, projectCode: string, extra: Record<string, unknown> = {}): ServiceRow {
   return { service, projectCode, row: { project_code: projectCode, ...extra } as ProjectConfigRow };
 }
+
+test("canonical workbook values become safe Google Sheets links", () => {
+  assert.equal(canonicalSheetHref("1AbCdEfGhIjKlMnOpQrStUvWxYz123456"), "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz123456/edit");
+  assert.equal(canonicalSheetHref("https://docs.google.com/spreadsheets/d/sheet-id/edit#gid=1"), "https://docs.google.com/spreadsheets/d/sheet-id/edit#gid=1");
+  assert.equal(canonicalSheetHref("-"), null);
+  assert.equal(canonicalSheetHref("not a sheet"), null);
+});
 
 test("canonical candidates preserve each service's exact alias", () => {
   const candidates = canonicalProjectCandidates([

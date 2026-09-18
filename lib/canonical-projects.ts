@@ -43,6 +43,17 @@ export type CanonicalProjectCandidate = {
   conflicts: CandidateConflict[];
 };
 
+/** Accept either a stored workbook id or an already-complete Sheets URL. */
+export function canonicalSheetHref(value: string | null | undefined): string | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  if (/^https:\/\/docs\.google\.com\/spreadsheets\//i.test(normalized)) return normalized;
+  if (/^[A-Za-z0-9_-]{20,}$/.test(normalized)) {
+    return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(normalized)}/edit`;
+  }
+  return null;
+}
+
 const NULL_LIKE = new Set(["", "-", "—", "n/a", "na", "none", "null"]);
 
 function text(value: unknown): string | null {

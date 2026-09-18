@@ -19,12 +19,15 @@ not a replacement for any service configuration table.
 1. Ensure `supabase/config_audit_setup.sql` has already been applied.
 2. Run `supabase/create_canonical_projects.sql` in the Supabase SQL editor.
 3. Open **Projects** in HALO and choose **Rebuild from current projects**.
-4. Review every candidate. Conflicting values are intentionally blank; choose
-   a value or leave it blank.
-5. Save a canonical project only after its aliases and common data are correct.
+4. Inspect every canonical field in the horizontally scrollable table. Sheet
+   ids include a direct link to their Google Sheet.
+5. Use **Edit** on one row when it needs correction, then **Save project**.
+   A row whose reconstructed values are already correct can be saved unchanged.
 
 The reconstruction view reads live service rows and writes nothing until an
-operator creates an entry. It never renames, enables, or alters a service row.
+operator presses **Save project** on one row. It never renames, enables, or
+alters a service row. Already-saved candidates link to their canonical project
+instead of offering a duplicate save.
 
 The three delivery URLs are reconstructed as one listener family. Every
 service's `lambda_url` may contribute the send-message URL. When that value

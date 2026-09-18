@@ -2,6 +2,20 @@ import type { ProjectConfigRow } from "../../services";
 import type { Pill } from "../pill-types";
 import { splitList } from "../groups";
 
+/**
+ * The Water Parade daily summary hour, as a clock time.
+ *
+ * The column is NOT NULL with a default of 18, but a row read before that
+ * migration ran still arrives undefined — so the fallback is the database's own
+ * default rather than a blank, which would read as "no summary time set" when
+ * the service would in fact send at 18:00.
+ */
+function summaryHour(config: ProjectConfigRow): string {
+  const raw = Number(config.water_parade_daily_summary_hour ?? 18);
+  const hour = Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : 18;
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
 /** Whether WBGT POC mentions are resolved from the Manpower sheet sentinel. */
 export function usesManpowerSheetPocs(config: ProjectConfigRow): boolean {
   return String(config.poc_phone_numbers ?? "").trim().toLowerCase() === "manpower-sheet";
@@ -20,6 +34,14 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
           // Blue, like 💧 Water Parade above it: tone marks the feature
           // these pills belong to, and all three are Water Parade only.
           { label: "cooldown 2h", on: on(config.water_parade_cooldown_enabled), tone: "info" as const },
+          // Unlit is the point here, as with cooldown: a site asked all day
+          // but never told which companies missed is a real difference, and
+          // the hour is what someone checks before asking why it was quiet.
+          {
+            label: `daily summary ${summaryHour(config)}`,
+            on: on(config.water_parade_daily_summary_enabled),
+            tone: "info" as const,
+          },
         ]
       : []),
     // A second id used to be a corrupted send and carried a warning here.

@@ -128,10 +128,15 @@ test("Noise pins all sixteen open routes and distinguishes scheduled from operat
 test("WBGT pins cron paths while separating HMAC ingress from intentionally open routes", () => {
   const routes = SERVICE_CONTRACTS.wbgt.routes;
   const byPath = Object.fromEntries(routes.map((route) => [route.path, route]));
-  assert.equal(routes.length, 15);
+  assert.equal(routes.length, 16);
   assert.equal(byPath["/api/wbgt-telegram-external-channels"].authentication, "required-hmac");
   assert.equal(byPath["/api/wbgt-hourly"].authentication, "none");
   assert.equal(byPath["/api/water-parade-reminder"].kind, "scheduled");
+  // 49c6642. Scheduled like the reminder, and open like the rest of the cron
+  // surface — it decides for itself whether the configured hour has come, so
+  // the hourly wake-up carries no argument worth signing.
+  assert.equal(byPath["/api/water-parade-daily-summary"].kind, "scheduled");
+  assert.equal(byPath["/api/water-parade-daily-summary"].authentication, "none");
   assert.equal(byPath["/api/wbgt/readings"].kind, "read");
 });
 

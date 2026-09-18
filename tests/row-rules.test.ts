@@ -309,3 +309,29 @@ test("each summary's own destination satisfies the constraint on its own", () =>
   assert.match(crossed[0].message, /Daily safety summary needs somewhere to go/);
   assert.doesNotMatch(crossed[0].message, /company/);
 });
+
+test("the Water Parade summary hour is an hour, not a time", () => {
+  // migrate_water_parade_daily_summary.sql bounds it 0-23. NOT NULL with a
+  // default of 18, so the only way to break it is to type — and an hour field
+  // is exactly where someone writes 1800 meaning 18:00. Postgres would answer
+  // with the constraint name; this answers with the rule.
+  const label = (column: string) => column;
+  const problems = newProblems(
+    "wbgt",
+    { water_parade_daily_summary_hour: 18 },
+    { water_parade_daily_summary_hour: 1800 },
+    label,
+  );
+  assert.equal(problems.length, 1, "1800 must be refused before the save");
+  assert.match(problems[0].message, /0 to 23/);
+  assert.match(problems[0].message, /18 means 18:00/);
+
+  // The ends of the range are legal, and so is leaving it alone.
+  for (const hour of [0, 18, 23]) {
+    assert.equal(
+      newProblems("wbgt", {}, { water_parade_daily_summary_hour: hour }, label).length,
+      0,
+      `${hour} is a legal hour`,
+    );
+  }
+});

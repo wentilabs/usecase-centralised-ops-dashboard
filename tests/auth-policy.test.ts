@@ -1145,8 +1145,23 @@ test("Water Parade leads the pills, in its own colour, only when configured", ()
     pillsFor("wbgt", { water_parade_enabled: true, water_parade_cooldown_enabled: true })[1].on,
     true,
   );
+  // Then the daily summary, still inside the Water Parade block: it is the
+  // third thing that answers "what does this site get" — asked, how often, and
+  // whether anyone is told who missed. It carries its hour because that is what
+  // someone checks before asking why the evening was quiet.
+  assert.equal(pills[2].label, "daily summary 18:00", "unset falls back to the database default");
+  assert.equal(pills[2].on, false, "off by default");
+  assert.equal(pills[2].tone, "info");
+  const summarising = pillsFor("wbgt", {
+    water_parade_enabled: true,
+    water_parade_daily_summary_enabled: true,
+    water_parade_daily_summary_hour: 7,
+  });
+  assert.equal(summarising[2].label, "daily summary 07:00", "the configured hour, zero-padded");
+  assert.equal(summarising[2].on, true);
+
   // Then the cadence pills, in their usual order.
-  assert.equal(pills[2].label, "hourly");
+  assert.equal(pills[3].label, "hourly");
 
   // Not configured: both absent entirely. Most projects do not use Water Parade,
   // so struck-through pills on each would be noise rather than emphasis — and a
@@ -2872,5 +2887,40 @@ test("help text marks its literal values instead of showing backticks", () => {
         .join("");
       assert.equal(rebuilt, field.help, `${service}.${column} does not round-trip`);
     }
+  }
+});
+
+test("the Water Parade daily summary is explained and nested under its feature", () => {
+  // 49c6642 on the wbgt main branch, with migrate_water_parade_daily_summary.sql
+  // and migrate_water_parade_summary_timings.sql. The service requires enabled,
+  // water_parade_enabled AND the summary flag, so it is a sub-feature of Water
+  // Parade rather than a peer — it belongs in that group, not a new one.
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const int = { type: "integer" as const, format: "integer", enum: null, default: 18 };
+  const spec = buildFieldSpec("wbgt", {
+    water_parade_enabled: bool,
+    water_parade_daily_summary_enabled: bool,
+    water_parade_daily_summary_hour: int,
+    include_missed_timings_wp: { ...bool, default: true },
+  });
+
+  for (const column of [
+    "water_parade_daily_summary_enabled",
+    "water_parade_daily_summary_hour",
+    "include_missed_timings_wp",
+  ]) {
+    assert.notEqual(spec.fields[column].label, column, `${column} arrived unlabelled`);
+    assert.ok(spec.fields[column].help, `${column} has no explanation`);
+    const group = spec.groups.find((entry) => entry.fields.includes(column));
+    assert.equal(group?.title, "Water Parade", `${column} is not with Water Parade`);
+  }
+
+  // The two settings are the summary's own, so they stay hidden until it is on
+  // — the same nesting the issue-chaser cadences use.
+  for (const column of ["water_parade_daily_summary_hour", "include_missed_timings_wp"]) {
+    assert.deepEqual(spec.fields[column].showIf, {
+      field: "water_parade_daily_summary_enabled",
+      equals: true,
+    }, `${column} should follow its switch`);
   }
 });

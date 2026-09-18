@@ -136,6 +136,27 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       label: "Cooldown between cycles",
       help: "Off by default. On, no new cycle starts if one already ran in either of the two previous hour bands that day — so a long hot spell asks the site once, not every hour. Suppressed cycles are logged; nothing is sent and no reminder is due.",
     },
+    // Added by 49c6642 with migrate_water_parade_daily_summary.sql. The service
+    // requires all three of enabled, water_parade_enabled and this one, so the
+    // summary is a sub-feature of Water Parade rather than a peer of it — hence
+    // its own switch inside this group with its two settings under it.
+    water_parade_daily_summary_enabled: {
+      label: "Daily summary",
+      help: "One message at the end of the day naming the companies that did not conduct their water parade, as `Acme - 2/3`. A submission more than an hour after the alert counts as not conducted, and an exempted company is left out of the total. Nothing is sent on a day with no cycles. Goes to the Water Parade reminder group.",
+    },
+    // Plain number rather than the hhmm widget: the column is a smallint hour,
+    // not a time, so 18 means 18:00 and there are no minutes to enter.
+    water_parade_daily_summary_hour: {
+      label: "Summary hour (SGT)",
+      widget: "number",
+      help: "The hour the summary is sent, 0–23. The job wakes every hour and only this one does anything. Each group is sent once per day, so a later run that day is skipped rather than sending twice.",
+      showIf: { field: "water_parade_daily_summary_enabled", equals: true },
+    },
+    include_missed_timings_wp: {
+      label: "Name the missed hours",
+      help: "On by default: each line adds the alerts that company missed — `Acme - 1/3 (missed 10am and 2pm)`. Off leaves the count alone.",
+      showIf: { field: "water_parade_daily_summary_enabled", equals: true },
+    },
     exclude_wohhup_from_manpower: {
       label: "Exclude Woh Hup from the roster",
       help: "On by default: Woh Hup, Wohhup and WHPL rows are dropped when the Manpower tab is read, because Woh Hup is the main contractor rather than a Water Parade participant. Off includes them — MBS is the project that needs that. Affects both the Water Parade roster and manpower POC resolution.",
@@ -206,6 +227,9 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
         "water_parade_enabled",
         "water_parade_cooldown_enabled",
         "water_parade_outbound_group_id",
+        "water_parade_daily_summary_enabled",
+        "water_parade_daily_summary_hour",
+        "include_missed_timings_wp",
         "manpower_spreadsheet_id",
         "exclude_wohhup_from_manpower",
       ],

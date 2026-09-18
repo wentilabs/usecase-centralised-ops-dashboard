@@ -19,6 +19,8 @@
     { "id": "poc-alert-minimum-band", "file": "migrate_poc_alert_minimum_band.sql", "requires": [] },
     { "id": "hourly-water-parade-photo-formatter", "file": "migrate_hourly_waterparade_photo_formatter.sql", "requires": ["hourly-message-formatter", "poc-alert-minimum-band"] },
     { "id": "water-parade-photo-refresh", "file": "migrate_water_parade_photo_refresh.sql", "requires": ["water-parade"] },
+    { "id": "water-parade-daily-summary", "file": "migrate_water_parade_daily_summary.sql", "requires": ["water-parade"] },
+    { "id": "water-parade-summary-timings", "file": "migrate_water_parade_summary_timings.sql", "requires": ["water-parade-daily-summary"] },
     { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] }
   ],
   "operationalUtilities": [

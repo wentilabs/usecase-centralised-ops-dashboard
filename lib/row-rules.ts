@@ -375,6 +375,23 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     // on the wbgt TEST fixture: a two-group value is accepted. A rule here
     // would block a save the database allows, which is the one failure mode a
     // mirror must not have.
+    // migrate_water_parade_daily_summary.sql. The column is NOT NULL with a
+    // default of 18, so the only way to break this is to type a number — and
+    // an hour is exactly the field where someone writes 1800 meaning 18:00.
+    {
+      constraint: "wbgt_project_configs_water_parade_daily_summary_hour_check",
+      columns: ["water_parade_daily_summary_hour"],
+      check: (row, label) => {
+        const raw = row.water_parade_daily_summary_hour;
+        if (raw === null || raw === undefined || raw === "") return null;
+        const hour = Number(raw);
+        if (Number.isInteger(hour) && hour >= 0 && hour <= 23) return null;
+        return (
+          `${label("water_parade_daily_summary_hour")} is a whole hour from 0 to 23, not a time — ` +
+          `18 means 18:00. ${String(raw)} will be refused.`
+        );
+      },
+    },
     {
       constraint: "wbgt_project_configs_authoritative_client_digits",
       columns: ["whatsapp_authoritative_client_identifier"],

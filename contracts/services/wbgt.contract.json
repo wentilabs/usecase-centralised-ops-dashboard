@@ -15,6 +15,7 @@
     { "method": "POST", "path": "/api/wbgt-whatsapp", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/api/water-parade-intake", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/api/water-parade-reminder", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/api/water-parade-daily-summary", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/water-parade-rebuild", "kind": "operator", "authentication": "none" },
     { "method": "POST", "path": "/api/water-parade-photo-refresh", "kind": "scheduled", "authentication": "none" },
     { "method": "GET", "path": "/api/wbgt/readings", "kind": "read", "authentication": "none" }
@@ -68,6 +69,9 @@
       "water_parade_outbound_group_id": { "label": "Water Parade groups", "group": "water-parade", "mutable": true, "role": "configuration", "help": "Comma-separated reminder destinations; each gets an independent delivery and audit row." },
       "manpower_spreadsheet_id": { "label": "Manpower workbook", "group": "water-parade", "mutable": true, "role": "configuration", "help": "Roster and PIC-phone source for Water Parade and manpower-sheet mentions." },
       "water_parade_cooldown_enabled": { "label": "Water Parade cooldown", "group": "water-parade", "mutable": true, "role": "policy-selector", "help": "Suppresses a new cycle when either of the prior two same-day hour bands already has one." },
+      "water_parade_daily_summary_enabled": { "label": "Daily Water Parade summary", "group": "water-parade", "mutable": true, "role": "feature-flag", "help": "Enables the daily missed-company summary; Water Parade projections must also be enabled." },
+      "water_parade_daily_summary_hour": { "label": "Daily summary hour", "group": "water-parade", "mutable": true, "role": "policy-selector", "help": "Singapore local hour, 0–23, at which the daily summary is sent." },
+      "include_missed_timings_wp": { "label": "Include missed timings", "group": "water-parade", "mutable": true, "role": "policy-selector", "help": "Includes missed cycle hours in the daily summary when true; false keeps only conducted/total counts." },
       "enable_external_telegram_alerts": { "label": "External Telegram alerts", "group": "source", "mutable": true, "role": "feature-flag", "help": "Allows authenticated external Telegram text alerts to send; parsed readings are still stored when false." },
       "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
       "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Bookkeeping timestamp; no general trigger refreshes it automatically." }
@@ -77,6 +81,7 @@
       { "name": "wbgt_project_configs_authoritative_client_digits", "help": "Authoritative client identity is null or 8–15 bare digits." },
       { "name": "wbgt_project_configs_poc_alert_minimum_band_check", "help": "POC minimum band is yellow, orange, or red." },
       { "name": "wbgt_project_configs_monthly_sheet_fill_mode_check", "help": "Monthly sheet fill mode is window or nearest." },
+      { "name": "wbgt_project_configs_water_parade_daily_summary_hour_check", "help": "Daily Water Parade summary hour is between 0 and 23." },
       { "name": "wbgt_project_configs_unique_source_chats", "help": "An enabled photo source chat belongs to at most one enabled project." }
     ]
   }

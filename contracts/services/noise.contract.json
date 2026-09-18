@@ -68,7 +68,7 @@
       "debug_google_sheet_id": { "label": "Debug workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Optional diagnostic sheet sink; it is not the operational message log." },
       "google_sheet_id": { "label": "Noise analysis workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Persistent workbook used by Noise sheet jobs." },
       "timezone": { "label": "Timezone", "group": "schedule", "mutable": true, "role": "configuration", "help": "Timezone used for windows and timestamps; production behavior assumes Asia/Singapore." },
-      "source_type": { "label": "Upstream source", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the upstream adapter and its isolated credential/browser context; legacy noiselynx normalizes to default.", "options": ["default", "whgd", "svs", "geoscan", "trackmaster", "alphalab"] },
+      "source_type": { "label": "Upstream source", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the upstream adapter and its isolated credential/browser context; legacy noiselynx normalizes to default. The database accepts future text values, but an unsupported value is isolated to this project as failed_config_validation until its adapter is deployed.", "options": ["default", "whgd", "svs", "geoscan", "trackmaster", "alphalab"] },
       "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
       "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Bookkeeping timestamp not maintained automatically by a trigger." }
     },

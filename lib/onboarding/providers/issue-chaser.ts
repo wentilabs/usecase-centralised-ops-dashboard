@@ -82,7 +82,7 @@ export const issueChaserOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "true",
-        help: "Same, for the Singapore holiday list in the service's `lib/time.js`, which currently ends on 2027-12-25.",
+        help: "Same, for the Singapore public holiday list built into the service, which currently runs to 25 Dec 2027. A later date counts as an ordinary working day.",
       },
       { column: "instance_name", label: "WhatsApp instance", kind: "text", required: false, notNull: false },
       { column: "client_id", label: "Client ID", kind: "text", required: false, notNull: false },

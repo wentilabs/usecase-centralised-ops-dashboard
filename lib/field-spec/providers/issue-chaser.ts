@@ -250,7 +250,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     remove_ph_notifications: {
       label: "Mute public holidays",
       row: "mutes",
-      help: "The same, for the Singapore holiday list kept in the service's `lib/time.js`, which currently ends on 2027-12-25. A date past the end of that list is treated as an ordinary working day, so the list has to be extended before it can be relied on for a later year.",
+      help: "The same, for the Singapore public holiday list built into the service, which currently runs to 25 Dec 2027. A date past the end of that list is treated as an ordinary working day rather than guessed at, so the list has to be extended before a later year can rely on it.",
     },
     timezone: {
       label: "Timezone",

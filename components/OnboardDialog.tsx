@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CoordinatePicker } from "./CoordinatePicker";
 import { GroupPicker } from "./GroupPicker";
+import { HelpText } from "./HelpText";
 import type { TelegramGroupDiscovery } from "@/lib/ailytics-discovery";
 import { resolveValue, validateDraft, type OnboardDefinition, type OnboardDraft } from "@/lib/onboarding";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -428,7 +429,9 @@ export function OnboardDialog({
                     {derived[entry.column].note}
                   </p>
                 ) : entry.help ? (
-                  <p className="mt-1 text-[11px] text-muted-foreground">{entry.help}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    <HelpText text={entry.help} />
+                  </p>
                 ) : null}
     </>
   );
@@ -468,7 +471,7 @@ export function OnboardDialog({
             <div className="mt-2 text-[11px] font-semibold">Still to do</div>
             <ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
               {definition.outsideHalo.map((step) => (
-                <li key={step}>{step}</li>
+                <li key={step}><HelpText text={step} /></li>
               ))}
             </ul>
           </div>
@@ -700,7 +703,7 @@ export function OnboardDialog({
               <div className="text-[11px] font-semibold">HALO cannot do these — they are not row writes</div>
               <ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
                 {definition.outsideHalo.map((step) => (
-                  <li key={step}>{step}</li>
+                  <li key={step}><HelpText text={step} /></li>
                 ))}
               </ul>
             </div>

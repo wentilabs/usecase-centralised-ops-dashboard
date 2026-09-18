@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "main",
-      "commit": "b9196be28a461e6b2c78a98914844c3369b41cd5",
+      "commit": "b6533219fb5f2e574f5815e1a862850516eb5d46",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",

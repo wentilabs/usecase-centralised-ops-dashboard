@@ -38,6 +38,19 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
       label: "Daily status summary",
       help: "Sends this project's own Pending and open counts to the WhatsApp groups above. Project-local — it never aggregates across projects, and a disabled project is not sent one.",
     },
+    yesterday_summary_enabled: {
+      label: "Yesterday 24h summary",
+      help: "Enables the hourly previous-local-day findings summary. It is independent of the existing status summary switch.",
+    },
+    yesterday_summary_hour: {
+      label: "Yesterday summary hour",
+      help: "Project-local hour from 0 to 23 at which the hourly route may send.",
+    },
+    yesterday_summary_group_ids: {
+      label: "Yesterday summary WhatsApp groups",
+      widget: "groups",
+      help: "Dedicated Safety Inspection Summary destinations; does not reuse the general WhatsApp groups.",
+    },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -58,7 +71,7 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
     // behaviour reads as one more piece of wiring.
     {
       title: "What gets sent",
-      fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "whatsapp_group_ids"],
+      fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "yesterday_summary_enabled", "yesterday_summary_hour", "whatsapp_group_ids", "yesterday_summary_group_ids"],
     },
     {
       title: "Delivery",

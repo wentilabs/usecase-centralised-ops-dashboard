@@ -88,6 +88,7 @@ test("Ailytics records its externally visible routes and intentionally open auth
       { method: "POST", path: "/telegram-webhook", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/whatsapp-events", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/status-summary", kind: "scheduled", authentication: "none" },
+      { method: "POST", path: "/ailytics-safety/yesterday-24h-summary", kind: "scheduled", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/retry-pending-deliveries", kind: "scheduled", authentication: "none" },
     ],
   );

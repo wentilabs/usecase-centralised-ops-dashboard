@@ -5,7 +5,7 @@
   "routes": [
     { "method": "GET", "path": "/version", "kind": "diagnostic", "authentication": "none" },
     { "method": "POST", "path": "/get-supabase-configs", "kind": "diagnostic", "authentication": "none" },
-    { "method": "POST", "path": "/get-telegram-group-discoveries", "kind": "diagnostic", "authentication": "none" },
+    { "method": "POST", "path": "/get-telegram-group-discoveries", "kind": "diagnostic", "authentication": "lambda-auth" },
     { "method": "POST", "path": "/telegram-webhook", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/whatsapp-events", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/status-summary", "kind": "scheduled", "authentication": "none" },
@@ -36,7 +36,7 @@
       "whatsapp_group_ids": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations, trimmed and de-duplicated per send (INV-AIL-17)." },
       "forward_pending_to_whatsapp": { "label": "Forward pending alerts", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Gates only the delivery attempt; capture and history writes continue, and PENDING requires confirmed delivery (INV-AIL-14/19)." },
       "status_summary_enabled": { "label": "Status summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Allows project-local sheet counts to be sent; this is not an estate-wide aggregate (INV-AIL-18)." },
-      "yesterday_summary_enabled": { "label": "Yesterday summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Enables the hourly previous-local-day Ailytics findings summary without changing the existing status summary behavior." },
+      "yesterday_summary_enabled": { "label": "Yesterday summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Enables the hourly previous-local-day Ailytics findings summary route without changing the existing status summary behavior." },
       "yesterday_summary_hour": { "label": "Yesterday summary hour", "group": "behavior", "mutable": true, "role": "configuration", "help": "Local project hour from 0 to 23 at which the hourly route is allowed to send the previous day's summary." },
       "yesterday_summary_group_ids": { "label": "Yesterday summary WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated dedicated Safety Inspection Summary WhatsApp group IDs; this does not reuse whatsapp_group_ids." },
       "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },

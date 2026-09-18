@@ -8,7 +8,7 @@ const familyRoot = path.resolve(process.env.SERVICE_REPOSITORY_ROOT || path.dirn
 const lockPath = path.join(dashboardRoot, "contracts", "service-contract.lock.json");
 const lock = JSON.parse(readFileSync(lockPath, "utf8"));
 const allowedKinds = new Set(["scheduled", "operator", "webhook", "read", "diagnostic"]);
-const allowedAuth = new Set(["none", "optional-service-key", "required-service-key", "sms-hmac", "required-hmac"]);
+const allowedAuth = new Set(["none", "optional-service-key", "required-service-key", "lambda-auth", "sms-hmac", "required-hmac"]);
 
 function fail(message) {
   throw new Error(`[service-contracts] ${message}`);

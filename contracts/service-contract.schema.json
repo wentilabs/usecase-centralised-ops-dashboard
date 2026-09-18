@@ -36,7 +36,7 @@
           "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
           "path": { "type": "string", "pattern": "^/" },
           "kind": { "enum": ["scheduled", "operator", "webhook", "read", "diagnostic"] },
-          "authentication": { "enum": ["none", "optional-service-key", "required-service-key", "sms-hmac", "required-hmac"] }
+          "authentication": { "enum": ["none", "optional-service-key", "required-service-key", "lambda-auth", "sms-hmac", "required-hmac"] }
         }
       }
     },

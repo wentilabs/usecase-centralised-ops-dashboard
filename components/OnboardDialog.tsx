@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CoordinatePicker } from "./CoordinatePicker";
 import { GroupPicker } from "./GroupPicker";
+import type { TelegramGroupDiscovery } from "@/lib/ailytics-discovery";
 import { resolveValue, validateDraft, type OnboardDefinition, type OnboardDraft } from "@/lib/onboarding";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
@@ -62,6 +63,10 @@ export function OnboardDialog({
     { index: number; address: string; postal_code: string | null; latitude: number; longitude: number; valid: boolean }[]
   >([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [telegramDiscoveries, setTelegramDiscoveries] = useState<TelegramGroupDiscovery[]>([]);
+  const [telegramDiscoveryError, setTelegramDiscoveryError] = useState<string | null>(null);
+  const [telegramDiscoveryBusy, setTelegramDiscoveryBusy] = useState(false);
+  const [telegramDiscoveryFetched, setTelegramDiscoveryFetched] = useState(false);
 
   useEscapeKey(!busy, onClose);
 
@@ -89,7 +94,58 @@ export function OnboardDialog({
     };
   }, [definition.service]);
 
+  async function refreshTelegramDiscoveries() {
+    if (definition.service !== "ailytics") return;
+    setTelegramDiscoveryBusy(true);
+    setTelegramDiscoveryError(null);
+    try {
+      const res = await fetch("/api/ailytics/telegram-discoveries", { cache: "no-store" });
+      const body = await res.json();
+      if (!res.ok) {
+        setTelegramDiscoveryError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setTelegramDiscoveries(Array.isArray(body.discoveries) ? body.discoveries : []);
+      setTelegramDiscoveryFetched(true);
+    } catch (err) {
+      setTelegramDiscoveryError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTelegramDiscoveryBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (definition.service === "ailytics") void refreshTelegramDiscoveries();
+  // The service is the only input that should trigger the initial inbox load.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [definition.service]);
+
   const code = String(draft.project_code ?? "").trim();
+  const configuredTelegramChatIds = useMemo(
+    () => new Set(rows.map((row) => String(row.telegram_chat_id ?? "").trim()).filter(Boolean)),
+    [rows],
+  );
+  const availableTelegramGroups = useMemo(
+    () =>
+      telegramDiscoveries.filter(
+        (discovery) => discovery.is_member && !configuredTelegramChatIds.has(discovery.telegram_chat_id),
+      ),
+    [configuredTelegramChatIds, telegramDiscoveries],
+  );
+
+  function useTelegramGroup(discovery: TelegramGroupDiscovery) {
+    setEdited((prev) => new Set(prev).add("telegram_chat_id").add("expected_chat_title"));
+    setDraft((prev) => ({
+      ...prev,
+      telegram_chat_id: discovery.telegram_chat_id,
+      expected_chat_title: discovery.chat_title ?? prev.expected_chat_title ?? "",
+    }));
+  }
+
+  function useUpstreamBot(botUsername: string) {
+    setEdited((prev) => new Set(prev).add("upstream_bot_username"));
+    setDraft((prev) => ({ ...prev, upstream_bot_username: botUsername }));
+  }
   /**
    * A stand-in for the server's env: the value is never sent to the browser, only
    * whether it resolved. Without this the client would report a required field as
@@ -431,6 +487,76 @@ export function OnboardDialog({
                 Not set on the server: <span className="font-mono">{missingEnv.join(", ")}</span>. Those
                 fields have no default, so type them in or the insert will be refused.
               </p>
+            ) : null}
+
+            {definition.service === "ailytics" ? (
+              <section className="mt-4 rounded-lg border border-border bg-card/40 p-3" aria-label="Telegram group discovery">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">Telegram group inbox</h4>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Active groups observed after @WentiAilyticsBot was added. Choosing one only fills this draft; it does not create or enable a row.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void refreshTelegramDiscoveries()}
+                    disabled={busy || telegramDiscoveryBusy}
+                    className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-[11px] disabled:opacity-40"
+                  >
+                    {telegramDiscoveryBusy ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
+                {telegramDiscoveryError ? <p className="mt-2 text-[11px] text-warn">{telegramDiscoveryError}</p> : null}
+                {!telegramDiscoveryError && !telegramDiscoveryFetched ? (
+                  <p className="mt-2 text-[11px] text-muted-foreground">Loading observed groups…</p>
+                ) : null}
+                {telegramDiscoveryFetched && !telegramDiscoveryError && !availableTelegramGroups.length ? (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    No unconfigured active groups yet. Remove and re-add @WentiAilyticsBot to a group, then refresh here. An upstream bot username appears after that bot sends a message in the group.
+                  </p>
+                ) : null}
+                {availableTelegramGroups.length ? (
+                  <ul className="mt-3 flex flex-col gap-2">
+                    {availableTelegramGroups.map((discovery) => (
+                      <li key={discovery.telegram_chat_id} className="rounded border border-border bg-background/40 p-2">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-medium">{discovery.chat_title ?? "Unnamed Telegram group"}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{discovery.telegram_chat_id}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => useTelegramGroup(discovery)}
+                            disabled={busy}
+                            className="rounded border border-primary/50 px-2 py-1 text-[11px] text-primary disabled:opacity-40"
+                          >
+                            Use group
+                          </button>
+                        </div>
+                        {discovery.observed_bot_usernames.length ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-muted-foreground">Observed bots:</span>
+                            {discovery.observed_bot_usernames.map((botUsername) => (
+                              <button
+                                key={botUsername}
+                                type="button"
+                                onClick={() => useUpstreamBot(botUsername)}
+                                disabled={busy}
+                                className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary disabled:opacity-40"
+                              >
+                                @{botUsername}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-[10px] text-muted-foreground">Waiting for an upstream bot message to identify its username.</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
             ) : null}
 
             {wantsCoordinates ? (

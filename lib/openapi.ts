@@ -504,6 +504,21 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/ailytics/telegram-discoveries": {
+      get: {
+        operationId: "listAilyticsTelegramDiscoveries",
+        tags: ["discovery", "onboarding"],
+        summary: "Ailytics Telegram groups available for onboarding",
+        description:
+          "Reads HALO's server-side Ailytics discovery inbox. It lists groups where @WentiAilyticsBot is currently a member and any upstream bot usernames observed after they sent a message. This changes no configuration; use the result to fill a disabled Ailytics onboarding draft.",
+        responses: {
+          "200": { description: "Discovered groups and observed upstream bot usernames.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "401": errorResponses["401"],
+          "502": { description: "The Ailytics discovery service could not be reached." },
+          "503": { description: "This HALO deployment has not been configured for discovery." },
+        },
+      },
+    },
     "/api/noise-meters": {
       get: {
         operationId: "listNoiseMeters",

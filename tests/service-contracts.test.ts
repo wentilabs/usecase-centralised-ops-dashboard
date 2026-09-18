@@ -75,16 +75,14 @@ test("the Haze route contract pins the externally configured endpoint surface", 
   );
 });
 
-test("Ailytics records its externally visible routes and intentionally open authentication", () => {
+test("Ailytics records its externally visible routes and discovery authentication", () => {
   assert.deepEqual(
     SERVICE_CONTRACTS.ailytics.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
     [
       { method: "GET", path: "/version", kind: "diagnostic", authentication: "none" },
       { method: "POST", path: "/get-supabase-configs", kind: "diagnostic", authentication: "none" },
-      // b9196be. Reads the inbox of Telegram groups the bot has been added to,
-      // so a chat id can be picked rather than pasted. Diagnostic and open like
-      // its neighbour: it returns no project configuration.
-      { method: "POST", path: "/get-telegram-group-discoveries", kind: "diagnostic", authentication: "none" },
+      // The inbox returns chat identities and must not be publicly enumerable.
+      { method: "POST", path: "/get-telegram-group-discoveries", kind: "diagnostic", authentication: "lambda-auth" },
       { method: "POST", path: "/telegram-webhook", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/whatsapp-events", kind: "webhook", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/status-summary", kind: "scheduled", authentication: "none" },

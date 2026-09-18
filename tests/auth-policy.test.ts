@@ -1197,10 +1197,11 @@ test("the Water Parade cooldown is described where it changes the cadence", () =
   assert.doesNotMatch(firesAt("wbgt", { water_parade_cooldown_enabled: true }), /Water Parade|hour bands/);
 });
 
-test("Ailytics shows its two switches and not its setup", () => {
-  const pills = pillsFor("ailytics", { forward_pending_to_whatsapp: true, status_summary_enabled: true });
+test("Ailytics shows its switches and not its setup", () => {
+  const pills = pillsFor("ailytics", { forward_pending_to_whatsapp: true, status_summary_enabled: true, yesterday_summary_enabled: true });
   assert.ok(pills.some((p) => p.label === "forward PENDING" && p.on));
   assert.ok(pills.some((p) => p.label === "daily summary" && p.on));
+  assert.ok(pills.some((p) => p.label === "yesterday summary" && p.on));
 
   // Both are off by default and must read as off, not be omitted: an unlit
   // switch is the state someone needs to see before asking why no summary
@@ -1208,6 +1209,7 @@ test("Ailytics shows its two switches and not its setup", () => {
   const bare = pillsFor("ailytics", {});
   assert.ok(bare.some((p) => p.label === "forward PENDING" && !p.on));
   assert.ok(bare.some((p) => p.label === "daily summary" && !p.on));
+  assert.ok(bare.some((p) => p.label === "yesterday summary" && !p.on));
 
   // `telegram source`, `sheet` and `whatsapp relay` were dropped: they were on
   // for every working project, so they reported that setup was finished rather
@@ -1220,7 +1222,7 @@ test("Ailytics shows its two switches and not its setup", () => {
   for (const gone of ["telegram source", "sheet", "whatsapp relay"]) {
     assert.ok(!configured.some((p) => p.label === gone), `${gone} should no longer be a pill`);
   }
-  assert.equal(configured.length, 2, "exactly the two switches");
+  assert.equal(configured.length, 3, "exactly the three switches");
 });
 
 // ---------------------------------------------------------------------------

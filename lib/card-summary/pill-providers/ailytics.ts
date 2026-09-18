@@ -10,7 +10,7 @@ export function ailyticsPills(config: ProjectConfigRow): Pill[] {
   // project, because a row without a Telegram chat, a spreadsheet or a
   // group is not a working project at all — they reported the setup being
   // complete, which is the normal case, instead of a choice someone made.
-  // What is left is the two switches that actually differ between projects.
+  // What is left is the switches that actually differ between projects.
   return [
     // Outbound-only switch: PENDING alerts are stored and written to history
     // either way, so "off" does not mean nothing is happening.
@@ -20,5 +20,8 @@ export function ailyticsPills(config: ProjectConfigRow): Pill[] {
     // Defaults to false and differs per project, which is what earns it a
     // pill: 2 of the 4 projects have it on.
     { label: "daily summary", on: on(config.status_summary_enabled) },
+    // Previous-local-day findings sent to the dedicated Safety Inspection
+    // Summary groups at the configured local hour.
+    { label: "yesterday summary", on: on(config.yesterday_summary_enabled) },
   ];
 }

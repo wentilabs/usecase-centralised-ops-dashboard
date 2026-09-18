@@ -5,6 +5,9 @@ import type { NextRequest } from "next/server";
 
 import {
   callRpc,
+  attachCanonicalServiceAlias,
+  annotateAudit,
+  getCanonicalProject,
   getFieldSpec,
   insertConfig,
   insertRows,
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
   // column of the table now, so what counts as a column is the server's answer.
   const definition = withSchemaFields(curated, await getFieldSpec(service));
 
-  const body = (await request.json().catch(() => ({}))) as { draft?: Record<string, string> };
+  const body = (await request.json().catch(() => ({}))) as { draft?: Record<string, string>; canonicalProjectId?: string };
   const draft = body.draft ?? {};
 
   const existing = (await listConfigs(service)) as ProjectConfigRow[];
@@ -113,6 +116,30 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
   const projectCode = String(draft.project_code ?? "").trim();
   const { schema } = SERVICES[service];
   const steps: { step: string; detail: string }[] = [];
+
+  // A canonical-project link is optional so existing onboarding callers retain
+  // their exact behaviour. When supplied, reject a conflicting alias before a
+  // service row can be created; linking the registry is never a reason to
+  // overwrite an established service identity.
+  let canonicalProject = null;
+  if (body.canonicalProjectId) {
+    try {
+      canonicalProject = await getCanonicalProject(body.canonicalProjectId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        { status: 503 },
+      );
+    }
+    if (!canonicalProject) return NextResponse.json({ error: "Canonical project not found." }, { status: 404 });
+    const alias = canonicalProject.service_aliases[service];
+    if (alias && alias !== projectCode) {
+      return NextResponse.json(
+        { error: `This canonical project already records ${service} as ${alias}. Use that code or update the canonical record first.` },
+        { status: 400 },
+      );
+    }
+  }
 
   // 1. Anything that must exist before the row does. For WBGT that is the
   //    project's readings table, which is DDL and so runs as a definer function.
@@ -172,6 +199,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
     }
   }
 
+  // The service row has already been created deliberately disabled. A registry
+  // link failure therefore never changes live customer behaviour; report it so
+  // the operator can repair the HALO-only record instead of assuming it linked.
+  let registryWarning: string | null = null;
+  if (canonicalProject) {
+    try {
+      const attached = await attachCanonicalServiceAlias(canonicalProject.id, service, projectCode);
+      if (!attached) registryWarning = "The disabled service row was created, but HALO could not attach its canonical alias.";
+      if (attached && canonicalProject.service_aliases[service] !== projectCode) {
+        await annotateAudit({
+          table: "projects",
+          rowId: attached.id,
+          newUpdatedAt: attached.updated_at,
+          actorEmail: session.actor,
+          note: `Attached ${service} alias ${projectCode} after disabled-row onboarding`,
+        });
+      }
+    } catch (error) {
+      registryWarning = `The disabled service row was created, but HALO could not attach its canonical alias: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   // Deliberately not written through the audit annotation path: that stamps an
   // UPDATE recorded by the table's trigger, and this is an INSERT with no prior
   // state to diff against. The row's own created_at is the record.
@@ -184,8 +233,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
     row: created[0],
     disabled: true,
     steps,
-    ...(companionError
-      ? { warning: `The ${definition.companion?.label} row could not be written: ${companionError}. The project row exists — add it by hand.` }
+    ...((companionError || registryWarning)
+      ? { warning: [companionError ? `The ${definition.companion?.label} row could not be written: ${companionError}. The project row exists — add it by hand.` : null, registryWarning].filter(Boolean).join(" ") }
       : {}),
   });
 }

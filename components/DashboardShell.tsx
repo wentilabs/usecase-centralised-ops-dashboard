@@ -20,6 +20,8 @@ import { ServiceDrawer } from "./ServiceDrawer";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
+import { onboardingDraftFromCanonicalProject } from "@/lib/canonical-project-onboarding";
+import type { CanonicalProject } from "@/lib/canonical-projects";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
@@ -52,6 +54,8 @@ export function DashboardShell({
   initialGroupNames,
   groupNamesMeta,
   visoUrl,
+  initialService,
+  initialOnboard,
 }: {
   services: ServiceData[];
   fetchedAt: string;
@@ -60,8 +64,11 @@ export function DashboardShell({
   groupNamesMeta: GroupNamesMeta;
   /** Base URL of Viso (wa-mirror); null hides the chat links. */
   visoUrl: string | null;
+  /** An optional same-dashboard deep link, used by canonical project details. */
+  initialService: ServiceKey | null;
+  initialOnboard: { service: ServiceKey; project: CanonicalProject } | null;
 }) {
-  const [tab, setTab] = useState<ServiceKey>(services[0]?.key ?? "wbgt");
+  const [tab, setTab] = useState<ServiceKey>(initialOnboard?.service ?? initialService ?? services[0]?.key ?? "wbgt");
   /**
    * ⌘F / Ctrl+F focuses the filter instead of the browser's find.
    *
@@ -92,7 +99,7 @@ export function DashboardShell({
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
   const [job, setJob] = useState<JobDefinition | null>(null);
   const [exporter, setExporter] = useState<ExportDefinition | null>(null);
-  const [onboarding, setOnboarding] = useState(false);
+  const [onboarding, setOnboarding] = useState(Boolean(initialOnboard));
   /**
    * The lightning map. `null` is closed; a string is open, focused on that
    * project code, and `""` is open on the whole island.
@@ -387,6 +394,13 @@ export function DashboardShell({
         >
           Site identity
         </a>
+        <a
+          href="/projects"
+          className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary"
+          title="Canonical project identity and approved common resources"
+        >
+          Projects
+        </a>
 
         <input
           ref={(element) => {
@@ -631,6 +645,13 @@ export function DashboardShell({
           definition={withSchemaFields(onboardingFor(active.key)!, active.spec)}
           rows={rows[active.key] ?? []}
           groupNames={groupNames}
+          initialDraft={
+            initialOnboard?.service === active.key
+              ? onboardingDraftFromCanonicalProject(withSchemaFields(onboardingFor(active.key)!, active.spec), initialOnboard.project)
+              : undefined
+          }
+          canonicalProjectId={initialOnboard?.service === active.key ? initialOnboard.project.id : undefined}
+          canonicalProjectLabel={initialOnboard?.service === active.key ? initialOnboard.project.primary_alias : undefined}
           onClose={() => setOnboarding(false)}
           onCreated={() => void refreshData()}
         />

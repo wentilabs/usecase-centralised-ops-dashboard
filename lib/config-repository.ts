@@ -17,6 +17,7 @@ import {
   type LimitRow,
   type MeterLimits,
 } from "./noise-limits";
+import type { CanonicalProject, CanonicalProjectDraft } from "./canonical-projects";
 import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -646,4 +647,79 @@ export async function annotateAudit(input: {
   } catch (error) {
     return { annotated: false, reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// ---------------------------------------------------------------------------
+// ops.projects — HALO's canonical, human-approved physical-site registry.
+// This is intentionally separate from the seven runtime configuration tables.
+// ---------------------------------------------------------------------------
+
+function projectRegistrySetupHint(status: number) {
+  return status === 404 || status === 406
+    ? "Canonical project registry is not reachable — run supabase/create_canonical_projects.sql after supabase/config_audit_setup.sql."
+    : `canonical project registry: status ${status}`;
+}
+
+export async function listCanonicalProjects(): Promise<CanonicalProject[]> {
+  const res = await request("projects?select=*&order=primary_alias.asc", { schema: "ops" });
+  if (!res.ok) throw new Error(projectRegistrySetupHint(res.status));
+  return (res.body ?? []) as CanonicalProject[];
+}
+
+export async function getCanonicalProject(id: string): Promise<CanonicalProject | null> {
+  const res = await request(`projects?id=eq.${encodeURIComponent(id)}&select=*&limit=1`, { schema: "ops" });
+  if (!res.ok) throw new Error(projectRegistrySetupHint(res.status));
+  return ((res.body ?? []) as CanonicalProject[])[0] ?? null;
+}
+
+export async function insertCanonicalProject(draft: CanonicalProjectDraft): Promise<CanonicalProject> {
+  const res = await request("projects", {
+    schema: "ops",
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(draft),
+  });
+  if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
+  const created = (res.body ?? []) as CanonicalProject[];
+  if (!created[0]) throw new Error("Canonical project insert returned no row.");
+  return created[0];
+}
+
+export async function updateCanonicalProject(
+  id: string,
+  draft: CanonicalProjectDraft,
+  baseUpdatedAt: string | null,
+): Promise<CanonicalProject | null> {
+  const concurrency = baseUpdatedAt ? `&updated_at=eq.${encodeURIComponent(baseUpdatedAt)}` : "";
+  const res = await request(`projects?id=eq.${encodeURIComponent(id)}${concurrency}`, {
+    schema: "ops",
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(draft),
+  });
+  if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
+  return ((res.body ?? []) as CanonicalProject[])[0] ?? null;
+}
+
+/**
+ * Record the code a newly created service row uses. This deliberately updates
+ * only HALO's registry; it does not change that service row after creation.
+ */
+export async function attachCanonicalServiceAlias(
+  id: string,
+  service: ServiceKey,
+  alias: string,
+): Promise<CanonicalProject | null> {
+  const current = await getCanonicalProject(id);
+  if (!current) throw Object.assign(new Error("Canonical project not found."), { notFound: true });
+  const existing = current.service_aliases[service];
+  if (existing && existing !== alias) {
+    throw Object.assign(
+      new Error(`Canonical project already records ${service} as ${existing}; it cannot be attached to ${alias}.`),
+      { conflict: true },
+    );
+  }
+  if (existing === alias) return current;
+  const { id: _id, created_at: _created, updated_at: _updated, ...draft } = current;
+  return updateCanonicalProject(id, { ...draft, service_aliases: { ...draft.service_aliases, [service]: alias } }, current.updated_at);
 }

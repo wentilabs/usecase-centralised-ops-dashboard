@@ -1,0 +1,47 @@
+# Canonical projects
+
+`ops.projects` is HALO's human-approved registry of physical sites. It stores a
+stable UUID, aliases, and a deliberately small set of common resources. It is
+not a replacement for any service configuration table.
+
+## Source of truth
+
+- Runtime configuration and customer behaviour remain owned by the seven
+  service tables.
+- `ops.projects` owns only canonical identity and operator-approved common
+  information.
+- A canonical edit never propagates into a service row.
+- Service aliases are exact strings, not normalised values: each retains the
+  spelling that its service currently uses.
+
+## First setup
+
+1. Ensure `supabase/config_audit_setup.sql` has already been applied.
+2. Run `supabase/create_canonical_projects.sql` in the Supabase SQL editor.
+3. Open **Projects** in HALO and choose **Rebuild from current projects**.
+4. Review every candidate. Conflicting values are intentionally blank; choose
+   a value or leave it blank.
+5. Save a canonical project only after its aliases and common data are correct.
+
+The reconstruction view reads live service rows and writes nothing until an
+operator creates an entry. It never renames, enables, or alters a service row.
+
+## Onboarding from a canonical project
+
+The project page's **Add this service** link opens the existing service-owned
+onboarding dialog. HALO proposes only exact approved mappings, such as Haze and
+Lightning coordinates, the Issue Chaser safety workbook, or Subcon's manpower
+workbook. The operator reviews every value; service-specific fields remain in
+the normal onboarding dialog, and the new row is still always disabled.
+
+After a successful insert HALO records the exact service alias in
+`ops.projects.service_aliases`. If that HALO-only update fails, the response
+states so plainly; the disabled service row is not modified or enabled.
+
+## Adding another service later
+
+Add its key to the existing HALO service registry first. `service_aliases` is a
+JSON object keyed by registered service key, so the canonical registry schema
+does not need a migration for an eighth service. Add a prefill mapping only
+when the two fields are documented as the same resource; a similar name is not
+enough.

@@ -2,14 +2,18 @@ import { redirect } from "next/navigation";
 
 import { DashboardShell, type ServiceData } from "@/components/DashboardShell";
 import { chatIdsIn } from "@/lib/card-summary";
-import { getFieldSpec, listConfigs } from "@/lib/config-repository";
+import { getCanonicalProject, getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { getGroupNames } from "@/lib/group-names";
-import { SERVICES, SERVICE_KEYS } from "@/lib/services";
+import { SERVICES, SERVICE_KEYS, isServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ service?: string; onboard?: string; project?: string }>;
+}) {
   const session = await getDashboardSession();
 
   // The real authorization gate: this runs in the Node runtime, where the
@@ -32,6 +36,10 @@ export default async function DashboardPage() {
   // Viso (wa-mirror) exposes /go/<chatId>, which resolves a chat to its company
   // and redirects, so HALO can link to a thread knowing only the group id.
   const visoUrl = (process.env.VISO_URL ?? "").replace(/\/+$/, "") || null;
+  const requested = await searchParams;
+  const requestedService = requested.service && isServiceKey(requested.service) ? requested.service : null;
+  const onboardService = requested.onboard && isServiceKey(requested.onboard) ? requested.onboard : null;
+  const onboardProject = onboardService && requested.project ? await getCanonicalProject(requested.project).catch(() => null) : null;
 
   const services: ServiceData[] = SERVICE_KEYS.map((key, index) => {
     const rowsResult = rows[index];
@@ -64,6 +72,8 @@ export default async function DashboardPage() {
         setupHint: groupNames.setupHint ?? null,
       }}
       session={{ email: session.email, canEdit: session.canEdit, isLocalBypass: session.isLocalBypass }}
+      initialService={requestedService}
+      initialOnboard={onboardService && onboardProject ? { service: onboardService, project: onboardProject } : null}
     />
   );
 }

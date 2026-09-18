@@ -25,6 +25,9 @@ export function OnboardDialog({
   definition,
   rows,
   groupNames = {},
+  initialDraft,
+  canonicalProjectId,
+  canonicalProjectLabel,
   onClose,
   onCreated,
 }: {
@@ -32,10 +35,15 @@ export function OnboardDialog({
   rows: ProjectConfigRow[];
   /** Chat id to human group name, so the picker shows names rather than ids. */
   groupNames?: Record<string, string>;
+  /** Human-reviewable suggestions from a canonical project, never hidden defaults. */
+  initialDraft?: OnboardDraft;
+  /** HALO-only registry entry to attach after a successful disabled-row insert. */
+  canonicalProjectId?: string;
+  canonicalProjectLabel?: string;
   onClose: () => void;
   onCreated: (projectCode: string) => void;
 }) {
-  const [draft, setDraft] = useState<OnboardDraft>({});
+  const [draft, setDraft] = useState<OnboardDraft>(() => initialDraft ?? {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<string | null>(null);
@@ -135,7 +143,7 @@ export function OnboardDialog({
       const res = await fetch(`/api/onboard/${definition.service}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft }),
+        body: JSON.stringify({ draft, ...(canonicalProjectId ? { canonicalProjectId } : {}) }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -374,6 +382,12 @@ export function OnboardDialog({
       <div className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-background p-4 shadow-2xl md:max-h-[88vh] md:w-[min(680px,94vw)] md:rounded-2xl md:p-5">
         <h3 className="text-base font-semibold">{definition.title}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{definition.description}</p>
+
+        {canonicalProjectLabel ? (
+          <p className="mt-3 rounded-lg border border-primary/35 bg-primary/10 px-3 py-2 text-xs text-primary">
+            Suggestions below come from canonical project <strong>{canonicalProjectLabel}</strong>. Review every value before creating the disabled service row.
+          </p>
+        ) : null}
 
         {created ? (
           <div className="mt-4 rounded-lg border border-on/40 bg-on/10 p-3">

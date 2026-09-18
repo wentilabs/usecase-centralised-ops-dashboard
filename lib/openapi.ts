@@ -362,6 +362,53 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/canonical-projects": {
+      get: {
+        operationId: "listCanonicalProjects",
+        tags: ["configuration"],
+        summary: "List human-approved canonical sites",
+        description:
+          "Returns HALO's canonical site registry: UUIDs, aliases and explicitly approved common resources. It is separate from service configuration and reads no schedule or runtime state. A registry record is not proof that a service is enabled or healthy.",
+        responses: {
+          "200": { description: "Canonical projects, alphabetically by primary alias.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "401": errorResponses["401"],
+          "503": { description: "The registry migration has not been applied or the ops schema is unavailable.", content: { "application/json": { schema: { $ref: "#/components/schemas/Problem" } } } },
+        },
+      },
+      post: {
+        operationId: "createCanonicalProject",
+        tags: ["configuration"],
+        summary: "Create one canonical site record",
+        description:
+          "Creates a HALO-only canonical registry record after review. This changes the operations registry and audit trail, but does not create, enable, or alter any live service configuration; customers receive no new behavior from this operation alone.",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { draft: { type: "object", additionalProperties: true, description: "Canonical identity, aliases, and approved common resources. `primary_alias` is required." } }, required: ["draft"] } } } },
+        responses: {
+          "200": { description: "Canonical record created and audit entry annotated.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "400": errorResponses["400"], "401": errorResponses["401"], "403": errorResponses["403"],
+        },
+      },
+    },
+    "/api/canonical-projects/{id}": {
+      get: {
+        operationId: "getCanonicalProject",
+        tags: ["configuration"],
+        summary: "Read one canonical site record",
+        description:
+          "Returns one HALO-only canonical registry record by UUID. The record gives a human-approved mapping to service aliases, but it does not replace reading the service configuration row before making a production change.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Canonical project.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } }, "401": errorResponses["401"], "404": errorResponses["404"], "503": { description: "Registry unavailable.", content: { "application/json": { schema: { $ref: "#/components/schemas/Problem" } } } } },
+      },
+      patch: {
+        operationId: "updateCanonicalProject",
+        tags: ["configuration"],
+        summary: "Update one canonical site record",
+        description:
+          "Applies a reviewed replacement of one HALO-only canonical registry record with optimistic concurrency. This changes registry data and its audit history, but never changes production service configuration, schedules, messages, or enabled state.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { draft: { type: "object", additionalProperties: true }, baseUpdatedAt: { type: ["string", "null"], format: "date-time" } }, required: ["draft"] } } } },
+        responses: { "200": { description: "Registry record updated.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } }, "400": errorResponses["400"], "401": errorResponses["401"], "403": errorResponses["403"], "404": errorResponses["404"], "409": { description: "The registry record changed since it was read.", content: { "application/json": { schema: { $ref: "#/components/schemas/Problem" } } } } },
+      },
+    },
     "/api/config/{service}/{rowId}": {
       patch: {
         operationId: "updateProjectConfig",

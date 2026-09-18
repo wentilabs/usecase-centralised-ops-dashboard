@@ -25,8 +25,8 @@ test("canonical workbook values become safe Google Sheets links", () => {
 
 test("canonical candidates preserve each service's exact alias", () => {
   const candidates = canonicalProjectCandidates([
-    row("wbgt", "CR 106", { company: "Woh Hup", lambda_url: "https://proxy/send-message" }),
-    row("noise", "CR106", { company: "Woh Hup", lambda_url: "https://proxy/send-message" }),
+    row("wbgt", "CR 106", { company: "Woh Hup", lambda_url: "https://proxy/send-message", monthly_sheet_id: "wbgt-sheet" }),
+    row("noise", "CR106", { company: "Woh Hup", lambda_url: "https://proxy/send-message", google_sheet_id: "noise-sheet" }),
   ]);
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].draft.primary_alias, "CR106");
@@ -36,6 +36,8 @@ test("canonical candidates preserve each service's exact alias", () => {
   assert.equal(candidates[0].draft.send_message_url, "https://proxy/send-message");
   assert.equal(candidates[0].draft.reply_message_url, "https://proxy/reply-message");
   assert.equal(candidates[0].draft.send_document_url, "https://proxy/send-document");
+  assert.equal(candidates[0].draft.noise_workbook_id, "noise-sheet");
+  assert.equal(candidates[0].draft.wbgt_workbook_id, "wbgt-sheet");
 });
 
 test("delivery sibling URLs are derived only from the exact send-message route", () => {
@@ -46,6 +48,20 @@ test("delivery sibling URLs are derived only from the exact send-message route",
   assert.equal(candidate.draft.send_message_url, "https://proxy.example/proxy");
   assert.equal(candidate.draft.reply_message_url, null);
   assert.equal(candidate.draft.send_document_url, null);
+});
+
+test("HALO's configured proxy defaults prefill canonical delivery URLs", () => {
+  const [candidate] = canonicalProjectCandidates(
+    [row("wbgt", "CFC", { lambda_url: "https://legacy.example/send-message" })],
+    {
+      send_message_url: "https://halo.example/send-message",
+      reply_message_url: "https://halo.example/reply-message",
+      send_document_url: "https://halo.example/send-document",
+    },
+  );
+  assert.equal(candidate.draft.send_message_url, "https://halo.example/send-message");
+  assert.equal(candidate.draft.reply_message_url, "https://halo.example/reply-message");
+  assert.equal(candidate.draft.send_document_url, "https://halo.example/send-document");
 });
 
 test("explicit Ailytics delivery URLs must agree with sibling URLs derived from other services", () => {
@@ -96,6 +112,8 @@ const project: CanonicalProject = {
   longitude: 103.851,
   safety_workbook_id: "safety-id",
   manpower_workbook_id: "manpower-id",
+  noise_workbook_id: "noise-id",
+  wbgt_workbook_id: "wbgt-id",
   send_message_url: "https://proxy.example/send-message",
   reply_message_url: "https://proxy.example/reply-message",
   send_document_url: "https://proxy.example/send-document",
@@ -118,4 +136,9 @@ test("onboarding receives only exact approved canonical mappings", () => {
   const ailytics = onboardingDraftFromCanonicalProject(onboardingFor("ailytics")!, project);
   assert.equal(ailytics.spreadsheet_id, undefined, "Ailytics workbook is not declared equivalent to the safety workbook");
   assert.equal(ailytics.reply_lambda_url, "https://proxy.example/reply-message");
+
+  const noise = onboardingDraftFromCanonicalProject(onboardingFor("noise")!, project);
+  assert.equal(noise.google_sheet_id, "noise-id");
+  const wbgt = onboardingDraftFromCanonicalProject(onboardingFor("wbgt")!, project);
+  assert.equal(wbgt.monthly_sheet_id, "wbgt-id");
 });

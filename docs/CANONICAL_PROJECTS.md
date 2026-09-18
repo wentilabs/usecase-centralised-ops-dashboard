@@ -13,30 +13,35 @@ not a replacement for any service configuration table.
 - A canonical edit never propagates into a service row.
 - Service aliases are exact strings, not normalised values: each retains the
   spelling that its service currently uses.
+- New projects begin with no per-service alias overrides. Onboarding uses the
+  primary alias for every service, while alternate aliases capture customer or
+  legacy names. A per-service override is edited only on an existing project
+  when a live service truly uses a different code.
 
 ## First setup
 
 1. Ensure `supabase/config_audit_setup.sql` has already been applied.
-2. Run `supabase/create_canonical_projects.sql` in the Supabase SQL editor.
+2. Run `supabase/create_canonical_projects.sql` in the Supabase SQL editor. If
+   the registry already exists, also run
+   `supabase/migrate_canonical_project_service_workbooks.sql`.
 3. Open **Projects** in HALO and choose **Rebuild from current projects**.
-4. Inspect every canonical field in the horizontally scrollable table. Sheet
-   ids include a direct link to their Google Sheet.
-5. Use **Edit** on one row when it needs correction, then **Save project**.
-   A row whose reconstructed values are already correct can be saved unchanged.
+4. Inspect every canonical field in the compact, horizontally scrollable table.
+   Safety, manpower, Noise analysis, and WBGT monthly sheet ids include direct
+   Google Sheets links.
+5. Use **Edit** on one row when it needs correction, then use the separate
+   **Add to projects** action. A row can be added unchanged.
 
 The reconstruction view reads live service rows and writes nothing until an
-operator presses **Save project** on one row. It never renames, enables, or
+operator presses **Add to projects** on one row. It never renames, enables, or
 alters a service row. Already-saved candidates link to their canonical project
 instead of offering a duplicate save.
 
-The three delivery URLs are reconstructed as one listener family. Every
-service's `lambda_url` may contribute the send-message URL. When that value
-ends exactly in `/send-message` (an optional trailing slash is accepted), HALO
-also proposes the same base with `/reply-message` and `/send-document`.
-Ailytics' explicit `reply_lambda_url` and `lambda_url_image` remain independent
-evidence: if they disagree with the derived siblings, the field is left blank
-as a conflict for the operator. Blank values, the legacy `-` placeholder, and
-URLs that do not end in `/send-message` are never guessed into sibling routes.
+The three delivery URLs are prefilled from HALO's server-side deployment
+configuration: `DEFAULT_LAMBDA_URL_SEND`, `DEFAULT_LAMBDA_URL_REPLY`, and
+`DEFAULT_LAMBDA_URL_IMAGE`. Existing service URLs remain source evidence. HALO
+still derives listener siblings only from a `lambda_url` ending exactly in
+`/send-message` and continues to show conflicts, but it does not let legacy
+row wiring replace the configured dashboard defaults.
 
 ## Onboarding from a canonical project
 
@@ -49,6 +54,11 @@ the normal onboarding dialog, and the new row is still always disabled.
 After a successful insert HALO records the exact service alias in
 `ops.projects.service_aliases`. If that HALO-only update fails, the response
 states so plainly; the disabled service row is not modified or enabled.
+
+The Noise analysis workbook and WBGT monthly workbook are stored as separate
+canonical references. They prefill only `noise.google_sheet_id` and
+`wbgt.monthly_sheet_id`, respectively, in the existing disabled-row onboarding
+dialog; they never synchronize into a live service row automatically.
 
 ## Adding another service later
 

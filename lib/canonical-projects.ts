@@ -17,6 +17,10 @@ export type CanonicalProject = {
   longitude: number | null;
   safety_workbook_id: string | null;
   manpower_workbook_id: string | null;
+  /** Noise's analysis workbook; runtime ownership remains noise.google_sheet_id. */
+  noise_workbook_id: string | null;
+  /** WBGT's monthly workbook; runtime ownership remains wbgt.monthly_sheet_id. */
+  wbgt_workbook_id: string | null;
   send_message_url: string | null;
   reply_message_url: string | null;
   send_document_url: string | null;
@@ -42,6 +46,9 @@ export type CanonicalProjectCandidate = {
   draft: CanonicalProjectDraft;
   conflicts: CandidateConflict[];
 };
+
+/** HALO's configured listener family, passed from a server route—not browser env. */
+export type CanonicalDeliveryDefaults = Pick<CanonicalProjectDraft, "send_message_url" | "reply_message_url" | "send_document_url">;
 
 /** Accept either a stored workbook id or an already-complete Sheets URL. */
 export function canonicalSheetHref(value: string | null | undefined): string | null {
@@ -80,6 +87,8 @@ function emptyDraft(primaryAlias = ""): CanonicalProjectDraft {
     longitude: null,
     safety_workbook_id: null,
     manpower_workbook_id: null,
+    noise_workbook_id: null,
+    wbgt_workbook_id: null,
     send_message_url: null,
     reply_message_url: null,
     send_document_url: null,
@@ -132,6 +141,8 @@ const COMMON_FIELD_SOURCES: Record<CommonField, FieldSource[]> = {
     { service: "subcon", column: "spreadsheet_id" },
     { service: "wbgt", column: "manpower_spreadsheet_id" },
   ],
+  noise_workbook_id: [{ service: "noise", column: "google_sheet_id" }],
+  wbgt_workbook_id: [{ service: "wbgt", column: "monthly_sheet_id" }],
   send_message_url: SERVICE_KEYS.map((service) => ({ service, column: "lambda_url" })),
   reply_message_url: [
     { service: "ailytics", column: "reply_lambda_url" },
@@ -183,7 +194,10 @@ function collectValues(
  * suggested only when every nonblank source agrees; conflicts stay blank until
  * an operator decides which value represents the site.
  */
-export function canonicalProjectCandidates(rows: ServiceRow[]): CanonicalProjectCandidate[] {
+export function canonicalProjectCandidates(
+  rows: ServiceRow[],
+  deliveryDefaults: Partial<CanonicalDeliveryDefaults> = {},
+): CanonicalProjectCandidate[] {
   const indexed = sourceRows(rows);
   return clusterProjects(rows).map((cluster) => {
     const draft = emptyDraft(cluster.canonical);
@@ -213,6 +227,14 @@ export function canonicalProjectCandidates(rows: ServiceRow[]): CanonicalProject
       } else if (distinct.length > 1) {
         conflicts.push({ field, values });
       }
+    }
+
+    // These values are HALO deployment configuration. They deliberately win
+    // over legacy row wiring while any disagreement remains visible as a
+    // source conflict above, so an operator can investigate it before saving.
+    for (const field of ["send_message_url", "reply_message_url", "send_document_url"] as const) {
+      const configured = text(deliveryDefaults[field]);
+      if (configured) draft[field] = configured;
     }
 
     return { key: cluster.codes.slice().sort().join("|"), cluster, draft, conflicts };
@@ -274,6 +296,8 @@ export function validateCanonicalProjectDraft(value: unknown): { draft: Canonica
     longitude: Number.isFinite(longitude) ? longitude : null,
     safety_workbook_id: optionalText(raw.safety_workbook_id, "Safety workbook", problems),
     manpower_workbook_id: optionalText(raw.manpower_workbook_id, "Manpower workbook", problems),
+    noise_workbook_id: optionalText(raw.noise_workbook_id, "Noise workbook", problems),
+    wbgt_workbook_id: optionalText(raw.wbgt_workbook_id, "WBGT workbook", problems),
     send_message_url: optionalText(raw.send_message_url, "Send-message URL", problems),
     reply_message_url: optionalText(raw.reply_message_url, "Reply-message URL", problems),
     send_document_url: optionalText(raw.send_document_url, "Send-document URL", problems),

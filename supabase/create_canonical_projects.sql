@@ -36,6 +36,8 @@ create table if not exists ops.projects (
 
   safety_workbook_id text,
   manpower_workbook_id text,
+  noise_workbook_id text,
+  wbgt_workbook_id text,
   send_message_url text,
   reply_message_url text,
   send_document_url text,

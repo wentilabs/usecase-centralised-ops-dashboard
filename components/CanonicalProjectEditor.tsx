@@ -25,11 +25,16 @@ export function CanonicalProjectEditor({
   project,
   canEdit,
   conflicts = [],
+  compact = false,
+  hideHeader = false,
 }: {
   initial: CanonicalProjectDraft;
   project?: CanonicalProject;
   canEdit: boolean;
   conflicts?: CandidateConflict[];
+  /** Detail pages provide their own hierarchy above this compact field grid. */
+  compact?: boolean;
+  hideHeader?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Editable>(() => cloneDraft(initial));
@@ -39,7 +44,7 @@ export function CanonicalProjectEditor({
   const [problems, setProblems] = useState<string[]>([]);
 
   const changed = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initial), [draft, initial]);
-  const input = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary disabled:opacity-60";
+  const input = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-60";
 
   const setText = (field: Exclude<keyof Editable, "alternate_aliases" | "service_aliases" | "latitude" | "longitude">, value: string) =>
     setDraft((current) => ({ ...current, [field]: value || null }));
@@ -71,8 +76,8 @@ export function CanonicalProjectEditor({
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className={`mx-auto flex w-full max-w-5xl flex-col ${compact ? "gap-3 px-0 py-0" : "gap-5 px-3 py-4 md:px-5"}`}>
+      {!hideHeader ? <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{project ? draft.primary_alias || "Canonical project" : "Create canonical project"}</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
@@ -82,7 +87,7 @@ export function CanonicalProjectEditor({
         <a href="/projects" className="rounded-lg border border-border bg-card px-3 py-2 text-sm hover:border-primary">
           ← Projects
         </a>
-      </div>
+      </div> : null}
 
       {conflicts.length ? (
         <div className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm">
@@ -98,10 +103,10 @@ export function CanonicalProjectEditor({
         </div>
       ) : null}
 
-      <fieldset disabled={!canEdit || busy} className="grid gap-5">
-        <section className="rounded-xl border border-border bg-card p-4">
+      <fieldset disabled={!canEdit || busy} className={`grid ${compact ? "gap-3" : "gap-5"}`}>
+        <section className={`rounded-xl border border-border bg-card ${compact ? "p-3" : "p-4"}`}>
           <h2 className="font-semibold">Project details</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className={`${compact ? "mt-3" : "mt-4"} grid gap-3 md:grid-cols-2`}>
             <label className="grid gap-1 text-sm">
               Primary alias
               <input className={input} value={draft.primary_alias} onChange={(event) => setDraft((current) => ({ ...current, primary_alias: event.target.value }))} />
@@ -110,6 +115,7 @@ export function CanonicalProjectEditor({
               Alternate aliases <span className="text-xs text-muted-foreground">comma-separated</span>
               <input className={input} value={draft.alternate_aliases.join(", ")} onChange={(event) => setDraft((current) => ({ ...current, alternate_aliases: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))} />
             </label>
+            {!project ? <p className="text-sm text-muted-foreground md:col-span-2">New services use the primary alias by default. Record customer-specific or legacy names as alternate aliases; a per-service override can be added later only when a live service genuinely needs one.</p> : null}
             <label className="grid gap-1 text-sm">Company<input className={input} value={text(draft.company)} onChange={(event) => setText("company", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Site name<input className={input} value={text(draft.site_name)} onChange={(event) => setText("site_name", event.target.value)} /></label>
             <label className="grid gap-1 text-sm md:col-span-2">Site address<input className={input} value={text(draft.site_address)} onChange={(event) => setText("site_address", event.target.value)} /></label>
@@ -121,12 +127,14 @@ export function CanonicalProjectEditor({
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section className={`rounded-xl border border-border bg-card ${compact ? "p-3" : "p-4"}`}>
           <h2 className="font-semibold">Common resources</h2>
           <p className="mt-1 text-sm text-muted-foreground">These are suggestions for future onboarding, never automatic synchronization.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className={`${compact ? "mt-3" : "mt-4"} grid gap-3 md:grid-cols-2`}>
             <label className="grid gap-1 text-sm">Safety workbook ID<input className={input} value={text(draft.safety_workbook_id)} onChange={(event) => setText("safety_workbook_id", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Manpower workbook ID<input className={input} value={text(draft.manpower_workbook_id)} onChange={(event) => setText("manpower_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm">Noise analysis sheet ID<input className={input} value={text(draft.noise_workbook_id)} onChange={(event) => setText("noise_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm">WBGT monthly sheet ID<input className={input} value={text(draft.wbgt_workbook_id)} onChange={(event) => setText("wbgt_workbook_id", event.target.value)} /></label>
             <label className="grid gap-1 text-sm md:col-span-2">Send-message URL<input className={input} value={text(draft.send_message_url)} onChange={(event) => setText("send_message_url", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Reply-message URL<input className={input} value={text(draft.reply_message_url)} onChange={(event) => setText("reply_message_url", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Send-document URL<input className={input} value={text(draft.send_document_url)} onChange={(event) => setText("send_document_url", event.target.value)} /></label>
@@ -135,10 +143,10 @@ export function CanonicalProjectEditor({
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        {project ? <section className={`rounded-xl border border-border bg-card ${compact ? "p-3" : "p-4"}`}>
           <h2 className="font-semibold">Per-service aliases</h2>
-          <p className="mt-1 text-sm text-muted-foreground">The exact project code each live service uses. Blank means this registry does not claim the project is onboarded there.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <p className="mt-1 text-sm text-muted-foreground">Legacy compatibility overrides only. Blank means this service uses the primary alias; enter a value only when its live project code differs.</p>
+          <div className={`${compact ? "mt-3" : "mt-4"} grid gap-3 md:grid-cols-2`}>
             {SERVICE_KEYS.map((service) => (
               <label key={service} className="grid gap-1 text-sm">
                 {SERVICES[service].label}
@@ -146,7 +154,7 @@ export function CanonicalProjectEditor({
               </label>
             ))}
           </div>
-        </section>
+        </section> : null}
       </fieldset>
 
       {!canEdit ? <p className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">Your account has read-only access.</p> : null}

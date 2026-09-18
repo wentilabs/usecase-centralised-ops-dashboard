@@ -26,7 +26,11 @@ export function onboardingDraftFromCanonicalProject(
   }
   if (definition.service === "issueChaser") common.safety_sheet_id = project.safety_workbook_id;
   if (definition.service === "subcon") common.spreadsheet_id = project.manpower_workbook_id;
-  if (definition.service === "wbgt") common.manpower_spreadsheet_id = project.manpower_workbook_id;
+  if (definition.service === "noise") common.google_sheet_id = project.noise_workbook_id;
+  if (definition.service === "wbgt") {
+    common.manpower_spreadsheet_id = project.manpower_workbook_id;
+    common.monthly_sheet_id = project.wbgt_workbook_id;
+  }
 
   // Onboarding rejects unknown draft keys. The service-owned definition is the
   // final allow-list, which keeps a future schema difference from being guessed.

@@ -29,5 +29,10 @@ export default async function ImportCanonicalProjectsPage() {
       if (projectCode) rows.push({ service, projectCode, row });
     }
   });
-  return <CanonicalProjectCandidates candidates={canonicalProjectCandidates(rows)} existingProjects={existingProjects} canEdit={session.canEdit} unavailableServices={unavailableServices} />;
+  const deliveryDefaults = {
+    send_message_url: process.env.DEFAULT_LAMBDA_URL_SEND,
+    reply_message_url: process.env.DEFAULT_LAMBDA_URL_REPLY,
+    send_document_url: process.env.DEFAULT_LAMBDA_URL_IMAGE,
+  };
+  return <CanonicalProjectCandidates candidates={canonicalProjectCandidates(rows, deliveryDefaults)} existingProjects={existingProjects} canEdit={session.canEdit} unavailableServices={unavailableServices} />;
 }

@@ -190,6 +190,23 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     },
   ],
   issueChaser: [
+    // migrate_severity_reminder_age_limit.sql. Nullable on purpose — blank is
+    // unlimited, which is what every project runs today — so the rule has to
+    // let blank through and catch only a negative.
+    {
+      constraint: "issue_chaser_severity_only_last_x_days_check",
+      columns: ["severity_only_last_x_days"],
+      check: (row, label) => {
+        const raw = row.severity_only_last_x_days;
+        if (raw === null || raw === undefined || raw === "") return null;
+        const days = Number(raw);
+        if (Number.isInteger(days) && days >= 0) return null;
+        return (
+          `${label("severity_only_last_x_days")} counts days back from today, so it cannot be negative — ` +
+          `leave it blank for no limit, or 0 for today only.`
+        );
+      },
+    },
     {
       /**
        * Declared, but deliberately not enforced here.

@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "main",
-      "commit": "23211f97af2e27b6bbcce84cbc5e012cee001b18",
+      "commit": "f8b1848082d3d7bd1fd6a2043ad66ca5a0e28e9f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",

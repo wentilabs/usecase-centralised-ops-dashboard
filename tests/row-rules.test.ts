@@ -335,3 +335,25 @@ test("the Water Parade summary hour is an hour, not a time", () => {
     );
   }
 });
+
+test("the severity lookback may be blank or zero, but never negative", () => {
+  // migrate_severity_reminder_age_limit.sql: null or >= 0. Blank is unlimited
+  // and is what every project runs, so the rule has to let it through — a
+  // mirror that blocked blank would block every save in the estate.
+  const label = (column: string) => column;
+  for (const value of [null, "", 0, 6, 365]) {
+    assert.equal(
+      newProblems("issueChaser", {}, { severity_only_last_x_days: value }, label).length,
+      0,
+      `${JSON.stringify(value)} is allowed`,
+    );
+  }
+
+  const problems = newProblems("issueChaser", {}, { severity_only_last_x_days: -1 }, label);
+  assert.equal(problems.length, 1, "a negative must be refused before the save");
+  assert.match(problems[0].message, /cannot be negative/i);
+  // The message has to say what to do instead, because "not negative" leaves
+  // someone who wanted "no limit" guessing between blank and 0.
+  assert.match(problems[0].message, /blank for no limit/i);
+  assert.match(problems[0].message, /0 for today only/i);
+});

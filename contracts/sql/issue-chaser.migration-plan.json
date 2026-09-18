@@ -28,7 +28,8 @@
     { "id": "novade-name-sync", "file": "migrate_novade_name_sync.sql", "requires": ["novade-name-list-check"] },
     { "id": "feature-destination-groups", "file": "migrate_feature_destination_groups.sql", "requires": ["daily-summary-features", "novade-name-list-check"] },
     { "id": "hourly-report-schedules", "file": "migrate_hourly_report_schedules.sql", "requires": ["cadence-configuration", "daily-summary-features", "chatgroup-summary"] },
-    { "id": "summary-destination-groups", "file": "migrate_summary_destination_groups.sql", "requires": ["feature-destination-groups", "chatgroup-summary"] }
+    { "id": "summary-destination-groups", "file": "migrate_summary_destination_groups.sql", "requires": ["feature-destination-groups", "chatgroup-summary"] },
+    { "id": "severity-reminder-age-limit", "file": "migrate_severity_reminder_age_limit.sql", "requires": ["consolidated-reconciliation"] }
   ],
   "destructiveUtilities": []
 }

@@ -78,6 +78,14 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
       help: "Leave both ends empty for 24-hour eligibility.",
     },
+    // f8b1848 with migrate_severity_reminder_age_limit.sql. Placed last in the
+    // severity block, mirroring the snapshot above it: the switch, then when it
+    // runs, then how far back it reaches.
+    severity_only_last_x_days: {
+      label: "Severity lookback (days)",
+      help: "Limits the severity chaser to issues raised recently. Blank chases every open issue however old, which is what every project does today. 0 is today only; 6 is today plus the six days before it. A manual severity preview ignores this and can still reach anything open.",
+      showIf: { field: "severity_cadence_chaser_enabled", equals: true },
+    },
     // Summaries are informational reports, not chasers: they read the workbook,
     // never touch delivery_events, and never chase anyone. Two CHECKs bite on
     // save — issue_chaser_feature_requires_enabled_check (needs `enabled`) and
@@ -264,6 +272,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
         "severity_p1_window_end",
         "severity_p2_p3_window_start",
         "severity_p2_p3_window_end",
+        "severity_only_last_x_days",
         "same_day_open_snapshot_enabled",
         "same_day_open_snapshot_schedule",
         "include_days_before_snapshot",

@@ -14,9 +14,22 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
           // end is set and `isInSendWindow` then returns true, so an unset window is
           // round the clock — the opposite of the old fixed hours. lib/cadence.js
           // still exports DAY_WINDOW_START/END but no longer reads them.
+          // Blank is unlimited, which is what every project runs today, so it
+          // says nothing — a suffix on every card would be noise. Only a set
+          // limit is news, and it is phrased with the stored number rather than
+          // a span, so the card and the field agree: 6 reads as six days before.
+          const raw = config.severity_only_last_x_days;
+          const days = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+          const age =
+            days === null || !Number.isInteger(days) || days < 0
+              ? ""
+              : days === 0
+                ? " — today's issues only"
+                : ` — today and the ${days} days before`;
           parts.push(
             `P1 every 3h ${severityWindow(config, "severity_p1_window_start", "severity_p1_window_end")}` +
-              `, P2 daily and P3 weekly ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}`,
+              `, P2 daily and P3 weekly ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}` +
+              age,
           );
         }
     if (config.same_day_open_snapshot_enabled) {

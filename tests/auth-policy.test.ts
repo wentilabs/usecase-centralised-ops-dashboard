@@ -2924,3 +2924,39 @@ test("the Water Parade daily summary is explained and nested under its feature",
     }, `${column} should follow its switch`);
   }
 });
+
+test("the severity lookback is explained, nested and shown on the card", () => {
+  // f8b1848 on issue-chaser main, with migrate_severity_reminder_age_limit.sql.
+  // Nullable, and blank means unlimited — which is what every project runs — so
+  // the interesting cases are "set to 0" and "set at all".
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const int = { type: "integer" as const, format: "integer", enum: null, default: null };
+  const spec = buildFieldSpec("issueChaser", {
+    severity_cadence_chaser_enabled: bool,
+    severity_only_last_x_days: int,
+  });
+  const field = spec.fields.severity_only_last_x_days;
+  assert.notEqual(field.label, "severity_only_last_x_days", "it arrived unlabelled");
+  // The two facts an operator would otherwise get wrong: blank is not "off",
+  // and the number counts days BEFORE today rather than a span.
+  assert.match(field.help, /blank chases every open issue/i);
+  assert.match(field.help, /0 is today only/i);
+  assert.deepEqual(field.showIf, { field: "severity_cadence_chaser_enabled", equals: true });
+  assert.equal(
+    spec.groups.find((group) => group.fields.includes("severity_only_last_x_days"))?.title,
+    "Chaser styles",
+  );
+
+  // The card says so only when it is set, because unlimited is the norm.
+  const base = { severity_cadence_chaser_enabled: true, send_to_originating_groups: true };
+  assert.doesNotMatch(firesAt("issueChaser", base), /today/i, "unlimited says nothing");
+  assert.match(
+    firesAt("issueChaser", { ...base, severity_only_last_x_days: 0 }),
+    /today's issues only/i,
+  );
+  assert.match(
+    firesAt("issueChaser", { ...base, severity_only_last_x_days: 6 }),
+    /today and the 6 days before/i,
+    "the stored number, so the card and the field agree",
+  );
+});

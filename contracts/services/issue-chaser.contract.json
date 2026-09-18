@@ -42,6 +42,7 @@
       "novade_name_sync_enabled": { "label": "Novade name sync", "group": "features", "mutable": true, "role": "feature-flag", "help": "Enables the narrow on-demand PIC-cell write route; it sends no WhatsApp and dryRun true previews only (INV-ICH-16)." },
       "summary_days": { "label": "Summary days", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Positive count of consecutive Singapore dates included by both past-days summaries." },
       "include_days_before_snapshot": { "label": "Snapshot lookback", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Non-negative number of preceding dates included when the request does not override it (INV-ICH-09)." },
+      "severity_only_last_x_days": { "label": "Severity reminder lookback", "group": "cadence", "mutable": true, "role": "policy-selector", "help": "Optional non-negative number of preceding Singapore dates eligible for severity cadence; null leaves it unlimited (INV-ICH-18)." },
       "same_day_open_snapshot_schedule": { "label": "Snapshot schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries consulted only for scheduled invocations." },
       "daily_safety_summary_schedule": { "label": "Safety summary schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries for scheduled plain summaries." },
       "daily_safety_company_summary_schedule": { "label": "Company summary schedule", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Semicolon-separated HH00,lookback entries for scheduled company summaries." },
@@ -61,6 +62,7 @@
       { "name": "issue_chaser_enabled_delivery_check", "help": "An enabled row requires a workbook and complete listener delivery configuration." },
       { "name": "issue_chaser_summary_days_check", "help": "Summary days must be at least one." },
       { "name": "issue_chaser_snapshot_lookback_check", "help": "Snapshot lookback must be non-negative." },
+      { "name": "issue_chaser_severity_only_last_x_days_check", "help": "Severity reminder lookback must be null or non-negative." },
       { "name": "issue_chaser_p1_window_check", "help": "The P1 time window must be a complete, unequal pair or entirely null." },
       { "name": "issue_chaser_p2_p3_window_check", "help": "The P2/P3 time window must be a complete, unequal pair or entirely null." },
       { "name": "issue_chaser_summary_destination_check", "help": "Enabled fixed-destination reports require their dedicated group list or the legacy fallback." }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CoordinatePicker } from "./CoordinatePicker";
@@ -21,6 +21,68 @@ function cloneDraft(draft: CanonicalProjectDraft): Editable {
 
 function text(value: string | null) {
   return value ?? "";
+}
+
+/**
+ * One coordinate, typed or dragged, with the two kept in step.
+ *
+ * Bound to a string rather than straight to the number, because a controlled
+ * numeric field fights the person using it: "1.3" passes through "1." on the
+ * way, and Number("1.") is 1, so binding directly would rewrite the box under
+ * the cursor and move the pin to a different place mid-keystroke. The text is
+ * committed only once it reads as a whole number.
+ *
+ * The effect is the other direction: when the pin moves, or an address search
+ * lands, the field adopts the new value — unless what is already typed means
+ * the same number, so "1.30" is not rewritten to "1.3" while being edited.
+ */
+function CoordinateInput({ label, value, disabled, className, onChange }: {
+  label: string;
+  value: number | null;
+  disabled: boolean;
+  className: string;
+  onChange: (value: number | null) => void;
+}) {
+  const [typed, setTyped] = useState(value === null ? "" : String(value));
+
+  useEffect(() => {
+    const current = typed.trim() === "" ? null : Number(typed);
+    const same =
+      value === null ? current === null : current !== null && Math.abs(current - value) < 1e-9;
+    if (!same) setTyped(value === null ? "" : String(value));
+    // Only when the value arrives from elsewhere; `typed` is deliberately not a
+    // dependency, or every keystroke would re-run this against itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <label className="grid gap-1 text-sm">
+      {label}
+      <input
+        inputMode="decimal"
+        className={className}
+        value={typed}
+        disabled={disabled}
+        onChange={(event) => {
+          const next = event.target.value;
+          setTyped(next);
+          const trimmed = next.trim();
+          if (trimmed === "") {
+            onChange(null);
+            return;
+          }
+          // A partial number — "1.", "-", "" — is left alone until it is one.
+          if (/^-?\d+(\.\d+)?$/.test(trimmed)) onChange(Number(trimmed));
+        }}
+        onBlur={() => {
+          // Leaving a half-typed "1." in the box would show one number while
+          // the record held another. On the way out, the box says what will be
+          // saved.
+          setTyped(value === null ? "" : String(value));
+        }}
+      />
+    </label>
+  );
 }
 
 /**
@@ -154,10 +216,24 @@ export function CanonicalProjectEditor({
             <label className="grid gap-1 text-sm">Company<input className={input} value={text(draft.company)} onChange={(event) => setText("company", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Site name<input className={input} value={text(draft.site_name)} onChange={(event) => setText("site_name", event.target.value)} /></label>
             <label className="grid gap-1 text-sm md:col-span-2"><FieldTitle label="Site address" href={canonicalProjectMapHref({ ...draft, latitude: draft.latitude, longitude: draft.longitude } as never)} /><input className={input} value={text(draft.site_address)} onChange={(event) => setText("site_address", event.target.value)} /></label>
-            {/* The same picker the onboarding dialog uses for lightning and
-                haze: search an address or drag the pin, rather than pasting two
-                numbers from another tab and hoping they were the right way
-                round. A blank pair opens over Singapore. */}
+            {/* Typed and dragged are the same two values, so either can be
+                used: the boxes below write to the draft the picker reads, and
+                the picker writes back to them when the pin moves. Pasting a
+                pair from elsewhere still works; the pin follows. */}
+            <CoordinateInput
+              label="Latitude"
+              value={draft.latitude}
+              disabled={!canEdit || busy}
+              className={input}
+              onChange={(next) => setDraft((current) => ({ ...current, latitude: next }))}
+            />
+            <CoordinateInput
+              label="Longitude"
+              value={draft.longitude}
+              disabled={!canEdit || busy}
+              className={input}
+              onChange={(next) => setDraft((current) => ({ ...current, longitude: next }))}
+            />
             <div className="sm:col-span-2">
               <CoordinatePicker
                 latitude={draft.latitude === null ? "" : String(draft.latitude)}

@@ -23,14 +23,33 @@
  * makes it recognisable to someone who has not seen the mark. A brightness lift
  * brings the navy up without touching the logos that already read.
  */
-const ASSETS: Record<string, { src: string; tweak?: string }> = {
+/**
+ * Per-logo corrections, and why there are two of them.
+ *
+ * `tweak` balances the centred watermark against dense card text. `edgeTweak`
+ * balances the right-aligned mark in the registry, where the correction needed
+ * is a different one: object-contain fits each file's CANVAS to the box, so how
+ * large a logo LOOKS depends on how much of its own canvas the artwork fills,
+ * which was measured rather than guessed —
+ *
+ *   wohhup      195x141 of 200x200   fills 71% of its height   103px visible
+ *   pentaocean  126x 85 of 200x200   fills 43%                  62px visible
+ *   soilbuild   200x120 of 200x120   fills 100%                138px visible
+ *
+ * — in the same 145px box. PentaOcean carries wide empty margins and read as
+ * half the size of its neighbours; Soilbuild was trimmed to its artwork when it
+ * was added, so it filled the box completely and read as twice. These bring all
+ * three to about 105px of actual logo. Scaling clips only the empty margin,
+ * which is why PentaOcean can exceed the box without losing anything.
+ */
+const ASSETS: Record<string, { src: string; tweak?: string; edgeTweak?: string }> = {
   // Per-logo scale, because one box means something different for each: the
   // artwork's own margins differ, so the same box leaves Wohhup looking
   // oversized and the other two looking small. Tuned by eye against the cards,
   // and these three ratios are the part worth preserving if the base box moves.
   Wohhup: { src: "/company/wohhup.png", tweak: "scale-75" },
   Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125" },
-  PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125" },
+  PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125", edgeTweak: "brightness-[2.2] scale-[1.7]" },
   // The only horizontal lockup of the four: supplied as a square with a wide
   // transparent margin, trimmed to the mark and stored at its own 1.66:1, which
   // is almost exactly the box's 1.56:1. So it fills the box where the three
@@ -41,7 +60,7 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
   // than a scale-* step because none lands here, the same reason brightness-[2.2]
   // is written out above. Green and gold already read on a dark card, so unlike
   // PentaOcean it needs no brightness lift.
-  Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-[0.63]" },
+  Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-[0.63]", edgeTweak: "scale-75" },
 };
 
 /**
@@ -121,14 +140,10 @@ export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align 
         // fits inside it at its own aspect ratio, so BOX is a ceiling on both
         // axes rather than a stretch.
         className={`pointer-events-none absolute ${PLACEMENT[align]} ${box} object-contain ${opacity} ${
-          // The per-asset tweak is a correction for the CENTRED watermark,
-          // where each logo has to look the same weight against dense text.
-          // Right-aligned in an empty margin there is nothing to balance
-          // against, and the tweaks pull the same box to three different sizes
-          // — measured at 79px, 94px and 156px tall on a 158px card. Dropping
-          // them lets object-contain size every logo from one box, which is
-          // what makes a row of cards look like a set.
-          align === "right" ? "" : asset.tweak ?? ""
+          // Each alignment gets its own correction; see ASSETS. A logo with no
+          // edgeTweak needs none — its artwork already fills its canvas about
+          // as much as the others do once corrected.
+          align === "right" ? asset.edgeTweak ?? "" : asset.tweak ?? ""
         }`}
       />
     </>

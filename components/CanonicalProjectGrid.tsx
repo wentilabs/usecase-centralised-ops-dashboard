@@ -18,7 +18,7 @@ function ProjectCard({ project }: { project: CanonicalProject }) {
       {project.company ? <CompanyMark
           company={project.company}
           align="right"
-          opacity="opacity-15"
+          opacity="opacity-25"
           // As large as fits: the card is 158px, so 145 leaves a hair of
           // margin top and bottom and nothing is clipped. No per-asset scale
           // applies at this alignment, so every logo draws to this same box.

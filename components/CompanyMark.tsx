@@ -60,7 +60,18 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
  */
 const BOX = "h-[160px] w-[250px]";
 
-export function CompanyMark({ company }: { company: string }) {
+export function CompanyMark({ company, opacity = "opacity-20", box = BOX }: {
+  company: string;
+  /**
+   * How present the mark should be. The dashboard wants a watermark behind a
+   * dense card, so it keeps the default; the canonical projects grid wants the
+   * logo read as the card's identity, so it asks for more. A class rather than
+   * a number because Tailwind only emits the utilities it can see in source.
+   */
+  opacity?: string;
+  /** A smaller ceiling for smaller cards; the aspect ratio is unaffected. */
+  box?: string;
+}) {
   const asset = ASSETS[company];
 
   // An unmapped company keeps a readable text label rather than vanishing — a new
@@ -88,7 +99,7 @@ export function CompanyMark({ company }: { company: string }) {
         // A fixed box, centred on the card. `object-contain` means the logo
         // fits inside it at its own aspect ratio, so BOX is a ceiling on both
         // axes rather than a stretch.
-        className={`pointer-events-none absolute left-1/2 top-1/2 ${BOX} -translate-x-1/2 -translate-y-1/2 object-contain opacity-20 ${asset.tweak ?? ""}`}
+        className={`pointer-events-none absolute left-1/2 top-1/2 ${box} -translate-x-1/2 -translate-y-1/2 object-contain ${opacity} ${asset.tweak ?? ""}`}
       />
     </>
   );

@@ -9,5 +9,6 @@ export const dynamic = "force-dynamic";
 export default async function NewCanonicalProjectPage() {
   const session = await getDashboardSession();
   if (!session.allowed) redirect("/unauthorized");
-  return <CanonicalProjectEditor initial={blankCanonicalProjectDraft()} canEdit={session.canEdit} />;
+  // Seeded from deployment env, so the three proxy URLs are not retyped per project.
+  return <CanonicalProjectEditor initial={blankCanonicalProjectDraft(process.env)} canEdit={session.canEdit} />;
 }

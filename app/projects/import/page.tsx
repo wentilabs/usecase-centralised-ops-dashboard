@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CanonicalProjectCandidates } from "@/components/CanonicalProjectCandidates";
-import { canonicalProjectCandidates } from "@/lib/canonical-projects";
+import { canonicalDeliveryDefaults, canonicalProjectCandidates } from "@/lib/canonical-projects";
 import { listCanonicalProjects, listConfigs } from "@/lib/config-repository";
 import type { ServiceRow } from "@/lib/project-identity";
 import { SERVICE_KEYS } from "@/lib/services";
@@ -29,10 +29,5 @@ export default async function ImportCanonicalProjectsPage() {
       if (projectCode) rows.push({ service, projectCode, row });
     }
   });
-  const deliveryDefaults = {
-    send_message_url: process.env.DEFAULT_LAMBDA_URL_SEND,
-    reply_message_url: process.env.DEFAULT_LAMBDA_URL_REPLY,
-    send_document_url: process.env.DEFAULT_LAMBDA_URL_IMAGE,
-  };
-  return <CanonicalProjectCandidates candidates={canonicalProjectCandidates(rows, deliveryDefaults)} existingProjects={existingProjects} canEdit={session.canEdit} unavailableServices={unavailableServices} />;
+  return <CanonicalProjectCandidates candidates={canonicalProjectCandidates(rows, canonicalDeliveryDefaults(process.env))} existingProjects={existingProjects} canEdit={session.canEdit} unavailableServices={unavailableServices} />;
 }

@@ -325,6 +325,83 @@ export function validateCanonicalProjectDraft(value: unknown): { draft: Canonica
   return { draft: problems.length ? null : draft, problems };
 }
 
-export function blankCanonicalProjectDraft(): CanonicalProjectDraft {
-  return emptyDraft();
+/**
+ * The three delivery URLs HALO already knows, read from deployment env.
+ *
+ * They are not per-site facts: every project on a listener family sends through
+ * the same proxy, which is why the importer already overrode whatever the
+ * legacy rows carried. Typing them again by hand on every new project was just
+ * an opportunity to mistype one.
+ *
+ * `env` is a parameter rather than a `process.env` read inside lib/, matching
+ * `lib/onboarding/values.ts`: this module is imported by client components, and
+ * a lib that reaches for the environment behaves differently depending on which
+ * bundle it lands in.
+ */
+export function canonicalDeliveryDefaults(env: Record<string, string | undefined>): Partial<CanonicalDeliveryDefaults> {
+  return {
+    send_message_url: env.DEFAULT_LAMBDA_URL_SEND,
+    reply_message_url: env.DEFAULT_LAMBDA_URL_REPLY,
+    send_document_url: env.DEFAULT_LAMBDA_URL_IMAGE,
+  };
+}
+
+/**
+ * A new project, pre-filled with the delivery URLs deployment already dictates.
+ *
+ * An unset variable leaves its field blank rather than writing "undefined", so
+ * a partly configured deployment degrades to the old typing rather than to a
+ * broken row.
+ */
+/**
+ * Everything a person might type to find a site in the registry.
+ *
+ * Kept beside the record rather than in the grid component so it can be
+ * tested, and so the next surface that lists projects searches them the same
+ * way. The fields are exactly the ones the card shows: a search that matched
+ * something invisible would look broken.
+ */
+export function canonicalProjectHaystack(project: CanonicalProject): string {
+  return [
+    project.primary_alias,
+    ...project.alternate_aliases,
+    ...Object.values(project.service_aliases),
+    project.company,
+    project.site_name,
+    project.site_address,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+/** Whether a stored project answers to what was typed. Blank matches everything. */
+export function canonicalProjectMatches(project: CanonicalProject, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return canonicalProjectHaystack(project).includes(needle);
+}
+
+/**
+ * The site on a map, from its stored coordinates.
+ *
+ * Same Google Maps URL the dashboard's 📍 Map link uses, so the two agree on
+ * where a project is. Both halves of the pair are required by a CHECK, but
+ * this does not assume it: a half-populated row gets no link rather than a pin
+ * at the equator.
+ */
+export function canonicalProjectMapHref(project: CanonicalProject): string | null {
+  const { latitude, longitude } = project;
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;
+}
+
+export function blankCanonicalProjectDraft(env: Record<string, string | undefined> = {}): CanonicalProjectDraft {
+  const draft = emptyDraft();
+  const defaults = canonicalDeliveryDefaults(env);
+  for (const field of ["send_message_url", "reply_message_url", "send_document_url"] as const) {
+    const value = String(defaults[field] ?? "").trim();
+    if (value) draft[field] = value;
+  }
+  return draft;
 }

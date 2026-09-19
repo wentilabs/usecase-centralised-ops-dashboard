@@ -47,6 +47,18 @@ export type GroupNamesMeta = {
   setupHint: string | null;
 };
 
+/**
+ * Whichever copy is on screen: two of each are mounted, one for the phone row
+ * and one for the desktop header, and `offsetParent` is what separates them
+ * without sniffing the viewport.
+ *
+ * At module scope because both the keyboard shortcut and the arrive-focused
+ * effect need it, and a second copy could disagree about which one is visible.
+ */
+function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null {
+  return inputs.find((input) => input && input.offsetParent !== null) ?? null;
+}
+
 export function DashboardShell({
   services,
   fetchedAt,
@@ -56,11 +68,14 @@ export function DashboardShell({
   visoUrl,
   initialService,
   initialOnboard,
+  focusPropose = false,
 }: {
   services: ServiceData[];
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
+  /** Opened from another page's ⌘P, so land in the propose bar. */
+  focusPropose?: boolean;
   groupNamesMeta: GroupNamesMeta;
   /** Base URL of Viso (wa-mirror); null hides the chat links. */
   visoUrl: string | null;
@@ -174,12 +189,6 @@ export function DashboardShell({
   }, [router]);
 
   useEffect(() => {
-    // Whichever copy is on screen: two of each are mounted, one for the phone
-    // row and one for the desktop header, and `offsetParent` is what separates
-    // them without sniffing the viewport.
-    const onScreen = (inputs: (HTMLInputElement | null)[]) =>
-      inputs.find((input) => input && input.offsetParent !== null) ?? null;
-
     function onKey(event: KeyboardEvent) {
       const search = onScreen(searchInputs.current);
       if (search && shouldFocusSearch(event, document.activeElement === search)) {
@@ -202,6 +211,22 @@ export function DashboardShell({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  /**
+   * Arrive with the propose bar focused.
+   *
+   * ⌘P is a dashboard shortcut, but Propose is not a dashboard feature — it is
+   * how you ask HALO for anything. Pressing it on another page routes here
+   * with `?propose=1` rather than growing a second propose bar that has no
+   * review surface behind it to apply what it returns.
+   */
+  useEffect(() => {
+    if (!focusPropose) return;
+    const propose = onScreen(proposeInputs.current);
+    if (!propose) return;
+    propose.focus();
+    setProposeFlash(true);
+  }, [focusPropose]);
 
   useEffect(() => {
     if (!searchFlash) return;

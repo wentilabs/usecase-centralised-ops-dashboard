@@ -1,5 +1,7 @@
+import { AddServiceButton } from "./AddServiceButton";
 import { CanonicalProjectEditor } from "./CanonicalProjectEditor";
 import { canonicalSheetHref, type CanonicalProject, type CanonicalProjectDraft } from "@/lib/canonical-projects";
+import type { ServiceFieldSpec } from "@/lib/field-spec";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 
 function asDraft(project: CanonicalProject): CanonicalProjectDraft {
@@ -19,11 +21,17 @@ export function CanonicalProjectDetail({
   rows,
   errors,
   canEdit,
+  specs = {},
+  groupNames = {},
 }: {
   project: CanonicalProject;
   rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
   errors: Partial<Record<ServiceKey, string>>;
   canEdit: boolean;
+  /** Live columns per service, so Add service offers the full set. */
+  specs?: Partial<Record<ServiceKey, ServiceFieldSpec | null>>;
+  /** Chat id to human name, so the group picker reads as names. */
+  groupNames?: Record<string, string>;
 }) {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 md:px-5">
@@ -59,7 +67,7 @@ export function CanonicalProjectDetail({
                 <p className="mt-1 font-mono text-xs text-muted-foreground">{alias ?? "No service alias recorded"}</p>
                 {errors[service] ? <p className="mt-1 text-xs text-danger">{errors[service]}</p> : null}
                 {alias ? <a href={`/?service=${encodeURIComponent(service)}`} className="mt-2 inline-block text-xs text-primary hover:underline">Open configuration →</a> : null}
-                {!alias && canEdit ? <a href={`/?onboard=${encodeURIComponent(service)}&project=${encodeURIComponent(project.id)}`} className="mt-2 inline-block text-xs text-primary hover:underline">Add service →</a> : null}
+                {!alias && canEdit ? <AddServiceButton service={service} project={project} rows={rows[service] ?? []} spec={specs[service] ?? null} groupNames={groupNames} /> : null}
               </article>
             );
           })}

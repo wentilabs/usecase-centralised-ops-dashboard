@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ service?: string; onboard?: string; project?: string }>;
+  searchParams: Promise<{ service?: string; onboard?: string; project?: string; propose?: string }>;
 }) {
   const session = await getDashboardSession();
 
@@ -74,6 +74,7 @@ export default async function DashboardPage({
       session={{ email: session.email, canEdit: session.canEdit, isLocalBypass: session.isLocalBypass }}
       initialService={requestedService}
       initialOnboard={onboardService && onboardProject ? { service: onboardService, project: onboardProject } : null}
+      focusPropose={requested.propose === "1"}
     />
   );
 }

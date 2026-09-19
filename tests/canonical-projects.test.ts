@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  blankCanonicalProjectDraft,
+  canonicalDeliveryDefaults,
+  canonicalProjectMapHref,
+  canonicalProjectMatches,
   canonicalSheetHref,
   canonicalProjectCandidates,
   validateCanonicalProjectDraft,
@@ -141,4 +145,86 @@ test("onboarding receives only exact approved canonical mappings", () => {
   assert.equal(noise.google_sheet_id, "noise-id");
   const wbgt = onboardingDraftFromCanonicalProject(onboardingFor("wbgt")!, project);
   assert.equal(wbgt.monthly_sheet_id, "wbgt-id");
+});
+
+test("a new project starts with the delivery URLs deployment already dictates", () => {
+  // The three proxy URLs are a property of the listener family, not the site —
+  // the importer already overrode legacy row values with them — so typing them
+  // per project was only a chance to mistype one.
+  const env = {
+    DEFAULT_LAMBDA_URL_SEND: "https://send.example/send-message",
+    DEFAULT_LAMBDA_URL_REPLY: "https://reply.example/reply-message",
+    DEFAULT_LAMBDA_URL_IMAGE: "https://doc.example/send-document",
+  };
+  const seeded = blankCanonicalProjectDraft(env);
+  assert.equal(seeded.send_message_url, "https://send.example/send-message");
+  assert.equal(seeded.reply_message_url, "https://reply.example/reply-message");
+  assert.equal(seeded.send_document_url, "https://doc.example/send-document");
+  // Everything else is still blank: this seeds delivery wiring, not identity.
+  assert.equal(seeded.primary_alias, "");
+  assert.equal(seeded.site_address, null);
+
+  // An unset variable leaves the field blank rather than writing "undefined",
+  // so a half-configured deployment degrades to typing them by hand.
+  const partial = blankCanonicalProjectDraft({ DEFAULT_LAMBDA_URL_SEND: "https://send.example/send-message" });
+  assert.equal(partial.send_message_url, "https://send.example/send-message");
+  assert.equal(partial.reply_message_url, null);
+  assert.equal(blankCanonicalProjectDraft({}).send_message_url, null);
+
+  // The importer and the new-project form read the same three variables, so a
+  // renamed variable cannot fix one path and quietly miss the other.
+  assert.deepEqual(canonicalDeliveryDefaults(env), {
+    send_message_url: env.DEFAULT_LAMBDA_URL_SEND,
+    reply_message_url: env.DEFAULT_LAMBDA_URL_REPLY,
+    send_document_url: env.DEFAULT_LAMBDA_URL_IMAGE,
+  });
+});
+
+test("the registry search matches what the card shows, and nothing it hides", () => {
+  const project: CanonicalProject = {
+    id: "id-1",
+    primary_alias: "TJR",
+    alternate_aliases: ["Tanjong Rhu"],
+    service_aliases: { wbgt: "TJR-W" } as CanonicalProject["service_aliases"],
+    company: "Wohhup",
+    site_name: "Tanjong Rhu Site",
+    site_address: "1 Tan Boon Chong Ave",
+    latitude: 1.315753,
+    longitude: 103.788885,
+    safety_workbook_id: "sheet-abc",
+    manpower_workbook_id: null,
+    noise_workbook_id: null,
+    wbgt_workbook_id: null,
+    send_message_url: null,
+    reply_message_url: null,
+    send_document_url: null,
+    whatsapp_instance_name: null,
+    whatsapp_client_id: null,
+    timezone: null,
+    public_holiday_region: null,
+    general_notes: "internal note",
+    created_at: "2026-09-20T00:00:00Z",
+    updated_at: "2026-09-20T00:00:00Z",
+  };
+
+  // Every field the card renders is findable, including the service alias.
+  for (const query of ["tjr", "Tanjong Rhu", "TJR-W", "wohhup", "tan boon"]) {
+    assert.equal(canonicalProjectMatches(project, query), true, `${query} should match`);
+  }
+  // Blank shows everything rather than nothing.
+  assert.equal(canonicalProjectMatches(project, "   "), true);
+  // Notes and workbook ids are not on the card, so they must not match — a hit
+  // with no visible cause reads as a broken filter.
+  assert.equal(canonicalProjectMatches(project, "internal note"), false);
+  assert.equal(canonicalProjectMatches(project, "sheet-abc"), false);
+  assert.equal(canonicalProjectMatches(project, "zzzz"), false);
+
+  // The map link is the dashboard's, built from the stored pair.
+  assert.equal(
+    canonicalProjectMapHref(project),
+    "https://www.google.com/maps?q=1.315753%2C103.788885",
+  );
+  // A half-populated pair gets no link rather than a pin at the equator.
+  assert.equal(canonicalProjectMapHref({ ...project, longitude: null }), null);
+  assert.equal(canonicalProjectMapHref({ ...project, latitude: null }), null);
 });

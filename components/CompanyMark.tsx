@@ -26,9 +26,9 @@
 /**
  * Per-logo corrections, and why there are two of them.
  *
- * `tweak` balances the centred watermark against dense card text. `edgeTweak`
- * balances the right-aligned mark in the registry, where the correction needed
- * is a different one: object-contain fits each file's CANVAS to the box, so how
+ * `tweak` balances the dashboard's watermark against dense card text.
+ * `edgeTweak` balances the registry's mark, where the correction needed is a
+ * different one: object-contain fits each file's CANVAS to the box, so how
  * large a logo LOOKS depends on how much of its own canvas the artwork fills,
  * which was measured rather than guessed —
  *
@@ -48,7 +48,9 @@ const ASSETS: Record<string, { src: string; tweak?: string; edgeTweak?: string }
   // oversized and the other two looking small. Tuned by eye against the cards,
   // and these three ratios are the part worth preserving if the base box moves.
   Wohhup: { src: "/company/wohhup.png", tweak: "scale-75" },
-  Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125" },
+  // The SVG's own margins cannot be measured the way a PNG's can be trimmed,
+  // so this one was set by eye against its neighbours rather than computed.
+  Obayashi: { src: "/company/obayashi.svg", tweak: "scale-125", edgeTweak: "scale-110" },
   PentaOcean: { src: "/company/pentaocean.png", tweak: "brightness-[2.2] scale-125", edgeTweak: "brightness-[2.2] scale-[1.7]" },
   // The only horizontal lockup of the four: supplied as a square with a wide
   // transparent margin, trimmed to the mark and stored at its own 1.66:1, which
@@ -89,7 +91,7 @@ const BOX = "h-[160px] w-[250px]";
  * the less it needs to hide behind.
  */
 const PLACEMENT = {
-  center: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+  center: "left-1/2 top-1/2 origin-center -translate-x-1/2 -translate-y-1/2",
   // `origin-right` matters: each logo carries its own scale tweak, and scaling
   // about the centre grows a scale-125 mark 24px past the card on each side —
   // Obayashi and PentaOcean overflowed by 46px. Scaling about the right edge
@@ -98,10 +100,19 @@ const PLACEMENT = {
   right: "right-0 top-1/2 origin-right -translate-y-1/2",
 } as const;
 
-export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align = "center" }: {
+export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align = "center", tuning = "watermark" }: {
   company: string;
   /** Centred behind the content, or set into the card's right edge. */
   align?: keyof typeof PLACEMENT;
+  /**
+   * Which set of per-logo size corrections to use — separate from `align`,
+   * because they answer different questions. Where the mark sits is a layout
+   * choice; how big each logo has to be drawn to LOOK the same size as its
+   * neighbours is a property of the artwork, and holds wherever it is put.
+   * These were coupled while the registry was the only caller using the second
+   * set, and centring it would have silently reverted the balancing.
+   */
+  tuning?: "watermark" | "card";
   /**
    * How present the mark should be. The dashboard wants a watermark behind a
    * dense card, so it keeps the default; the canonical projects grid wants the
@@ -140,10 +151,9 @@ export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align 
         // fits inside it at its own aspect ratio, so BOX is a ceiling on both
         // axes rather than a stretch.
         className={`pointer-events-none absolute ${PLACEMENT[align]} ${box} object-contain ${opacity} ${
-          // Each alignment gets its own correction; see ASSETS. A logo with no
-          // edgeTweak needs none — its artwork already fills its canvas about
-          // as much as the others do once corrected.
-          align === "right" ? asset.edgeTweak ?? "" : asset.tweak ?? ""
+          // See ASSETS. A logo with no edgeTweak needs none — its artwork
+          // already fills its canvas about as much as the others do.
+          tuning === "card" ? asset.edgeTweak ?? "" : asset.tweak ?? ""
         }`}
       />
     </>

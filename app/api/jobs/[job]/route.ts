@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { metrics } from "@/lib/server-metrics";
 import type { NextRequest } from "next/server";
 
 import { DEFAULT_JOB_TIMEOUT_MS, JOBS, budgetFor, isJobKey, validateJobInput } from "@/lib/jobs";
@@ -155,6 +156,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       const timer = setTimeout(() => controller.abort(), Math.max(1_000, deadline - Date.now()));
       let res: Response;
       let text: string;
+      const callStarted = Date.now();
       try {
         res = await fetch(`${base}${job.path}`, {
           method: "POST",
@@ -164,6 +166,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
           signal: controller.signal,
         });
         text = await res.text();
+        // Per job, not per route: bootstrap and sync have different shapes and
+        // different budgets, and the chunking decision turns on which one is
+        // actually near its limit.
+        metrics.record(`job ${job.key}`, Date.now() - callStarted);
+        metrics.tag(`job ${job.key}`, res.ok ? "ok" : `http_${res.status}`);
+      } catch (cause) {
+        metrics.record(`job ${job.key}`, Date.now() - callStarted);
+        metrics.tag(`job ${job.key}`, cause instanceof Error && cause.name === "AbortError" ? "timeout" : "threw");
+        throw cause;
       } finally {
         clearTimeout(timer);
       }

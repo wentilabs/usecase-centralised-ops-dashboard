@@ -37,6 +37,54 @@ tags:
   - name: onboarding
     description: Create a new project.
 paths:
+  /api/metrics:
+    get:
+      operationId: getMetrics
+      tags:
+        - discovery
+      summary: Where this instance spent its time
+      description: "One row per instrumented operation, costliest first by total time, with a call count, mean, p50, p95, max and tags for cache hits, errors and timeouts. Read this before optimising: it says which operation is expensive and how often it runs, rather than how long one page took once. In-process and reset by a restart, so it ranks operations against each other rather than describing the estate."
+      responses:
+        "200":
+          description: Timing for this process since it started.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uptimeSeconds:
+                    type: integer
+                    description: The denominator for every count below.
+                  totalMs:
+                    type: integer
+                    description: Milliseconds recorded across every operation.
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: e.g. `supabase GET wbgts`, `model call`, `job noise-bootstrap`.
+                        count:
+                          type: integer
+                        total:
+                          type: integer
+                        mean:
+                          type: integer
+                        p50:
+                          type: integer
+                        p95:
+                          type: integer
+                        max:
+                          type: integer
+                        tags:
+                          type: object
+                          description: "Counts that are not durations: hit, miss, ok, timeout, http_404."
+        "401":
+          description: No credential, or one that is not recognised.
+        "403":
+          description: The caller is not on the allow-list.
   /api/session:
     get:
       operationId: getSession

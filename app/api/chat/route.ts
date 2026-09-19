@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { metrics } from "@/lib/server-metrics";
 import type { NextRequest } from "next/server";
 
 import {
@@ -191,13 +192,20 @@ async function askModel(
   override?: ReturnType<typeof buildRequest> | null,
 ) {
   const request = override ?? buildRequest(choice, turn);
-  const response = await fetch(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    cache: "no-store",
+  // The slowest thing HALO does, and the only one billed per call. Timed
+  // separately from the route so a slow propose can be told apart from a
+  // route that is slow around a fast model.
+  return metrics.time("model call", async () => {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      cache: "no-store",
+    });
+    const result = { ok: response.ok, status: response.status, text: await response.text() };
+    metrics.tag("model call", result.ok ? "ok" : `http_${result.status}`);
+    return result;
   });
-  return { ok: response.ok, status: response.status, text: await response.text() };
 }
 
 /**

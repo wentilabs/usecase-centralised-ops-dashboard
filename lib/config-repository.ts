@@ -1,5 +1,6 @@
 import "server-only";
 import { createTtlCache } from "./ttl-cache";
+import { metrics } from "./server-metrics";
 
 import {
   hashToken,
@@ -38,6 +39,12 @@ function config() {
 async function request(path: string, init: RequestInit & { schema: string }) {
   const { url, key } = config();
   const { schema, ...rest } = init;
+  // Named by schema and verb rather than by full path: the path carries a row
+  // id and a select list, which would make every call its own bucket and
+  // nothing would ever aggregate. Schema plus method is the grain at which a
+  // decision gets made — "reads of wbgts are the expensive thing".
+  const label = `supabase ${String(rest.method ?? "GET").toUpperCase()} ${schema}`;
+  const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -55,10 +62,20 @@ async function request(path: string, init: RequestInit & { schema: string }) {
       },
     });
     const text = await res.text();
+    metrics.record(label, Date.now() - started);
+    metrics.tag(label, res.ok ? "ok" : `http_${res.status}`);
     // `headers` is returned for the one caller that needs Content-Range — a
     // `count=exact` query reports the size of the whole match there, which is how
     // a capped list can say what it left out.
     return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, text, headers: res.headers };
+  } catch (cause) {
+    // A request that times out at REQUEST_TIMEOUT_MS is the most expensive
+    // thing this function can do, and it never reaches the recording above.
+    // Left unrecorded, a service that is failing slowly would show as a page
+    // that is simply slow, with nothing to point at.
+    metrics.record(label, Date.now() - started);
+    metrics.tag(label, cause instanceof Error && cause.name === "AbortError" ? "timeout" : "threw");
+    throw cause;
   } finally {
     clearTimeout(timer);
   }
@@ -118,6 +135,9 @@ export function cachedConfigServices(): ServiceKey[] {
 
 export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow[]> {
   const cached = configCache.get(service);
+  // The hit rate is the only evidence that the six-second window is worth
+  // having: mostly misses means it is buying nothing and should go.
+  metrics.tag("cache configs", cached ? "hit" : "miss");
   if (cached) return cached;
 
   const { table, schema } = SERVICES[service];
@@ -591,6 +611,7 @@ export function cachedFieldSpecCount() {
 
 export async function getFieldSpec(service: ServiceKey): Promise<ServiceFieldSpec> {
   const cached = specCache.get(service);
+  metrics.tag("cache field-spec", cached ? "hit" : "miss");
   if (cached) return cached;
 
   const { schema, table } = SERVICES[service];

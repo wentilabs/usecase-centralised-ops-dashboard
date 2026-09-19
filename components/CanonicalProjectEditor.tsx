@@ -74,7 +74,6 @@ export function CanonicalProjectEditor({
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Editable>(() => cloneDraft(initial));
-  const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -211,15 +210,27 @@ export function CanonicalProjectEditor({
         </section> : null}
       </fieldset>
 
+      {/* One button below. The two-step review was a gate in front of a form
+          whose fields are already the diff — you are looking at the values you
+          changed — and it cost a click on every edit to re-read them. The
+          button being dead until something changes is the protection that gate
+          was really providing; validation still runs on save and its problems
+          land just above it. */}
       {!canEdit ? <p className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">Your account has read-only access.</p> : null}
       {error ? <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error}</div> : null}
       {problems.length ? <ul className="list-disc rounded-lg border border-danger/40 bg-danger/10 p-3 pl-8 text-sm text-danger">{problems.map((problem) => <li key={problem}>{problem}</li>)}</ul> : null}
 
       {canEdit ? (
         <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-background/95 py-3 backdrop-blur">
-          {reviewing ? <span className="mr-auto text-sm text-muted-foreground">Review the fields above. Applying saves only this canonical registry record.</span> : null}
-          <button type="button" onClick={() => setReviewing((current) => !current)} disabled={!changed || busy} className="rounded-lg border border-border bg-card px-4 py-2 text-sm disabled:opacity-50">{reviewing ? "Back to editing" : "Review changes"}</button>
-          {reviewing ? <button type="button" onClick={() => void save()} disabled={busy} className="rounded-lg border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Saving…" : project ? "Apply registry changes" : "Create canonical project"}</button> : null}
+          {changed ? <span className="mr-auto text-sm text-muted-foreground">Unsaved changes</span> : null}
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!changed || busy}
+            className="rounded-lg border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {busy ? "Saving…" : project ? "Save changes" : "Create canonical project"}
+          </button>
         </div>
       ) : null}
     </section>

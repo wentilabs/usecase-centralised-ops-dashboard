@@ -129,39 +129,31 @@ export function ProjectServiceBoard({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Services</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The dashboard&rsquo;s own cards for this project. Editing opens the same drawer and writes the same row.
-          </p>
-        </div>
-      </div>
-
-      {/* Scoped to this project: the sentence is sent with the project code, so
-          "mute Sundays" here means this site rather than whichever one the
-          model guesses from an unqualified request. */}
+      {/* Propose sits at the top right, where the dashboard keeps it, so the
+          gesture is the same wherever you are. The heading that was here said
+          these were the dashboard's cards, which the cards themselves say. */}
       {canEdit ? (
-        <SmartChat
-          fullWidth
-          projectScope={project.primary_alias}
-          onProposal={(proposal) => {
-            const service = SERVICE_KEYS.find((key) => key === proposal.service);
-            const row = service ? (live[service] ?? []).find((candidate) => String(candidate.project_code ?? "") === proposal.projectCode) : null;
-            if (!service || !row) {
-              setNotice(`That proposal is for ${proposal.projectCode}, which is not one of this project's services.`);
-              return;
-            }
-            void openEditor(service, row, proposal.changes, proposal.summary);
-          }}
-          // A change across many projects, a sheet job or a set of new projects
-          // are all reviewed on the dashboard, against every row they touch.
-          // Saying so beats opening a surface here that shows one project's
-          // worth of a change that spans twenty.
-          onBatch={() => setNotice("That change covers more than this project — review it on the dashboard.")}
-          onJobs={() => setNotice("Sheet jobs are run from the dashboard, where their scope is visible.")}
-          onOnboard={() => setNotice("New projects are created from the dashboard's onboarding review.")}
-        />
+        <div className="flex justify-end">
+          <SmartChat
+            projectScope={project.primary_alias}
+            onProposal={(proposal) => {
+              const service = SERVICE_KEYS.find((key) => key === proposal.service);
+              const row = service ? (live[service] ?? []).find((candidate) => String(candidate.project_code ?? "") === proposal.projectCode) : null;
+              if (!service || !row) {
+                setNotice(`That proposal is for ${proposal.projectCode}, which is not one of this project's services.`);
+                return;
+              }
+              void openEditor(service, row, proposal.changes, proposal.summary);
+            }}
+            // A change across many projects, a sheet job or a set of new
+            // projects are all reviewed on the dashboard, against every row
+            // they touch. Saying so beats opening a surface here that shows one
+            // project's worth of a change that spans twenty.
+            onBatch={() => setNotice("That change covers more than this project — review it on the dashboard.")}
+            onJobs={() => setNotice("Sheet jobs are run from the dashboard, where their scope is visible.")}
+            onOnboard={() => setNotice("New projects are created from the dashboard's onboarding review.")}
+          />
+        </div>
       ) : null}
 
       {notice ? (

@@ -27,11 +27,22 @@ export function CanonicalProjectDetail({
   // two-column grid, both of which a 5xl column was squeezing.
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 md:px-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{project.primary_alias}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Canonical identity and approved common resources. Service configuration remains service-owned.</p>
-        </div>
+      {/* Code, company, address — the three things that identify a site, on one
+          line, with a rule under it. The sentence that used to sit here
+          explained what a canonical project is, which is worth saying once on
+          the registry and not on every project you open. */}
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+        <h1 className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold">
+          <span>{project.primary_alias}</span>
+          {[project.company, project.site_address ?? project.site_name]
+            .filter(Boolean)
+            .map((part) => (
+              <span key={String(part)} className="text-lg font-normal text-muted-foreground">
+                <span aria-hidden="true" className="mr-2">·</span>
+                {part}
+              </span>
+            ))}
+        </h1>
         <a href="/projects" className="rounded-lg border border-border bg-card px-3 py-2 text-sm hover:border-primary">← Projects</a>
       </header>
 

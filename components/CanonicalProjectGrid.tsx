@@ -15,7 +15,15 @@ function ProjectCard({ project }: { project: CanonicalProject }) {
     // `relative` and `overflow-hidden`: the mark is absolutely positioned and
     // sized in pixels, so without clipping it escapes a short card.
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary">
-      {project.company ? <CompanyMark company={project.company} align="right" opacity="opacity-25" box="h-[110px] w-[175px]" /> : null}
+      {project.company ? <CompanyMark
+          company={project.company}
+          align="right"
+          opacity="opacity-15"
+          // As large as fits: the card is 158px, so 145 leaves a hair of
+          // margin top and bottom and nothing is clipped. No per-asset scale
+          // applies at this alignment, so every logo draws to this same box.
+          box="h-[145px] w-[230px]"
+        /> : null}
 
       {/* The whole card opens the project. A stretched overlay rather than an
           anchor around everything, so the card stays a plain container and

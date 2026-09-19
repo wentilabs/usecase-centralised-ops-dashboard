@@ -120,7 +120,16 @@ export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align 
         // A fixed box, centred on the card. `object-contain` means the logo
         // fits inside it at its own aspect ratio, so BOX is a ceiling on both
         // axes rather than a stretch.
-        className={`pointer-events-none absolute ${PLACEMENT[align]} ${box} object-contain ${opacity} ${asset.tweak ?? ""}`}
+        className={`pointer-events-none absolute ${PLACEMENT[align]} ${box} object-contain ${opacity} ${
+          // The per-asset tweak is a correction for the CENTRED watermark,
+          // where each logo has to look the same weight against dense text.
+          // Right-aligned in an empty margin there is nothing to balance
+          // against, and the tweaks pull the same box to three different sizes
+          // — measured at 79px, 94px and 156px tall on a 158px card. Dropping
+          // them lets object-contain size every logo from one box, which is
+          // what makes a row of cards look like a set.
+          align === "right" ? "" : asset.tweak ?? ""
+        }`}
       />
     </>
   );

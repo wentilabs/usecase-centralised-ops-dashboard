@@ -60,8 +60,29 @@ const ASSETS: Record<string, { src: string; tweak?: string }> = {
  */
 const BOX = "h-[160px] w-[250px]";
 
-export function CompanyMark({ company, opacity = "opacity-20", box = BOX }: {
+/**
+ * Where the mark sits in its card.
+ *
+ * Centred is the dashboard's watermark, sitting behind dense text. The
+ * registry's cards put most of their words on the left and leave the right
+ * empty, so the logo goes there instead of under the address — bigger, because
+ * the space allows it, and fainter, because the further it moves from the text
+ * the less it needs to hide behind.
+ */
+const PLACEMENT = {
+  center: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+  // `origin-right` matters: each logo carries its own scale tweak, and scaling
+  // about the centre grows a scale-125 mark 24px past the card on each side —
+  // Obayashi and PentaOcean overflowed by 46px. Scaling about the right edge
+  // grows them inward instead, so every logo lines up on the same edge whatever
+  // its tweak.
+  right: "right-0 top-1/2 origin-right -translate-y-1/2",
+} as const;
+
+export function CompanyMark({ company, opacity = "opacity-20", box = BOX, align = "center" }: {
   company: string;
+  /** Centred behind the content, or set into the card's right edge. */
+  align?: keyof typeof PLACEMENT;
   /**
    * How present the mark should be. The dashboard wants a watermark behind a
    * dense card, so it keeps the default; the canonical projects grid wants the
@@ -87,7 +108,7 @@ export function CompanyMark({ company, opacity = "opacity-20", box = BOX }: {
   return (
     <>
       <span className="sr-only">{company}</span>
-      {/* Centred on both axes, inert, and behind the content. Without
+      {/* Inert, and behind the content. Without
           pointer-events-none it would sit over the whole card and swallow every
           click on Edit and the group links. `object-contain` keeps each logo's
           own aspect ratio — the three supplied files are not the same shape. */}
@@ -99,7 +120,7 @@ export function CompanyMark({ company, opacity = "opacity-20", box = BOX }: {
         // A fixed box, centred on the card. `object-contain` means the logo
         // fits inside it at its own aspect ratio, so BOX is a ceiling on both
         // axes rather than a stretch.
-        className={`pointer-events-none absolute left-1/2 top-1/2 ${box} -translate-x-1/2 -translate-y-1/2 object-contain ${opacity} ${asset.tweak ?? ""}`}
+        className={`pointer-events-none absolute ${PLACEMENT[align]} ${box} object-contain ${opacity} ${asset.tweak ?? ""}`}
       />
     </>
   );

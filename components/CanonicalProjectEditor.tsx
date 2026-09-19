@@ -279,7 +279,17 @@ export function CanonicalProjectEditor({
             {SERVICE_KEYS.map((service) => (
               <label key={service} className="grid gap-1 text-sm">
                 {SERVICES[service].label}
-                <input className={input} value={draft.service_aliases[service] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, service_aliases: { ...current.service_aliases, [service]: event.target.value || undefined } }))} />
+                {/* The placeholder is the value this service will actually
+                    use while the box is empty. The sentence above says blank
+                    means the primary alias; showing the alias itself, greyed,
+                    makes an empty box read as "already set to AST" rather than
+                    as something forgotten. */}
+                <input
+                  className={input}
+                  value={draft.service_aliases[service] ?? ""}
+                  placeholder={draft.primary_alias || undefined}
+                  onChange={(event) => setDraft((current) => ({ ...current, service_aliases: { ...current.service_aliases, [service]: event.target.value || undefined } }))}
+                />
               </label>
             ))}
           </div>

@@ -26,8 +26,10 @@ export function CanonicalProjectDetail({
   errors: Partial<Record<ServiceKey, string>>;
   canEdit: boolean;
 }) {
+  // Wider: the role cards want three or four abreast and the editor is a
+  // two-column grid, both of which a 5xl column was squeezing.
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 md:px-5">
+    <main className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 md:px-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{project.primary_alias}</h1>

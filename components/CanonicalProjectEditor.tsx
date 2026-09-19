@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { CoordinatePicker } from "./CoordinatePicker";
 import type { CanonicalProject, CanonicalProjectDraft, CandidateConflict } from "@/lib/canonical-projects";
 import { SERVICES, SERVICE_KEYS, type ServiceKey } from "@/lib/services";
 
@@ -119,8 +120,26 @@ export function CanonicalProjectEditor({
             <label className="grid gap-1 text-sm">Company<input className={input} value={text(draft.company)} onChange={(event) => setText("company", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Site name<input className={input} value={text(draft.site_name)} onChange={(event) => setText("site_name", event.target.value)} /></label>
             <label className="grid gap-1 text-sm md:col-span-2">Site address<input className={input} value={text(draft.site_address)} onChange={(event) => setText("site_address", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">Latitude<input type="number" step="any" className={input} value={draft.latitude ?? ""} onChange={(event) => setDraft((current) => ({ ...current, latitude: event.target.value === "" ? null : Number(event.target.value) }))} /></label>
-            <label className="grid gap-1 text-sm">Longitude<input type="number" step="any" className={input} value={draft.longitude ?? ""} onChange={(event) => setDraft((current) => ({ ...current, longitude: event.target.value === "" ? null : Number(event.target.value) }))} /></label>
+            {/* The same picker the onboarding dialog uses for lightning and
+                haze: search an address or drag the pin, rather than pasting two
+                numbers from another tab and hoping they were the right way
+                round. A blank pair opens over Singapore. */}
+            <div className="sm:col-span-2">
+              <CoordinatePicker
+                latitude={draft.latitude === null ? "" : String(draft.latitude)}
+                longitude={draft.longitude === null ? "" : String(draft.longitude)}
+                disabled={!canEdit || busy}
+                onChange={(next) =>
+                  setDraft((current) => ({
+                    ...current,
+                    // Blank clears rather than storing NaN; the database
+                    // requires both ends or neither.
+                    latitude: next.latitude === "" ? null : Number(next.latitude),
+                    longitude: next.longitude === "" ? null : Number(next.longitude),
+                  }))
+                }
+              />
+            </div>
             <label className="grid gap-1 text-sm">Timezone<input className={input} value={text(draft.timezone)} onChange={(event) => setText("timezone", event.target.value)} placeholder="Asia/Singapore" /></label>
             <label className="grid gap-1 text-sm">Public-holiday region<input className={input} value={text(draft.public_holiday_region)} onChange={(event) => setText("public_holiday_region", event.target.value)} placeholder="SG" /></label>
             <label className="grid gap-1 text-sm md:col-span-2">General notes<textarea className={`${input} min-h-24`} value={text(draft.general_notes)} onChange={(event) => setText("general_notes", event.target.value)} /></label>

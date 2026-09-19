@@ -90,25 +90,52 @@ export function ServiceRoleCard({
     }
   }
 
+  /**
+   * The same header the real card wears: tag on the left, the code beside it,
+   * state on the right.
+   *
+   * An empty card used to be a tag adrift in the middle of a box, which read as
+   * a different kind of object rather than as the same card without a row yet.
+   * The code shown is the project's own, because that is what the row will be
+   * called once it exists.
+   */
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2">
+      <h2 className="flex items-center gap-2 text-base font-semibold">
         <ServiceTag service={service} />
-        <span className={`text-[11px] font-semibold ${statusTone(status)}`}>{status}</span>
+        <span className="truncate">{alias ?? project.primary_alias}</span>
+        <span className={`ml-auto shrink-0 text-[11px] font-semibold ${statusTone(status)}`}>{status}</span>
+      </h2>
+
+      {/* The middle of the card IS the action. There are no pills, no schedule
+          and no delivery to show, so filling that space with the one thing you
+          came here to do beats a line of prose and a link in the corner. */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-1 py-6 text-center">
+        {error ? (
+          <p className="text-xs text-danger">{error}</p>
+        ) : canOnboard ? (
+          <>
+            <span className="text-sm font-medium text-primary">{loading ? "Opening…" : "+ Add service"}</span>
+            <span className="text-[11px] text-muted-foreground">Creates a disabled row for {project.primary_alias}</span>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {alias ? "No matching row in this service" : "Not onboarded"}
+          </span>
+        )}
       </div>
-      <p className="mt-2 font-mono text-xs text-muted-foreground">{alias ?? "No service alias recorded"}</p>
-      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        {alias ? "Open configuration →" : canOnboard ? (loading ? "Opening…" : "Add service →") : "Not onboarded"}
-      </p>
     </>
   );
 
-  const shell = "rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary";
+  // Matched to ProjectCard: same radius, padding and shadow, and the amber
+  // border it gives a disabled project — an absent service is the state you
+  // most need to pick out of a grid.
+  const shell =
+    "relative flex min-h-56 flex-col gap-2.5 rounded-2xl border-2 border-warn/40 bg-card p-3.5 text-left shadow-soft transition-colors hover:border-primary md:gap-3 md:p-4";
 
   if (alias) {
     return (
-      <a href={`/?service=${encodeURIComponent(service)}`} className={`block ${shell}`}>
+      <a href={`/?service=${encodeURIComponent(service)}`} className={shell}>
         {body}
       </a>
     );
@@ -118,7 +145,7 @@ export function ServiceRoleCard({
 
   return (
     <>
-      <button type="button" onClick={() => void openDialog()} className={`block w-full ${shell}`}>
+      <button type="button" onClick={() => void openDialog()} className={`w-full ${shell}`}>
         {body}
       </button>
       {open ? (

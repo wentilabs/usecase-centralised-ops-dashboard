@@ -1,31 +1,10 @@
 "use client";
 
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
+import { ServiceTag } from "./ServiceTag";
 import { CompanyMark } from "./CompanyMark";
-import { tagLabel } from "@/lib/services";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
-/**
- * Service pill colour, one hue each.
- *
- * The hues are spread deliberately: amber 45°, sky 200°, orange 30°, violet
- * 270°, cyan 190°, lime 85°, rose 350°. Subcon was emerald (160°), which sat
- * between cyan and sky and read as a third blue-green at 11px. Lime is the
- * widest gap left in the wheel — yellow-green, and far enough from amber's gold
- * to be told apart at a glance.
- *
- * Adding a service means picking a hue that is not already within ~30° of one
- * of these.
- */
-const TAG_TONE: Record<ServiceKey, string> = {
-  wbgt: "bg-amber-400/15 text-amber-300",
-  noise: "bg-sky-400/15 text-sky-300",
-  haze: "bg-orange-400/15 text-orange-300",
-  lightning: "bg-violet-400/15 text-violet-300",
-  ailytics: "bg-cyan-400/15 text-cyan-300",
-  subcon: "bg-lime-400/15 text-lime-300",
-  issueChaser: "bg-rose-400/15 text-rose-300",
-};
 
 /**
  * Per-service status wording.
@@ -236,9 +215,7 @@ export function ProjectCard({
       <h2 className="flex items-center gap-2 text-base font-semibold">
         {/* Short form: this sits beside a project code, so "Subcon Activities"
             wrapped onto two lines. The tab keeps the full name. */}
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]}`}>
-          {tagLabel(service)}
-        </span>
+        <ServiceTag service={service} />
         {String(config.project_code ?? rowId)}
         <span
           className={`ml-auto shrink-0 text-[11px] font-semibold ${

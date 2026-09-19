@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { CompanyMark } from "./CompanyMark";
+import { ServiceTag } from "./ServiceTag";
 import {
   canonicalProjectMapHref,
   canonicalProjectMatches,
@@ -25,6 +26,18 @@ const SHEET_LINKS = [
   ["WBGT", "wbgt_workbook_id"],
 ] as const;
 
+/**
+ * A quick link, as a subtle button rather than bare underlined text.
+ *
+ * These sit in a row of four or five: as plain links they ran together into one
+ * blue smear, and each has its own target, so each wants its own edge. Kept
+ * quiet — a border and a background that only lift on hover — because the
+ * card's real action is opening the project, and four loud buttons would
+ * compete with it.
+ */
+const QUICK_LINK =
+  "rounded-md border border-border/70 bg-background/40 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary";
+
 function ProjectCard({ project }: { project: CanonicalProject }) {
   const aliases = SERVICE_KEYS.filter((service) => project.service_aliases[service]);
   const sheets = SHEET_LINKS
@@ -35,42 +48,55 @@ function ProjectCard({ project }: { project: CanonicalProject }) {
   return (
     // `relative` and `overflow-hidden`: the mark is absolutely positioned and
     // sized in pixels, so without clipping it escapes a short card.
-    <div className="relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary">
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary">
       {project.company ? <CompanyMark company={project.company} opacity="opacity-40" box="h-[90px] w-[150px]" /> : null}
 
-      {/* Above the mark, and the only part that navigates: the quick links
-          below are real links to other places, so wrapping the whole card in
-          one anchor would nest them. */}
-      <div className="relative">
-        <Link href={`/projects/${project.id}`} className="font-mono font-semibold hover:underline">
-          {project.primary_alias}
-        </Link>
+      {/* The whole card opens the project. A stretched overlay rather than
+          wrapping everything in one anchor, because the workbook and map links
+          below are anchors too and an anchor cannot contain another — they sit
+          above this on z-10 and keep their own targets. */}
+      <Link
+        href={`/projects/${project.id}`}
+        className="absolute inset-0 z-0"
+        aria-label={`Open ${project.primary_alias}`}
+      />
+
+      <div className="pointer-events-none relative z-0">
+        <span className="font-mono font-semibold group-hover:underline">{project.primary_alias}</span>
         <p className="mt-0.5 text-sm text-muted-foreground">
           {project.site_name ?? project.company ?? "No site name or company"}
         </p>
         {project.site_address ? <p className="mt-1 text-xs text-muted-foreground">{project.site_address}</p> : null}
       </div>
 
+      {/* The dashboard's own service pills, in the dashboard's order, so a
+          service is the same colour and the same word wherever you meet it. */}
       {aliases.length ? (
-        <div className="relative mt-3 flex flex-wrap gap-1">
+        <div className="pointer-events-none relative z-0 mt-3 flex flex-wrap gap-1">
           {aliases.map((service) => (
-            <span key={service} className="rounded bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground" title={`${SERVICES[service].label}: ${project.service_aliases[service]}`}>
-              {SERVICES[service].shortLabel ?? SERVICES[service].label}
-            </span>
+            <ServiceTag key={service} service={service} title={`${SERVICES[service].label}: ${project.service_aliases[service]}`} />
           ))}
         </div>
       ) : (
-        <p className="relative mt-3 text-[11px] text-muted-foreground">No service aliases yet</p>
+        <p className="pointer-events-none relative z-0 mt-3 text-[11px] text-muted-foreground">No service aliases yet</p>
       )}
 
-      {sheets.length || map ? (
-        <div className="relative mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3 text-xs">
+      {sheets.length ? (
+        <div className="relative z-10 mt-3 flex flex-wrap gap-1.5 border-t border-border/60 pt-3">
           {sheets.map((sheet) => (
-            <a key={sheet.label} href={sheet.href ?? undefined} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+            <a key={sheet.label} href={sheet.href ?? undefined} target="_blank" rel="noreferrer" className={QUICK_LINK}>
               📗 {sheet.label}
             </a>
           ))}
-          {map ? <a href={map} target="_blank" rel="noreferrer" className="text-primary hover:underline">📍 Map</a> : null}
+        </div>
+      ) : null}
+
+      {/* Its own row: a map is a different kind of destination from a workbook,
+          and on a narrow card it otherwise wrapped to the end of the sheets and
+          read as a fifth one. */}
+      {map ? (
+        <div className={`relative z-10 flex ${sheets.length ? "mt-1.5" : "mt-3 border-t border-border/60 pt-3"}`}>
+          <a href={map} target="_blank" rel="noreferrer" className={QUICK_LINK}>📍 Map</a>
         </div>
       ) : null}
     </div>

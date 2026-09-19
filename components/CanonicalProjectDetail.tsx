@@ -1,7 +1,6 @@
-import { AddServiceButton } from "./AddServiceButton";
+import { ServiceRoleCard, type ServiceRoleStatus } from "./ServiceRoleCard";
 import { CanonicalProjectEditor } from "./CanonicalProjectEditor";
 import { canonicalSheetHref, type CanonicalProject, type CanonicalProjectDraft } from "@/lib/canonical-projects";
-import type { ServiceFieldSpec } from "@/lib/field-spec";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 
 function asDraft(project: CanonicalProject): CanonicalProjectDraft {
@@ -21,17 +20,11 @@ export function CanonicalProjectDetail({
   rows,
   errors,
   canEdit,
-  specs = {},
-  groupNames = {},
 }: {
   project: CanonicalProject;
   rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
   errors: Partial<Record<ServiceKey, string>>;
   canEdit: boolean;
-  /** Live columns per service, so Add service offers the full set. */
-  specs?: Partial<Record<ServiceKey, ServiceFieldSpec | null>>;
-  /** Chat id to human name, so the group picker reads as names. */
-  groupNames?: Record<string, string>;
 }) {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 md:px-5">
@@ -50,7 +43,7 @@ export function CanonicalProjectDetail({
           {SERVICE_KEYS.map((service) => {
             const alias = project.service_aliases[service];
             const matching = alias ? (rows[service] ?? []).filter((row) => String(row.project_code ?? "").trim() === alias) : [];
-            const status = errors[service]
+            const status: ServiceRoleStatus = errors[service]
               ? "Could not read"
               : !alias
                 ? "Not onboarded"
@@ -62,13 +55,16 @@ export function CanonicalProjectDetail({
                       ? "Enabled"
                       : "Disabled";
             return (
-              <article key={service} className="rounded-lg border border-border bg-card p-3">
-                <div className="flex items-center justify-between gap-2"><h3 className="font-medium">{SERVICES[service].label}</h3><span className={status === "Enabled" ? "text-on" : status.includes("not") || status.includes("Could") || status.includes("Ambiguous") ? "text-warn" : "text-muted-foreground"}>{status}</span></div>
-                <p className="mt-1 font-mono text-xs text-muted-foreground">{alias ?? "No service alias recorded"}</p>
-                {errors[service] ? <p className="mt-1 text-xs text-danger">{errors[service]}</p> : null}
-                {alias ? <a href={`/?service=${encodeURIComponent(service)}`} className="mt-2 inline-block text-xs text-primary hover:underline">Open configuration →</a> : null}
-                {!alias && canEdit ? <AddServiceButton service={service} project={project} rows={rows[service] ?? []} spec={specs[service] ?? null} groupNames={groupNames} /> : null}
-              </article>
+              <ServiceRoleCard
+                key={service}
+                service={service}
+                project={project}
+                rows={rows[service] ?? []}
+                alias={alias ?? null}
+                status={status}
+                error={errors[service]}
+                canEdit={canEdit}
+              />
             );
           })}
         </div>

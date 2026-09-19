@@ -1,4 +1,5 @@
 import "server-only";
+import { createTtlCache } from "./ttl-cache";
 
 import {
   hashToken,
@@ -71,11 +72,60 @@ export type LightningDetection = {
   detection_type: "G" | "C";
 };
 
+/**
+ * Rows, briefly remembered.
+ *
+ * Every page here is `force-dynamic` and every read was `no-store`, so opening
+ * a project, going back, and opening another re-fetched all seven services each
+ * time: measured at 235KB across seven round trips of 79-298ms, for rows that
+ * change when a person edits one.
+ *
+ * The window is deliberately short. This app edits live configuration that six
+ * services read on a cron, so a stale card is worse than a slow one — six
+ * seconds is long enough to cover a navigation and the render that follows it,
+ * and short enough that a change made in Supabase directly shows up before
+ * anyone finishes reading the page.
+ *
+ * Writes made through HALO do not wait for it: every route that PATCHes or
+ * inserts a row calls `invalidateConfigs` first, so the reader that follows a
+ * save always goes to the database.
+ *
+ * On globalThis for the reason the spec cache above documents: Next bundles
+ * route handlers separately from server components, so a module-scoped Map
+ * would give the write routes a different instance from the one the pages
+ * read, and invalidation would silently do nothing.
+ */
+const CONFIG_TTL_MS = 6_000;
+
+const globalConfigCache = globalThis as typeof globalThis & {
+  __haloConfigCache?: Map<ServiceKey, { at: number; value: ProjectConfigRow[] }>;
+};
+const configCache = createTtlCache<ServiceKey, ProjectConfigRow[]>(
+  CONFIG_TTL_MS,
+  Date.now,
+  (globalConfigCache.__haloConfigCache ??= new Map()),
+);
+
+/** Forget one service's rows, or all of them. Called before every write. */
+export function invalidateConfigs(service?: ServiceKey) {
+  configCache.forget(service);
+}
+
+/** Which services are currently remembered, for diagnostics. */
+export function cachedConfigServices(): ServiceKey[] {
+  return configCache.fresh();
+}
+
 export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow[]> {
+  const cached = configCache.get(service);
+  if (cached) return cached;
+
   const { table, schema } = SERVICES[service];
   const res = await request(`${table}?select=*&order=project_code.asc`, { schema });
   if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
-  return res.body as ProjectConfigRow[];
+  const rows = res.body as ProjectConfigRow[];
+  configCache.set(service, rows);
+  return rows;
 }
 
 /**
@@ -379,6 +429,10 @@ export async function updateConfig(
   patch: Record<string, unknown>,
   baseUpdatedAt: string | null,
 ): Promise<ProjectConfigRow[]> {
+  // Before the write, not after: a failed write must not leave the old rows
+  // cached as if nothing had happened, and a successful one must not be read
+  // back from a snapshot taken before it.
+  invalidateConfigs(service);
   const { table, schema, idColumn } = SERVICES[service];
   const params = [`${idColumn}=eq.${encodeURIComponent(rowId)}`];
   if (baseUpdatedAt) params.push(`updated_at=eq.${encodeURIComponent(baseUpdatedAt)}`);
@@ -404,6 +458,10 @@ export async function insertConfig(
   service: ServiceKey,
   row: Record<string, unknown>,
 ): Promise<ProjectConfigRow[]> {
+  // Before the write, not after: a failed write must not leave the old rows
+  // cached as if nothing had happened, and a successful one must not be read
+  // back from a snapshot taken before it.
+  invalidateConfigs(service);
   const { table, schema } = SERVICES[service];
   const res = await request(table, {
     schema,

@@ -1,4 +1,4 @@
-import { ServiceRoleCard, type ServiceRoleStatus } from "./ServiceRoleCard";
+import { ProjectServiceBoard } from "./ProjectServiceBoard";
 import { CanonicalProjectEditor } from "./CanonicalProjectEditor";
 import { canonicalSheetHref, type CanonicalProject, type CanonicalProjectDraft } from "@/lib/canonical-projects";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
@@ -8,23 +8,20 @@ function asDraft(project: CanonicalProject): CanonicalProjectDraft {
   return draft;
 }
 
-const sheetFields = [
-  ["Safety workbook", "safety_workbook_id"],
-  ["Manpower workbook", "manpower_workbook_id"],
-  ["Noise analysis sheet", "noise_workbook_id"],
-  ["WBGT monthly sheet", "wbgt_workbook_id"],
-] as const;
 
 export function CanonicalProjectDetail({
   project,
   rows,
   errors,
   canEdit,
+  visoUrl = null,
 }: {
   project: CanonicalProject;
   rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
   errors: Partial<Record<ServiceKey, string>>;
   canEdit: boolean;
+  /** Viso base URL, so delivery chips on the cards link to the mirrored thread. */
+  visoUrl?: string | null;
 }) {
   // Wider: the role cards want three or four abreast and the editor is a
   // two-column grid, both of which a 5xl column was squeezing.
@@ -38,50 +35,17 @@ export function CanonicalProjectDetail({
         <a href="/projects" className="rounded-lg border border-border bg-card px-3 py-2 text-sm hover:border-primary">← Projects</a>
       </header>
 
-      <section>
-        <h2 className="text-lg font-semibold">Live service roles</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Current rows from the live service tables; these indicators do not change service behavior.</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {SERVICE_KEYS.map((service) => {
-            const alias = project.service_aliases[service];
-            const matching = alias ? (rows[service] ?? []).filter((row) => String(row.project_code ?? "").trim() === alias) : [];
-            const status: ServiceRoleStatus = errors[service]
-              ? "Could not read"
-              : !alias
-                ? "Not onboarded"
-                : matching.length === 0
-                  ? "Alias not found"
-                  : matching.length > 1
-                    ? "Ambiguous alias"
-                    : matching[0].enabled === true
-                      ? "Enabled"
-                      : "Disabled";
-            return (
-              <ServiceRoleCard
-                key={service}
-                service={service}
-                project={project}
-                rows={rows[service] ?? []}
-                alias={alias ?? null}
-                status={status}
-                error={errors[service]}
-                canEdit={canEdit}
-              />
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-border bg-card p-3">
-        <h2 className="font-semibold">Sheets</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Quick links to the workbooks recorded for this project.</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {sheetFields.map(([label, field]) => {
-            const href = canonicalSheetHref(project[field]);
-            return <div key={field} className="rounded-lg border border-border/70 bg-background px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p>{href ? <a href={href} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm text-primary hover:underline">Open sheet ↗</a> : <p className="mt-1 text-sm text-muted-foreground">Not recorded</p>}</div>;
-          })}
-        </div>
-      </section>
+      {/* The dashboard's own cards, and the Sheets strip is gone with them:
+          every workbook it listed is already a link on the card of the service
+          that owns it, where it sits beside the schedule and delivery that
+          explain what the workbook is for. */}
+      <ProjectServiceBoard
+        project={project}
+        rows={rows}
+        errors={errors}
+        canEdit={canEdit}
+        visoUrl={visoUrl}
+      />
 
       <CanonicalProjectEditor initial={asDraft(project)} project={project} canEdit={canEdit} compact hideHeader />
     </main>

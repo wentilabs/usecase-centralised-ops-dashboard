@@ -17,6 +17,7 @@ import { useState } from "react";
  * question rather than a guess.
  */
 export function SmartChat({
+  projectScope,
   onProposal,
   onBatch,
   onJobs,
@@ -25,6 +26,16 @@ export function SmartChat({
   registerInput,
   flash = false,
 }: {
+  /**
+   * The project this bar belongs to, if it belongs to one.
+   *
+   * Qualifies the sentence rather than adding a request field: the route
+   * already resolves project codes out of the wording, and `scope` means
+   * something else there — a resolved set of targets. So a bar on a project
+   * page asks about that project, and "mute Sundays" means this site rather
+   * than every site the model can see.
+   */
+  projectScope?: string;
   /** Stretch to the container. The mobile row is full width; the header is not. */
   fullWidth?: boolean;
   /**
@@ -72,7 +83,7 @@ export function SmartChat({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: asked }),
+        body: JSON.stringify({ prompt: projectScope ? `For project ${projectScope}: ${asked}` : asked }),
       });
       // The one route here that a platform timeout can genuinely reach: it calls
       // a model. `readJson` turns an empty body into a sentence rather than

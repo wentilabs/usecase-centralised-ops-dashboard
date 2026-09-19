@@ -26,5 +26,8 @@ export default async function CanonicalProjectPage({ params }: { params: Promise
     if (result.status === "fulfilled") rows[service] = result.value;
     else errors[service] = result.reason instanceof Error ? result.reason.message : String(result.reason);
   });
-  return <CanonicalProjectDetail project={project} rows={rows} errors={errors} canEdit={session.canEdit} />;
+  // Same Viso base the dashboard passes, so a delivery chip on a card here
+  // links to the mirrored thread exactly as it does there.
+  const visoUrl = (process.env.VISO_URL ?? "").replace(/\/+$/, "") || null;
+  return <CanonicalProjectDetail project={project} rows={rows} errors={errors} canEdit={session.canEdit} visoUrl={visoUrl} />;
 }

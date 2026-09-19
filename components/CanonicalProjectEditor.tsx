@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CoordinatePicker } from "./CoordinatePicker";
-import type { CanonicalProject, CanonicalProjectDraft, CandidateConflict } from "@/lib/canonical-projects";
+import {
+  canonicalProjectMapHref,
+  canonicalSheetHref,
+  type CanonicalProject,
+  type CanonicalProjectDraft,
+  type CandidateConflict,
+} from "@/lib/canonical-projects";
 import { SERVICES, SERVICE_KEYS, type ServiceKey } from "@/lib/services";
 
 type Editable = CanonicalProjectDraft;
@@ -15,6 +21,35 @@ function cloneDraft(draft: CanonicalProjectDraft): Editable {
 
 function text(value: string | null) {
   return value ?? "";
+}
+
+/**
+ * A field's title, with a way out to the thing the field names.
+ *
+ * The four workbook fields hold an id, which is unreadable and unverifiable by
+ * eye — the only way to know whether the right sheet is recorded is to open it.
+ * Small and beside the title rather than under the input, so a row of fields
+ * stays a row of fields, and absent entirely when there is nothing to open, so
+ * the icon always means "this works".
+ */
+function FieldTitle({ label, href }: { label: string; href: string | null }) {
+  return (
+    <span className="flex items-center gap-1">
+      {label}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          title={`Open ${label} in a new tab`}
+          aria-label={`Open ${label} in a new tab`}
+          className="text-muted-foreground hover:text-primary"
+        >
+          ↗
+        </a>
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -119,7 +154,7 @@ export function CanonicalProjectEditor({
             {!project ? <p className="text-sm text-muted-foreground md:col-span-2">New services use the primary alias by default. Record customer-specific or legacy names as alternate aliases; a per-service override can be added later only when a live service genuinely needs one.</p> : null}
             <label className="grid gap-1 text-sm">Company<input className={input} value={text(draft.company)} onChange={(event) => setText("company", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Site name<input className={input} value={text(draft.site_name)} onChange={(event) => setText("site_name", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm md:col-span-2">Site address<input className={input} value={text(draft.site_address)} onChange={(event) => setText("site_address", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm md:col-span-2"><FieldTitle label="Site address" href={canonicalProjectMapHref({ ...draft, latitude: draft.latitude, longitude: draft.longitude } as never)} /><input className={input} value={text(draft.site_address)} onChange={(event) => setText("site_address", event.target.value)} /></label>
             {/* The same picker the onboarding dialog uses for lightning and
                 haze: search an address or drag the pin, rather than pasting two
                 numbers from another tab and hoping they were the right way
@@ -150,10 +185,10 @@ export function CanonicalProjectEditor({
           <h2 className="font-semibold">Common resources</h2>
           <p className="mt-1 text-sm text-muted-foreground">These are suggestions for future onboarding, never automatic synchronization.</p>
           <div className={`${compact ? "mt-3" : "mt-4"} grid gap-3 md:grid-cols-2`}>
-            <label className="grid gap-1 text-sm">Safety workbook ID<input className={input} value={text(draft.safety_workbook_id)} onChange={(event) => setText("safety_workbook_id", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">Manpower workbook ID<input className={input} value={text(draft.manpower_workbook_id)} onChange={(event) => setText("manpower_workbook_id", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">Noise analysis sheet ID<input className={input} value={text(draft.noise_workbook_id)} onChange={(event) => setText("noise_workbook_id", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">WBGT monthly sheet ID<input className={input} value={text(draft.wbgt_workbook_id)} onChange={(event) => setText("wbgt_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm"><FieldTitle label="Safety workbook ID" href={canonicalSheetHref(draft.safety_workbook_id)} /><input className={input} value={text(draft.safety_workbook_id)} onChange={(event) => setText("safety_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm"><FieldTitle label="Manpower workbook ID" href={canonicalSheetHref(draft.manpower_workbook_id)} /><input className={input} value={text(draft.manpower_workbook_id)} onChange={(event) => setText("manpower_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm"><FieldTitle label="Noise analysis sheet ID" href={canonicalSheetHref(draft.noise_workbook_id)} /><input className={input} value={text(draft.noise_workbook_id)} onChange={(event) => setText("noise_workbook_id", event.target.value)} /></label>
+            <label className="grid gap-1 text-sm"><FieldTitle label="WBGT monthly sheet ID" href={canonicalSheetHref(draft.wbgt_workbook_id)} /><input className={input} value={text(draft.wbgt_workbook_id)} onChange={(event) => setText("wbgt_workbook_id", event.target.value)} /></label>
             <label className="grid gap-1 text-sm md:col-span-2">Send-message URL<input className={input} value={text(draft.send_message_url)} onChange={(event) => setText("send_message_url", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Reply-message URL<input className={input} value={text(draft.reply_message_url)} onChange={(event) => setText("reply_message_url", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">Send-document URL<input className={input} value={text(draft.send_document_url)} onChange={(event) => setText("send_document_url", event.target.value)} /></label>

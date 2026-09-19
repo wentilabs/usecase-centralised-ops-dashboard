@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { eachChunk } from "@/lib/jobs";
 import { readJson, summariseJobResult } from "@/lib/read-json";
@@ -42,6 +43,7 @@ export type JobPlan = {
 type Outcome = { state: "pending" | "running" | "done" | "failed" | "skipped"; detail?: string };
 
 export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void }) {
+
   const runnable = useMemo(() => plan.runs.filter((run) => run.ready), [plan.runs]);
   const blocked = useMemo(() => plan.runs.filter((run) => !run.ready), [plan.runs]);
 
@@ -155,8 +157,10 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
     setFinished(true);
   }
 
+  // Click the backdrop to close, on the same guard as Escape.
+  const dismiss = useBackdropDismiss(true, onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6" {...dismiss}>
       <div className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl">
         <header className="border-b border-border px-4 py-3 md:px-6">
           <h2 className="text-base font-semibold text-foreground">{plan.title}</h2>

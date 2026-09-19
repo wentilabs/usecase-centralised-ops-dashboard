@@ -15,6 +15,7 @@ import { coerceValue, effectiveChanges, validateChanges } from "../lib/config-va
 import { readJson, summariseJobResult } from "../lib/read-json";
 import { companyIn } from "../lib/chat-scope";
 import { helpSegments } from "../lib/help-text";
+import { shouldDismissBackdrop } from "../lib/backdrop-dismiss";
 
 import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
@@ -2961,4 +2962,18 @@ test("the severity lookback is explained, nested and shown on the card", () => {
     /today and the 6 days before/i,
     "the stored number, so the card and the field agree",
   );
+});
+
+test("a backdrop closes a dialog only when the whole gesture happened on it", () => {
+  // Ending on the backdrop is not enough: every click inside the panel bubbles
+  // up to it, so that alone would make each button dismiss its own dialog.
+  assert.equal(shouldDismissBackdrop(false, true), false, "a click inside must not close");
+  // Starting there is not enough either: press on the backdrop, drag onto the
+  // panel, release — that is a mis-aim, not a dismissal.
+  assert.equal(shouldDismissBackdrop(true, false), false);
+  // The one that loses work: select text in the panel and release past its
+  // edge. It ends on the backdrop but did not start there.
+  assert.equal(shouldDismissBackdrop(false, false), false, "a selection drag must not close");
+  // A real click on the backdrop, and nothing else.
+  assert.equal(shouldDismissBackdrop(true, true), true);
 });

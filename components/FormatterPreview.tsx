@@ -9,6 +9,7 @@ import {
   type FormatterPreview as Preview,
   type PreviewBubble,
 } from "@/lib/message-previews";
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import type { ServiceKey } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
 
@@ -114,6 +115,7 @@ function PreviewModal({
   /** Lets someone act on what they just read, instead of closing and hunting the dropdown. */
   onPick?: (value: string) => void;
 }) {
+
   const options = previewsFor(service, column);
   const context = previewContext(service, column);
   const blankResolvesTo = fallbackValue(service, column);
@@ -123,11 +125,13 @@ function PreviewModal({
   const active = options.find((option) => option.value === selected) ?? options[0];
 
   useEscapeKey(true, onClose);
+  // Click the backdrop to close, on the same guard as Escape.
+  const dismiss = useBackdropDismiss(true, onClose);
 
   if (!active) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" {...dismiss}>
       <div className="flex max-h-[88vh] w-[min(940px,94vw)] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           <div>

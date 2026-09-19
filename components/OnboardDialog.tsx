@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CoordinatePicker } from "./CoordinatePicker";
 import { GroupPicker } from "./GroupPicker";
 import { HelpText } from "./HelpText";
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import type { TelegramGroupDiscovery } from "@/lib/ailytics-discovery";
 import { resolveValue, validateDraft, type OnboardDefinition, type OnboardDraft } from "@/lib/onboarding";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -45,6 +46,7 @@ export function OnboardDialog({
   onClose: () => void;
   onCreated: (projectCode: string) => void;
 }) {
+
   const [draft, setDraft] = useState<OnboardDraft>(() => initialDraft ?? {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +72,8 @@ export function OnboardDialog({
   const [telegramDiscoveryFetched, setTelegramDiscoveryFetched] = useState(false);
 
   useEscapeKey(!busy, onClose);
+  // Click the backdrop to close, on the same guard as Escape.
+  const dismiss = useBackdropDismiss(!busy, onClose);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,7 +441,7 @@ export function OnboardDialog({
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4" {...dismiss}>
       <div className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-background p-4 shadow-2xl md:max-h-[88vh] md:w-[min(680px,94vw)] md:rounded-2xl md:p-5">
         <h3 className="text-base font-semibold">{definition.title}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{definition.description}</p>

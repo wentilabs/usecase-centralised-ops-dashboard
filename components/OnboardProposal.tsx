@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { useBodyScrollLock, useEscapeKey } from "@/lib/use-body-scroll-lock";
 
 /**
@@ -62,6 +63,7 @@ export function OnboardProposal({
   onClose: () => void;
   onApplied: () => void;
 }) {
+
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Outcome[] | null>(null);
@@ -71,6 +73,8 @@ export function OnboardProposal({
   const [openValues, setOpenValues] = useState<Set<string>>(() => new Set());
 
   useEscapeKey(!busy, onClose);
+  // Click the backdrop to close, on the same guard as Escape.
+  const dismiss = useBackdropDismiss(!busy, onClose);
   useBodyScrollLock(true);
 
   const keyFor = (service: string, code: string) => `${service}:${code}`;
@@ -126,7 +130,7 @@ export function OnboardProposal({
   const failures = done?.filter((outcome) => !outcome.ok) ?? [];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4" {...dismiss}>
       <div className="flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-border bg-background md:max-h-[85vh] md:w-[min(760px,94vw)] md:rounded-2xl">
         <header className="shrink-0 border-b border-border px-4 pb-3 pt-safe md:pt-4">
           <h3 className="text-base font-semibold">

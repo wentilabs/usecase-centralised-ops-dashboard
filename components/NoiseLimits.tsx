@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { NoiseLimitsEditor } from "./NoiseLimitsEditor";
 import type { LimitBand, MeterLimits } from "@/lib/noise-limits";
@@ -67,15 +68,18 @@ export function NoiseLimits({
   /** `full_identifier` of the meter being edited, or null. One at a time. */
   const [editing, setEditing] = useState<string | null>(null);
 
+  // Click the backdrop to close, on the same rule every dialog uses.
+  const dismiss = useBackdropDismiss(true, onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6"
-      onClick={onClose}
+      {...dismiss}
     >
-      <div
-        className="w-full max-w-5xl rounded-2xl border border-border bg-card shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
+      {/* No stopPropagation here any more: the backdrop rule checks where the
+          gesture began as well as where it ended, so a click inside cannot
+          dismiss and a selection dragged past the edge cannot either. */}
+      <div className="w-full max-w-5xl rounded-2xl border border-border bg-card shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 md:px-6">
           <div>
             <h2 className="text-base font-semibold text-foreground">

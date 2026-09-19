@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { eachChunk, jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
 import { readJson, summariseJobResult } from "@/lib/read-json";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -28,6 +29,7 @@ export function JobDialog({
   rows: ProjectConfigRow[];
   onClose: () => void;
 }) {
+
   const targets = useMemo(() => jobTargets(job, rows), [job, rows]);
 
   const [projectCode, setProjectCode] = useState("");
@@ -40,6 +42,8 @@ export function JobDialog({
   const [progress, setProgress] = useState<string | null>(null);
 
   useEscapeKey(!busy, onClose);
+  // Click the backdrop to close, on the same guard as Escape.
+  const dismiss = useBackdropDismiss(!busy, onClose);
 
   const selected = targets.find((target) => target.projectCode === projectCode);
   const problems = validateJobInput(
@@ -110,7 +114,7 @@ export function JobDialog({
   const field = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary";
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 md:items-center md:p-4" {...dismiss}>
       <div className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-background p-4 shadow-2xl md:max-h-[85vh] md:w-[min(520px,92vw)] md:rounded-2xl md:p-5">
         <h3 className="text-base font-semibold">{job.title}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{job.description}</p>

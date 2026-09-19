@@ -10,9 +10,15 @@ export const dynamic = "force-dynamic";
 export default async function CanonicalProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getDashboardSession();
   if (!session.allowed) redirect("/unauthorized");
-  const project = await getCanonicalProject((await params).id).catch(() => null);
+  // Both at once. Each Supabase round trip is about 100ms, so anything that
+  // waits for the project before asking for rows doubles the page — which is
+  // what filtering the rows by the project's own aliases turned out to cost:
+  // a smaller payload, one trip later, and 10ms slower overall.
+  const [project, settled] = await Promise.all([
+    getCanonicalProject((await params).id).catch(() => null),
+    Promise.allSettled(SERVICE_KEYS.map((service) => listConfigs(service))),
+  ]);
   if (!project) notFound();
-  const settled = await Promise.allSettled(SERVICE_KEYS.map((service) => listConfigs(service)));
   const rows: Partial<Record<ServiceKey, ProjectConfigRow[]>> = {};
   const errors: Partial<Record<ServiceKey, string>> = {};
   SERVICE_KEYS.forEach((service, index) => {

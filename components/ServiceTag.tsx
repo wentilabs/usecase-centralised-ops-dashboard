@@ -33,16 +33,26 @@ const TAG_TONE: Record<ServiceKey, string> = {
  * Short form because it usually sits beside a project code, where "Subcon
  * Activities" wraps onto two lines; the service tab keeps the full name.
  */
-export function ServiceTag({ service, className = "", title }: {
+export function ServiceTag({ service, className = "", title, muted = false }: {
   service: ServiceKey;
   /** Size and spacing only — the hue is not the caller's to choose. */
   className?: string;
   title?: string;
+  /**
+   * The service exists but this project has no row in it.
+   *
+   * Drawn in the same slot, in grey: the absence is the information. A card
+   * that simply omits the missing ones makes every card a different shape and
+   * leaves "does this site have noise monitoring" to be answered by counting.
+   */
+  muted?: boolean;
 }) {
   return (
     <span
       title={title}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TAG_TONE[service]} ${className}`}
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        muted ? "bg-muted/30 text-muted-foreground/60" : TAG_TONE[service]
+      } ${className}`}
     >
       {tagLabel(service)}
     </span>

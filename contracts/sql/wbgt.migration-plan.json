@@ -21,6 +21,7 @@
     { "id": "water-parade-photo-refresh", "file": "migrate_water_parade_photo_refresh.sql", "requires": ["water-parade"] },
     { "id": "water-parade-daily-summary", "file": "migrate_water_parade_daily_summary.sql", "requires": ["water-parade"] },
     { "id": "water-parade-summary-timings", "file": "migrate_water_parade_summary_timings.sql", "requires": ["water-parade-daily-summary"] },
+    { "id": "mbs-sensor-delivery", "file": "migrate_mbs_sensor_delivery.sql", "requires": ["water-parade-multiple-groups"] },
     { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] }
   ],
   "operationalUtilities": [

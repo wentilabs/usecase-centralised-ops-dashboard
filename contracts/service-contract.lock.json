@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "main",
-      "commit": "40deeb091e84e6b60f50fd70fd4106c9e36a0292",
+      "commit": "70c7772df375bfb1074f68368c6f2589ce093ef0",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "969c3002b7f6ef47a9e9d5ff2b6a83f9ed0fc833",
+      "commit": "cd7cdb77ad300b06923dfb90b8cfc4f501701915",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "main",
-      "commit": "f8b1848082d3d7bd1fd6a2043ad66ca5a0e28e9f",
+      "commit": "03e17152646ffbf0c47e4b5cf986db952ef309b5",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -31,7 +31,7 @@
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "main",
-      "commit": "7479d7c26c7ab433796000fca4158886eb820cfe",
+      "commit": "98ef95b40f478c380a77b1bc3ba0fc25f2eaddee",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -50,7 +50,7 @@
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "localDirectory": "usecase-subcon-manpower-activities",
       "branch": "main",
-      "commit": "a87eb7814bc43c16eb85a9a6c72acb75ed90f9e8",
+      "commit": "492e0ad86a6b25f5f6ac6ab3ca91464c94f394ca",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -59,7 +59,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "main",
-      "commit": "c63d25cef8e5958b4578afd3b6903d46be0f5ddc",
+      "commit": "072f11ef5a35147b36c8dd6ef7414685c5d2c019",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

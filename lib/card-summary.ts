@@ -7,8 +7,8 @@ export {
   splitList,
 } from "./card-summary/groups";
 export type { DeliveryGroup } from "./card-summary/groups";
-export { groupDelta } from "./card-summary/group-delta";
-export type { GroupDelta } from "./card-summary/group-delta";
+export { groupDelta, sensorGroupDelta } from "./card-summary/group-delta";
+export type { GroupDelta, SensorMapEntry } from "./card-summary/group-delta";
 export { autoLinks } from "./card-summary/links";
 export type { CardLink } from "./card-summary/links";
 export { pillsFor, usesManpowerSheetPocs } from "./card-summary/pills";

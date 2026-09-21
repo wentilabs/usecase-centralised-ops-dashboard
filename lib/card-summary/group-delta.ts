@@ -34,3 +34,54 @@ export function groupDelta(
     ...after.filter((id) => before.includes(id)).map((id) => ({ ...label(id), state: "kept" as const })),
   ];
 }
+
+export type SensorMapEntry = {
+  sensorLabel: string;
+  /** Group names, resolved; the raw id when the alias store has never seen it. */
+  from: string | null;
+  to: string | null;
+  fromId: string | null;
+  toId: string | null;
+  state: "added" | "removed" | "changed" | "kept";
+};
+
+/**
+ * A sensor-to-group map, as a readable before-and-after.
+ *
+ * The confirm dialog rendered this column with the same stringify every other
+ * column uses, which for a jsonb object produces "[object Object] →
+ * [object Object]" — a review step that shows nothing to review, on the one
+ * field where getting the wrong group means a site's alerts go to strangers.
+ *
+ * Resolved to group names for the same reason the group delta is: nobody can
+ * look at 120363413253110834@g.us and say whether it is the right chat.
+ */
+export function sensorGroupDelta(
+  from: unknown,
+  to: unknown,
+  names: Record<string, string> = {},
+): SensorMapEntry[] {
+  const asMap = (value: unknown): Record<string, string> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .map(([sensor, id]) => [sensor, String(id ?? "").trim()])
+            .filter(([, id]) => id !== ""),
+        )
+      : {};
+
+  const before = asMap(from);
+  const after = asMap(to);
+  const label = (id: string | null) => (id ? names[id] ?? id : null);
+
+  // Every sensor either side mentions, in a stable order so two renders of the
+  // same change do not disagree about what moved.
+  const sensors = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+
+  return sensors.map((sensorLabel) => {
+    const fromId = before[sensorLabel] ?? null;
+    const toId = after[sensorLabel] ?? null;
+    const state = fromId === toId ? "kept" : !fromId ? "added" : !toId ? "removed" : "changed";
+    return { sensorLabel, fromId, toId, from: label(fromId), to: label(toId), state };
+  });
+}

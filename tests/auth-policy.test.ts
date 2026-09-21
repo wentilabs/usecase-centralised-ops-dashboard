@@ -16,6 +16,7 @@ import { readJson, summariseJobResult } from "../lib/read-json";
 import { companyIn } from "../lib/chat-scope";
 import { helpSegments } from "../lib/help-text";
 import { shouldDismissBackdrop } from "../lib/backdrop-dismiss";
+import { sensorGroupDelta } from "../lib/card-summary/group-delta";
 
 import { COMPANIES, FIELDS, GROUPS, JOB_STATE_COLUMNS, auditChangesWithoutJobState, buildFieldSpec, type FieldSpec } from "../lib/field-spec";
 import { onboardingFor } from "../lib/onboarding";
@@ -2995,4 +2996,39 @@ test("a sensor-scoped project says so on its card", () => {
   // Read from the row, not guessed from the code — another project given the
   // scope would report it, and MBS without it would not.
   assert.ok(labels({ project_code: "C991", delivery_scope: "sensor" }).includes("per-sensor delivery"));
+});
+
+test("a sensor map change is reviewable, not [object Object]", () => {
+  // The confirm dialog stringified this jsonb column with the generic path,
+  // so the one field where a wrong group sends a site's alerts to strangers
+  // showed "[object Object] → [object Object]" and nothing to review.
+  const names = { "120363413253110834@g.us": "MBS - TOL 2 Subcon", "120363400000000000@g.us": "MBS IR2 - WH SubCon" };
+
+  const added = sensorGroupDelta({}, { "MBS IR2 (WC-55)": "120363413253110834@g.us" }, names);
+  assert.deepEqual(added.map((e) => [e.sensorLabel, e.state, e.to]), [["MBS IR2 (WC-55)", "added", "MBS - TOL 2 Subcon"]]);
+
+  const changed = sensorGroupDelta(
+    { "MBS IR2 (WC-55)": "120363413253110834@g.us" },
+    { "MBS IR2 (WC-55)": "120363400000000000@g.us" },
+    names,
+  );
+  assert.equal(changed[0].state, "changed");
+  assert.equal(changed[0].from, "MBS - TOL 2 Subcon");
+  assert.equal(changed[0].to, "MBS IR2 - WH SubCon");
+
+  // Unmapping is the dangerous direction — the service fails closed — so it
+  // reports as removed rather than vanishing from the diff.
+  const removed = sensorGroupDelta({ "MBS IR2 (WC-56)": "120363413253110834@g.us" }, {}, names);
+  assert.equal(removed[0].state, "removed");
+  assert.equal(removed[0].to, null);
+
+  // An id with no known name still shows, as the id. Blank values are not a
+  // mapping at all and must not read as one.
+  assert.equal(sensorGroupDelta({}, { s: "120363999999999999@g.us" }, names)[0].to, "120363999999999999@g.us");
+  assert.deepEqual(sensorGroupDelta({}, { s: "  " }, names), []);
+  assert.deepEqual(sensorGroupDelta(null, undefined, names), []);
+
+  // Untouched sensors are reported as kept, for the caller to filter.
+  const same = { "MBS IR2 (WC-55)": "120363413253110834@g.us" };
+  assert.equal(sensorGroupDelta(same, same, names)[0].state, "kept");
 });

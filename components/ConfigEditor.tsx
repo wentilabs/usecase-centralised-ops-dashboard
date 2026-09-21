@@ -6,7 +6,7 @@ import { FormatterPreviewButton } from "./FormatterPreview";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
-import { formatSgt, groupDelta } from "@/lib/card-summary";
+import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
 import { newProblems } from "@/lib/row-rules";
@@ -330,6 +330,28 @@ export function ConfigEditor({
     from: unknown;
     to: unknown;
   }) => {
+    // The sensor map is jsonb, so the generic path stringifies it to
+    // "[object Object] → [object Object]" — a review step showing nothing to
+    // review, on the field where the wrong group sends a site's alerts to
+    // strangers.
+    if (spec.fields[column]?.widget === "sensor-groups") {
+      const entries = sensorGroupDelta(from, to, groupNames).filter((entry) => entry.state !== "kept");
+      if (!entries.length) return <span className="text-muted-foreground">— no sensor mapped —</span>;
+      return (
+        <ul className="mt-1 space-y-0.5">
+          {entries.map((entry) => (
+            <li key={entry.sensorLabel} title={[entry.fromId, entry.toId].filter(Boolean).join(" → ")}>
+              <code className="font-mono text-[11px]">{entry.sensorLabel}</code>{" "}
+              {entry.from ? <span className="text-muted-foreground line-through">{entry.from}</span> : null}
+              {entry.from && entry.to ? " → " : null}
+              {entry.to ? <span className="font-semibold text-on">{entry.to}</span> : null}
+              {!entry.to ? <span className="text-danger"> unmapped</span> : null}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
     if (spec.fields[column]?.widget !== "groups") {
       return (
         <>

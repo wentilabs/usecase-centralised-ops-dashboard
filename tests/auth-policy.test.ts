@@ -2977,3 +2977,21 @@ test("a backdrop closes a dialog only when the whole gesture happened on it", ()
   // A real click on the backdrop, and nothing else.
   assert.equal(shouldDismissBackdrop(true, true), true);
 });
+
+test("MBS says on its card that either IR2 sensor triggers Water Parade", () => {
+  // dd23c72 in the wbgt repo, and there is no column for it: the service tests
+  // the project code and two sensor labels directly. Two hot sensors on one
+  // site would otherwise read as two cycles due, which is the whole confusion
+  // this is here to prevent.
+  const labels = (code: string) =>
+    pillsFor("wbgt", { project_code: code, water_parade_enabled: true }).map((pill) => pill.label);
+
+  assert.ok(labels("MBS").includes("either IR2 sensor triggers"), "MBS carries the note");
+  assert.ok(!labels("C991").includes("either IR2 sensor triggers"), "no other project does");
+  // Case and spacing come from a text column typed by hand.
+  assert.ok(labels(" mbs ").includes("either IR2 sensor triggers"), "matched the way the service matches");
+
+  // It belongs to Water Parade, so it goes when Water Parade does.
+  const off = pillsFor("wbgt", { project_code: "MBS", water_parade_enabled: false }).map((pill) => pill.label);
+  assert.ok(!off.includes("either IR2 sensor triggers"));
+});

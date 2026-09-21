@@ -31,8 +31,6 @@
       "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener instance; falls back to client_id when blank." },
       "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier required for live delivery." },
       "whatsapp_group_id": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations; job log rows retain only the first group even when several are sent (INV-WBGT-12)." },
-      "delivery_scope": { "label": "Delivery scope", "group": "delivery", "mutable": true, "role": "policy-selector", "help": "Project keeps the normal fan-out. Sensor sends each active MBS sensor to its mapped group.", "options": ["project", "sensor"] },
-      "sensor_delivery_groups": { "label": "MBS sensor groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Map every active MBS sensor label to exactly one WhatsApp group. Incomplete mappings fail closed." },
       "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Message proxy URL required for live delivery; POC mentions need a /send-message suffix (INV-WBGT-13)." },
       "enable_hourly": { "label": "Hourly reports", "group": "cadence", "mutable": true, "role": "feature-flag", "help": "Loads the project into the hourly job and therefore gates both :00 and sub-hour reports (INV-WBGT-01)." },
       "enable_scrape": { "label": "NoiseLynx scraping", "group": "source", "mutable": true, "role": "feature-flag", "help": "Enables around-the-clock scraping; site hours never gate scraping (INV-WBGT-06)." },
@@ -84,9 +82,7 @@
       { "name": "wbgt_project_configs_poc_alert_minimum_band_check", "help": "POC minimum band is yellow, orange, or red." },
       { "name": "wbgt_project_configs_monthly_sheet_fill_mode_check", "help": "Monthly sheet fill mode is window or nearest." },
       { "name": "wbgt_project_configs_water_parade_daily_summary_hour_check", "help": "Daily Water Parade summary hour is between 0 and 23." },
-      { "name": "wbgt_project_configs_unique_source_chats", "help": "An enabled photo source chat belongs to at most one enabled project." },
-      { "name": "wbgt_project_configs_delivery_scope_check", "help": "Sensor delivery scope is permitted only for MBS; all other projects remain project-scoped." },
-      { "name": "wbgt_project_configs_sensor_delivery_groups_check", "help": "Sensor delivery groups must be a JSON object." }
+      { "name": "wbgt_project_configs_unique_source_chats", "help": "An enabled photo source chat belongs to at most one enabled project." }
     ]
   }
 }

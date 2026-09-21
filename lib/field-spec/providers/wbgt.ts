@@ -12,6 +12,13 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
     source_type: ["default", "whgd", "svs", "pentaocean"],
+    // A plain text column with a CHECK, not a pg enum, so PostgREST reports it
+    // as `{"format":"text"}` with no values — and a select with no options
+    // cannot be set to anything. five_min_alert_threshold beside it IS an enum
+    // type, which is why that one has always worked. Mirrored from
+    // migrate_mbs_sensor_delivery.sql: check (delivery_scope in ('project',
+    // 'sensor') and (delivery_scope = 'project' or project_code = 'MBS')).
+    delivery_scope: ["project", "sensor"],
   },
   fields: {
     company: {
@@ -72,7 +79,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     delivery_scope: {
       label: "Delivery scope",
       widget: "select",
-      help: "Project keeps the normal fan-out. Sensor sends each active MBS sensor to its mapped group.",
+      help: "Project keeps the normal fan-out. Sensor sends each active sensor to its own mapped group, and each sensor raises its own Water Parade cycle. Only MBS may be set to sensor; the database refuses it on any other project.",
       showIf: { field: "project_code", equals: "MBS" },
     },
     sensor_delivery_groups: {

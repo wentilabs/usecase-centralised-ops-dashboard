@@ -37,16 +37,21 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
           // Unlit is the point here, as with cooldown: a site asked all day
           // but never told which companies missed is a real difference, and
           // the hour is what someone checks before asking why it was quiet.
-          // MBS only, and hard-coded in the service rather than configured:
-          // dd23c72 makes `MBS IR2 (WC-55)` (TOL 2) and `MBS IR2 (WC-56)`
-          // (Gate 3-4) alternatives for one hourly cycle — either being hot
-          // creates it, TOL 2 wins when both are, and neither produces a
-          // second cycle. There is no column to read, so this mirrors the
-          // service's own project-code test. It is on the card because an
-          // operator comparing MBS against another site would otherwise see
-          // two hot sensors and expect two cycles.
-          ...(String(config.project_code ?? "").trim().toUpperCase() === "MBS"
-            ? [{ label: "either IR2 sensor triggers", on: true, tone: "info" as const }]
+          // Per-sensor delivery, read from the row rather than inferred from
+          // the project code.
+          //
+          // An earlier version of this pill said "either IR2 sensor triggers",
+          // taken from dd23c72 on wbgt main, which treats the two MBS IR2
+          // sensors as alternatives for ONE hourly cycle. That is not the
+          // design: migrate_mbs_sensor_delivery.sql — already applied to the
+          // live database — keys water_parade_cycles on
+          // (project_code, cycle_date, wbgt_hour, sensor_label), so each
+          // sensor raises its own cycle. The two branches disagree and main is
+          // the one that is wrong, so the card should not repeat either claim
+          // as though it were settled. It reports the configured scope, which
+          // is true on both.
+          ...(String(config.delivery_scope ?? "project").trim().toLowerCase() === "sensor"
+            ? [{ label: "per-sensor delivery", on: true, tone: "info" as const }]
             : []),
           {
             label: `daily summary ${summaryHour(config)}`,

@@ -395,6 +395,27 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     // migrate_water_parade_daily_summary.sql. The column is NOT NULL with a
     // default of 18, so the only way to break this is to type a number — and
     // an hour is exactly the field where someone writes 1800 meaning 18:00.
+    // migrate_mbs_sensor_delivery.sql. Two conditions in one CHECK, and the
+    // second is the surprising one: sensor scope is allowed on MBS alone, so
+    // setting it anywhere else fails on save with a constraint name and no
+    // hint that the project code is what it objected to.
+    {
+      constraint: "wbgt_project_configs_delivery_scope_check",
+      columns: ["delivery_scope", "project_code"],
+      check: (row, label) => {
+        const scope = String(row.delivery_scope ?? "project").trim().toLowerCase();
+        if (scope === "" || scope === "project") return null;
+        if (scope !== "sensor") {
+          return `${label("delivery_scope")} is either project or sensor.`;
+        }
+        const code = String(row.project_code ?? "").trim().toUpperCase();
+        if (code === "MBS") return null;
+        return (
+          `${label("delivery_scope")} can only be sensor on MBS — ${code || "this project"} has to stay on project. ` +
+          `Sensor scope maps each sensor to its own group, which only MBS is set up for.`
+        );
+      },
+    },
     {
       constraint: "wbgt_project_configs_water_parade_daily_summary_hour_check",
       columns: ["water_parade_daily_summary_hour"],

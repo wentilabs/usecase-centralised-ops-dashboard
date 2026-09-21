@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ROW_RULES, explainConstraint, newProblems, rowProblems } from "../lib/row-rules";
+import { buildFieldSpec } from "../lib/field-spec";
 import { SERVICE_KEYS } from "../lib/services";
 import { onboardingFor } from "../lib/onboarding";
 
@@ -356,4 +357,37 @@ test("the severity lookback may be blank or zero, but never negative", () => {
   // someone who wanted "no limit" guessing between blank and 0.
   assert.match(problems[0].message, /blank for no limit/i);
   assert.match(problems[0].message, /0 for today only/i);
+});
+
+test("sensor delivery scope is offered, and refused outside MBS", () => {
+  const label = (column: string) => column;
+
+  // The reported bug: the value could not be set at all. delivery_scope is
+  // plain text with a CHECK rather than a pg enum, so PostgREST reports no
+  // values and the select had nothing in it.
+  const spec = buildFieldSpec("wbgt", {
+    delivery_scope: { type: "string", format: "text", enum: null, default: "project" },
+  });
+  assert.deepEqual(spec.fields.delivery_scope.options, ["project", "sensor"]);
+
+  // MBS may choose it.
+  assert.equal(
+    newProblems("wbgt", { project_code: "MBS" }, { project_code: "MBS", delivery_scope: "sensor" }, label).length,
+    0,
+  );
+  // Nobody else may, and the reason names the project code rather than the
+  // constraint — the second half of the CHECK is the surprising half.
+  const refused = newProblems("wbgt", { project_code: "C991" }, { project_code: "C991", delivery_scope: "sensor" }, label);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0].message, /only be sensor on MBS/i);
+  assert.match(refused[0].message, /C991/);
+
+  // project is always fine, including unset and blank.
+  for (const value of ["project", "", null, undefined]) {
+    assert.equal(
+      newProblems("wbgt", {}, { project_code: "C991", delivery_scope: value }, label).length,
+      0,
+      `${JSON.stringify(value)} is project scope`,
+    );
+  }
 });

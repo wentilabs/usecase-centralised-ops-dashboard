@@ -2978,20 +2978,21 @@ test("a backdrop closes a dialog only when the whole gesture happened on it", ()
   assert.equal(shouldDismissBackdrop(true, true), true);
 });
 
-test("MBS says on its card that either IR2 sensor triggers Water Parade", () => {
-  // dd23c72 in the wbgt repo, and there is no column for it: the service tests
-  // the project code and two sensor labels directly. Two hot sensors on one
-  // site would otherwise read as two cycles due, which is the whole confusion
-  // this is here to prevent.
-  const labels = (code: string) =>
-    pillsFor("wbgt", { project_code: code, water_parade_enabled: true }).map((pill) => pill.label);
+test("a sensor-scoped project says so on its card", () => {
+  // Replaces a pill that claimed the two MBS IR2 sensors share one Water
+  // Parade cycle. They do not: migrate_mbs_sensor_delivery.sql keys cycles on
+  // (project_code, cycle_date, wbgt_hour, sensor_label), so each sensor raises
+  // its own. wbgt main disagrees with the deployed schema, so the card reports
+  // the configured scope instead of taking a side on cycle semantics.
+  const labels = (config: Record<string, unknown>) =>
+    pillsFor("wbgt", { water_parade_enabled: true, ...config }).map((pill) => pill.label);
 
-  assert.ok(labels("MBS").includes("either IR2 sensor triggers"), "MBS carries the note");
-  assert.ok(!labels("C991").includes("either IR2 sensor triggers"), "no other project does");
-  // Case and spacing come from a text column typed by hand.
-  assert.ok(labels(" mbs ").includes("either IR2 sensor triggers"), "matched the way the service matches");
-
-  // It belongs to Water Parade, so it goes when Water Parade does.
-  const off = pillsFor("wbgt", { project_code: "MBS", water_parade_enabled: false }).map((pill) => pill.label);
-  assert.ok(!off.includes("either IR2 sensor triggers"));
+  assert.ok(labels({ project_code: "MBS", delivery_scope: "sensor" }).includes("per-sensor delivery"));
+  assert.ok(!labels({ project_code: "MBS", delivery_scope: "project" }).includes("per-sensor delivery"));
+  // Unset is project scope: the column defaults to 'project' and most rows
+  // predate it entirely.
+  assert.ok(!labels({ project_code: "MBS" }).includes("per-sensor delivery"));
+  // Read from the row, not guessed from the code — another project given the
+  // scope would report it, and MBS without it would not.
+  assert.ok(labels({ project_code: "C991", delivery_scope: "sensor" }).includes("per-sensor delivery"));
 });

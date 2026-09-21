@@ -32,12 +32,24 @@ export function GroupPicker({
   onChange,
   groupNames,
   disabled = false,
+  single = false,
+  placeholder,
 }: {
   /** Comma-separated chat ids, exactly as stored in Supabase. */
   value: string;
   onChange: (next: string) => void;
   groupNames: Record<string, string>;
   disabled?: boolean;
+  /**
+   * Exactly one group, replacing rather than appending.
+   *
+   * For the MBS sensor map, where each sensor maps to one group and the
+   * database enforces it. The alternative was a second search box written
+   * beside this one, which would have had to re-solve type-ahead, keyboard
+   * navigation, unknown-id entry and outside-click — and would drift from it.
+   */
+  single?: boolean;
+  placeholder?: string;
 }) {
   const selected = useMemo(() => splitList(value), [value]);
   const [query, setQuery] = useState("");
@@ -90,10 +102,14 @@ export function GroupPicker({
 
   function add(chatId: string) {
     if (!chatId) return;
-    commit([...selected, chatId]);
+    // Single mode replaces: picking a second group for a sensor means
+    // changing your mind, not adding a recipient.
+    commit(single ? [chatId] : [...selected, chatId]);
     setQuery("");
-    setOpen(true);
-    inputRef.current?.focus();
+    // Nothing more to choose once one is picked, so the list closes and focus
+    // is released rather than inviting another.
+    setOpen(!single);
+    if (!single) inputRef.current?.focus();
   }
 
   function remove(chatId: string) {
@@ -171,6 +187,7 @@ export function GroupPicker({
           </span>
         ))}
 
+        {single && selected.length ? null : (
         <input
           ref={inputRef}
           type="text"
@@ -187,9 +204,10 @@ export function GroupPicker({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={selected.length ? "Add another…" : "Type a group name…"}
+          placeholder={placeholder ?? (selected.length ? "Add another…" : "Type a group name…")}
           className="min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
         />
+        )}
       </div>
 
       {open ? (

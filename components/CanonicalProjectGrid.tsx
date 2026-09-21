@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { CompanyMark } from "./CompanyMark";
 import { ServiceTag } from "./ServiceTag";
 import { canonicalProjectMatches, type CanonicalProject } from "@/lib/canonical-projects";
-import { shouldFocusPropose, shouldFocusSearch } from "@/lib/search-hotkey";
+import { shouldFocusSearch } from "@/lib/search-hotkey";
 import { SERVICES, SERVICE_KEYS, type ServiceKey } from "@/lib/services";
 
 function ProjectCard({ project }: { project: CanonicalProject }) {
@@ -81,9 +80,13 @@ function ProjectCard({ project }: { project: CanonicalProject }) {
  * layout showed a name, one line of subtitle and a count of aliases — every
  * link it could have offered was one navigation away.
  */
-export function CanonicalProjectGrid({ projects }: { projects: CanonicalProject[] }) {
-  const router = useRouter();
+export function CanonicalProjectGrid({ projects, actions }: {
+  projects: CanonicalProject[];
+  /** The page's own links, rendered beside the filter so the corner is one group. */
+  actions?: React.ReactNode;
+}) {
   const [query, setQuery] = useState("");
+  const [flash, setFlash] = useState(false);
   const search = useRef<HTMLInputElement>(null);
 
   // ⌘F / Ctrl+F, on the same rule the dashboard uses — including its escape
@@ -92,40 +95,67 @@ export function CanonicalProjectGrid({ projects }: { projects: CanonicalProject[
     function onKeyDown(event: KeyboardEvent) {
       const node = search.current;
       if (!node) return;
-      if (shouldFocusSearch(event, document.activeElement === node)) {
-        event.preventDefault();
-        node.focus();
-        node.select();
-        return;
-      }
-      // ⌘P belongs to Propose everywhere, but the bar that reviews and applies
-      // what it returns lives on the dashboard. Route there focused rather
-      // than grow a second one here with nothing behind it.
-      if (shouldFocusPropose(event, false)) {
-        event.preventDefault();
-        router.push("/?propose=1");
-      }
+      if (!shouldFocusSearch(event, document.activeElement === node)) return;
+      event.preventDefault();
+      node.focus();
+      node.select();
+      // Flash, as the dashboard does: the box is at the far corner and a
+      // keypress that moves focus somewhere you are not looking needs to say
+      // where it went.
+      setFlash(true);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
+  }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
 
   const shown = useMemo(() => projects.filter((project) => canonicalProjectMatches(project, query)), [projects, query]);
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          ref={search}
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Code, alias, company, site or address…  (⌘F · ⌘P to propose)"
-          className="w-full max-w-md rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-        />
-        <span className="text-xs text-muted-foreground">
-          {shown.length === projects.length ? `${projects.length} projects` : `${shown.length} of ${projects.length}`}
-        </span>
+      {/* Title left, actions and filter right — the dashboard's header shape,
+          same 220px box and the same focus ring, so ⌘F lands somewhere the eye
+          already knows. Propose is deliberately absent: it belongs on a
+          project, where a proposal has one row to apply to. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Canonical projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Human-approved site identity and common resources. Service configuration stays in its owning service.</p>
+        </div>
+        {/* ml-auto, not just justify-end: when the row wraps — a narrow window,
+            or a long title — justify-between puts the wrapped group at the
+            start of its own line, which is the opposite corner from the one
+            asked for. */}
+        {/* ml-auto, not just justify-end: when the row wraps — a narrow window,
+            or a long title — justify-between puts the wrapped group at the
+            start of its own line, which is the opposite corner from the one
+            asked for.
+
+            The filter is last, so it is the top-right thing on the page. The
+            page's own links sit before it rather than after, because ⌘F is
+            aimed at a corner and a corner occupied by three buttons is not the
+            one the keystroke lands in. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {actions}
+          <span className="text-xs text-muted-foreground">
+            {shown.length === projects.length ? `${projects.length} projects` : `${shown.length} of ${projects.length}`}
+          </span>
+          <input
+            ref={search}
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Code, company, site… (⌘F)"
+            className={`w-[220px] rounded-lg border bg-card px-3 py-1.5 text-sm outline-none transition-shadow focus:border-primary ${
+              flash ? "border-primary ring-2 ring-primary/70 shadow-[0_0_0_4px_hsl(var(--primary)/0.25)]" : "border-border"
+            }`}
+          />
+      </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">

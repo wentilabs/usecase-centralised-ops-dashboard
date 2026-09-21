@@ -25,13 +25,21 @@ export default async function CanonicalProjectsPage() {
   // wide screen empty while the cards queued three abreast.
   return (
     <main className="flex w-full flex-col gap-4 px-3 py-4 md:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-xl font-semibold">Canonical projects</h1><p className="mt-1 text-sm text-muted-foreground">Human-approved site identity and common resources. Service configuration stays in its owning service.</p></div>
-        <div className="flex gap-2"><Link href="/" className="rounded-lg border border-border bg-card px-3 py-2 text-sm hover:border-primary">← Dashboard</Link>{session.canEdit ? <Link href="/projects/new" className="rounded-lg border border-primary bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Create project</Link> : null}</div>
-      </div>
       {error ? <div className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm text-warn"><p className="font-medium">Registry is not available yet.</p><p className="mt-1">{error}</p><p className="mt-2">Apply <code>supabase/create_canonical_projects.sql</code>, then refresh this page.</p></div> : null}
-      {!error ? <div className="flex justify-end">{session.canEdit ? <Link href="/projects/import" className="rounded-lg border border-border bg-card px-3 py-2 text-sm hover:border-primary">Rebuild from current projects</Link> : null}</div> : null}
-      <CanonicalProjectGrid projects={projects} />
+      {/* The heading and the filter live together in the grid, because ⌘F has
+          to reach the box and the box belongs in the corner with these links.
+          The page keeps what only the server knows: whether the registry read,
+          and what this session may do. */}
+      <CanonicalProjectGrid
+        projects={projects}
+        actions={
+          <>
+            <Link href="/" className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm hover:border-primary">← Dashboard</Link>
+            {session.canEdit && !error ? <Link href="/projects/import" className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm hover:border-primary">Rebuild</Link> : null}
+            {session.canEdit ? <Link href="/projects/new" className="rounded-lg border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">Create project</Link> : null}
+          </>
+        }
+      />
     </main>
   );
 }

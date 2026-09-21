@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FormatterPreviewButton } from "./FormatterPreview";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
+import { SensorGroupPicker } from "./SensorGroupPicker";
 import { formatSgt, groupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
@@ -36,6 +37,9 @@ function display(value: unknown): string {
  */
 function isVisible(field: FieldSpec, values: Record<string, unknown>): boolean {
   if (!field.showIf) return true;
+  if ("allOf" in field.showIf) {
+    return field.showIf.allOf.every((condition) => JSON.stringify(values[condition.field] ?? null) === JSON.stringify(condition.equals));
+  }
   const conditions = "anyOf" in field.showIf ? field.showIf.anyOf : [field.showIf];
   return conditions.some(
     (condition) =>
@@ -81,6 +85,10 @@ function Control({
         projectCode={projectCode}
       />
     );
+  }
+
+  if (field.widget === "sensor-groups") {
+    return <SensorGroupPicker value={value} onChange={onChange} projectCode={projectCode} groupNames={groupNames} />;
   }
 
   // Chat ids are unmemorable, so they are picked by group name. Stored form is

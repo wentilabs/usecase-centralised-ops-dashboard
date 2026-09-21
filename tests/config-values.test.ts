@@ -45,3 +45,13 @@ test("a real array column is left to the array path", () => {
   const multi = { name: "red_detection_types", widget: "multi", type: "array", options: ["G", "C"] } as FieldSpec;
   assert.deepEqual(coerceValue(multi, "G, C"), ["G", "C"]);
 });
+
+test("sensor-group mappings stay JSON objects and reject scalar values", () => {
+  const groups = { name: "sensor_delivery_groups", widget: "sensor-groups", type: "jsonb" } as FieldSpec;
+  assert.deepEqual(coerceValue(groups, { "WBGT A": "group-a", "WBGT B": " group-b " }), {
+    "WBGT A": "group-a",
+    "WBGT B": "group-b",
+  });
+  assert.throws(() => coerceValue(groups, "WBGT A=group-a"), /sensor-to-group object/);
+  assert.throws(() => coerceValue(groups, { "WBGT A": "" }), /must be non-empty/);
+});

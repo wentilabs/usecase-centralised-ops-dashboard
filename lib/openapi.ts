@@ -578,6 +578,19 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/wbgt-sensors": {
+      get: {
+        operationId: "listWbgtSensors",
+        tags: ["discovery"],
+        summary: "Active WBGT sensors for one project",
+        description: "Returns the exact active sensor labels used by the MBS per-sensor delivery editor.",
+        parameters: [{ name: "project", in: "query", required: true, schema: { type: "string" }, description: "Project code." }],
+        responses: {
+          "200": { description: "Active sensors for the project.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "401": errorResponses["401"],
+        },
+      },
+    },
     "/api/noise-limits": {
       get: {
         operationId: "listNoiseLimits",

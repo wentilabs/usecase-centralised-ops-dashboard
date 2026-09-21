@@ -239,6 +239,19 @@ export async function listNoiseLimits(projectCode: string): Promise<MeterLimits[
   return groupLimitsByMeter((res.body ?? []) as LimitRow[]);
 }
 
+/** Active WBGT sensors used by the MBS sensor-delivery editor. */
+export async function listWbgtSensors(projectCode: string): Promise<{ sensorLabel: string; siteName: string | null }[]> {
+  const res = await request(
+    `wbgt_sensors?select=sensor_label,site_name&active=is.true&project_code=eq.${encodeURIComponent(projectCode)}&order=sensor_label.asc`,
+    { schema: "wbgts" },
+  );
+  if (!res.ok) throw new Error(`WBGT sensors for ${projectCode}: ${res.status} ${res.text.slice(0, 200)}`);
+  return ((res.body ?? []) as Record<string, unknown>[]).map((row) => ({
+    sensorLabel: String(row.sensor_label ?? "").trim(),
+    siteName: row.site_name ? String(row.site_name).trim() : null,
+  })).filter((row) => row.sensorLabel);
+}
+
 /**
  * Write one meter's limits, and decide whether they survive the refresh.
  *

@@ -14,6 +14,24 @@ const LIST_WIDGETS = new Set<FieldSpec["widget"]>(["csv", "groups", "meters"]);
  * anything the live schema cannot accept. Pure, so it is unit-tested.
  */
 export function coerceValue(field: FieldSpec, raw: unknown): unknown {
+  // Sensor-group mappings are stored as JSONB, not as a comma-separated text
+  // list. Keep the object shape the picker submits and reject arrays or scalar
+  // values before they can become the literal string "[object Object]".
+  if (field.widget === "sensor-groups") {
+    if (raw === null || raw === undefined || raw === "") return {};
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error(`${field.name}: expected a sensor-to-group object`);
+    }
+    const mapping: Record<string, string> = {};
+    for (const [sensor, group] of Object.entries(raw as Record<string, unknown>)) {
+      const sensorLabel = sensor.trim();
+      const groupId = String(group ?? "").trim();
+      if (!sensorLabel || !groupId) throw new Error(`${field.name}: sensor labels and groups must be non-empty`);
+      mapping[sensorLabel] = groupId;
+    }
+    return mapping;
+  }
+
   // Postgres array columns (e.g. lightning strike types). Empty stays an empty
   // array so a NOT NULL / cardinality CHECK reports the real reason.
   if (field.type === "array" || field.widget === "multi") {

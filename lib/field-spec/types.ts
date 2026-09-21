@@ -8,11 +8,13 @@ export type FieldWidget =
   | "sheet"
   | "multi"
   | "groups"
-  | "meters";
+  | "meters"
+  | "sensor-groups";
 
 export type ShowIf =
   | { field: string; equals: unknown }
-  | { anyOf: { field: string; equals: unknown }[] };
+  | { anyOf: { field: string; equals: unknown }[] }
+  | { allOf: { field: string; equals: unknown }[] };
 
 export type FieldSpec = {
   name: string;

@@ -69,6 +69,18 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
+    delivery_scope: {
+      label: "Delivery scope",
+      widget: "select",
+      help: "Project keeps the normal fan-out. Sensor sends each active MBS sensor to its mapped group.",
+      showIf: { field: "project_code", equals: "MBS" },
+    },
+    sensor_delivery_groups: {
+      label: "MBS sensor groups",
+      widget: "sensor-groups",
+      help: "Map every active MBS sensor to exactly one WhatsApp group. The service fails closed until every sensor is mapped.",
+      showIf: { allOf: [{ field: "project_code", equals: "MBS" }, { field: "delivery_scope", equals: "sensor" }] },
+    },
     lambda_url: { label: "Send-message proxy URL" },
     telegram_chat_ids: {
       label: "Telegram source chats",
@@ -214,7 +226,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Site hours & mutes",
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
-    { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],

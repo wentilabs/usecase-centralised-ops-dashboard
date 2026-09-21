@@ -77,6 +77,7 @@ function kindForWidget(widget: FieldWidget): OnboardFieldKind {
       return widget;
     case "csv":
     case "meters":
+    case "sensor-groups":
     case "text":
       return "text";
   }

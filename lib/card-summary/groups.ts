@@ -31,14 +31,28 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   ],
   noise: [
     { column: "whatsapp_group_id" },
+    // A real destination, not a setting: the expiry warning goes here and
+    // nowhere else, so a card that omitted it showed a project as talking to
+    // one group when it talks to two.
+    { column: "alert_whatsapp_gid", role: "meter expiry" },
     // Opt-in second destination, and only for messages carrying a 🟠 or 🔴 —
     // the role says so, because a chip that just read as another recipient
     // would imply these groups get the whole half-hourly stream.
     { column: "exceedance_half_hourly_wa_groups", role: "half-hourly warnings only" },
   ],
   haze: [{ column: "wa_group_ids" }],
-  lightning: [{ column: "whatsapp_group_id" }],
-  ailytics: [{ column: "whatsapp_group_ids" }],
+  lightning: [
+    { column: "whatsapp_group_id" },
+    // SMS-only in both directions: NEA alerts and kickoffs never come here,
+    // and forwarded SMS never goes anywhere else. The role matters more than
+    // usual because a chip without it reads as a second recipient for
+    // everything.
+    { column: "sms_whatsapp_group_id", role: "SMS" },
+  ],
+  ailytics: [
+    { column: "whatsapp_group_ids" },
+    { column: "yesterday_summary_group_ids", role: "yesterday summary" },
+  ],
   // Labelled because the two lists are not interchangeable and one of them is
   // now BOTH directions: since 140b1e9 `safety_group_ids` is where forwarded
   // messages come from AND where the nightly housekeeping report goes, while
@@ -48,7 +62,18 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
     { column: "manpower_activity_outbound_group_id", role: "morning summaries" },
     { column: "safety_group_ids", role: "housekeeping in/out" },
   ],
-  issueChaser: [{ column: "whatsapp_group_ids" }],
+  // Five destinations beyond the default, each its own fallback level. They
+  // were invisible on the card, so a project sending its company summary
+  // somewhere other than the chaser group looked like it sent everything to
+  // one place.
+  issueChaser: [
+    { column: "whatsapp_group_ids" },
+    { column: "safety_summary_whatsapp_group_ids", role: "summaries" },
+    { column: "daily_safety_summary_whatsapp_group_ids", role: "plain summary" },
+    { column: "daily_safety_company_summary_whatsapp_group_ids", role: "company summary" },
+    { column: "daily_safety_chatgroup_summary_whatsapp_group_ids", role: "chat-group summary" },
+    { column: "novade_name_list_check_whatsapp_group_ids", role: "Novade reminder" },
+  ],
 };
 
 export type DeliveryGroup = { chatId: string; role?: string };
@@ -97,10 +122,24 @@ export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): D
  * picked up automatically — this list decides which ids get a name resolved,
  * and a missing column means raw ids on the cards.
  */
+/**
+ * Chat-id columns that are deliberately NOT delivery chips.
+ *
+ * Listed rather than simply omitted so the test below can tell "decided
+ * against" from "forgotten" — which is how lightning's SMS destination stayed
+ * off the cards after it was added to the editor.
+ */
+export const NON_DELIVERY_CHAT_COLUMNS: Record<string, string> = {
+  poc_alert_wa_groups: "who gets mentioned in an alert, not where the alert goes",
+  whatsapp_wbgt_source_chat_ids: "where readings are ingested FROM",
+  telegram_chat_ids: "an ingestion source, and not a WhatsApp group at all",
+  exclude_whatsapp_group_ids: "the snapshot's exclusion list — the opposite of a destination",
+  water_parade_photo_group_id: "photo ingestion source",
+};
+
 export const CHAT_ID_COLUMNS: string[] = [
   ...new Set([
     ...Object.values(GROUP_COLUMNS).flatMap((entries) => entries.map((entry) => entry.column)),
-    "alert_whatsapp_gid",
     "poc_alert_wa_groups",
     "whatsapp_wbgt_source_chat_ids",
     // Not a destination — it is the snapshot's exclusion list — but it holds

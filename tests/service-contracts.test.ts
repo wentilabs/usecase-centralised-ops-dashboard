@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { NON_DELIVERY_CHAT_COLUMNS, groupColumnsFor } from "../lib/card-summary/groups";
+import type { ServiceKey } from "../lib/services";
 import test from "node:test";
 
 import lock from "../contracts/service-contract.lock.json";
@@ -254,4 +256,40 @@ test("WBGT contract protects job state and exposes its coupled cadence semantics
   assert.equal(spec.fields.top_of_hour_band.readonly, true);
   assert.equal(spec.fields.last_5min_alert_level.readonly, true);
   assert.deepEqual(spec.fields.five_min_alert_threshold.options, ["yellow", "orange", "red"]);
+});
+
+test("every destination a service contract declares is a chip on the card", () => {
+  // The gap this closes: lightning's `sms_whatsapp_group_id` reached the live
+  // table and the editor, and never reached the card — so a project forwarding
+  // SMS to a separate group looked like it sent everything to one place. The
+  // same was true of noise's expiry group, ailytics' yesterday summary and all
+  // five of issue-chaser's summary destinations.
+  //
+  // Checked against the vendored contracts rather than the live database, so
+  // it runs offline and fails when a contract is refreshed with a new one.
+  const missing: string[] = [];
+  for (const [service, contract] of Object.entries(SERVICE_CONTRACTS)) {
+    const declared = Object.keys(contract.configuration.fields);
+    const chips = new Set(groupColumnsFor(service as ServiceKey).map((entry) => entry.column));
+    for (const column of declared) {
+      // A destination by name: something that holds one or more group ids.
+      if (!/(^|_)(wa_group|whatsapp_group|group_id|group_ids|gid)s?$/.test(column)) continue;
+      if (chips.has(column)) continue;
+      if (NON_DELIVERY_CHAT_COLUMNS[column]) continue;
+      missing.push(`${service}.${column}`);
+    }
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `these hold group ids but are neither a delivery chip nor listed as deliberately not one: ${missing.join(", ")}`,
+  );
+});
+
+test("a column excused from the card says why", () => {
+  // An empty reason would let the exclusion list become a way to silence this
+  // check without deciding anything.
+  for (const [column, reason] of Object.entries(NON_DELIVERY_CHAT_COLUMNS)) {
+    assert.ok(reason.length > 20, `${column} needs a real reason, got "${reason}"`);
+  }
 });

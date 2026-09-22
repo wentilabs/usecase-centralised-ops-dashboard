@@ -184,7 +184,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       // nothing at all.
       help:
         "When the by-chat-group summary runs, in SGT. `HH00,lookback`, semicolon-separated — `0800,4` is 8am covering today plus the 4 days before. " +
-        "**Only an 0800 entry ever fires.** Unlike the other two summaries, this one's EventBridge rule runs once a day at 08:00 SGT, so an entry naming any other hour is read by nothing and the report is never sent. Whole hours only.",
+        "Only an `0800` entry ever fires. Unlike the other two summaries, this one's EventBridge rule runs once a day at 08:00 SGT, so an entry naming any other hour is read by nothing and the report is never sent. Whole hours only.",
     },
     daily_safety_company_summary_whatsapp_group_ids: {
       label: "Company summary destination",

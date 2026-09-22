@@ -640,7 +640,7 @@ export function OnboardDialog({
 
             <div className="mt-4 flex flex-col gap-3">
               {shown.map((entry) => (
-                <div key={entry.column} className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3">
+                <div key={entry.column} className="grid grid-cols-1 gap-1 md:grid-cols-[300px_1fr] md:items-start md:gap-3">
                   <div className="md:pt-2">
                     <div className="text-sm font-medium">
                       {entry.label}
@@ -680,7 +680,7 @@ export function OnboardDialog({
                     {rest.map((entry) => (
                       <div
                         key={entry.column}
-                        className="grid grid-cols-1 gap-1 md:grid-cols-[200px_1fr] md:items-start md:gap-3"
+                        className="grid grid-cols-1 gap-1 md:grid-cols-[300px_1fr] md:items-start md:gap-3"
                       >
                         <div className="md:pt-2">
                           <div className="text-sm font-medium">{entry.label}</div>

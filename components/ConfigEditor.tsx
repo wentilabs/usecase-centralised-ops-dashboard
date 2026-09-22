@@ -483,7 +483,7 @@ export function ConfigEditor({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-      <aside className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:w-[min(760px,100vw)] md:border-l md:border-border">
+      <aside className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:w-[min(1040px,100vw)] md:border-l md:border-border">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 pt-safe md:px-5 md:py-4">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -585,7 +585,7 @@ export function ConfigEditor({
                     return (
                       <div
                         key={name}
-                        className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[240px_1fr] md:items-start md:gap-4 md:py-2 ${
+                        className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[320px_1fr] md:items-start md:gap-4 md:py-2 ${
                           problemFor[name]
                             ? "bg-danger/10 ring-1 ring-danger/40"
                             : changed

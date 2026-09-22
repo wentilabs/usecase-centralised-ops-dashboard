@@ -79,9 +79,16 @@ test("the card defers detail to the sheet on mobile and keeps the desktop card i
 test("the editor is a full screen on a phone and the same drawer on desktop", async () => {
   const editor = await source("components/ConfigEditor.tsx");
 
-  assert.match(editor, /fixed inset-0 z-50[^"]*md:inset-y-0[^"]*md:w-\[min\(760px,100vw\)\]/);
-  // A 240px label column leaves no room for a control at phone width.
-  assert.match(editor, /grid-cols-1[^`]*md:grid-cols-\[240px_1fr\]/);
+  // The contract is the SPLIT, not the number. Full-bleed on a phone, a
+  // right-hand drawer on desktop, and `min(…,100vw)` so the drawer can never
+  // be wider than the screen it is on. The desktop width itself is a design
+  // choice and has already moved once — the route lines under each label need
+  // horizontal room — so pinning the pixels only made a layout tweak look
+  // like a mobile regression.
+  assert.match(editor, /fixed inset-0 z-50[^"]*md:inset-y-0[^"]*md:w-\[min\(\d+px,100vw\)\]/);
+  // One column on a phone, whatever the desktop label column is set to: a
+  // fixed label column leaves no room for a control at phone width.
+  assert.match(editor, /grid-cols-1[^`]*md:grid-cols-\[\d+px_1fr\]/);
   // Touch targets: a 24px switch is below the 44px minimum.
   assert.match(editor, /min-h-11[^"]*md:min-h-0/);
 });

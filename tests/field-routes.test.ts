@@ -137,3 +137,41 @@ test("the hint reads as one line, joined the same way everywhere", () => {
     }
   }
 });
+
+test("multiple routes are stacked, not joined into one wrapping line", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const component = await readFile(resolve("components/RouteHint.tsx"), "utf8");
+
+  // Three of the Issue Chaser columns name three endpoints each. Joined with a
+  // separator they wrapped mid-path — `POST /api/past-days-company-safety-`
+  // ending one row and `summary` starting the next — which is harder to read
+  // than no path at all.
+  assert.match(component, /routes\.map\(/, "each route needs its own row");
+  // The row's text is the single route from the map, never the joined list.
+  // `routes.join` is still allowed — the tooltip uses it — so this checks what
+  // is RENDERED rather than banning the word.
+  assert.match(component, /↳ \{route\}/, "a row must print one route, not the list");
+  assert.doesNotMatch(component, /↳ \{routes\.join/, "joining into the row is what made it wrap");
+  // A row either fits or overflows visibly; it must never be broken in half.
+  assert.match(component, /whitespace-nowrap/);
+
+  // The column that proves it: one field, three separate endpoints.
+  assert.equal(routesForField("issueChaser", "summary_days").length, 3);
+});
+
+test("the all-clear mention switch is hidden until warnings are on", async () => {
+  // On its own it changes nothing anyone would want: `shouldMentionPocs` gates
+  // it on the POC phone list, and the CHECK only demands that list when the
+  // WARNING flag is on — so with warnings off there is nobody to tag.
+  const spec = buildFieldSpec("lightning", {
+    enable_red_band_poc_mentions: { type: "boolean", format: "boolean", enum: null, default: null },
+    enable_green_band_poc_mentions: { type: "boolean", format: "boolean", enum: null, default: null },
+  });
+  assert.deepEqual(spec.fields.enable_green_band_poc_mentions?.showIf, {
+    field: "enable_red_band_poc_mentions",
+    equals: true,
+  });
+  // The switch it depends on is not itself conditional, or neither would show.
+  assert.equal(spec.fields.enable_red_band_poc_mentions?.showIf, null);
+});

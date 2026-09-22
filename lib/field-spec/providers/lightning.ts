@@ -112,9 +112,22 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     },
     enable_green_band_poc_mentions: {
       label: "✅ All-clear POC mentions",
-      // Defaults to TRUE in Postgres, which is the opposite of every other
-      // feature flag here — so an operator reading a blank row is looking at
-      // something that is ON. Said plainly rather than left to be discovered.
+      /**
+       * Hidden until the warning switch is on, because on its own it changes
+       * nothing anyone would want.
+       *
+       * `shouldMentionPocs` gates it on the POC phone list rather than on the
+       * warning flag, and the CHECK only demands that list when the WARNING
+       * flag is on — so with warnings off the list is normally blank and this
+       * has nobody to tag. The one configuration this hides is warnings-off
+       * with the lists filled in anyway, which would mention people on the
+       * all-clear and never on the stop that preceded it.
+       *
+       * It defaults to TRUE in Postgres, the opposite of every other flag
+       * here, so it is ON for a row nobody has touched — which is why it says
+       * so rather than leaving that to be discovered.
+       */
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
       help: "Tags the same POCs on the all-clear, including TRI-style SMS all-clears. On by default, so leaving it alone keeps the existing behaviour; turn it off for a site that wants to be told when to stop but not when to resume.",
     },
     poc_phone_numbers: {

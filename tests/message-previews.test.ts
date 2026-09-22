@@ -374,3 +374,25 @@ test("every service either shows a real message or says why it cannot", () => {
   assert.deepEqual([...withPreviews].sort(), ["haze", "issueChaser", "lightning", "noise", "wbgt"]);
   assert.deepEqual(Object.keys(NO_PREVIEWS).sort(), ["ailytics", "subcon"]);
 });
+
+test("help text never carries markdown the renderer cannot show", async () => {
+  // `HelpText` splits backticked runs and nothing else, so `**bold**` reaches
+  // the screen as four literal asterisks. Caught in a screenshot rather than
+  // in review, which is exactly the kind of thing a test should catch first.
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  for (const service of SERVICE_KEYS) {
+    const file = service === "issueChaser" ? "issue-chaser" : service;
+    const source = await readFile(resolve(`lib/field-spec/providers/${file}.ts`), "utf8");
+    // Every string literal in the file, not only the one directly after
+    // `help:` — the first version anchored there and missed a help built by
+    // concatenating two strings across lines, which is exactly where the
+    // markdown was. Comments are stripped first so prose about `**` does not
+    // fail the check.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    for (const [, help] of code.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+      assert.doesNotMatch(help, /\*\*/, `${service} help uses ** which renders literally: ${help.slice(0, 60)}…`);
+      assert.doesNotMatch(help, /\[[^\]]+\]\([^)]+\)/, `${service} help uses a markdown link, which renders literally`);
+    }
+  }
+});

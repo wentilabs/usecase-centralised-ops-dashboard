@@ -28,6 +28,24 @@ const TAG_TONE: Record<ServiceKey, string> = {
 };
 
 /**
+ * The same seven hues as solid fills, for a chart.
+ *
+ * Here rather than in the chart for the reason above: one table, so a service
+ * is the same colour wherever you meet it. Written as literal class names
+ * because Tailwind only emits what it can find in the source — a fill composed
+ * at runtime from a hue name renders as nothing at all.
+ */
+export const SERVICE_FILL: Record<ServiceKey, string> = {
+  wbgt: "bg-amber-400",
+  noise: "bg-sky-400",
+  haze: "bg-orange-400",
+  lightning: "bg-violet-400",
+  ailytics: "bg-cyan-400",
+  subcon: "bg-lime-400",
+  issueChaser: "bg-rose-400",
+};
+
+/**
  * A service, as the pill it wears everywhere.
  *
  * Short form because it usually sits beside a project code, where "Subcon

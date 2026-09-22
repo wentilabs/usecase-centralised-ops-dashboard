@@ -12,6 +12,7 @@ import { OnboardProposal, type OnboardPlanView } from "./OnboardProposal";
 import { LightningMap } from "./LightningMap";
 import { NoiseLimits } from "./NoiseLimits";
 import { JobBatch, type JobPlan } from "./JobBatch";
+import { DeliveryLoad } from "./DeliveryLoad";
 import { JobDialog } from "./JobDialog";
 import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
@@ -120,6 +121,11 @@ export function DashboardShell({
    * project code, and `""` is open on the whole island.
    */
   const [lightningMap, setLightningMap] = useState<string | null>(null);
+  /**
+   * The outbound-load view. Estate-wide rather than per service, so it lives
+   * in the header beside Refresh rather than on any one service's action row.
+   */
+  const [loadView, setLoadView] = useState(false);
   /** Permissible noise levels for one project. `null` is closed. */
   const [noiseLimits, setNoiseLimits] = useState<string | null>(null);
   /**
@@ -473,6 +479,17 @@ export function DashboardShell({
               {reloadingData || reloading ? "Refreshing…" : "⟳ Refresh"}
             </button>
 
+            {/* Reads the rows already on this page, so it opens instantly and
+                needs no permission of its own — it triggers nothing. */}
+            <button
+              type="button"
+              onClick={() => setLoadView(true)}
+              title="How many messages go out to how many groups, hour by hour, worked out from the configuration"
+              className="rounded-lg border border-border bg-card px-2 py-1 text-xs hover:border-primary"
+            >
+              ◔ Outbound load
+            </button>
+
             {namesMeta.configured ? (
               <button
                 type="button"
@@ -731,6 +748,10 @@ export function DashboardShell({
 
       {job ? (
         <JobDialog job={job} rows={rows[job.service] ?? []} groupNames={groupNames} onClose={() => setJob(null)} />
+      ) : null}
+
+      {loadView ? (
+        <DeliveryLoad rowsByService={rows as Partial<Record<ServiceKey, ProjectConfigRow[]>>} onClose={() => setLoadView(false)} />
       ) : null}
 
       {exporter ? (

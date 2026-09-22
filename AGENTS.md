@@ -317,6 +317,43 @@ Requires `NOISE_API_URL`, `WBGT_API_URL` and `ISSUE_CHASER_API_URL`. Unset, the
 button still appears and names the missing variable rather than failing
 silently.
 
+## Outbound load (`lib/load-model`)
+
+`◔ Outbound load` in the header answers "how many messages go out to how many
+groups, hour by hour". It is arithmetic on the config rows the dashboard
+already holds — no request, no persistence, nothing observed. It describes what
+the crons are CONFIGURED to do, not what they did.
+
+One provider per service, shaped like `lib/card-summary/schedule-providers` and
+for the same reason: the cadence rules belong beside the service that owns them.
+Each provider cites the upstream file it was read from, because this is a
+MIRROR of behaviour in another repository and drifts the way `lib/row-rules.ts`
+does. `Record<ServiceKey, LoadProvider>` makes a missing provider a compile
+error rather than a service that reads as quiet.
+
+Three distinctions carry the whole thing:
+
+- **scheduled** — fires in that hour whatever the readings say.
+- **conditional** — fires only if they qualify; the number is the WORST case
+  for that hour, so it reads as capacity and not as a forecast. Drawn faded,
+  and the toggle removes it from both the bars and the breakdown so the rows
+  always add up to the column above them.
+- **ambient** — real traffic with no clock position: lightning (storm-driven),
+  ailytics forwarding, subcon's housekeeping intake, and any chase that replies
+  in an issue's own originating group, where the destination count lives in a
+  spreadsheet. Listed by name beside the chart rather than smeared across the
+  day.
+
+**Hours only, deliberately.** The minute each cron fires lives in an EventBridge
+rule in the AWS console, not in any repository, and the WBGT README contradicts
+itself about its own (`cron(6,21,36,51)` in one section, `cron(2,17,32,47)` in
+another). At hourly resolution none of that matters. Sunday and public-holiday
+mutes are not applied, so the chart describes an ordinary working day.
+
+Bars are sized with `flex-grow`, not percentage heights: a percentage resolves
+against a parent with a definite height and a flex column's children have none,
+which drew every segment at zero pixels under correct-looking numbers.
+
 ## Group names (the alias store)
 
 `ops.whatsapp_group_names` maps chat id → group name. Two paths fill it, and the

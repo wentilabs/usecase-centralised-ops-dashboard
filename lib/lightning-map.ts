@@ -27,16 +27,20 @@ export function windowMs(key: WindowKey): number {
  * How many detections one view may carry.
  *
  * A quiet day is a few hundred island-wide; the service's own notes put a busy
- * one near 90,000. The cap keeps the canvas honest about being a sample, and the
- * viewport query is what makes zooming in show more: the same 500 spread over a
- * 6 km ring instead of the whole island.
+ * one near 90,000. The cap keeps the canvas honest about being a sample. When a
+ * project is focused, its near-site candidate set is placed first within this
+ * cap so a busy island-wide window does not hide the evidence the operator is
+ * looking for.
  */
-export const DETECTION_CAP = 500;
+export const DETECTION_CAP = 800;
+
+/** The focused candidate query may use PostgREST's 1,000-row ceiling. */
+export const PRIORITY_QUERY_CAP = 1000;
 
 /**
  * The cap for the evidence query.
  *
- * The same 500 as the map, and that is enough because of the type filter, not
+ * The same 800 as the map, and that is enough because of the type filter, not
  * in spite of the volume: a storm is overwhelmingly intra-cloud, so restricting
  * the query to the types a tier actually counts turned the worst hour on record
  * for one site from 2,130 rows into 15. Anything realistic near a site fits.
@@ -175,6 +179,49 @@ export type Detection = {
   longitude: number;
   detection_type: "G" | "C";
 };
+
+function detectionKey(detection: Detection): string {
+  return [
+    detection.occurred_at,
+    detection.published_at ?? "",
+    detection.latitude,
+    detection.longitude,
+    detection.detection_type,
+  ].join("|");
+}
+
+/**
+ * Put focused near-site candidates at the front of the display sample, then
+ * fill any remaining slots with the viewport's newest rows. The API's `total`
+ * remains the count of the viewport query; this function only chooses which
+ * rows occupy the display cap.
+ */
+export function prioritiseDetections(
+  viewport: Detection[],
+  focused: Detection[],
+  site: { latitude: number; longitude: number } | null,
+  cap = DETECTION_CAP,
+): Detection[] {
+  if (!site || !focused.length) return viewport.slice(0, cap);
+  const centre = { lat: site.latitude, lon: site.longitude };
+  const distance = (detection: Detection) =>
+    haversineMetres(centre, { lat: detection.latitude, lon: detection.longitude });
+  const focusedFirst = [...focused].sort((a, b) => {
+    const byDistance = distance(a) - distance(b);
+    if (byDistance !== 0) return byDistance;
+    return (b.published_at ?? b.occurred_at) - (a.published_at ?? a.occurred_at);
+  });
+  const result: Detection[] = [];
+  const seen = new Set<string>();
+  for (const detection of [...focusedFirst, ...viewport]) {
+    const key = detectionKey(detection);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(detection);
+    if (result.length >= cap) break;
+  }
+  return result;
+}
 
 /**
  * The lag between a strike happening and NEA telling us.
@@ -390,7 +437,7 @@ export function formatDistance(metres: number | null): string {
  * Used to ask for a project's evidence separately from the viewport. The map
  * layer is capped and follows wherever you panned, so counting hits from what
  * happens to be drawn would report "0 strikes near TJR" when the truth is "0 of
- * the 500 I chose to draw" — a claim that could be shown to a client and be
+ * the 800 I chose to draw" — a claim that could be shown to a client and be
  * wrong. A box a few kilometres wide almost never hits the cap, so the count it
  * yields is the real one.
  */

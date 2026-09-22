@@ -211,7 +211,9 @@ export async function listLightningDetections({
   if (!res.ok) throw new Error(`lightning detections: ${res.status} ${res.text.slice(0, 200)}`);
 
   // `count=exact` reports the size of the whole match in Content-Range, so the
-  // map can say "500 of 3,120" instead of implying it drew everything.
+  // map can say "800 of 3,120" instead of implying it drew everything. The
+  // focused map view may merge a separate near-site candidate query ahead of
+  // this viewport sample.
   const range = res.headers?.get?.("content-range") ?? "";
   const total = Number(range.split("/")[1]);
 

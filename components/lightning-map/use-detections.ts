@@ -5,9 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EVIDENCE_BOX_FACTOR,
   EVIDENCE_CAP,
+  DETECTION_CAP,
+  PRIORITY_QUERY_CAP,
   boxContains,
   boundsAround,
   countedTypes,
+  prioritiseDetections,
   viewportBounds,
   widestRingM,
   type Box,
@@ -22,6 +25,8 @@ export type DetectionPayload = {
   total: number;
   truncated: boolean;
   detections: Detection[];
+  prioritized?: boolean;
+  priorityTruncated?: boolean;
 };
 
 async function fetchDetections(params: {
@@ -74,7 +79,8 @@ export function useLightningDetections({
   }, [anchor, tick]);
   const at = anchor ?? liveAt;
 
-  const [view, setView] = useState<DetectionPayload | null>(null);
+  const [baseView, setBaseView] = useState<DetectionPayload | null>(null);
+  const [priority, setPriority] = useState<DetectionPayload | null>(null);
   const [evidence, setEvidence] = useState<{ payload: DetectionPayload; code: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +110,7 @@ export function useLightningDetections({
       fetchDetections({ at, window: windowKey, bbox, signal: controller.signal })
         .then((payload) => {
           held.current = payload.truncated ? null : { box: bbox, window: windowKey, at };
-          setView(payload);
+          setBaseView(payload);
           setError(null);
         })
         .catch((cause: unknown) => {
@@ -123,28 +129,65 @@ export function useLightningDetections({
 
   useEffect(() => {
     if (!focus) {
+      setPriority(null);
       setEvidence(null);
       return;
     }
     const controller = new AbortController();
+    setPriority(null);
     const radius = Math.max(1000, widestRingM(focus));
+    const bbox = boundsAround(
+      { latitude: Number(focus.latitude), longitude: Number(focus.longitude) },
+      radius * EVIDENCE_BOX_FACTOR,
+    );
     fetchDetections({
       at,
       window: windowKey,
-      bbox: boundsAround(
-        { latitude: Number(focus.latitude), longitude: Number(focus.longitude) },
-        radius * EVIDENCE_BOX_FACTOR,
-      ),
+      bbox,
       types: countedTypes(focus),
       limit: EVIDENCE_CAP,
       signal: controller.signal,
     })
-      .then((payload) => setEvidence({ payload, code: String(focus.project_code) }))
+      .then((payload) => {
+        if (!controller.signal.aborted) {
+          setEvidence({ payload, code: String(focus.project_code) });
+        }
+      })
       .catch(() => {
         if (!controller.signal.aborted) setEvidence(null);
       });
+    fetchDetections({
+      at,
+      window: windowKey,
+      bbox,
+      types: countedTypes(focus),
+      limit: PRIORITY_QUERY_CAP,
+      signal: controller.signal,
+    })
+      .then((payload) => {
+        if (!controller.signal.aborted) setPriority(payload);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setPriority(null);
+      });
     return () => controller.abort();
   }, [focus, windowKey, at]);
+
+  const view = baseView
+    ? {
+        ...baseView,
+        detections: prioritiseDetections(
+          baseView.detections,
+          priority?.detections ?? [],
+          focus
+            ? { latitude: Number(focus.latitude), longitude: Number(focus.longitude) }
+            : null,
+          DETECTION_CAP,
+        ),
+        prioritized: Boolean(focus && priority),
+        priorityTruncated: Boolean(priority?.truncated),
+      }
+    : null;
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
   return { at, view, evidence, loading, error, refresh };

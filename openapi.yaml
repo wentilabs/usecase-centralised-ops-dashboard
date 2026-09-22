@@ -316,7 +316,7 @@ paths:
       tags:
         - configuration
       summary: Lightning detections in a published-time window
-      description: Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 500) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. Reads only.
+      description: Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 800) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. The focused map view separately prioritises near-site candidates within its display cap. Reads only.
       parameters:
         - name: at
           in: query
@@ -339,7 +339,7 @@ paths:
           required: false
           schema:
             type: integer
-          description: How many rows to return, default 500. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.
+          description: How many rows to return, default 800. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.
         - name: types
           in: query
           required: false

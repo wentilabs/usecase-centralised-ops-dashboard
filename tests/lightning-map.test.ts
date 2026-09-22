@@ -14,6 +14,7 @@ import {
   hitTest,
   metresPerPixel,
   publishLagSeconds,
+  prioritiseDetections,
   qualifies,
   radiusPixels,
   ringsFor,
@@ -158,7 +159,25 @@ test("windows and the cap are what the map promises", () => {
   assert.equal(windowMs("15m"), 900_000);
   assert.equal(windowMs("3h"), 10_800_000);
   assert.equal(windowMs("nonsense" as never), 3_600_000, "an unknown window falls back to an hour");
-  assert.equal(DETECTION_CAP, 500);
+  assert.equal(DETECTION_CAP, 800);
+});
+
+test("focused map samples prioritise nearest detections before viewport rows", () => {
+  const site = { latitude: 1.3, longitude: 103.8 };
+  const at = (latitude: number, published_at: number) => ({
+    occurred_at: published_at,
+    published_at,
+    latitude,
+    longitude: 103.8,
+    detection_type: "G" as const,
+  });
+  const far = at(1.4, 3000);
+  const near = at(1.301, 1000);
+  const middle = at(1.32, 2000);
+  const result = prioritiseDetections([far], [middle, near], site, 2);
+  assert.deepEqual(result, [near, middle]);
+  assert.deepEqual(prioritiseDetections([far], [], site, 2), [far]);
+  assert.deepEqual(prioritiseDetections([far], [far, near], site, 2), [near, far]);
 });
 
 test("screenPoint puts the centre in the middle and orients north-up, east-right", () => {

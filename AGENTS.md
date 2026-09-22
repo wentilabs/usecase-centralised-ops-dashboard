@@ -1067,6 +1067,10 @@ untrue to a client:
   layer follows the viewport and is capped, so counting hits from it would give a
   number that changes when you pan. `evidenceFor` reads a separate, tight box
   around the focused project.
+- **A focused view prioritises nearby rows within the display cap.** The viewport
+  total remains authoritative, while a second tight-box query is merged ahead of
+  the newest viewport rows and sorted by distance to the selected site. This keeps
+  the capped sample useful for explaining why an alert did or did not fire.
 - **That query asks only for the types a tier counts.** A storm is
   overwhelmingly intra-cloud: filtering to `G` took one site's worst hour from
   2,130 rows to 15. This is what keeps the evidence query under the cap, and the
@@ -1261,8 +1265,10 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
 
 14. A truncated evidence query is a **false** all-clear, not a
    hedged one. The lightning map once reported "no qualifying strike" for a
-   window that contained a ground strike 1.8 km inside a 3 km ring: the 500 most
-   recently published detections in the box did not reach back far enough.
+   window that contained a ground strike 1.8 km inside a 3 km ring: the most
+   recently published detections in the box did not reach back far enough. The
+   display sample may now prioritise near-site candidates, but the separate
+   evidence query remains the source of truth for the alert decision.
    PostgREST also caps any result at 1000 rows and returns 1000 for a larger
    request without complaining, so raising `limit` is not a fix. The fixes are
    the type filter and a tight box; if the cap is still hit, the UI refuses to

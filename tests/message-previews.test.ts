@@ -220,10 +220,17 @@ test("WBGT short crossing previews use boundary-safe wording", () => {
  * thing these previews exist to avoid.
  */
 const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
-  // Empty, and worth keeping that way: an entry here is a formatter whose real
-  // message nobody can produce. `wbgt:hourly_message_formatter` sat here until
-  // the service implemented it, at which point "a recorded gap is a real gap"
-  // failed until the note came out.
+  /**
+   * The only entry, and it is a different kind of thing from the rest.
+   *
+   * Every other `_format` column picks how an OUTBOUND message is written, so
+   * a preview shows what the site will receive. This one declares the shape of
+   * the INBOUND SMS the gateway sends us — it changes what the service can
+   * parse, not what it writes. The forwarded message is the SMS's own text, so
+   * the only honest preview would be a sample of someone else's message.
+   */
+  "lightning:sms_lightning_format":
+    "Declares the inbound SMS format the service parses, not an outbound message it writes.",
 };
 
 test("every formatter field in the spec has a preview, or a recorded reason", () => {

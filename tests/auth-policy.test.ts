@@ -410,8 +410,34 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   // `default` is a real value, not an absence — shown, but not lit up.
   assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
 
+  // Amber as well as red since `5932bce`, and the column name still says red.
   const ltg = pillsFor("lightning", { enable_red_band_poc_mentions: true });
-  assert.ok(ltg.some((p) => p.label === "🔴 POC mentions" && p.on));
+  assert.ok(ltg.some((p) => p.label === "🔴🟠 POC mentions" && p.on));
+  // A fixed list of numbers is the ordinary case, so it lights nothing extra.
+  assert.ok(ltg.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+
+  // WHO gets tagged is a separate question from whether anyone is: "whoever is
+  // on site today" and a fixed list behave very differently on a Monday.
+  const sheetPocs = pillsFor("lightning", {
+    enable_red_band_poc_mentions: true,
+    poc_phone_numbers: "manpower-sheet",
+  });
+  assert.ok(sheetPocs.some((p) => p.label === "POCs from manpower sheet" && p.on));
+  // The switch has to be on for it to mean anything.
+  assert.ok(
+    !pillsFor("lightning", { poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+  );
+
+  // Only a declared format understands the gateway's All-Clear, so a project
+  // without one never hears the alert lift.
+  assert.ok(pillsFor("lightning", {}).some((p) => p.label === "TRI SMS format" && !p.on));
+  assert.ok(
+    pillsFor("lightning", { sms_lightning_format: "TRI-style" }).some(
+      (p) => p.label === "TRI SMS format" && p.on,
+    ),
+  );
 
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
   // Subcon has no outbound surface at all now, so there is no such pill to show.
@@ -595,6 +621,20 @@ test("the retired lightning policy_note stays hidden while the column exists", (
   });
   assert.equal(spec.fields.policy_note?.hidden, true);
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
+});
+
+test("the SMS source format is a choice, not a box to type a typo into", () => {
+  // `lightning_sms_lightning_format_check` accepts exactly one value or null.
+  // Without the options the column renders as free text, and the operator
+  // finds that out from a rejected save instead of from the dropdown.
+  const spec = buildFieldSpec("lightning", {
+    sms_lightning_format: { type: "string", format: "text", enum: null, default: null },
+  });
+  assert.deepEqual(spec.fields.sms_lightning_format?.options, ["TRI-style"]);
+  assert.equal(spec.fields.sms_lightning_format?.widget, "select");
+  // The select renders "— not set —" as null, which is the legacy behaviour —
+  // so the one value must NOT be the column's default.
+  assert.equal(spec.fields.sms_lightning_format?.default, null);
 });
 
 // ---------------------------------------------------------------------------

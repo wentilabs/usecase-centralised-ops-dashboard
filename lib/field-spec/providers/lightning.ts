@@ -8,6 +8,9 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     red_detection_types: ["G", "C"],
     amber_detection_types: ["G", "C"],
+    // lightning_sms_lightning_format_check: null, or this one value. The
+    // select renders "— not set —" as null, which is the legacy behaviour.
+    sms_lightning_format: ["TRI-style"],
   },
   fields: {
     company: {
@@ -73,6 +76,11 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       help: "Controls signed SMS Gateway thunderstorm alerts only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
       row: "sms",
     },
+    sms_lightning_format: {
+      label: "SMS source format",
+      help: "Leave unset for the legacy alert-only forwarding. TRI-style also recognises that gateway's All-Clear message, so the site is told when the alert lifts rather than left waiting.",
+      row: "sms",
+    },
     sms_whatsapp_group_id: {
       label: "SMS destination",
       widget: "groups",
@@ -87,21 +95,28 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
 
     enable_red_band_poc_mentions: {
-      label: "🔴 Red POC mentions",
+      // Red-only until `5932bce`; the column name still says so and is not
+      // worth a migration to rename.
+      label: "🔴🟠 POC mentions",
       // Postgres rejects the save outright if either list is blank, so say so
       // rather than letting the editor surface a raw constraint error.
-      help: "RED alerts only. Postgres requires BOTH lists below to be non-empty before this can be turned on — fill them in the same save.",
+      help: "Tags the POCs on AMBER as well as RED and STOP alerts. Postgres requires BOTH lists below to be non-empty before this can be turned on — fill them in the same save.",
     },
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
-      help: "Comma-separated international numbers, e.g. 6591234567. Required when red mentions are on.",
+      help: "Comma-separated international numbers, e.g. 6591234567. Or the exact word `manpower-sheet` to tag whoever is on that day's Manpower tab instead of a fixed list — then fill in the Manpower sheet below.",
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
+    },
+    manpower_sheet_id: {
+      label: "Manpower sheet",
+      help: "Only read when POC phone numbers is exactly `manpower-sheet`. The service keeps its own copy of the workbook ID; it was seeded once from this project's Manpower workbook in Common Resources and does not follow it afterwards.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
       widget: "groups",
-      help: "Which of the groups above may carry RED mentions. Required when red mentions are on.",
+      help: "Which of the groups above may carry mentions. Blank fails closed to no mentions at all, and it is required when mentions are on.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
 
@@ -134,10 +149,10 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       ],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
-    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_whatsapp_group_id"] },
+    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_lightning_format", "sms_whatsapp_group_id"] },
     {
       title: "POC escalation",
-      fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"],
+      fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers", "manpower_sheet_id"],
     },
   ],
 };

@@ -57,6 +57,39 @@ test("the red-mentions rule names the empty list, not the constraint", () => {
     [],
   );
   assert.deepEqual(rowProblems("lightning", { enable_red_band_poc_mentions: false }, label), []);
+
+  // `manpower-sheet` is stored IN the phone-numbers column as that literal
+  // word, so it is non-blank and satisfies the same constraint unchanged.
+  // That is why `1956176` needed no migration to the CHECK.
+  assert.deepEqual(
+    rowProblems(
+      "lightning",
+      { enable_red_band_poc_mentions: true, poc_phone_numbers: "manpower-sheet", poc_alert_wa_groups: "g" },
+      label,
+    ),
+    [],
+  );
+});
+
+test("the SMS source format is TRI-style or unset, and nothing else", () => {
+  const label = (column: string) => column;
+
+  // Unset is the legacy alert-only forwarding, and is the common case.
+  assert.deepEqual(rowProblems("lightning", {}, label), []);
+  assert.deepEqual(rowProblems("lightning", { sms_lightning_format: null }, label), []);
+  assert.deepEqual(rowProblems("lightning", { sms_lightning_format: "   " }, label), []);
+  assert.deepEqual(rowProblems("lightning", { sms_lightning_format: "TRI-style" }, label), []);
+
+  // Anything else is refused by lightning_sms_lightning_format_check, so it is
+  // refused here first — with the offending value quoted, since a typo is the
+  // way this goes wrong.
+  const [problem] = rowProblems("lightning", { sms_lightning_format: "TRI" }, label);
+  assert.ok(problem, "a value the database would reject must be caught before the round trip");
+  assert.equal(problem.constraint, "lightning_sms_lightning_format_check");
+  assert.match(problem.message, /must be TRI-style/);
+  assert.match(problem.message, /“TRI”/);
+  // Case matters to Postgres, so it has to matter here.
+  assert.equal(rowProblems("lightning", { sms_lightning_format: "tri-style" }, label).length, 1);
 });
 
 test("whitespace is not content — a list of spaces is still empty", () => {

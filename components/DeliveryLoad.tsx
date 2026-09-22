@@ -276,7 +276,9 @@ export function DeliveryLoad({
             A solid bar is a send that happens whatever the readings say. A faded one is the worst case for that hour
             if every condition fires at once — capacity, not a forecast. Hours come from the live EventBridge rules,
             so a cadence configured for an hour its rule never runs in is listed as never sending rather than drawn.
-            Weekly rules and Sunday and public-holiday mutes are left out, so this describes an ordinary working day.
+            Weekly rules, on-demand routes and Sunday and public-holiday mutes are left out, so this describes an
+            ordinary working day. Rules that post nothing to a group — scrapes, sheet fills, retries and ingestion
+            — are not counted either: they cost Lambda time, but this counts messages.
           </p>
         </div>
       </div>

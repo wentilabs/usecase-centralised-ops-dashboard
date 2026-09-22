@@ -453,6 +453,17 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
     ),
   );
 
+  // Enabled means "allowed to run", not "running" — nothing schedules it.
+  assert.ok(
+    pillsFor("issueChaser", { company_open_backlog_enabled: true }).some(
+      (p) => p.label === "company backlog (on demand)" && p.on,
+    ),
+  );
+  assert.ok(
+    !pillsFor("issueChaser", {}).some((p) => p.label.startsWith("company backlog")),
+    "an unlit capability is not worth a pill",
+  );
+
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
   // Subcon has no outbound surface at all now, so there is no such pill to show.
   assert.ok(!subconPills.some((p) => p.label === "outbound WhatsApp"), "superseded by the named routes");
@@ -624,6 +635,57 @@ test("chat ids are collected across every service's columns", () => {
   // Direct chats and phone numbers are not groups and must not be looked up.
   assert.deepEqual(chatIdsIn([{ whatsapp_group_id: "6591234567@c.us, 123@lid, ok@g.us" }]), ["ok@g.us"]);
   assert.deepEqual(chatIdsIn([{}]), []);
+});
+
+
+test("the card says when a chaser summary is set for an hour it can never run in", () => {
+  // The chat-group summary's rule runs once a day at 08:00 SGT while the other
+  // two run hourly, so an hour the column names is not necessarily an hour the
+  // report goes out in. The card has to say so: otherwise a project reads as
+  // scheduled for 16:00 and sends nothing, and nothing on the screen disagrees.
+  const chaserBase = {
+    enabled: true,
+    whatsapp_group_ids: "a@g.us",
+    daily_safety_summary_enabled: true,
+    daily_safety_summary_schedule: "0800,3",
+  };
+
+  const stranded = firesAt("issueChaser", {
+    ...chaserBase,
+    daily_safety_chatgroup_summary_enabled: true,
+    daily_safety_chatgroup_summary_schedule: "1600,3",
+  });
+  assert.match(stranded, /chat-group split is set for 16:00/);
+  assert.match(stranded, /only runs at 08:00, so that one never sends/);
+
+  // Configured for the hour it actually runs in: no warning at all.
+  assert.doesNotMatch(
+    firesAt("issueChaser", {
+      ...chaserBase,
+      daily_safety_chatgroup_summary_enabled: true,
+      daily_safety_chatgroup_summary_schedule: "0800,3",
+    }),
+    /never sends/,
+  );
+
+  // The other summaries are not second-guessed — their rule is hourly, so
+  // 16:00 is a perfectly good hour for them.
+  assert.doesNotMatch(
+    firesAt("issueChaser", { ...chaserBase, daily_safety_summary_schedule: "1600,3" }),
+    /never sends/,
+  );
+
+  // A switched-off report with a stale hour still in its column is not a
+  // warning: nothing is scheduled, so nothing is being missed. This is the
+  // ordinary state of a report somebody turned off without clearing it.
+  assert.doesNotMatch(
+    firesAt("issueChaser", {
+      ...chaserBase,
+      daily_safety_chatgroup_summary_enabled: false,
+      daily_safety_chatgroup_summary_schedule: "1600,3",
+    }),
+    /never sends/,
+  );
 });
 
 test("the retired lightning policy_note stays hidden while the column exists", () => {

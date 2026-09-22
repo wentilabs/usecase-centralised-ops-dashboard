@@ -398,7 +398,15 @@ exists elsewhere in that service, this over-counts by one send per project.
 
 A configured hour its rule never runs in is a silent misconfiguration: the
 project looks scheduled and sends nothing. Those are surfaced by name in the
-"not on the clock" list rather than left as a bar that is merely absent.
+"not on the clock" list rather than left as a bar that is merely absent, and
+the project card says so too — `firesAt` appends "its job only runs at 08:00,
+so that one never sends" rather than quietly listing an hour that cannot
+happen.
+
+`company_open_backlog_enabled` is the one Chaser style with no rule at all:
+nothing in the console invokes `/api/issue-chaser-company-open`, so enabled
+means "allowed to run" rather than "running". Its pill says `(on demand)` and
+it appears in the ambient list rather than on the chart.
 
 **When a rule changes in the console it must be changed here** — nothing
 detects that. The `utc` string is kept verbatim so the two can be compared by

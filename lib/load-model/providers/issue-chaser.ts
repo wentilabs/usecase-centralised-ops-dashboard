@@ -147,6 +147,20 @@ export const issueChaserLoadProvider: LoadProvider = {
       }
     }
 
+    if (config.company_open_backlog_enabled === true) {
+      // The only style with no rule at all: nothing in the console invokes
+      // `/api/issue-chaser-company-open`, so it contributes no hour. Still
+      // worth naming — it is a bounded batch per company group, and somebody
+      // running it puts real traffic on the estate at a time this cannot
+      // predict.
+      ambient.push({
+        service: "issueChaser",
+        projectCode,
+        reason: "Company open backlog — on demand only, and its destinations come from the request rather than the config",
+        groups: 0,
+      });
+    }
+
     return { occurrences, ambient };
   },
 };

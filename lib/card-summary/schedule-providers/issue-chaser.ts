@@ -1,6 +1,7 @@
 import type { ProjectConfigRow } from "../../services";
 import type { ScheduleProvider } from "../schedule-types";
 import { splitList } from "../groups";
+import { CRONS } from "../../load-model/crons";
 import { mutesSuffix, reportSchedule, severityWindow } from "../schedule-helpers";
 
 /** Service-owned card schedule and cadence semantics. */
@@ -87,6 +88,20 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
           const scheduled = lookbacks.length === 1 && lookbacks[0] !== null ? lookbacks[0] + 1 : null;
           const days = scheduled ?? Number(config.summary_days ?? 5);
           const span = Number.isFinite(days) && days > 0 ? days : 5;
+          /**
+           * An hour the chat-group summary names but never runs in.
+           *
+           * The other two summaries are invoked hourly, so any hour they name
+           * fires. This one's rule runs once a day at 08:00 SGT, and nothing
+           * about the column says so — a project can be configured carefully,
+           * read as scheduled on this card, and send nothing at all.
+           */
+          const chatgroupNever = config.daily_safety_chatgroup_summary_enabled
+            ? reportSchedule(config.daily_safety_chatgroup_summary_schedule).times.filter(
+                (time) => !CRONS.issueChaser.chatgroupSummary.hours.includes(Number(time.slice(0, 2))),
+              )
+            : [];
+
           clauses.push(
             `${summaries.join(" and ")}${times.length ? ` at ${times.join(" and ")}` : ""} over ${span} day${span === 1 ? "" : "s"}` +
               // Never the originating group, and since 807adfc not necessarily the
@@ -94,7 +109,10 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
               // the main list as the fallback.
               (String(config.safety_summary_whatsapp_group_ids ?? "").trim()
                 ? ", to the summary groups"
-                : ", to the configured groups"),
+                : ", to the configured groups") +
+              (chatgroupNever.length
+                ? ` — but the chat-group split is set for ${chatgroupNever.join(" and ")}, and its job only runs at 08:00, so that one never sends`
+                : ""),
           );
         }
     return `Reads the Safety workbook — ${clauses.join("; ")}${mutesSuffix(config, "nothing sent on")}`;

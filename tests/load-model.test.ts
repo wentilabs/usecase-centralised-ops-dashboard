@@ -556,3 +556,30 @@ test("Water Parade reminders run twice an hour, and only from 11:00 to 19:00", (
   // Two groups on a rule that fires at :30 and :56.
   assert.ok(load.occurrences.every((entry) => entry.sends === 4));
 });
+
+
+test("the on-demand company backlog is named, never drawn", () => {
+  const load = LOAD_PROVIDERS.issueChaser.forRow(
+    row({
+      project_code: "AST",
+      enabled: true,
+      whatsapp_group_ids: "a@g.us",
+      company_open_backlog_enabled: true,
+      send_to_originating_groups: false,
+    }),
+  );
+  // Nothing in the console invokes /api/issue-chaser-company-open, so it has
+  // no hour — but it is a real burst when somebody runs it.
+  assert.deepEqual(load.occurrences, []);
+  const note = load.ambient.find((entry) => /company open backlog/i.test(entry.reason));
+  assert.ok(note, "an enabled backlog must be named somewhere");
+  assert.match(note.reason, /on demand only/i);
+
+  // Off is silent — an unlit capability is not worth a line.
+  assert.equal(
+    LOAD_PROVIDERS.issueChaser.forRow(
+      row({ project_code: "AST", enabled: true, whatsapp_group_ids: "a@g.us", send_to_originating_groups: false }),
+    ).ambient.some((entry) => /company open backlog/i.test(entry.reason)),
+    false,
+  );
+});

@@ -730,7 +730,7 @@ export function DashboardShell({
       ) : null}
 
       {job ? (
-        <JobDialog job={job} rows={rows[job.service] ?? []} onClose={() => setJob(null)} />
+        <JobDialog job={job} rows={rows[job.service] ?? []} groupNames={groupNames} onClose={() => setJob(null)} />
       ) : null}
 
       {exporter ? (

@@ -85,6 +85,48 @@ export function summariseJobResult(result: unknown): string {
   return errors.length ? `${summary} — ${[...new Set(errors)].join("; ")}` : summary;
 }
 
+/** One message a preview says it would post, and where. */
+export type PreviewMessage = { chatId: string; kind: string; message: string };
+
+/**
+ * The messages inside a preview's response, wherever the service put them.
+ *
+ * The two Issue Chaser previews disagree on the key: a chase run pushes
+ * `results: [{ chatId, kind, message }]` and a summary run pushes
+ * `send_results: [{ chatId, sent: false, message }]`. Rather than encode both,
+ * this looks for the shape — any object carrying a string `message` — so a
+ * third preview shipping a third key still renders.
+ *
+ * An empty list is a real answer and not a failure: a report with nothing to
+ * say sends nothing, which is exactly what a preview should show.
+ */
+export function previewMessages(result: unknown, limit = 40): PreviewMessage[] {
+  const found: PreviewMessage[] = [];
+
+  const walk = (node: unknown, depth: number): void => {
+    if (found.length >= limit || !node || typeof node !== "object" || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      found.push({
+        chatId: typeof record.chatId === "string" ? record.chatId : "",
+        // `kind` is only present on a chase run. A summary entry is one report
+        // for one group, so that is what it is called when the key is absent.
+        kind: typeof record.kind === "string" ? record.kind : "summary",
+        message: record.message,
+      });
+      return;
+    }
+    for (const value of Object.values(record)) walk(value, depth + 1);
+  };
+
+  walk(result, 0);
+  return found;
+}
+
 /** Count fields worth reporting, and what to call them in one line. */
 const COUNT_KEYS: Record<string, string> = {
   configs_processed: "projects",

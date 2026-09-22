@@ -4,6 +4,11 @@ import { JOBS, JOB_KEYS } from "./jobs";
 /** Jobs whose endpoint takes no date range, named so the contract cannot drift. */
 const DATELESS_JOB_KEYS = JOB_KEYS.filter((key) => JOBS[key].dateless);
 
+/** Jobs that take a `choice`, and the option values each accepts. */
+const JOB_CHOICES = JOB_KEYS.filter((key) => JOBS[key].choice).map(
+  (key) => `\`${key}\`: ${JOBS[key].choice!.options.map((option) => `\`${option.value}\``).join(" | ")}`,
+);
+
 /**
  * The OpenAPI description of HALO's API, and the single source of truth for it.
  *
@@ -700,6 +705,10 @@ export const openapiDocument = {
           `Most jobs need \`startDate\` and \`endDate\`. These act on current state and take neither: ${DATELESS_JOB_KEYS.map(
             (key) => `\`${key}\``,
           ).join(", ")}. Sending dates to one of those is ignored.`,
+          "",
+          `Some jobs do more than one thing and take a \`choice\`. Omitted, the first option is used: ${JOB_CHOICES.join(
+            "; ",
+          )}.`,
         ].join("\n"),
         parameters: [{ name: "job", in: "path", required: true, schema: { type: "string", enum: [...JOB_KEYS] } }],
         requestBody: {
@@ -712,7 +721,8 @@ export const openapiDocument = {
                   projectCode: { type: "string" },
                   startDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
                   endDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
-                  flags: { type: "object", additionalProperties: { type: "boolean" }, description: "Only flags the job declares are forwarded." },
+                  choice: { type: "string", description: "For a job that declares one — see the list above. Omitted means its first option." },
+                  flags: { type: "object", additionalProperties: { type: "boolean" }, description: "Only flags the job declares are forwarded, and only when true. A job that previews unless told otherwise names its flag; `apply` is that flag on every job that has one." },
                 },
                 // Only the project code holds for every job; the route rejects a
                 // ranged job that arrives without dates, naming which is missing.

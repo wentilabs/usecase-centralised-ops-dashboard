@@ -272,6 +272,42 @@ of them reports success while doing nothing when it is unmet:
 scrape), so the range is refused before the round trip. Declared `flags` are
 allow-listed in the route — an undeclared flag is dropped rather than forwarded.
 
+Four more Chaser actions sit beside it, all gated on `safety_sheet_id`:
+`chaser-project-check` reports what the service can see in the workbook,
+`chaser-preview` builds either chase style's messages without delivering,
+`chaser-summary-preview` builds one of the four scheduled reports the same way,
+and `chaser-novade-sync` rewrites the PIC column from the Novade Name List tab.
+
+`appliesWhen` names the flag a job needs before it acts; without it ticked the
+job previews. The flag is phrased as the destructive act (`apply`) and never as
+`dryRun`, because the route forwards only flags that are `true` — an unticked
+`dryRun` arrives as absent, indistinguishable from never offered, and the job
+would write. Positive phrasing makes the absent case safe by construction, and
+the dialog states which mode the run is in rather than leaving it to be inferred
+from a checkbox.
+
+`chaser-summary-preview` sends `scheduled: false`. Omitted, it defaults to TRUE
+on those routes and the run only fires when the project-local hour matches its
+configured schedule, so a preview asked for at the wrong time comes back skipped
+and reads as a broken configuration.
+
+`choice` is one select among several options; `path` may be a map keyed by its
+values when the options are separate endpoints. `jobPaths` derives the full set
+from that map, and the contract test checks every one — a job's least-clicked
+option is the one most likely to be renamed upstream unnoticed.
+
+`resultView` decides how the answer renders: `counts` for a job that writes,
+`messages` for a preview (its output IS the message text), `json` for a
+diagnostic whose fields are the answer.
+
+**Not wired, deliberately.** `/api/issue-chaser-company-open` is registered in
+the service's `routes.js` but missing from its `contracts/service.contract.json`,
+so the contract test would reject a job pointing at it; it also needs a
+company→group mapping HALO does not model. `/api/issue-chaser-operator-preview`
+and `-send` are a two-step build-then-send pair around a stored expiring run,
+which does not fit a single dialog, and `-send` is the one operator route that
+delivers to real groups.
+
 `dateless: true` marks a job whose endpoint takes no range at all — the dialog
 drops the two date fields and `validateJobInput` stops asking for them. The
 default is the other way round, so a ranged job that forgets the flag demands

@@ -889,7 +889,9 @@ paths:
         The precondition is re-checked server-side, because every one of these jobs reports success while
         doing nothing when it is unmet.
 
-        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `chaser-refresh-images`. Sending dates to one of those is ignored.
+        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `chaser-refresh-images`, `chaser-project-check`, `chaser-preview`, `chaser-summary-preview`, `chaser-novade-sync`. Sending dates to one of those is ignored.
+
+        Some jobs do more than one thing and take a `choice`. Omitted, the first option is used: `chaser-preview`: `severity_cadence` | `same_day_open`; `chaser-summary-preview`: `plain` | `company` | `chatgroup` | `novade`.
       parameters:
         - name: job
           in: path
@@ -903,6 +905,10 @@ paths:
               - wbgt-scrape
               - wbgt-water-parade
               - chaser-refresh-images
+              - chaser-project-check
+              - chaser-preview
+              - chaser-summary-preview
+              - chaser-novade-sync
       requestBody:
         required: true
         content:
@@ -920,11 +926,14 @@ paths:
                   type: string
                   format: date
                   description: YYYY-MM-DD, inclusive. Required except on a job listed as dateless above.
+                choice:
+                  type: string
+                  description: For a job that declares one — see the list above. Omitted means its first option.
                 flags:
                   type: object
                   additionalProperties:
                     type: boolean
-                  description: Only flags the job declares are forwarded.
+                  description: Only flags the job declares are forwarded, and only when true. A job that previews unless told otherwise names its flag; `apply` is that flag on every job that has one.
               required:
                 - projectCode
       responses:

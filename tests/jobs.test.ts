@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EXPORTS, JOBS, JOB_KEYS, isExportKey, jobTargets, validateJobInput } from "../lib/jobs";
+import {
+  EXPORTS,
+  JOBS,
+  JOB_KEYS,
+  defaultChoice,
+  isExportKey,
+  jobPath,
+  jobPaths,
+  jobTargets,
+  validateJobInput,
+} from "../lib/jobs";
 import { SERVICE_CONTRACTS } from "../lib/service-contracts";
-import { summariseJobResult } from "../lib/read-json";
+import { previewMessages, summariseJobResult } from "../lib/read-json";
 import type { ProjectConfigRow } from "../lib/services";
 
 /**
@@ -15,7 +25,12 @@ import type { ProjectConfigRow } from "../lib/services";
  */
 test("every job and export posts to a route its service's pinned contract declares", () => {
   const targets = [
-    ...JOB_KEYS.map((key) => ({ key: key as string, service: JOBS[key].service, path: JOBS[key].path })),
+    // Every path, not just the primary one: a job with a `choice` reaches
+    // several, and the one most likely to be renamed upstream is the one
+    // nobody clicks.
+    ...JOB_KEYS.flatMap((key) =>
+      jobPaths(JOBS[key]).map((path) => ({ key: key as string, service: JOBS[key].service, path })),
+    ),
     ...Object.keys(EXPORTS)
       .filter(isExportKey)
       .map((key) => ({ key: key as string, service: EXPORTS[key].service, path: EXPORTS[key].path })),
@@ -91,20 +106,22 @@ test("a dateless job ignores any range it is handed, and is never chunked", () =
   }
 });
 
-test("the refresh payload is snake_case and carries dryRun only when asked", () => {
+test("the refresh payload is snake_case, and previews unless apply is ticked", () => {
   const job = JOBS["chaser-refresh-images"];
+  // Nothing ticked is the case that actually happens — the route forwards only
+  // flags that are true — so it has to be the preview.
   assert.deepEqual(job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "" }), {
     project_code: "IR2",
+    dryRun: true,
   });
   assert.deepEqual(
-    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { dryRun: true } }),
-    { project_code: "IR2", dryRun: true },
+    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { apply: true } }),
+    { project_code: "IR2", dryRun: false },
   );
-  // A false flag is absence, not `dryRun: false` — the handler treats only
-  // `=== true` as a preview, so sending the key at all is misleading.
+  // An explicitly false flag is the same as absent, not the same as ticked.
   assert.deepEqual(
-    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { dryRun: false } }),
-    { project_code: "IR2" },
+    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { apply: false } }),
+    { project_code: "IR2", dryRun: true },
   );
 });
 
@@ -175,4 +192,136 @@ test("a clean refresh says what it did without inventing a failure", () => {
   assert.match(line, /12 eligible/);
   assert.doesNotMatch(line, /failed/);
   assert.doesNotMatch(line, /0 updated/);
+});
+
+
+test("a job with several endpoints resolves the one its choice names", () => {
+  const job = JOBS["chaser-summary-preview"];
+  assert.equal(defaultChoice(job), "plain");
+  assert.equal(jobPath(job, "plain"), "/api/past-days-safety-summary");
+  assert.equal(jobPath(job, "company"), "/api/past-days-company-safety-summary");
+  assert.equal(jobPath(job, "chatgroup"), "/api/past-days-chatgroup-safety-summary");
+  assert.equal(jobPath(job, "novade"), "/api/remind-write-novade-names");
+  // A chat-planned run carries no choice, and an option that no longer exists
+  // must not resolve to whatever Object.values happens to yield first.
+  assert.equal(jobPath(job, undefined), "/api/past-days-safety-summary");
+  assert.equal(jobPath(job, "invented"), "/api/past-days-safety-summary");
+  // Four options, four distinct endpoints — a duplicate would mean two labels
+  // quietly doing the same thing.
+  assert.equal(jobPaths(job).length, job.choice?.options.length);
+});
+
+test("a choice the job does not declare is refused rather than defaulted", () => {
+  const ready = "1AbC…";
+  assert.deepEqual(validateJobInput({ projectCode: "IR2", choice: "plain" }, { job: JOBS["chaser-summary-preview"], ready }), []);
+  const problems = validateJobInput({ projectCode: "IR2", choice: "weekly" }, { job: JOBS["chaser-summary-preview"], ready });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /weekly is not one of report/);
+  // A job with no choice ignores one entirely — the route drops it.
+  assert.deepEqual(validateJobInput({ projectCode: "IR2", choice: "weekly" }, { job: JOBS["chaser-project-check"], ready }), []);
+});
+
+test("every Issue Chaser job that can change something previews by default", () => {
+  const chaser = JOB_KEYS.filter((key) => JOBS[key].service === "issueChaser");
+  assert.ok(chaser.length >= 4, "the Chaser jobs went away — this check would then assert nothing");
+
+  for (const key of chaser) {
+    const job = JOBS[key];
+    const payload = job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", choice: defaultChoice(job) });
+
+    if (job.appliesWhen) {
+      // Unticked must mean dry run. The route forwards only flags that are
+      // true, so an absent flag is the case that actually happens.
+      assert.equal(payload.dryRun, true, `${key} writes when its flag is absent`);
+      assert.equal(
+        job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { [job.appliesWhen]: true } }).dryRun,
+        false,
+        `${key} still previews when ${job.appliesWhen} is ticked`,
+      );
+      assert.ok(
+        job.flags?.some((flag) => flag.key === job.appliesWhen),
+        `${key} names ${job.appliesWhen} but does not offer it as a flag`,
+      );
+    } else {
+      // No apply flag means the job cannot act at all, so it must pin dryRun
+      // itself or be a pure read.
+      assert.ok(
+        payload.dryRun === true || job.resultView === "json" || job.path === "/api/issue-chaser-project-check",
+        `${key} neither previews nor declares how it is allowed to act`,
+      );
+    }
+  }
+});
+
+test("a preview's messages are found under either key the service uses", () => {
+  // A chase run: results[].results[] with a kind.
+  const chase = {
+    results: [
+      {
+        project_code: "IR2",
+        results: [
+          { chatId: "1@g.us", kind: "issue", message: "SN 12 is still open", sent: false },
+          { chatId: "2@g.us", kind: "summary", message: "3 open today", sent: false },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(previewMessages(chase), [
+    { chatId: "1@g.us", kind: "issue", message: "SN 12 is still open" },
+    { chatId: "2@g.us", kind: "summary", message: "3 open today" },
+  ]);
+
+  // A summary run: results[].send_results[], with no kind at all.
+  const summary = {
+    results: [{ project_code: "IR2", send_results: [{ chatId: "9@g.us", sent: false, message: "5 days, 12 open" }] }],
+  };
+  assert.deepEqual(previewMessages(summary), [{ chatId: "9@g.us", kind: "summary", message: "5 days, 12 open" }]);
+
+  // A report with nothing to say sends nothing, which is not a failure.
+  assert.deepEqual(previewMessages({ results: [{ project_code: "IR2", send_results: [] }] }), []);
+  // A blank message is absence, not a message.
+  assert.deepEqual(previewMessages({ results: [{ chatId: "1@g.us", message: "   " }] }), []);
+});
+
+
+test("the chase preview sends the style it was asked for, and cannot deliver", () => {
+  const job = JOBS["chaser-preview"];
+  // The style is the whole point of this job: it is the one Chaser route that
+  // reads `style` from the body rather than hard-coding its own.
+  assert.deepEqual(job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", choice: "same_day_open" }), {
+    project_code: "IR2",
+    style: "same_day_open",
+    dryRun: true,
+  });
+  assert.equal(
+    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", choice: "severity_cadence" }).style,
+    "severity_cadence",
+  );
+  // No flag can turn this into a send — there is nothing to tick.
+  assert.equal(job.appliesWhen, undefined);
+  assert.equal(job.flags, undefined);
+});
+
+test("the summary preview asks for an immediate build, not a scheduled one", () => {
+  const job = JOBS["chaser-summary-preview"];
+  const payload = job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", choice: "plain" });
+
+  // `scheduled` defaults to TRUE on these routes, and a scheduled run only
+  // fires when the project's local hour matches its configured schedule. Omit
+  // this and a preview asked for at 14:00 against an 08:00 report comes back
+  // skipped, which reads as a broken configuration rather than as the wrong
+  // question. It is the single most load-bearing key in this payload.
+  assert.equal(payload.scheduled, false);
+  assert.equal(payload.dryRun, true);
+  assert.deepEqual(payload, { project_code: "IR2", scheduled: false, dryRun: true });
+
+  // Same payload whichever report is chosen — only the endpoint changes.
+  for (const option of job.choice!.options) {
+    assert.deepEqual(
+      job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", choice: option.value }),
+      payload,
+      `${option.value} builds a different body from the others`,
+    );
+  }
+  assert.equal(job.appliesWhen, undefined, "a summary preview must offer no way to send");
 });

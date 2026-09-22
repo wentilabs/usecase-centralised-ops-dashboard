@@ -161,9 +161,10 @@ test("multiple routes are stacked, not joined into one wrapping line", async () 
 });
 
 test("the all-clear mention switch is hidden until warnings are on", async () => {
-  // On its own it changes nothing anyone would want: `shouldMentionPocs` gates
-  // it on the POC phone list, and the CHECK only demands that list when the
-  // WARNING flag is on — so with warnings off there is nobody to tag.
+  // Since lightning's `40db522` the warning flag is the master switch and this
+  // one only narrows it, so with warnings off this control does nothing at
+  // all. Hiding it is the UI agreeing with the service rather than
+  // second-guessing it.
   const spec = buildFieldSpec("lightning", {
     enable_red_band_poc_mentions: { type: "boolean", format: "boolean", enum: null, default: null },
     enable_green_band_poc_mentions: { type: "boolean", format: "boolean", enum: null, default: null },

@@ -113,22 +113,22 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     enable_green_band_poc_mentions: {
       label: "✅ All-clear POC mentions",
       /**
-       * Hidden until the warning switch is on, because on its own it changes
-       * nothing anyone would want.
+       * Hidden until the warning switch is on, because it now does nothing
+       * without it.
        *
-       * `shouldMentionPocs` gates it on the POC phone list rather than on the
-       * warning flag, and the CHECK only demands that list when the WARNING
-       * flag is on — so with warnings off the list is normally blank and this
-       * has nobody to tag. The one configuration this hides is warnings-off
-       * with the lists filled in anyway, which would mention people on the
-       * all-clear and never on the stop that preceded it.
+       * `shouldMentionPocs` used to read the two flags independently, so
+       * warnings-off with green-on was reachable and would mention people on
+       * the all-clear and never on the stop that preceded it. `40db522` in the
+       * lightning repo made the warning flag the master switch and left green
+       * to narrow it, so hiding this one is now the UI agreeing with the
+       * service rather than second-guessing it.
        *
        * It defaults to TRUE in Postgres, the opposite of every other flag
        * here, so it is ON for a row nobody has touched — which is why it says
        * so rather than leaving that to be discovered.
        */
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
-      help: "Tags the same POCs on the all-clear, including TRI-style SMS all-clears. On by default, so leaving it alone keeps the existing behaviour; turn it off for a site that wants to be told when to stop but not when to resume.",
+      help: "Narrows the switch above rather than acting on its own: while warnings tag the POCs, this decides whether the all-clear does too, including TRI-style SMS all-clears. On by default, so leaving it alone keeps the existing behaviour; turn it off for a site that wants to be told when to stop but not when to resume.",
     },
     poc_phone_numbers: {
       label: "POC phone numbers",

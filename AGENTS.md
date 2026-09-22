@@ -490,6 +490,12 @@ to TRUE. Its pill is therefore inverted: shown only when somebody has turned
 it OFF, because an unlit pill on every project is noise while "this site is
 told to stop but not to resume" is worth seeing.
 
+It is also hidden until `enable_red_band_poc_mentions` is on. That used to be
+a UI judgement about a control that was legal but pointless; since lightning's
+`40db522` the warning flag is the master switch and this one only narrows it,
+so the field genuinely does nothing on its own and the UI is agreeing with the
+service rather than second-guessing it.
+
 ## Group names (the alias store)
 
 `ops.whatsapp_group_names` maps chat id → group name. Two paths fill it, and the

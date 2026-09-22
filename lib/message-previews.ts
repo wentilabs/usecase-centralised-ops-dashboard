@@ -18,6 +18,15 @@ import { NOISE_PREVIEWS } from "./message-previews.generated";
  *    (`buildFiveMinAlertMessage`, `buildHazeMessage`) and pasting the output. Their
  *    docs are organised by reading band rather than by formatter value, so there was
  *    no per-formatter section to lift.
+ *  - **lightning** — the alert bodies are lifted from that repo's own
+ *    `MESSAGE_SHAPES.md`, whose fenced blocks are `renderAlert` output against a real
+ *    derived state. The two SMS relay bodies are the only composed ones: the inbound
+ *    forms come from the same document and the wrapper around them is transcribed from
+ *    `legacySmsMessage` / `triStyleSmsMessage` in `usecases/lightning/sms.js`.
+ *
+ * Lightning also shows that a preview column need not be a formatter. `amber_enabled`
+ * and `sms_lightning_format` are a toggle and a source declaration, and both decide
+ * which message a site receives — which is the only thing this file is about.
  *
  * Regenerate the noise half with `node scripts/build-message-previews.mjs`.
  */
@@ -310,7 +319,150 @@ _Reading from NEA (West) 22 Aug 2026 15:19 SGT_`,
   },
 ];
 
-export const MESSAGE_PREVIEWS: FormatterPreview[] = [...NOISE_PREVIEWS, ...WBGT_PREVIEWS, ...HAZE_PREVIEWS];
+
+/**
+ * Lightning's worker-facing alerts, lifted verbatim from that repo's
+ * `MESSAGE_SHAPES.md`. Its fenced blocks are `renderAlert` output against a
+ * real derived state — site ZRA, red ring 8 km ground-only, amber 12 km, both
+ * dwells 20 minutes — so these are the real thing rather than a paraphrase.
+ */
+const LIGHTNING_RED = `🌩🔴 STOP WORK NOW 🔴🌩
+📍 ZRA — V on Shenton
+_⚙️ Source: NEA lightning detection_
+
+🌩 Lightning is 3.5 km from site.
+
+DO THIS NOW:
+-Stop all outdoor work
+-Go inside a building or a vehicle
+-Keep away from cranes, scaffolding, metal and water
+-Wait for the green SAFE TO RESUME WORK message
+
+━━━━━━━━━━━━━━━
+Ground strike detected at 3.5 km from site at 3:39 PM
+This site stops work when lightning comes within 8.0 km.
+Rule: work resumes 20 min after the last lightning within 8.0 km.
+If you SEE lightning or HEAR thunder, take shelter straight away — even if you get no message from us.`;
+
+const LIGHTNING_ALL_CLEAR = `🌩️🟢 *SAFE TO RESUME WORK* 🟢🌩️
+📍 ZRA — V on Shenton
+_⚙️ Source: NEA lightning detection_
+
+No lightning near the site for the last 20 min.
+You can start outdoor work again.
+
+━━━━━━━━━━━━━━━
+Rule: work resumes 20 min after the last lightning within 8.0 km.
+If you SEE lightning or HEAR thunder, take shelter straight away — even if you get no message from us.
+Last lightning: Ground strike detected at 3.5 km from site at 3:39 PM`;
+
+const LIGHTNING_AMBER = `🌩️🟠 *GET READY TO SEEK LIGHTNING PROTECTED SHELTER* 🟠🌩️
+📍 ZRA — V on Shenton
+_⚙️ Source: NEA lightning detection_
+
+🌩️ Lightning is *10.5 km from site* and may come closer.
+
+*DO THIS NOW:*
+-Secure loose materials and tools
+-Make sure your team knows where the shelter is
+-Be ready to stop work quickly
+
+Work can continue for now. We will send a red message if you must stop.
+
+━━━━━━━━━━━━━━━
+Cloud lightning, 10.5 km from site, 3:37 PM, 25 Aug
+This site gives a warning when lightning comes within 12.0 km.`;
+
+/**
+ * The SMS relay is the one place where a HALO column changes the forwarded
+ * text, so these two are composed rather than copied: the inbound SMS forms
+ * are the ones `MESSAGE_SHAPES.md` documents, and the wrapper around them is
+ * `legacySmsMessage` / `triStyleSmsMessage` in `usecases/lightning/sms.js`,
+ * transcribed literally. Nothing here is written from memory.
+ */
+const LIGHTNING_SMS_LEGACY = `🚨⚡️ TRITON LIGHTNING ALERT SMS Thunderstorm/Lightning detected at TROTO
+time: 04/09/26 05:45:54`;
+
+const LIGHTNING_SMS_TRI_ALERT = `🚨⚡️ TRITON LIGHTNING ALERT SMS
+Thunderstorm/Lightning detected at TRITO
+time: 22/09/26 13:07:35
+_⚙️ Source: Lightning SMS_
+
+🌩🔴 STOP WORK NOW 🔴🌩
+
+DO THIS NOW:
+-Stop all outdoor work
+-Go inside a building or a vehicle
+-Keep away from cranes, scaffolding, metal and water
+-Wait for the green SAFE TO RESUME WORK message`;
+
+const LIGHTNING_SMS_TRI_ALL_CLEAR = `🚨⚡️ TRITON LIGHTNING ALERT SMS
+All-Clear detected at TRITON
+time: 22/09/26 13:07:35
+_⚙️ Source: Lightning SMS_
+
+🌩️🟢 SAFE TO RESUME WORK 🟢🌩️
+
+You can start outdoor work again.`;
+
+const LIGHTNING_PREVIEWS: FormatterPreview[] = [
+  {
+    service: "lightning",
+    column: "amber_enabled",
+    value: "true",
+    summary: "The site gets a warning before it gets a stop: amber when lightning enters the outer ring, then red if it closes in.",
+    kind: "message",
+    isFallback: true,
+    bubbles: [{ caption: "Amber — lightning entering the outer ring", text: LIGHTNING_AMBER }],
+    source: "lightning MESSAGE_SHAPES.md §2 AMBER",
+  },
+  {
+    service: "lightning",
+    column: "amber_enabled",
+    value: "false",
+    // No body, because there is no message — and inventing one to fill the
+    // space is the single thing these previews exist to avoid. The cadence
+    // table says what happens instead.
+    summary: "No warning message at all. Amber is not evaluated, and the site goes straight from working to stopped.",
+    kind: "cadence",
+    cadence: [
+      { when: "Lightning enters the amber ring", fires: "nothing — amber is not evaluated for this project" },
+      { when: "Lightning enters the red ring", fires: "the stop-work message, exactly as above" },
+      { when: "The stop clears", fires: "straight to safe, with no intermediate watch" },
+    ],
+    bubbles: [],
+    source: "lightning AGENTS.md INV-LTG-13",
+  },
+  {
+    service: "lightning",
+    column: "sms_lightning_format",
+    value: "",
+    summary: "Forwards a thunderstorm alert as it arrived, behind a siren prefix. An all-clear SMS is not recognised, so the site is never told it may resume.",
+    kind: "message",
+    isFallback: true,
+    bubbles: [{ caption: "A forwarded alert — the whole message", text: LIGHTNING_SMS_LEGACY }],
+    source: "lightning usecases/lightning/sms.js — legacySmsMessage",
+  },
+  {
+    service: "lightning",
+    column: "sms_lightning_format",
+    value: "TRI-style",
+    summary: "Recognises that gateway's alert AND its all-clear, and adds the matching instructions under each. This is the only way the site hears the alert lift.",
+    kind: "message",
+    bubbles: [
+      { caption: "Alert", text: LIGHTNING_SMS_TRI_ALERT },
+      { caption: "All-clear — sent only in this format", text: LIGHTNING_SMS_TRI_ALL_CLEAR },
+    ],
+    source: "lightning usecases/lightning/sms.js — triStyleSmsMessage",
+  },
+];
+
+export const MESSAGE_PREVIEWS: FormatterPreview[] = [
+  ...NOISE_PREVIEWS,
+  ...WBGT_PREVIEWS,
+  ...HAZE_PREVIEWS,
+  ...LIGHTNING_PREVIEWS,
+];
 
 const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
   "wbgt:intermittent_reports_formatter": {
@@ -325,6 +477,18 @@ const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
   "wbgt:five_min_alert_formatter": {
     intro:
       "full does not pick a wording of its own: it renders whichever Hourly wording the project is set to. Change that field to change what full sends.",
+  },
+  "lightning:amber_enabled": {
+    intro:
+      "Lightning messages are sent on edges, not on a schedule: a three-hour storm is a handful of messages, not one per strike. Red and the all-clear below go to every project — this column only decides whether a warning comes first.",
+    shared: [
+      { caption: "Red — sent once per stop, however many strikes follow", text: LIGHTNING_RED },
+      { caption: "All-clear — the only thing that ends a stop", text: LIGHTNING_ALL_CLEAR },
+    ],
+  },
+  "lightning:sms_lightning_format": {
+    intro:
+      "This is the signed SMS Gateway relay, not NEA. It forwards what the gateway sent, so the column decides which forms are recognised and what instructions are added underneath.",
   },
   "noise:five_min_formatter": {
     intro:

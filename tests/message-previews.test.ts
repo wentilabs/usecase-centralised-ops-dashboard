@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewsFor } from "../lib/message-previews";
+import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewContext, previewsFor } from "../lib/message-previews";
 import { FIELDS } from "../lib/field-spec";
 import type { ServiceKey } from "../lib/services";
 
@@ -52,6 +52,13 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
   "haze:advisory_format": ["default", "wohhup"],
+  // Not formatters, but columns that choose between message shapes all the
+  // same — which is what this inventory is really about. Booleans, so their
+  // "values" are the two states.
+  "lightning:amber_enabled": ["true", "false"],
+  // Blank is a real option here rather than an absence: it is the legacy
+  // relay, and it is what almost every project is on.
+  "lightning:sms_lightning_format": ["", "TRI-style"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */
@@ -66,6 +73,12 @@ const BLANK_RESOLVES_TO: Record<string, string> = {
   "wbgt:five_min_alert_formatter": "short",
   "wbgt:intermittent_reports_formatter": "red15",
   "haze:advisory_format": "default",
+  // `amber_enabled` is `not null default true` in Postgres, so a row that has
+  // never been touched is a project that DOES get a warning first.
+  "lightning:amber_enabled": "true",
+  // And this one is nullable: blank means the legacy relay, so the default is
+  // the blank value itself.
+  "lightning:sms_lightning_format": "",
 };
 
 const split = (key: string) => {
@@ -220,17 +233,13 @@ test("WBGT short crossing previews use boundary-safe wording", () => {
  * thing these previews exist to avoid.
  */
 const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
-  /**
-   * The only entry, and it is a different kind of thing from the rest.
-   *
-   * Every other `_format` column picks how an OUTBOUND message is written, so
-   * a preview shows what the site will receive. This one declares the shape of
-   * the INBOUND SMS the gateway sends us — it changes what the service can
-   * parse, not what it writes. The forwarded message is the SMS's own text, so
-   * the only honest preview would be a sample of someone else's message.
-   */
-  "lightning:sms_lightning_format":
-    "Declares the inbound SMS format the service parses, not an outbound message it writes.",
+  // Empty again, and worth keeping that way: an entry here is a formatter
+  // whose real message nobody can produce.
+  //
+  // `lightning:sms_lightning_format` sat here on the reasoning that it names
+  // an INBOUND format. That was half right and therefore wrong — the column
+  // also decides what is forwarded, and only one of its values forwards an
+  // all-clear at all. It has a real preview now.
 };
 
 test("every formatter field in the spec has a preview, or a recorded reason", () => {
@@ -274,4 +283,55 @@ test("hasPreview only claims columns that have one", () => {
   assert.equal(hasPreview("noise", "hourly_formatter"), true);
   assert.equal(hasPreview("wbgt", "hourly_formatter"), false);
   assert.equal(hasPreview("noise", "whatsapp_group_id"), false);
+});
+
+
+test("lightning shows what a site is actually told, on both columns that change it", () => {
+  // Red and the all-clear go to every project whatever this column says, so
+  // they are context rather than options — the choice is only whether a
+  // warning arrives first.
+  const context = previewContext("lightning", "amber_enabled");
+  assert.ok(context?.shared?.length === 2);
+  assert.match(context!.shared![0].text, /STOP WORK NOW/);
+  assert.match(context!.shared![1].text, /SAFE TO RESUME WORK/);
+  // The one-RED rule belongs in the caption: it is the thing an operator is
+  // surprised by, and the body itself does not state it.
+  assert.match(context!.shared![0].caption ?? "", /once per stop/);
+
+  const amber = previewsFor("lightning", "amber_enabled");
+  assert.deepEqual(amber.map((preview) => preview.value), ["true", "false"], "the default comes first");
+  assert.match(amber[0].bubbles[0].text, /GET READY TO SEEK LIGHTNING PROTECTED SHELTER/);
+  // Off has no message, so it has no bubble. A body invented to fill the space
+  // is the one thing these previews exist to prevent.
+  assert.equal(amber[1].kind, "cadence");
+  assert.deepEqual(amber[1].bubbles, []);
+  assert.ok(amber[1].cadence?.some((row) => /nothing/.test(row.fires)));
+});
+
+test("the SMS relay preview shows the all-clear only where it exists", () => {
+  const sms = previewsFor("lightning", "sms_lightning_format");
+  assert.deepEqual(sms.map((preview) => preview.value), ["", "TRI-style"]);
+  // Blank is the legacy relay: one bubble, no source line, no instructions.
+  assert.equal(sms[0].bubbles.length, 1);
+  assert.doesNotMatch(sms[0].bubbles[0].text, /Source: Lightning SMS/);
+  assert.doesNotMatch(sms[0].bubbles[0].text, /SAFE TO RESUME/);
+  assert.equal(fallbackValue("lightning", "sms_lightning_format"), "");
+
+  // TRI-style is the only value that forwards an all-clear, which is the whole
+  // reason to set it — a project without it never hears the alert lift.
+  assert.equal(sms[1].bubbles.length, 2);
+  assert.match(sms[1].bubbles[1].text, /SAFE TO RESUME WORK/);
+  assert.ok(sms[1].bubbles.every((bubble) => /Source: Lightning SMS/.test(bubble.text)));
+  assert.ok(sms[1].bubbles.every((bubble) => bubble.text.startsWith("🚨⚡️ ")), "the received SMS is preserved above the instructions");
+});
+
+test("every lightning preview names the file it came from", () => {
+  // Provenance is the whole contract here: a wrong example is worse than none
+  // because it would be trusted.
+  for (const preview of [
+    ...previewsFor("lightning", "amber_enabled"),
+    ...previewsFor("lightning", "sms_lightning_format"),
+  ]) {
+    assert.match(preview.source, /^lightning /, `${preview.column}=${preview.value} has no source`);
+  }
 });

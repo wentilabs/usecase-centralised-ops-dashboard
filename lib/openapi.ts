@@ -1,5 +1,8 @@
 import { SERVICE_KEYS } from "./services";
-import { JOB_KEYS } from "./jobs";
+import { JOBS, JOB_KEYS } from "./jobs";
+
+/** Jobs whose endpoint takes no date range, named so the contract cannot drift. */
+const DATELESS_JOB_KEYS = JOB_KEYS.filter((key) => JOBS[key].dateless);
 
 /**
  * The OpenAPI description of HALO's API, and the single source of truth for it.
@@ -693,6 +696,10 @@ export const openapiDocument = {
           "",
           "The precondition is re-checked server-side, because every one of these jobs reports success while",
           "doing nothing when it is unmet.",
+          "",
+          `Most jobs need \`startDate\` and \`endDate\`. These act on current state and take neither: ${DATELESS_JOB_KEYS.map(
+            (key) => `\`${key}\``,
+          ).join(", ")}. Sending dates to one of those is ignored.`,
         ].join("\n"),
         parameters: [{ name: "job", in: "path", required: true, schema: { type: "string", enum: [...JOB_KEYS] } }],
         requestBody: {
@@ -703,11 +710,13 @@ export const openapiDocument = {
                 type: "object",
                 properties: {
                   projectCode: { type: "string" },
-                  startDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive." },
-                  endDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive." },
+                  startDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
+                  endDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
                   flags: { type: "object", additionalProperties: { type: "boolean" }, description: "Only flags the job declares are forwarded." },
                 },
-                required: ["projectCode", "startDate", "endDate"],
+                // Only the project code holds for every job; the route rejects a
+                // ranged job that arrives without dates, naming which is missing.
+                required: ["projectCode"],
               },
             },
           },

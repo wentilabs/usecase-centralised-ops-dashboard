@@ -32,9 +32,11 @@ export type JobPlan = {
   label: string;
   title: string;
   serviceLabel: string;
-  startDate: string;
-  endDate: string;
-  days: number;
+  /** This job takes no range — it acts on whatever the workbook holds now. */
+  dateless?: boolean;
+  startDate?: string;
+  endDate?: string;
+  days?: number;
   summary: string;
   scope: string;
   runs: { projectCode: string; ready: boolean; reason: string | null }[];
@@ -95,7 +97,9 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
     // platform's function timeout. A single request covering months was killed
     // mid-flight and the browser saw only an empty body. The RUN can take
     // twenty minutes; no request in it needs to.
-    const chunks = eachChunk(plan.startDate, plan.endDate, plan.chunkDays);
+    const chunks = plan.dateless
+      ? [null]
+      : eachChunk(plan.startDate ?? "", plan.endDate ?? "", plan.chunkDays);
     setLog([]);
     say(
       `${plan.title} · ${runnable.length} project${runnable.length === 1 ? "" : "s"} × ` +
@@ -111,7 +115,11 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
       let failure: string | null = null;
       for (const [index, chunk] of chunks.entries()) {
         if (halt) break;
-        const label = chunk.startDate === chunk.endDate ? chunk.startDate : `${chunk.startDate}–${chunk.endDate}`;
+        const label = !chunk
+          ? "current state"
+          : chunk.startDate === chunk.endDate
+            ? chunk.startDate
+            : `${chunk.startDate}–${chunk.endDate}`;
         setOutcomes((was) => ({
           ...was,
           [target.projectCode]: {
@@ -125,8 +133,7 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               projectCode: target.projectCode,
-              startDate: chunk.startDate,
-              endDate: chunk.endDate,
+              ...(chunk ? { startDate: chunk.startDate, endDate: chunk.endDate } : {}),
             }),
           });
           const body = await readJson(res);
@@ -167,10 +174,16 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
           <p className="mt-0.5 text-xs text-muted-foreground">{plan.summary}</p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             <span className="text-foreground">{plan.serviceLabel}</span> · {plan.scope} ·{" "}
-            <span className="tabular-nums">
-              {plan.startDate} → {plan.endDate}
-            </span>{" "}
-            ({plan.days} days)
+            {plan.dateless ? (
+              <span>current state</span>
+            ) : (
+              <>
+                <span className="tabular-nums">
+                  {plan.startDate} → {plan.endDate}
+                </span>{" "}
+                ({plan.days} days)
+              </>
+            )}
           </p>
         </header>
 
@@ -254,7 +267,7 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
               <span className="text-primary">{done} finished</span>
               {failed ? <span className="text-danger">, {failed} failed</span> : null}
               {stopped ? <span className="text-muted-foreground">, stopped early</span> : null}. Re-running a job
-              is safe — these are idempotent for a date range.
+              is safe — these are idempotent.
             </p>
           ) : null}
         </div>

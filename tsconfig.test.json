@@ -28,6 +28,7 @@
     "lib/service-contracts.ts",
     "lib/card-summary.ts",
     "lib/jobs.ts",
+    "lib/read-json.ts",
     "lib/meter-selection.ts",
     "lib/config-values.ts",
     "lib/openapi.ts",

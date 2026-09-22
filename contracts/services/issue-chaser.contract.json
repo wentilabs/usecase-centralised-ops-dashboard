@@ -10,6 +10,7 @@
     { "method": "POST", "path": "/api/past-days-chatgroup-safety-summary", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/remind-write-novade-names", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/sync-novade-names", "kind": "operator", "authentication": "optional-service-key" },
+    { "method": "POST", "path": "/api/refresh-safety-image-links", "kind": "operator", "authentication": "optional-service-key" },
     { "method": "POST", "path": "/api/issue-chaser-preview", "kind": "operator", "authentication": "none" },
     { "method": "GET", "path": "/api/issue-chaser-health", "kind": "diagnostic", "authentication": "none" },
     { "method": "POST", "path": "/api/issue-chaser-project-check", "kind": "operator", "authentication": "optional-service-key" },

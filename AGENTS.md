@@ -261,12 +261,25 @@ of them reports success while doing nothing when it is unmet:
   `enable_scrape !== false` and skips with `project_scrape_disabled_<code>`. That
   makes the MANUAL projects ineligible, which the dialog says in those words.
 
+- `chaser-refresh-images` needs `safety_sheet_id`. It re-signs the Supabase photo
+  link behind every OPEN row's `=IMAGE(...)` formula, on the monthly archive tabs
+  only (`Safety-Sep 2026`); the live `Safety` tab is excluded upstream by
+  `readSafetySheetSnapshots(..., { includeLive: false })`. A closed row whose
+  photo has expired stays expired, which is the usual reason a refresh "missed"
+  one.
+
 `maxSpanDays` mirrors a limit the endpoint enforces itself (31 for the historical
 scrape), so the range is refused before the round trip. Declared `flags` are
 allow-listed in the route — an undeclared flag is dropped rather than forwarded.
 
-Requires `NOISE_API_URL` and `WBGT_API_URL`. Unset, the button still appears and
-names the missing variable rather than failing silently.
+`dateless: true` marks a job whose endpoint takes no range at all — the dialog
+drops the two date fields and `validateJobInput` stops asking for them. The
+default is the other way round, so a ranged job that forgets the flag demands
+dates loudly instead of silently running over whatever the endpoint assumes.
+
+Requires `NOISE_API_URL`, `WBGT_API_URL` and `ISSUE_CHASER_API_URL`. Unset, the
+button still appears and names the missing variable rather than failing
+silently.
 
 ## Group names (the alias store)
 

@@ -888,6 +888,8 @@ paths:
 
         The precondition is re-checked server-side, because every one of these jobs reports success while
         doing nothing when it is unmet.
+
+        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `chaser-refresh-images`. Sending dates to one of those is ignored.
       parameters:
         - name: job
           in: path
@@ -900,6 +902,7 @@ paths:
               - wbgt-fill
               - wbgt-scrape
               - wbgt-water-parade
+              - chaser-refresh-images
       requestBody:
         required: true
         content:
@@ -912,11 +915,11 @@ paths:
                 startDate:
                   type: string
                   format: date
-                  description: YYYY-MM-DD, inclusive.
+                  description: YYYY-MM-DD, inclusive. Required except on a job listed as dateless above.
                 endDate:
                   type: string
                   format: date
-                  description: YYYY-MM-DD, inclusive.
+                  description: YYYY-MM-DD, inclusive. Required except on a job listed as dateless above.
                 flags:
                   type: object
                   additionalProperties:
@@ -924,8 +927,6 @@ paths:
                   description: Only flags the job declares are forwarded.
               required:
                 - projectCode
-                - startDate
-                - endDate
       responses:
         "200":
           description: The service's own response, passed through.

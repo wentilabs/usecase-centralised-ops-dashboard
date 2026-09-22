@@ -76,16 +76,25 @@ export function JobDialog({
        * input" — a parser message that says nothing about what happened. One
        * request per date is short enough that no timeout is in play at all.
        */
-      const chunks = eachChunk(startDate, endDate, job.chunkDays);
+      // A dateless job has nothing to walk: one request, no range in the body.
+      const chunks = job.dateless ? [null] : eachChunk(startDate, endDate, job.chunkDays);
       const results: string[] = [];
 
       for (const [index, chunk] of chunks.entries()) {
-        const label = chunk.startDate === chunk.endDate ? chunk.startDate : `${chunk.startDate}–${chunk.endDate}`;
+        const label = chunk
+          ? chunk.startDate === chunk.endDate
+            ? chunk.startDate
+            : `${chunk.startDate}–${chunk.endDate}`
+          : "";
         setProgress(chunks.length > 1 ? `${label} — ${index + 1} of ${chunks.length}` : null);
         const res = await fetch(`/api/jobs/${job.key}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectCode, startDate: chunk.startDate, endDate: chunk.endDate, flags }),
+          body: JSON.stringify({
+            projectCode,
+            ...(chunk ? { startDate: chunk.startDate, endDate: chunk.endDate } : {}),
+            flags,
+          }),
         });
         const body = await readJson(res);
         if (!res.ok) {
@@ -93,14 +102,16 @@ export function JobDialog({
             ok: false,
             text:
               `${body?.error ?? `HTTP ${res.status}`}${chunks.length > 1 ? ` (on ${label})` : ""}` +
-              (index > 0 ? `\n\n${index} of ${chunks.length} completed before this. Re-run from ${chunk.startDate}.` : ""),
+              (chunk && index > 0
+                ? `\n\n${index} of ${chunks.length} completed before this. Re-run from ${chunk.startDate}.`
+                : ""),
           });
           return;
         }
         // Summarised rather than dumped: the raw envelope is hundreds of lines
         // of per-meter detail, and what a reader wants is whether it wrote
         // anything. The full body is still in the service's own logs.
-        results.push(`${label}: ${summariseJobResult(body?.result)}`);
+        results.push(label ? `${label}: ${summariseJobResult(body?.result)}` : summariseJobResult(body?.result));
       }
       setOutcome({ ok: true, text: results.join("\n").slice(0, 4000) });
     } catch (error) {
@@ -147,6 +158,9 @@ export function JobDialog({
           </p>
         ) : null}
 
+        {/* A dateless job acts on current state, so there is no range to ask
+            for. Two empty date fields would read as something left unfilled. */}
+        {job.dateless ? null : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-xs text-muted-foreground" htmlFor="job-start">
@@ -177,6 +191,7 @@ export function JobDialog({
             />
           </div>
         </div>
+        )}
 
         {span !== null ? (
           <p

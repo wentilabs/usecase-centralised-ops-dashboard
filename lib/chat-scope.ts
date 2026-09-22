@@ -602,8 +602,15 @@ export function parseBulkOp(parsed: Record<string, unknown> | null): BulkOp | nu
     const job = String(parsed.job ?? "").trim();
     const startDate = String(parsed.start_date ?? parsed.startDate ?? "").trim();
     const endDate = String(parsed.end_date ?? parsed.endDate ?? "").trim();
-    if (!job || !isIsoDate(startDate) || !isIsoDate(endDate)) return null;
-    if (startDate > endDate) return null;
+    if (!job) return null;
+    // Both dates absent is allowed through: some endpoints take no range at
+    // all, and WHICH ones is the registry's business rather than this parser's
+    // — the caller owns the job key and rejects a ranged job that arrived
+    // without one. Anything else still has to be a real, forward range.
+    if (startDate || endDate) {
+      if (!isIsoDate(startDate) || !isIsoDate(endDate)) return null;
+      if (startDate > endDate) return null;
+    }
     return { kind: "job", job, startDate, endDate, summary, where, scope };
   }
   if (op === "set-each") {
@@ -807,6 +814,7 @@ export const BULK_SYSTEM_PROMPT = [
   '  {"op":"remove-groups","phrase":"<the group name as the person described it>","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"defaults","where":[<condition>],"summary":"<one sentence>"}',
   '  {"op":"job","job":"<job key>","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","scope":<scope>,"summary":"<one sentence>"}',
+  '      // omit both dates for a job that works on current state rather than a range',
   '  {"op":"onboard","summary":"<one sentence>"}   // the request is to CREATE projects, not change existing ones',
   "",
   '  <condition> = {"column":"<column>","op":"is"|"is-not"|"empty"|"not-empty"|"contains","value":<value>}',

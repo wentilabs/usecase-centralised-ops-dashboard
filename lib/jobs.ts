@@ -20,7 +20,13 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  *    nothing when the precondition is unmet.
  */
 
-export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill" | "wbgt-scrape" | "wbgt-water-parade";
+export type JobKey =
+  | "noise-bootstrap"
+  | "noise-sync"
+  | "wbgt-fill"
+  | "wbgt-scrape"
+  | "wbgt-water-parade"
+  | "chaser-refresh-images";
 
 export type JobFlag = { key: string; label: string; help: string };
 
@@ -82,9 +88,21 @@ export type JobDefinition = {
   title: string;
   description: string;
   /** Env var holding the service's base URL, e.g. https://…/prod */
-  baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL";
+  baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL" | "ISSUE_CHASER_API_URL";
   path: string;
   precondition: JobPrecondition;
+  /**
+   * This endpoint takes no date range: it acts on current state.
+   *
+   * Absent means a range is required, which is the safe default — forgetting
+   * the flag on a dateless job makes the dialog demand two dates the endpoint
+   * would ignore, which is visible immediately. A default of "no dates" would
+   * fail the other way, silently dropping the range from a job that needs one
+   * and running it over whatever the endpoint assumes instead.
+   *
+   * A dateless job is never chunked, because there is nothing to divide.
+   */
+  dateless?: true;
   /** Inclusive day limit the endpoint itself enforces, if any. */
   maxSpanDays?: number;
   /**
@@ -351,6 +369,42 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       ...(flags?.dryRun ? { dryRun: true } : {}),
     }),
   },
+  "chaser-refresh-images": {
+    key: "chaser-refresh-images",
+    service: "issueChaser",
+    label: "⟳ Refresh photo links",
+    title: "Refresh the Safety workbook's photo links",
+    description:
+      "Re-signs the Supabase photo link behind every open row's Image formula, so photos that have gone blank display again. Idempotent, and it sends nothing.",
+    caution:
+      "Monthly archive tabs only (Safety-Sep 2026 and the like) — the live Safety tab is deliberately left alone. It also touches open rows only: a closed row whose photo has expired stays expired. Run dryRun first to see which cells would change.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/refresh-safety-image-links",
+    // No range: the job acts on whatever the workbook holds right now.
+    dateless: true,
+    // It reads every archive tab of the workbook in one batchGet, signs each
+    // link ten at a time and writes the formulas back in one batch. A year of
+    // archives is a lot of rows, and there is no range to chunk it by, so it
+    // gets the same headroom as the noise bootstrap.
+    timeoutMs: 55_000,
+    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    flags: [
+      {
+        key: "dryRun",
+        label: "dryRun",
+        help: "Preview only — lists the cells that would change without signing a URL or writing to the sheet.",
+      },
+    ],
+    // snake_case `project_code`: the handler reads `project_code` first and
+    // `projectCode` as an alias. Always scoped to one project, though the
+    // endpoint would take every mapped workbook if the key were omitted —
+    // every other job here runs one project at a time, and an estate-wide
+    // sheet write is not something to reach by leaving a field blank.
+    buildPayload: ({ projectCode, flags }) => ({
+      project_code: projectCode,
+      ...(flags?.dryRun ? { dryRun: true } : {}),
+    }),
+  },
 };
 
 /**
@@ -523,10 +577,15 @@ export function validateJobInput(
 ): string[] {
   const problems: string[] = [];
   if (!input.projectCode) problems.push("Choose a project.");
-  if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
-  if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
 
-  if (input.startDate && input.endDate && isIsoDate(input.startDate) && isIsoDate(input.endDate)) {
+  // A dateless job has no range to check, and asking for one would block a job
+  // whose endpoint does not accept it. The precondition below still applies.
+  if (!job?.dateless) {
+    if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
+    if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
+  }
+
+  if (!job?.dateless && input.startDate && input.endDate && isIsoDate(input.startDate) && isIsoDate(input.endDate)) {
     if (input.startDate > input.endDate) {
       problems.push("Start date is after the end date.");
     } else if (job?.maxSpanDays) {

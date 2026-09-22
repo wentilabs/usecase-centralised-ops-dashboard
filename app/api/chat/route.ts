@@ -130,10 +130,12 @@ type ChatReply = {
     label: string;
     title: string;
     serviceLabel: string;
-    startDate: string;
-    endDate: string;
+    /** Absent together with the dates: this job acts on current state. */
+    dateless?: boolean;
+    startDate?: string;
+    endDate?: string;
     /** Inclusive, as the endpoints measure it. */
-    days: number;
+    days?: number;
     summary: string;
     scope: string;
     runs: { projectCode: string; ready: boolean; reason: string | null }[];
@@ -526,8 +528,17 @@ async function bulkReply({
     }
     const setAside = selected.length - onService.length;
 
-    const span = spanDays(op.startDate, op.endDate);
-    if (job.maxSpanDays && span > job.maxSpanDays) {
+    // A ranged job without a range cannot be planned, and a dateless one has
+    // no span to measure. `parseBulkOp` lets both dates be absent because it
+    // does not know the registry; this is where that is decided.
+    if (!job.dateless && !(op.startDate && op.endDate)) {
+      return reply({
+        message: `${job.title} runs over a date range. Say which dates to cover.`,
+      });
+    }
+
+    const span = job.dateless ? 0 : spanDays(op.startDate, op.endDate);
+    if (!job.dateless && job.maxSpanDays && span > job.maxSpanDays) {
       return reply({
         message:
           `${op.startDate} to ${op.endDate} is ${span} days; ${job.title} accepts at most ${job.maxSpanDays}. ` +
@@ -553,9 +564,10 @@ async function bulkReply({
         label: job.label,
         title: job.title,
         serviceLabel: SERVICES[job.service].label,
-        startDate: op.startDate,
-        endDate: op.endDate,
-        days: span,
+        // A dateless job carries no range at all rather than a blank one: the
+        // batch screen shows what it will act on, and two empty dates there
+        // would read as something the plan failed to fill in.
+        ...(job.dateless ? { dateless: true } : { startDate: op.startDate, endDate: op.endDate, days: span }),
         summary: op.summary || job.title,
         scope: setAside
           ? `${scopeLabel} — ${setAside} project${setAside === 1 ? "" : "s"} on other services set aside`

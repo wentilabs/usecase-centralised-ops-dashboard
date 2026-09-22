@@ -188,7 +188,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       perDate.push({ date, status: res.status, result: parsed ?? text.slice(0, 2000) });
 
       console.log(
-        `[halo][job] ${job.key} project=${body.projectCode} ${date ? `date=${date}` : `range=${body.startDate}..${body.endDate}`} ` +
+        `[halo][job] ${job.key} project=${body.projectCode} ` +
+          `${date ? `date=${date}` : job.dateless ? "scope=current-state" : `range=${body.startDate}..${body.endDate}`} ` +
           `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
       );
 

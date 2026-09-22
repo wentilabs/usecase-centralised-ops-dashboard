@@ -272,11 +272,28 @@ of them reports success while doing nothing when it is unmet:
 scrape), so the range is refused before the round trip. Declared `flags` are
 allow-listed in the route — an undeclared flag is dropped rather than forwarded.
 
-Four more Chaser actions sit beside it, all gated on `safety_sheet_id`:
-`chaser-project-check` reports what the service can see in the workbook,
-`chaser-preview` builds either chase style's messages without delivering,
-`chaser-summary-preview` builds one of the four scheduled reports the same way,
-and `chaser-novade-sync` rewrites the PIC column from the Novade Name List tab.
+Five more Chaser actions sit beside it: `chaser-project-check` reports what the
+service can see in the workbook, `chaser-preview` builds either chase style's
+messages without delivering, `chaser-summary-preview` builds one of the four
+scheduled reports the same way, `chaser-novade-sync` rewrites the PIC column
+from the Novade Name List tab, and `chaser-company-sync` fills the Company
+column from each row's PIC — inserting a Company column at I where a tab has
+none, which is a structural change and is said so in the caution.
+
+All six share `chaserPrecondition`: enabled, with a Safety workbook. `enabled`
+is checked HERE because the service does not check it at all — its
+`listProjectConfigs` has no such filter, so a switched-off project would be
+read, matched and written to exactly like a live one. `hideUnready` then keeps
+those rows out of the picker entirely, which is the one place HALO departs from
+"list it and say why": this picker is meant to BE the list of projects set up on
+Issue Chaser, and a row that is switched off is not one of them however clearly
+it is annotated. The server re-check still refuses it, so a stale client cannot
+get past it.
+
+Both sync routes send `dryRun` explicitly. The service's OpenAPI says the key
+"defaults to true; only `false` writes"; its code says `body.dryRun === true`,
+so an omitted key WRITES. Sending it every time means HALO's flag decides rather
+than a default its own documentation and implementation disagree about.
 
 `appliesWhen` names the flag a job needs before it acts; without it ticked the
 job previews. The flag is phrased as the destructive act (`apply`) and never as
@@ -300,10 +317,9 @@ option is the one most likely to be renamed upstream unnoticed.
 `messages` for a preview (its output IS the message text), `json` for a
 diagnostic whose fields are the answer.
 
-**Not wired, deliberately.** `/api/issue-chaser-company-open` is registered in
-the service's `routes.js` but missing from its `contracts/service.contract.json`,
-so the contract test would reject a job pointing at it; it also needs a
-company→group mapping HALO does not model. `/api/issue-chaser-operator-preview`
+**Not wired, deliberately.** `/api/issue-chaser-company-open` joined the
+contract in `37faf1d`, but it needs a `targets` array of company→group pairs
+that HALO does not model, and it delivers to real groups. `/api/issue-chaser-operator-preview`
 and `-send` are a two-step build-then-send pair around a stored expiring run,
 which does not fit a single dialog, and `-send` is the one operator route that
 delivers to real groups.

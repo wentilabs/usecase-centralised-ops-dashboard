@@ -119,6 +119,8 @@ test("Issue Chaser marks only its token-aware operator routes as optional auth",
       "/api/sync-novade-names",
       // aa3c4d1 — the photo-link refresh HALO drives from the Chaser action row.
       "/api/refresh-safety-image-links",
+      // 91fbe8b — the company-name sync beside it.
+      "/api/sync-company-names",
       "/api/issue-chaser-project-check",
       "/api/issue-chaser-operator-preview",
       "/api/issue-chaser-operator-send",

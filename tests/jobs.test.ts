@@ -125,30 +125,71 @@ test("the refresh payload is snake_case, and previews unless apply is ticked", (
   );
 });
 
-test("the refresh needs a real Safety workbook id", () => {
+test("a Chaser picker lists only the projects set up on Issue Chaser", () => {
   const rows = [
-    { project_code: "IR2", safety_sheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" },
+    { project_code: "IR2", enabled: true, safety_sheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" },
+    // Enabled defaults to true when the column is absent.
+    { project_code: "AST", safety_sheet_id: "1ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210" },
+    // A row that exists on the service but is switched off. The service's own
+    // project list is NOT filtered on enabled, so this would otherwise be
+    // read, matched and written to exactly like a live project.
+    { project_code: "HMD", enabled: false, safety_sheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" },
     // Real rows carry these: the placeholders `readSheetId` treats as unset.
-    { project_code: "WCP", safety_sheet_id: "-" },
-    { project_code: "TBS", safety_sheet_id: "" },
-    { project_code: "SKW" },
+    { project_code: "WCP", enabled: true, safety_sheet_id: "-" },
+    { project_code: "TBS", enabled: true, safety_sheet_id: "" },
+    { project_code: "SKW", enabled: true },
   ] as unknown as ProjectConfigRow[];
 
-  const targets = jobTargets(JOBS["chaser-refresh-images"], rows);
+  for (const key of JOB_KEYS.filter((candidate) => JOBS[candidate].hideUnready)) {
+    assert.deepEqual(
+      jobTargets(JOBS[key], rows).map((target) => target.projectCode),
+      ["AST", "IR2"],
+      `${key} offers a project that is not set up on Issue Chaser`,
+    );
+  }
+
+  // Every Chaser job hides, and nothing else does — the default stays "listed
+  // with a reason", which is the more diagnosable choice everywhere else.
+  const hiding = JOB_KEYS.filter((key) => JOBS[key].hideUnready);
   assert.deepEqual(
-    targets.map((target) => [target.projectCode, Boolean(target.ready)]),
-    [
-      ["IR2", true],
-      ["SKW", false],
-      ["TBS", false],
-      ["WCP", false],
-    ],
+    hiding.sort(),
+    JOB_KEYS.filter((key) => JOBS[key].service === "issueChaser").sort(),
   );
-  // Listed, not hidden. This precondition has no per-row `detail`, so the
-  // target carries no reason and the callers fall back to `unmet` — which has
-  // to name the field, or a blocked project sits in the picker unexplained.
-  assert.equal(targets.find((target) => target.projectCode === "WCP")?.reason, null);
-  assert.match(JOBS["chaser-refresh-images"].precondition.unmet("WCP"), /Safety workbook ID.*WCP/);
+  assert.equal(jobTargets(JOBS["noise-sync"], rows).length, 6, "a non-Chaser picker still lists everything");
+});
+
+test("a project kept out of the Chaser picker is told apart from one with no workbook", () => {
+  const job = JOBS["chaser-refresh-images"];
+  const off = { project_code: "HMD", enabled: false, safety_sheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" } as unknown as ProjectConfigRow;
+  const noSheet = { project_code: "WCP", enabled: true, safety_sheet_id: "-" } as unknown as ProjectConfigRow;
+
+  assert.equal(job.precondition.read(off), null);
+  assert.equal(job.precondition.read(noSheet), null);
+  // Two different failures, two different sentences — the server still answers
+  // with one of these when a stale client posts a hidden project.
+  assert.match(job.precondition.detail!(off, "HMD")!, /switched off/);
+  assert.match(job.precondition.detail!(noSheet, "WCP")!, /no Safety workbook ID/);
+
+  const ready = { project_code: "IR2", enabled: true, safety_sheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" } as unknown as ProjectConfigRow;
+  assert.match(String(job.precondition.read(ready)), /Safety workbook 1AbCdEfGhIjK/);
+  assert.equal(job.precondition.detail!(ready, "IR2"), null);
+});
+
+test("the company sync previews by default and writes only when applied", () => {
+  const job = JOBS["chaser-company-sync"];
+  assert.equal(job.path, "/api/sync-company-names");
+  // The service documents `dryRun` as defaulting to true and implements it as
+  // defaulting to FALSE, so the key is always sent rather than omitted.
+  assert.deepEqual(job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "" }), {
+    project_code: "IR2",
+    dryRun: true,
+  });
+  assert.deepEqual(
+    job.buildPayload({ projectCode: "IR2", startDate: "", endDate: "", flags: { apply: true } }),
+    { project_code: "IR2", dryRun: false },
+  );
+  // It can insert a column, which is a structural change and has to be said.
+  assert.match(String(job.caution), /column I/);
 });
 
 test("the refresh result reads as counts and names the cells that failed", () => {

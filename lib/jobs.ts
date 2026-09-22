@@ -30,7 +30,8 @@ export type JobKey =
   | "chaser-project-check"
   | "chaser-preview"
   | "chaser-summary-preview"
-  | "chaser-novade-sync";
+  | "chaser-novade-sync"
+  | "chaser-company-sync";
 
 export type JobFlag = { key: string; label: string; help: string };
 
@@ -196,6 +197,17 @@ export type JobDefinition = {
    * hand before pressing the button.
    */
   appliesWhen?: string;
+  /**
+   * List only the projects the precondition passes.
+   *
+   * The default is the opposite, and deliberately so: a project that cannot
+   * run is normally still listed with the reason, because "why is that one
+   * missing" is otherwise unanswerable from the screen. The Issue Chaser
+   * maintenance jobs are the exception — their picker is meant to BE the list
+   * of projects set up on the service, and a row that is switched off is not
+   * one of them however clearly it is annotated.
+   */
+  hideUnready?: true;
   /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
   caution?: string;
   buildPayload: (input: JobInput) => Record<string, unknown>;
@@ -279,6 +291,40 @@ export function jobPath(job: { path: string | Record<string, string>; choice?: J
 /** Every endpoint this job can reach — what the contract check verifies. */
 export function jobPaths(job: { path: string | Record<string, string> }): string[] {
   return typeof job.path === "string" ? [job.path] : [...new Set(Object.values(job.path))];
+}
+
+/**
+ * What "set up on Issue Chaser" means, for the maintenance jobs.
+ *
+ * Two conditions, and the second is not the obvious one. A Safety workbook is
+ * needed because every one of these routes reads it — `listProjectConfigs`
+ * filters on `safety_sheet_id` and silently drops the rest.
+ *
+ * `enabled` is checked HERE rather than upstream, because upstream does not
+ * check it at all: the service's `listProjectConfigs` has no `enabled` filter,
+ * so a switched-off project would be read, matched and written to exactly like
+ * a live one. That makes hiding it a real guard rather than a cosmetic one.
+ */
+function chaserPrecondition(): JobPrecondition {
+  const sheetId = (row: ProjectConfigRow) => readSheetId(row.safety_sheet_id);
+  return {
+    label: "Issue Chaser setup",
+    read: (row) => {
+      if (row.enabled === false) return null;
+      const id = sheetId(row);
+      return id ? `Safety workbook ${id.slice(0, 12)}…` : null;
+    },
+    detail: (row, projectCode) => {
+      if (row.enabled === false) {
+        return `${projectCode} is switched off in Issue Chaser. The service reads it anyway — its project list is not filtered on enabled — so it is kept out of this picker rather than left runnable.`;
+      }
+      if (!sheetId(row)) {
+        return `${projectCode} has no Safety workbook ID, and every one of these routes reads that workbook. The service drops the project before it starts.`;
+      }
+      return null;
+    },
+    unmet: (projectCode) => `${projectCode} is not set up on Issue Chaser.`,
+  };
 }
 
 function sheetPrecondition(column: string, label: string): JobPrecondition {
@@ -466,7 +512,8 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     // archives is a lot of rows, and there is no range to chunk it by, so it
     // gets the same headroom as the noise bootstrap.
     timeoutMs: 55_000,
-    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    precondition: chaserPrecondition(),
+    hideUnready: true,
     appliesWhen: "apply",
     flags: [
       {
@@ -501,7 +548,8 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     resultView: "json",
     // It reads every discovered tab of the workbook before answering.
     timeoutMs: 55_000,
-    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    precondition: chaserPrecondition(),
+    hideUnready: true,
     buildPayload: ({ projectCode }) => ({ project_code: projectCode }),
   },
   "chaser-preview": {
@@ -516,7 +564,8 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     dateless: true,
     resultView: "messages",
     timeoutMs: 55_000,
-    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    precondition: chaserPrecondition(),
+    hideUnready: true,
     choice: {
       label: "Style",
       help: "Which chaser to build. This is the one route that reads `style` from the body — the two scheduled routes each hard-code their own.",
@@ -562,7 +611,8 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     dateless: true,
     resultView: "messages",
     timeoutMs: 55_000,
-    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    precondition: chaserPrecondition(),
+    hideUnready: true,
     choice: {
       label: "Report",
       help: "Which report to build. The first three are the same statistics split differently; the last is the weekly name-list audit.",
@@ -604,7 +654,8 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     // `updates` is the output worth reading: which cell, from what, to what.
     resultView: "json",
     timeoutMs: 55_000,
-    precondition: sheetPrecondition("safety_sheet_id", "Safety workbook ID"),
+    precondition: chaserPrecondition(),
+    hideUnready: true,
     appliesWhen: "apply",
     flags: [
       {
@@ -614,14 +665,47 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       },
     ],
     /**
-     * `dryRun` is sent EXPLICITLY, and phrased the other way round in the UI.
+     * `dryRun` is sent EXPLICITLY on every call.
      *
-     * This is the one endpoint in the estate whose `dryRun` defaults to true —
-     * only an explicit `false` writes. Relying on that default would make this
-     * the odd job out, where an unticked box means something different from
-     * every other dialog. Sending the value every time means HALO's flag, not
-     * the upstream default, decides.
+     * The service's own OpenAPI says it "defaults to true; only `false`
+     * writes". Its code says otherwise — `dryRunRequested` is
+     * `body.dryRun === true`, so an omitted key WRITES. Sending the value
+     * every time means HALO's flag decides rather than a default that its
+     * documentation and its implementation disagree about.
      */
+    buildPayload: ({ projectCode, flags }) => ({
+      project_code: projectCode,
+      dryRun: flags?.apply !== true,
+    }),
+  },
+  "chaser-company-sync": {
+    key: "chaser-company-sync",
+    service: "issueChaser",
+    label: "⇄ Sync company names",
+    title: "Fill the Company column from each row's PIC",
+    description:
+      "Resolves every Safety row's PIC through the workbook's Novade Name List and writes that person's company into the Company column. A row whose PIC resolves to several people gets all their companies, comma-separated. Previews by default.",
+    caution:
+      "Ticking apply writes to the Safety workbook, and a tab that has no Company column gets one INSERTED at column I — a structural change, not just cell values. A PIC that cannot be resolved, or that is ambiguous, is left alone rather than guessed at. Unlike every other Chaser feature this one has no per-project flag: it runs wherever a Safety workbook is mapped.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/sync-company-names",
+    dateless: true,
+    // `columns_to_insert` and the per-tab counts are the answer, and the
+    // column insertion is the part worth reading before ticking apply.
+    resultView: "json",
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Write the companies into the workbook, inserting a Company column where a tab has none. Leave off to preview both.",
+      },
+    ],
+    // Explicit for the same reason as the Novade sync beside it: an omitted
+    // `dryRun` writes.
     buildPayload: ({ projectCode, flags }) => ({
       project_code: projectCode,
       dryRun: flags?.apply !== true,
@@ -765,7 +849,7 @@ export type JobTarget = {
  * hiding them, which is the more diagnosable choice.
  */
 export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTarget[] {
-  return rows
+  const targets = rows
     .map((row) => {
       const projectCode = String(row.project_code ?? "");
       const ready = job.precondition.read(row);
@@ -777,6 +861,10 @@ export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTar
     })
     .filter((target) => target.projectCode)
     .sort((a, b) => a.projectCode.localeCompare(b.projectCode));
+
+  // Filtered here rather than in the dialog so the chat plan and the server
+  // re-check see the same list the picker does.
+  return job.hideUnready ? targets.filter((target) => target.ready) : targets;
 }
 
 function isIsoDate(value: string): boolean {

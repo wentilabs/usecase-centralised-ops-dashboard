@@ -1,3 +1,4 @@
+import { CRONS } from "../crons";
 import { countIn, isEnabled, plainHour } from "../helpers";
 import type { Ambient, LoadProvider, Occurrence, RowLoad } from "../types";
 import type { ProjectConfigRow } from "../../services";
@@ -28,6 +29,26 @@ export const ailyticsLoadProvider: LoadProvider = {
           reason: "Forwarded when the CCTV bot posts a detection",
           groups,
         });
+      }
+    }
+
+    if (config.status_summary_enabled === true) {
+      // 10:00 UTC — 18:00 Singapore, daily, on its own rule. No hour column:
+      // the rule is the schedule. Sent to the project's delivery list, which
+      // is the only outbound list ailytics has besides the yesterday-summary
+      // one.
+      const groups = countIn(config, "whatsapp_group_ids");
+      for (const hour of CRONS.ailytics.statusSummary.hours) {
+        if (groups > 0) {
+          occurrences.push({
+            service: "ailytics",
+            projectCode,
+            cadence: "issues status summary",
+            hour,
+            sends: groups,
+            certainty: "scheduled",
+          });
+        }
       }
     }
 

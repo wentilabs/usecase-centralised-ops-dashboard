@@ -1,5 +1,6 @@
+import { CRONS } from "../crons";
 import { countIn, isEnabled } from "../helpers";
-import type { Ambient, LoadProvider, RowLoad } from "../types";
+import type { Ambient, LoadProvider, Occurrence, RowLoad } from "../types";
 import type { ProjectConfigRow } from "../../services";
 
 /**
@@ -21,8 +22,24 @@ export const lightningLoadProvider: LoadProvider = {
 
     const projectCode = String(config.project_code ?? "");
     const ambient: Ambient[] = [];
+    const occurrences: Occurrence[] = [];
 
     const alerts = countIn(config, "whatsapp_group_id");
+    // One "service is live for the day" message at 07:30 Singapore, on its own
+    // rule. It is the one lightning send that has an hour, and the model had
+    // this service as entirely storm-driven, so it was missing altogether.
+    if (alerts > 0) {
+      for (const hour of CRONS.lightning.kickoff.hours) {
+        occurrences.push({
+          service: "lightning",
+          projectCode,
+          cadence: "daily kickoff",
+          hour,
+          sends: alerts,
+          certainty: "scheduled",
+        });
+      }
+    }
     if (alerts > 0) {
       ambient.push({
         service: "lightning",
@@ -46,6 +63,6 @@ export const lightningLoadProvider: LoadProvider = {
       }
     }
 
-    return { occurrences: [], ambient };
+    return { occurrences, ambient };
   },
 };

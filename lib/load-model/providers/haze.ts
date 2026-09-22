@@ -1,4 +1,5 @@
-import { countIn, hourOf, isEnabled, windowHours } from "../helpers";
+import { CRONS } from "../crons";
+import { countIn, isEnabled, windowHours } from "../helpers";
 import type { LoadProvider, Occurrence, RowLoad } from "../types";
 import type { ProjectConfigRow } from "../../services";
 
@@ -46,10 +47,11 @@ export const hazeLoadProvider: LoadProvider = {
         add(hour, "guaranteed 2-hourly send", "scheduled");
       }
     } else {
-      // One "service is live" message per project per SGT day. Placed at the
-      // start of the working window, which is when the day's first advisory
-      // runs; with no window set the service has no earlier anchor than 00:00.
-      add(hourOf(config.working_hours_start_hhmm) ?? 0, "daily kickoff", "scheduled");
+      // One "service is live" message per project per SGT day, at 07:45
+      // Singapore. Its own rule, fixed — it does not follow the project's
+      // working-hours start, which is what this assumed before the console's
+      // rules were read.
+      for (const hour of CRONS.haze.kickoff.hours) add(hour, "daily kickoff", "scheduled");
     }
 
     return { occurrences, ambient: [] };

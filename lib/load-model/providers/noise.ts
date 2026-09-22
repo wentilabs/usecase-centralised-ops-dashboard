@@ -1,5 +1,6 @@
 import { ASSESS_COL, splitList } from "../../card-summary/groups";
-import { ALL_HOURS, countIn, hourOf, isEnabled, windowHours } from "../helpers";
+import { CRONS } from "../crons";
+import { countIn, isEnabled, windowHours } from "../helpers";
 import type { LoadProvider, Occurrence, RowLoad } from "../types";
 import type { ProjectConfigRow } from "../../services";
 
@@ -29,7 +30,7 @@ export const noiseLoadProvider: LoadProvider = {
     const groups = countIn(config, "whatsapp_group_id");
 
     const add = (
-      hours: number[],
+      hours: readonly number[],
       cadence: string,
       perHour: number,
       certainty: Occurrence["certainty"],
@@ -100,21 +101,19 @@ export const noiseLoadProvider: LoadProvider = {
 
     // The fixed-hour jobs. These carry no window of their own.
     if (config.enable_three_hour_summary === true) {
-      add([10, 13, 16, 19], "3-hour summary", 1, "scheduled");
+      add([...CRONS.noise.threeHour.hours], "3-hour summary", 1, "scheduled");
     }
     if (config.enable_morning_summary === true) {
-      add([hourOf(config.morning_summary_start_hhmm) ?? 7], "morning summary", 1, "scheduled");
+      // 07:00 Singapore, fixed by the rule. `morning_summary_start_hhmm`
+      // describes the period being summarised, not when it is sent — the
+      // Lambda is invoked once a day and cannot send at any other hour.
+      add(CRONS.noise.morning.hours, "morning summary", 1, "scheduled");
     }
     if (config.enable_evening_summary === true) {
-      add([19], "evening closeout", 1, "scheduled");
+      add(CRONS.noise.evening.hours, "evening closeout", 1, "scheduled");
     }
     if (config.enable_7am_7pm_leq12h_table === true || config.enable_7am_7pm_leq12hr_table === true) {
-      add(
-        ALL_HOURS.filter((hour) => hour >= 8 && hour <= 19),
-        "Leq12hr table",
-        1,
-        "scheduled",
-      );
+      add([...CRONS.noise.leq12hrTable.hours], "Leq12hr table", 1, "scheduled");
     }
     /**
      * Two cadences are deliberately absent from the hourly buckets.

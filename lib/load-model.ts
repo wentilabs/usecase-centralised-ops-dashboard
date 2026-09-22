@@ -12,10 +12,11 @@
  * are CONFIGURED to do, not what they did. Where the configuration cannot say,
  * it says so rather than guessing — see `Certainty` and `Ambient`.
  *
- * Hour resolution, deliberately. The minute each cron fires lives in an
- * EventBridge rule in the AWS console, not in any repository, and the service
- * READMEs that document those minutes disagree with each other in at least one
- * place. At hourly resolution none of that matters.
+ * Hour resolution, deliberately, and the hours are constrained by the real
+ * EventBridge rules in `load-model/crons.ts` — a configured hour only counts
+ * when the rule that reads it actually runs in that hour. Without that the
+ * chart placed the Issue Chaser chat-group summary wherever its schedule
+ * column pointed, while its rule fires once a day.
  */
 export { dayLoad, hourDetail, hourLabel, occurrencesFor, type DayLoad, type HourBucket } from "./load-model/day-load";
 export { LOAD_PROVIDERS } from "./load-model/providers";

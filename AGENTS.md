@@ -360,11 +360,58 @@ Three distinctions carry the whole thing:
   spreadsheet. Listed by name beside the chart rather than smeared across the
   day.
 
-**Hours only, deliberately.** The minute each cron fires lives in an EventBridge
-rule in the AWS console, not in any repository, and the WBGT README contradicts
-itself about its own (`cron(6,21,36,51)` in one section, `cron(2,17,32,47)` in
-another). At hourly resolution none of that matters. Sunday and public-holiday
-mutes are not applied, so the chart describes an ordinary working day.
+### The cron table is the missing half
+
+`lib/load-model/crons.ts` records the EventBridge rules that actually invoke
+the services, read from the AWS console on 2026-09-22. There is no IaC anywhere
+in the estate, so this is the only place in any repository that knows them, and
+it is **authoritative over the service READMEs**, several of which are wrong —
+WBGT's contradicts itself about its own hourly rule in two sections
+(`cron(6,21,36,51)` against `cron(2,17,32,47)`; the live rule is
+`cron(1/15 * * * ? *)`).
+
+**The expressions are UTC.** The console's own labels prove it:
+`cron(0 11 * * ? *)` is named "Noise Evening Summary 7PM", and 11:00 UTC is
+19:00 in Singapore. Every `hours` array is the UTC hour list plus eight.
+
+A project's configuration can only fire in an hour its rule runs in, and that
+is not a formality. Four things the model got wrong before this table existed:
+
+| | Was | Actually |
+|---|---|---|
+| Chaser chat-group summary | whatever its schedule column named | `cron(0 0 * * ? *)` — 08:00 SGT only, so any other configured hour **never sends** |
+| Water Parade reminders | once an hour, across the site day | `cron(30,56 3-11 * * ? *)` — twice an hour, 11:00–19:59 SGT only |
+| Noise morning summary | `morning_summary_start_hhmm` | `cron(0 23 * * ? *)` — 07:00 SGT, fixed; the column describes the period summarised |
+| Subcon morning reports | the configured start hour | that column is a **gate**; the sends land on the rules' hours (10:05, 12:05, 16:05 SGT) |
+
+Two cadences were missing outright: ailytics' issues status summary
+(`cron(0 10 * * ? *)` — 18:00 SGT) and the lightning daily kickoff
+(`cron(30 23 * * ? *)` — 07:30 SGT), which is the one lightning send that has an
+hour. Subcon's nightly housekeeping report turned out to have one too
+(`cron(10 14 ? * * *)` — 22:10 SGT), so it moved from the ambient list onto the
+chart.
+
+`/daily-manpower-summary` carries **two** rules, at 10:05 and 16:05 SGT, and
+`morningReportGate` is a bare `currentSgtHour >= startHour` with no once-a-day
+guard beside it — so a project past its gate is summarised twice. If a guard
+exists elsewhere in that service, this over-counts by one send per project.
+
+A configured hour its rule never runs in is a silent misconfiguration: the
+project looks scheduled and sends nothing. Those are surfaced by name in the
+"not on the clock" list rather than left as a bar that is merely absent.
+
+**When a rule changes in the console it must be changed here** — nothing
+detects that. The `utc` string is kept verbatim so the two can be compared by
+eye.
+
+**Hours only, deliberately.** The minutes are now known, but the question being
+asked is which hours cluster, and Sunday and public-holiday mutes are not
+applied — so the chart describes an ordinary working day. Weekly rules are left
+out for the same reason: the Novade name reminder and sync (Saturdays), the
+Water Parade photo refresh (Saturdays), the noise limits refresh (Sundays) and
+the Sunday Leq12h hourly summary. Rules that post nothing to a group — scrapes,
+sheet fills, retries, ingestion, health checks — are out too; they cost Lambda
+time, but this model counts messages.
 
 Bars are sized with `flex-grow`, not percentage heights: a percentage resolves
 against a parent with a definite height and a flex column's children have none,

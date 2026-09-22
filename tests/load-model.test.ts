@@ -4,6 +4,7 @@ import test from "node:test";
 import { dayLoad, hourDetail, hourLabel, occurrencesFor } from "../lib/load-model/day-load";
 import { LOAD_PROVIDERS } from "../lib/load-model/providers";
 import { countFirst, scheduleHours, wbgtSenders, windowHours } from "../lib/load-model/helpers";
+import { CRONS, sgtHours, within } from "../lib/load-model/crons";
 import { SERVICE_KEYS, type ProjectConfigRow } from "../lib/services";
 
 const row = (fields: Record<string, unknown>) => fields as unknown as ProjectConfigRow;
@@ -166,13 +167,19 @@ test("a haze override slot is counted once, and reaches past the working window"
   assert.equal(load.occurrences.some((entry) => entry.cadence === "daily kickoff"), false);
 });
 
-test("lightning contributes no hours, only a named reason", () => {
+test("lightning is storm-driven apart from its one daily kickoff", () => {
   const load = LOAD_PROVIDERS.lightning.forRow(
     row({ project_code: "HLD", enabled: true, whatsapp_group_id: "a@g.us,b@g.us" }),
   );
-  // Storm-driven. Sixty possible sends an hour smeared across the day would
-  // swamp every real cadence with a number wrong at every hour.
-  assert.deepEqual(load.occurrences, []);
+  // 23:30 UTC — 07:30 Singapore. A real scheduled message, and the only
+  // lightning send with an hour.
+  assert.deepEqual(
+    load.occurrences.map((entry) => [entry.hour, entry.cadence, entry.sends, entry.certainty]),
+    [[7, "daily kickoff", 2, "scheduled"]],
+  );
+  // The alerts themselves stay off the clock. Sixty possible sends an hour
+  // smeared across the day would swamp every real cadence with a number wrong
+  // at every hour.
   assert.equal(load.ambient.length, 1);
   assert.equal(load.ambient[0].groups, 2);
   assert.match(load.ambient[0].reason, /no hour/i);
@@ -235,24 +242,45 @@ test("a chaser summary lands on its scheduled hours, at its own destination", ()
   );
 });
 
-test("subcon morning reports are two messages at the configured hour", () => {
-  const load = LOAD_PROVIDERS.subcon.forRow(
-    row({
-      project_code: "AST",
-      enabled: true,
-      morning_report_start_hour: 7,
-      manpower_activity_outbound_group_id: "a@g.us",
-      enable_activity_summary: true,
-      enable_manpower_summary: true,
-    }),
-  );
+test("subcon reports land on their rules' hours, gated by the start hour", () => {
+  const base = {
+    project_code: "AST",
+    enabled: true,
+    manpower_activity_outbound_group_id: "a@g.us",
+    enable_activity_summary: true,
+    enable_manpower_summary: true,
+    enable_housekeeping: true,
+    safety_group_ids: "h@g.us",
+  };
+
+  // Gate at 07: every rule hour is past it. The manpower route carries TWO
+  // rules, so that report goes out twice a day.
   assert.deepEqual(
-    load.occurrences.map((entry) => [entry.hour, entry.cadence]),
+    LOAD_PROVIDERS.subcon.forRow(row({ ...base, morning_report_start_hour: 7 })).occurrences
+      .map((entry) => [entry.hour, entry.cadence])
+      .sort((a, b) => Number(a[0]) - Number(b[0])),
     [
-      [7, "activity + manpower report"],
-      [7, "manpower + machines report"],
+      [10, "manpower + machines report"],
+      [12, "activity + manpower report"],
+      [16, "manpower + machines report"],
+      [22, "nightly housekeeping report"],
     ],
   );
+
+  // Gate at 14: the 10:05 and 12:05 runs are before it and send nothing.
+  // Housekeeping is a different route with no gate at all.
+  assert.deepEqual(
+    LOAD_PROVIDERS.subcon.forRow(row({ ...base, morning_report_start_hour: 14 })).occurrences
+      .map((entry) => [entry.hour, entry.cadence])
+      .sort((a, b) => Number(a[0]) - Number(b[0])),
+    [
+      [16, "manpower + machines report"],
+      [22, "nightly housekeeping report"],
+    ],
+  );
+
+  // The nightly report has a real hour, so nothing is left without one.
+  assert.deepEqual(LOAD_PROVIDERS.subcon.forRow(row({ ...base, morning_report_start_hour: 7 })).ambient, []);
 });
 
 test("a report with no destination group is no send at all", () => {
@@ -286,6 +314,7 @@ test("the day has 24 buckets, and the busiest hour is the one with most sends", 
         enabled: true,
         morning_report_start_hour: 8,
         manpower_activity_outbound_group_id: "b@g.us,c@g.us",
+        // Its rule runs at 12:05 Singapore, not at the configured start hour.
         enable_activity_summary: true,
       }),
     ],
@@ -293,18 +322,14 @@ test("the day has 24 buckets, and the busiest hour is the one with most sends", 
 
   assert.equal(load.hours.length, 24, "every hour exists, empty or not");
   assert.deepEqual(load.hours.map((bucket) => bucket.hour), [...Array(24).keys()]);
-  // 08:00 carries the WBGT report plus two subcon sends; 09:00 only the report.
-  assert.equal(load.hours[8].scheduled, 3);
+  assert.equal(load.hours[8].scheduled, 1, "08:00 is the WBGT report alone");
   assert.equal(load.hours[9].scheduled, 1);
+  assert.equal(load.hours[12].scheduled, 2, "subcon lands on its rule's hour, two groups");
   assert.equal(load.hours[0].total, 0);
-  assert.equal(load.busiest[0].hour, 8);
-  // Two service/project pairs are active at 08:00, one at 09:00.
-  assert.equal(load.hours[8].groups, 2);
-  assert.equal(load.hours[9].groups, 1);
-  assert.deepEqual(load.hours[8].byService, {
-    wbgt: { scheduled: 1, conditional: 0 },
-    subcon: { scheduled: 2, conditional: 0 },
-  });
+  assert.equal(load.busiest[0].hour, 12);
+  assert.equal(load.hours[8].groups, 1);
+  assert.equal(load.hours[12].groups, 1);
+  assert.deepEqual(load.hours[12].byService, { subcon: { scheduled: 2, conditional: 0 } });
   assert.equal(load.scheduled, 4);
 });
 
@@ -361,22 +386,23 @@ test("one hour's detail names every cadence in it, worst first", () => {
           enabled: true,
           whatsapp_group_id: "a@g.us",
           site_hours_start: 8,
-          site_hours_end: 8,
+          site_hours_end: 19,
           water_parade_enabled: true,
           water_parade_outbound_group_id: "w1@g.us,w2@g.us,w3@g.us",
         }),
       ],
     },
-    8,
+    11,
   );
   assert.deepEqual(
     detail.map((entry) => [entry.cadence, entry.sends]),
     [
-      ["Water Parade reminder", 3],
+      // Three groups, and the rule fires TWICE an hour.
+      ["Water Parade reminder", 6],
       ["hourly report", 1],
     ],
   );
-  assert.deepEqual(hourDetail({ wbgt: [] }, 8), []);
+  assert.deepEqual(hourDetail({ wbgt: [] }, 11), []);
 });
 
 test("the breakdown drops the ceiling when the chart does, so the rows add up", () => {
@@ -420,4 +446,113 @@ test("hours read as clock times", () => {
   assert.equal(hourLabel(0), "00:00");
   assert.equal(hourLabel(8), "08:00");
   assert.equal(hourLabel(23), "23:00");
+});
+
+test("UTC rules are read as Singapore hours", () => {
+  // Every expression in the table is UTC, and the console's own labels prove
+  // the offset: cron(0 11 * * ? *) is named "Noise Evening Summary 7PM".
+  assert.deepEqual(sgtHours(11), [19]);
+  assert.deepEqual(sgtHours(23), [7], "23:00 UTC wraps into the next Singapore morning");
+  assert.deepEqual(sgtHours(2, 5, 8, 11), [10, 13, 16, 19]);
+  assert.deepEqual(sgtHours(16, 16), [0], "the same hour twice is one hour, and 16 UTC is midnight");
+  assert.deepEqual(CRONS.noise.evening.hours, [19]);
+  assert.deepEqual(CRONS.noise.morning.hours, [7]);
+  assert.deepEqual(CRONS.issueChaser.chatgroupSummary.hours, [8]);
+});
+
+test("a configured hour only counts when its rule runs in it", () => {
+  assert.deepEqual(within([8, 16], CRONS.issueChaser.safetySummary), [8, 16], "an hourly rule allows both");
+  assert.deepEqual(within([8, 16], CRONS.issueChaser.chatgroupSummary), [8], "a daily rule allows only its own hour");
+  assert.deepEqual(within([16], CRONS.issueChaser.chatgroupSummary), []);
+});
+
+test("a chaser summary scheduled outside its rule's hour is reported, not drawn", () => {
+  const load = LOAD_PROVIDERS.issueChaser.forRow(
+    row({
+      project_code: "AST",
+      enabled: true,
+      whatsapp_group_ids: "a@g.us,b@g.us",
+      // Two styles, the same pair of hours. The plain summary runs hourly so
+      // both fire; the chat-group split runs once a day at 08:00, so its 16:00
+      // entry can never fire.
+      daily_safety_summary_enabled: true,
+      daily_safety_summary_schedule: "0800,3;1600,3",
+      daily_safety_chatgroup_summary_enabled: true,
+      daily_safety_chatgroup_summary_schedule: "0800,3;1600,3",
+    }),
+  );
+
+  assert.deepEqual(
+    load.occurrences.map((entry) => [entry.hour, entry.cadence, entry.sends]).sort(),
+    [
+      // `0800,3` — at 08:00, to every group this style resolves to. The 3 is
+      // the lookback and changes what the message says, never how many go out.
+      [8, "past-days safety summary", 2],
+      [8, "…split by chat group", 2],
+      [16, "past-days safety summary", 2],
+    ].sort(),
+  );
+
+  // The stranded 16:00 entry is a silent misconfiguration: the project looks
+  // scheduled and sends nothing. Named rather than left as an absent bar.
+  const stranded = load.ambient.filter((entry) => /never sends/.test(entry.reason));
+  assert.equal(stranded.length, 1);
+  assert.match(stranded[0].reason, /split by chat group is scheduled for 16:00/);
+  assert.match(stranded[0].reason, /only runs at 08:00/);
+});
+
+test("the cadences whose hour comes from a rule rather than a column", () => {
+  // The noise morning summary is invoked once a day at 07:00 Singapore, so the
+  // column cannot move it — it describes the period summarised, not the send.
+  const noise = LOAD_PROVIDERS.noise.forRow(
+    row({
+      project_code: "SKW",
+      enabled: true,
+      whatsapp_group_id: "a@g.us",
+      enable_morning_summary: true,
+      morning_summary_start_hhmm: "0300",
+    }),
+  );
+  assert.deepEqual(noise.occurrences.map((entry) => [entry.hour, entry.cadence]), [[7, "morning summary"]]);
+
+  // The haze kickoff is 07:45 Singapore on its own rule, not the project's
+  // working-hours start.
+  const haze = LOAD_PROVIDERS.haze.forRow(
+    row({
+      project_code: "CFC",
+      enabled: true,
+      wa_group_ids: "a@g.us",
+      working_hours_start_hhmm: "0900",
+      working_hours_end_hhmm: "0900",
+    }),
+  );
+  assert.ok(haze.occurrences.some((entry) => entry.hour === 7 && entry.cadence === "daily kickoff"));
+
+  // Ailytics' issues status summary has no hour column at all: 18:00, daily.
+  const ailytics = LOAD_PROVIDERS.ailytics.forRow(
+    row({ project_code: "AST", enabled: true, status_summary_enabled: true, whatsapp_group_ids: "a@g.us,b@g.us" }),
+  );
+  assert.deepEqual(
+    ailytics.occurrences.map((entry) => [entry.hour, entry.cadence, entry.sends]),
+    [[18, "issues status summary", 2]],
+  );
+});
+
+test("Water Parade reminders run twice an hour, and only from 11:00 to 19:00", () => {
+  const load = LOAD_PROVIDERS.wbgt.forRow(
+    row({
+      project_code: "IR2",
+      enabled: true,
+      whatsapp_group_id: "a@g.us",
+      site_hours_start: 7,
+      site_hours_end: 23,
+      enable_hourly: false,
+      water_parade_enabled: true,
+      water_parade_outbound_group_id: "w1@g.us,w2@g.us",
+    }),
+  );
+  const hours = load.occurrences.map((entry) => entry.hour);
+  assert.deepEqual(hours, [11, 12, 13, 14, 15, 16, 17, 18, 19], "the rule is UTC 03-11, not the whole site day");
+  // Two groups on a rule that fires at :30 and :56.
+  assert.ok(load.occurrences.every((entry) => entry.sends === 4));
 });

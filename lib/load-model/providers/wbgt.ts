@@ -1,3 +1,4 @@
+import { CRONS, within } from "../crons";
 import { countIn, isEnabled, plainHour, plainWindowHours, wbgtSenders } from "../helpers";
 import type { LoadProvider, Occurrence, RowLoad } from "../types";
 import type { ProjectConfigRow } from "../../services";
@@ -62,11 +63,14 @@ export const wbgtLoadProvider: LoadProvider = {
 
     if (config.water_parade_enabled === true) {
       const groups = countIn(config, "water_parade_outbound_group_id");
-      for (const hour of hours) {
+      // The reminder rule runs TWICE an hour and only between 11:00 and 19:59
+      // Singapore — not across the whole site day, which is what this counted
+      // before the console's rules were read.
+      for (const hour of within(hours, CRONS.wbgt.waterParadeReminder)) {
         // A cycle starts only when the top-of-hour band is hot, and the
         // cooldown suppresses one that follows within two hour bands — so the
-        // sustained rate is lower than this, but any single hour can carry one.
-        add(hour, "Water Parade reminder", groups, "conditional");
+        // sustained rate is well below this ceiling.
+        add(hour, "Water Parade reminder", groups * 2, "conditional");
       }
       if (config.water_parade_daily_summary_enabled === true) {
         const hour = plainHour(config.water_parade_daily_summary_hour);

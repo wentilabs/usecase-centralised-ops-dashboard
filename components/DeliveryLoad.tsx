@@ -274,9 +274,9 @@ export function DeliveryLoad({
 
           <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
             A solid bar is a send that happens whatever the readings say. A faded one is the worst case for that hour
-            if every condition fires at once — capacity, not a forecast. Hours only: the minute each cron fires lives
-            in an EventBridge rule rather than in any repository. Sunday and public-holiday mutes are not applied, so
-            this describes an ordinary working day.
+            if every condition fires at once — capacity, not a forecast. Hours come from the live EventBridge rules,
+            so a cadence configured for an hour its rule never runs in is listed as never sending rather than drawn.
+            Weekly rules and Sunday and public-holiday mutes are left out, so this describes an ordinary working day.
           </p>
         </div>
       </div>

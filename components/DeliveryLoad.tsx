@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 
-import { SERVICE_FILL, ServiceTag } from "./ServiceTag";
+import { ServiceTag, segmentStyle } from "./ServiceTag";
 import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { dayLoad, hourDetail, hourLabel } from "@/lib/load-model";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
@@ -104,6 +104,29 @@ export function DeliveryLoad({
               Include the conditional ceiling
             </label>
 
+            {/* A key, because the two treatments are the whole point of the
+                chart and were previously explained only in a paragraph below
+                it. Drawn with a real service's hue rather than a neutral one,
+                so the sample matches something actually on screen. */}
+            <span className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm"
+                  style={segmentStyle("wbgt", true)}
+                  aria-hidden
+                />
+                scheduled
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm"
+                  style={segmentStyle("wbgt", false)}
+                  aria-hidden
+                />
+                conditional, at most
+              </span>
+            </span>
+
             {/* The services, as the filter. Clicking one drops it from the
                 stack; the pill greys out the same way an absent service does
                 on a project card. */}
@@ -156,14 +179,14 @@ export function DeliveryLoad({
                       <Fragment key={service}>
                         {faded > 0 ? (
                           <span
-                            className={`${SERVICE_FILL[service]} w-full opacity-30`}
-                            style={{ flexGrow: faded, flexBasis: 0, minHeight: 1 }}
+                            className="w-full"
+                            style={{ ...segmentStyle(service, false), flexGrow: faded, flexBasis: 0, minHeight: 1 }}
                           />
                         ) : null}
                         {part.scheduled > 0 ? (
                           <span
-                            className={`${SERVICE_FILL[service]} w-full`}
-                            style={{ flexGrow: part.scheduled, flexBasis: 0, minHeight: 1 }}
+                            className="w-full"
+                            style={{ ...segmentStyle(service, true), flexGrow: part.scheduled, flexBasis: 0, minHeight: 1 }}
                           />
                         ) : null}
                       </Fragment>
@@ -273,8 +296,8 @@ export function DeliveryLoad({
           </div>
 
           <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
-            A solid bar is a send that happens whatever the readings say. A faded one is the worst case for that hour
-            if every condition fires at once — capacity, not a forecast. Hours come from the live EventBridge rules,
+            A solid bar is a send that happens whatever the readings say. A striped one, in the same colour, is the
+            worst case for that hour if every condition fires at once — capacity, not a forecast. Hours come from the live EventBridge rules,
             so a cadence configured for an hour its rule never runs in is listed as never sending rather than drawn.
             Weekly rules, on-demand routes and Sunday and public-holiday mutes are left out, so this describes an
             ordinary working day. Rules that post nothing to a group — scrapes, sheet fills, retries and ingestion

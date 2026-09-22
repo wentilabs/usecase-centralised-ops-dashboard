@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import { tagLabel, type ServiceKey } from "@/lib/services";
 
 /**
@@ -28,22 +30,47 @@ const TAG_TONE: Record<ServiceKey, string> = {
 };
 
 /**
- * The same seven hues as solid fills, for a chart.
+ * The same seven hues as CSS colours, for a chart.
  *
  * Here rather than in the chart for the reason above: one table, so a service
- * is the same colour wherever you meet it. Written as literal class names
- * because Tailwind only emits what it can find in the source — a fill composed
- * at runtime from a hue name renders as nothing at all.
+ * is the same colour wherever you meet it. These are the literal values behind
+ * the Tailwind 400 shades used by the pills.
+ *
+ * Values rather than class names because the chart needs to DERIVE from the
+ * hue — a stripe of it, a wash of it — and a class name cannot be operated on.
+ * The first attempt drew the conditional layer as `opacity-30` over the dark
+ * ground, which does not lighten a colour so much as drag it toward the
+ * background: amber came out olive and orange came out brown, and both read as
+ * an eighth and ninth service that is in no legend.
  */
-export const SERVICE_FILL: Record<ServiceKey, string> = {
-  wbgt: "bg-amber-400",
-  noise: "bg-sky-400",
-  haze: "bg-orange-400",
-  lightning: "bg-violet-400",
-  ailytics: "bg-cyan-400",
-  subcon: "bg-lime-400",
-  issueChaser: "bg-rose-400",
+export const SERVICE_COLOR: Record<ServiceKey, string> = {
+  wbgt: "#fbbf24",
+  noise: "#38bdf8",
+  haze: "#fb923c",
+  lightning: "#a78bfa",
+  ailytics: "#22d3ee",
+  subcon: "#a3e635",
+  issueChaser: "#fb7185",
 };
+
+/**
+ * How a bar segment is painted, given its service's hue.
+ *
+ * Scheduled is the flat colour. Conditional keeps the SAME hue at full
+ * strength and separates itself by pattern instead — diagonal stripes over a
+ * faint wash of the same colour. Pattern survives being made small and dark in
+ * a way opacity does not, and it cannot be mistaken for another category.
+ */
+export function segmentStyle(service: ServiceKey, certain: boolean): CSSProperties {
+  const color = SERVICE_COLOR[service];
+  if (certain) return { backgroundColor: color };
+  return {
+    // `${color}2e` is the hue at ~18% alpha — enough to place it, not enough
+    // to be confused with the solid block beside it.
+    backgroundColor: `${color}2e`,
+    backgroundImage: `repeating-linear-gradient(-45deg, ${color} 0 2px, transparent 2px 6px)`,
+  };
+}
 
 /**
  * A service, as the pill it wears everywhere.

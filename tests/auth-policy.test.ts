@@ -407,6 +407,20 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   const hazePills = pillsFor("haze", { enable_poc_mentions: true, advisory_format: "wohhup" });
   assert.ok(hazePills.some((p) => p.label === "POC mentions" && p.on));
   assert.ok(hazePills.some((p) => p.label === "wohhup format" && p.on));
+  // Haze took the same manpower-sheet source as lightning, so it reads the
+  // same on the card — a fixed list lights nothing extra.
+  assert.ok(hazePills.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+  assert.ok(
+    pillsFor("haze", { enable_poc_mentions: true, poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+  );
+  assert.ok(
+    !pillsFor("haze", { poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+    "the switch has to be on for the source to mean anything",
+  );
   // `default` is a real value, not an absence — shown, but not lit up.
   assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
 

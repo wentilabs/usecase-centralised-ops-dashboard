@@ -70,7 +70,12 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
-      help: "Comma-separated international numbers, e.g. 6591234567. These are mentioned, not messaged directly.",
+      help: "Comma-separated international numbers, e.g. 6591234567. These are mentioned, not messaged directly. Or the exact word `manpower-sheet` to tag whoever is on that day's Manpower tab instead of a fixed list — then fill in the Manpower sheet below.",
+      showIf: { field: "enable_poc_mentions", equals: true },
+    },
+    manpower_sheet_id: {
+      label: "Manpower sheet",
+      help: "Only read when POC phone numbers is exactly `manpower-sheet`. The service keeps its own copy of the workbook ID; it was seeded once from this project's Manpower workbook in Common Resources and does not follow it afterwards.",
       showIf: { field: "enable_poc_mentions", equals: true },
     },
     poc_alert_wa_groups: {
@@ -101,7 +106,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },
     {
       title: "POC escalation",
-      fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_alert_wa_groups", "poc_phone_numbers"],
+      fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_alert_wa_groups", "poc_phone_numbers", "manpower_sheet_id"],
     },
   ],
 };

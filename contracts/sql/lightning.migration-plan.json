@@ -12,6 +12,7 @@
     { "id": "amber-notification-debounce", "file": "amber-notification-debounce.sql", "requires": ["stop-directive-deadline"] },
     { "id": "stop-runtime-safety", "file": "stop-runtime-safety.sql", "requires": ["stop-directive-deadline"] },
     { "id": "poc-mentions", "file": "poc-mentions.sql", "requires": [] },
+    { "id": "manpower-sheet-poc-mentions", "file": "manpower-sheet-poc-mentions.sql", "requires": ["poc-mentions"] },
     {
       "id": "drop-policy-note",
       "file": "drop_policy_note.sql",
@@ -20,7 +21,9 @@
       "precondition": "Deploy code and HALO metadata that no longer read policy_note, verify the archive table, and take a schema backup before applying."
     },
     { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
-    { "id": "lightning-sms", "file": "lightning-sms.sql", "requires": ["notification-calendar"] }
+    { "id": "lightning-sms", "file": "lightning-sms.sql", "requires": ["notification-calendar"] },
+    { "id": "sms-lightning-format", "file": "sms-lightning-format.sql", "requires": ["lightning-sms"] },
+    { "id": "single-red-until-green", "file": "single-red-until-green.sql", "requires": ["stop-runtime-safety"] }
   ],
   "dataMigrations": [
     {

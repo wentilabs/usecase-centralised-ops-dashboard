@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "cd7cdb77ad300b06923dfb90b8cfc4f501701915",
+      "commit": "863722e5877c6e0c37de5e7df69c1a60228a76a9",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -31,7 +31,7 @@
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "main",
-      "commit": "98ef95b40f478c380a77b1bc3ba0fc25f2eaddee",
+      "commit": "74f61e0fba36502d5239587e02dc511e389e794b",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",

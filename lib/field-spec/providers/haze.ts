@@ -75,8 +75,19 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     },
     manpower_sheet_id: {
       label: "Manpower sheet",
-      help: "Only read when POC phone numbers is exactly `manpower-sheet`. The service keeps its own copy of the workbook ID; it was seeded once from this project's Manpower workbook in Common Resources and does not follow it afterwards.",
-      showIf: { field: "enable_poc_mentions", equals: true },
+      // Deliberately NOT gated on the mentions switch, unlike the two
+      // lists beside it. Two reasons. It is a resource pointer, and this
+      // repo already holds that where a thing is read from is decided
+      // before it is switched on — the SMS destination says so in as many
+      // words. And the constraint wants both POC lists non-blank in the
+      // SAME save, so the sheet has to be fillable before the switch is
+      // flipped rather than after.
+      //
+      // It also matters that the column is already populated: the seed
+      // migration filled it from ops.projects for every matching project,
+      // so hiding it behind an off switch hid a value that was already
+      // there on most rows.
+      help: "Where “whoever is on site today” is read from, when POC phone numbers is the exact word `manpower-sheet`. Seeded once from this project's Manpower workbook in Common Resources; the service keeps its own copy and does not follow that one afterwards, so changing it there will not change it here.",
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",

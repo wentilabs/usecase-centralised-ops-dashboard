@@ -699,6 +699,30 @@ test("the retired lightning policy_note stays hidden while the column exists", (
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
 });
 
+test("the manpower sheet is visible before the switch that reads it", () => {
+  // Gated on the mentions toggle, this was invisible on every project but the
+  // one that had mentions on — while the seed migration had already filled the
+  // column from ops.projects on most rows. A populated value nobody can see.
+  for (const [service, column] of [
+    ["lightning", "manpower_sheet_id"],
+    ["haze", "manpower_sheet_id"],
+  ] as const) {
+    const spec = buildFieldSpec(service, {
+      [column]: { type: "string", format: "text", enum: null, default: null },
+    });
+    assert.equal(spec.fields[column]?.showIf, null, `${service}.${column} must not be hidden behind a switch`);
+    assert.equal(spec.fields[column]?.hidden, false);
+    // Named, not left as a raw column name.
+    assert.equal(spec.fields[column]?.label, "Manpower sheet");
+    assert.match(spec.fields[column]?.help ?? "", /manpower-sheet/);
+    // Filed with the POC settings it belongs to, not under Other.
+    assert.ok(
+      spec.groups.some((group) => group.title === "POC escalation" && group.fields.includes(column)),
+      `${service}.${column} should sit with the POC settings`,
+    );
+  }
+});
+
 test("the SMS source format is a choice, not a box to type a typo into", () => {
   // `lightning_sms_lightning_format_check` accepts exactly one value or null.
   // Without the options the column renders as free text, and the operator

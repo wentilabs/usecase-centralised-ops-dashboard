@@ -28,6 +28,16 @@ export type FieldSpec = {
   hidden: boolean;
   showIf: ShowIf | null;
   row: string | null;
+  /**
+   * The service endpoints that read this column, as `METHOD /path`.
+   *
+   * Carried on the field rather than looked up beside it so every consumer —
+   * the editor, the create dialog, an agent reading `getSchema` — answers
+   * "what does this column actually do" from the same place.
+   */
+  routes: string[];
+  /** Whether HALO can show the real message this column produces. */
+  hasPreview: boolean;
 };
 
 export type FieldGroup = { title: string; fields: string[] };

@@ -17,6 +17,10 @@ info:
     database, so new columns appear without a release. Call `getSchema` first and work from what it
     returns, including each field's widget, options, default and help text.
 
+    `getSchema` also carries two things that answer "what does this column actually do": `routes`, the
+    `METHOD /path` endpoints on the service that read it, and `hasPreview`, set when HALO can show the
+    real message that column produces.
+
     **Agents:** the same operations are available over MCP at `/api/mcp` (Streamable HTTP, JSON only),
     with tools derived from this document — one tool per `operationId`, carrying safety annotations.
     That is usually the better surface; this one is the contract it is generated from.

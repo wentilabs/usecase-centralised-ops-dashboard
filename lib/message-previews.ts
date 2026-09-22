@@ -457,11 +457,135 @@ const LIGHTNING_PREVIEWS: FormatterPreview[] = [
   },
 ];
 
+
+/**
+ * Issue Chaser, lifted from that repo's `MESSAGE_SHAPES.md`.
+ *
+ * Its examples are written against a TEST project rather than generated per
+ * run, so the numbers are illustrative — but the SHAPE, and the frozen first
+ * line that close-correlation depends on, are the service's own.
+ */
+const CHASER_REMINDER = `⚠️ Issue #42 [P1] still open
+*Datetime:* 25-Aug-2026 09:30
+*Location:* Zone 1
+*Description:* Personnel squatting on designated vehicle access.
+*Open for:* 4.2 hr
+*Open target:* 3 hours
+*Reported by:* Example Reporter
+@6591234567 please follow up.`;
+
+const CHASER_SNAPSHOT = `🔔 Daily Safety Reminder — 2 issues still open
+Date: 2026-08-25
+P1 1 · P2 1 · P3 0`;
+
+const CHASER_SNAPSHOT_RANGE = `🔔 Daily Safety Reminder — 2 issues still open
+Date range: 2026-08-24 to 2026-08-25
+P1 1 · P2 1 · P3 0`;
+
+const CHASER_BACKLOG = `🔔 Daily Safety Reminder — ABC Pte Ltd
+20 of 57 issues still open
+P1 3 · P2 9 · P3 8`;
+
+const CHASER_SUMMARY = `🚨📋 *Safety Issues Summary — TEST Project* (past 5 days through 2026-08-31, 9:00 AM)
+
+Total issues reported: 5
+Open issues: 3 (1 P1, 1 P2, 1 P3)
+
+*🗓️ Open issues by date*
+*31-Aug:* 2 (1 P1, 1 P2)
+
+*30-Aug:* 1 (1 P3)`;
+
+const CHASER_SUMMARY_BY_COMPANY = `*31-Aug:* 2 (1 P1, 1 P2)
+• Alpha Contractors: 2 (1 P1, 1 P2)
+• Beta Services: 1 (1 P2)`;
+
+const CHASER_SUMMARY_BY_CHATGROUP = `*31-Aug:* 2 (1 P1, 1 P2)
+• Safety Alpha: 1 (1 P1)
+• Invalid chatgroup: 1 (1 P2)`;
+
+const CHASER_NOVADE_REMINDER = `3 rows in Novade Name List do not have a valid Novade Name. Please update them in the Safety sheet to enable Novade integration.`;
+
+const ISSUE_CHASER_PREVIEWS: FormatterPreview[] = [
+  {
+    service: "issueChaser",
+    column: "severity_cadence_chaser_enabled",
+    value: "true",
+    summary: "One reminder per open issue, on the priority's own clock — P1 every 3 hours, P2 daily, P3 weekly.",
+    kind: "message",
+    bubbles: [{ caption: "One issue, one message", text: CHASER_REMINDER }],
+    source: "issue-chaser MESSAGE_SHAPES.md §Adaptive issue reminder",
+  },
+  {
+    service: "issueChaser",
+    column: "same_day_open_snapshot_enabled",
+    value: "true",
+    summary: "A count for the day, then one reminder per issue underneath it. Today's issues only, unless the lookback is set.",
+    kind: "message",
+    bubbles: [
+      { caption: "The header — today only", text: CHASER_SNAPSHOT },
+      { caption: "With a lookback set, the date line widens", text: CHASER_SNAPSHOT_RANGE },
+    ],
+    source: "issue-chaser MESSAGE_SHAPES.md §Daily open snapshot",
+  },
+  {
+    service: "issueChaser",
+    column: "company_open_backlog_enabled",
+    value: "true",
+    summary: "A subcontractor's own backlog, into that subcontractor's group, a bounded batch at a time. Runs on demand only.",
+    kind: "message",
+    bubbles: [{ caption: "The header — the counts describe THIS batch", text: CHASER_BACKLOG }],
+    source: "issue-chaser MESSAGE_SHAPES.md §Company open backlog",
+  },
+  {
+    service: "issueChaser",
+    column: "daily_safety_summary_enabled",
+    value: "true",
+    summary: "Statistics for the last few days, to the summary groups. No issue reminders, and nothing is closable by replying to it.",
+    kind: "message",
+    bubbles: [{ caption: "The whole report", text: CHASER_SUMMARY }],
+    source: "issue-chaser MESSAGE_SHAPES.md §Past-days safety summaries",
+  },
+  {
+    service: "issueChaser",
+    column: "daily_safety_company_summary_enabled",
+    value: "true",
+    summary: "The same report, with each date broken down by the workbook's Company column.",
+    kind: "message",
+    bubbles: [
+      {
+        caption: "What it adds beneath each date — a row naming two companies counts once for each",
+        text: CHASER_SUMMARY_BY_COMPANY,
+      },
+    ],
+    source: "issue-chaser MESSAGE_SHAPES.md §Past-days safety summaries",
+  },
+  {
+    service: "issueChaser",
+    column: "daily_safety_chatgroup_summary_enabled",
+    value: "true",
+    summary: "The same report again, split by the literal ChatGroup cell. A blank cell reads as Invalid chatgroup rather than being dropped.",
+    kind: "message",
+    bubbles: [{ caption: "What it adds beneath each date", text: CHASER_SUMMARY_BY_CHATGROUP }],
+    source: "issue-chaser MESSAGE_SHAPES.md §Past-days safety summaries",
+  },
+  {
+    service: "issueChaser",
+    column: "novade_name_list_check_enabled",
+    value: "true",
+    summary: "One line, once a week, when the Name List has rows a person could fill in. A clean list sends nothing at all.",
+    kind: "message",
+    bubbles: [{ caption: "Sent only when the count is above zero", text: CHASER_NOVADE_REMINDER }],
+    source: "issue-chaser MESSAGE_SHAPES.md §Novade Name List completeness check",
+  },
+];
+
 export const MESSAGE_PREVIEWS: FormatterPreview[] = [
   ...NOISE_PREVIEWS,
   ...WBGT_PREVIEWS,
   ...HAZE_PREVIEWS,
   ...LIGHTNING_PREVIEWS,
+  ...ISSUE_CHASER_PREVIEWS,
 ];
 
 const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
@@ -477,6 +601,24 @@ const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
   "wbgt:five_min_alert_formatter": {
     intro:
       "full does not pick a wording of its own: it renders whichever Hourly wording the project is set to. Change that field to change what full sends.",
+  },
+  "issueChaser:daily_safety_company_summary_enabled": {
+    intro:
+      "A split of the plain summary rather than a report of its own: the header and totals are identical, and this only changes what sits under each date.",
+    shared: [{ caption: "The base report both start from", text: CHASER_SUMMARY }],
+  },
+  "issueChaser:daily_safety_chatgroup_summary_enabled": {
+    intro:
+      "The same split again, by the workbook's ChatGroup cell instead of its Company one. Each style has its own schedule and its own destination.",
+    shared: [{ caption: "The base report both start from", text: CHASER_SUMMARY }],
+  },
+  "issueChaser:same_day_open_snapshot_enabled": {
+    intro:
+      "The header below is followed by one reminder per issue, in the shape the severity chaser uses — so a snapshot of four issues is five messages, not one.",
+  },
+  "issueChaser:company_open_backlog_enabled": {
+    intro:
+      "Nothing invokes this on a schedule; it sends when somebody calls it. It is also the only style that sends an issue with no photo as text rather than skipping it.",
   },
   "lightning:amber_enabled": {
     intro:

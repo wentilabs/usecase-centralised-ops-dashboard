@@ -1,4 +1,6 @@
 import type { ServiceKey } from "./services";
+import { routesForField } from "./field-routes";
+import { hasPreview } from "./message-previews";
 import { contractFieldFor, contractOptionsFor, contractReadonlyFields } from "./service-contracts";
 import { FIELD_PROVIDERS } from "./field-spec/providers";
 import type {
@@ -68,6 +70,8 @@ export function buildFieldSpec(
       hidden: Boolean(hint.hidden),
       showIf: hint.showIf || null,
       row: hint.row || null,
+      routes: routesForField(usecase as ServiceKey, name),
+      hasPreview: hasPreview(usecase as ServiceKey, name),
     };
   }
 

@@ -333,6 +333,45 @@ Requires `NOISE_API_URL`, `WBGT_API_URL` and `ISSUE_CHASER_API_URL`. Unset, the
 button still appears and names the missing variable rather than failing
 silently.
 
+## Finding your way from a column to a handler
+
+Two surfaces exist for the same newcomer problem: the routes are legible and
+the columns are legible, and nothing joins them.
+
+**`lib/field-routes.ts`** gives each column the endpoint it steers, rendered
+under the column name in the configuration drawer and the create-project
+dialog as `↳ POST /api/noise-half-hourly`. No base URL — which deployment it
+is, is an environment question. Coverage is deliberate: a column earns a route
+when knowing the route tells you something, delivery plumbing says "every
+outbound route" rather than listing fifteen paths, and labelling columns say
+nothing at all, which is itself the signal.
+
+It is a mirror, so it has the same guard as `row-rules` and the cron table: a
+test checks every route string against the service's pinned contract and every
+column name against that contract's field list. It rejected
+`water_parade_photo_group_id` on the first run — a column HALO knows from live
+introspection but WBGT's contract does not declare — so
+`/api/water-parade-intake` is deliberately unbound rather than pointed at
+something undeclared.
+
+**`lib/message-previews.ts`** shows the real message behind a switch. Five of
+the seven services are covered; the two that are not are recorded as a test
+rather than a comment, so the gap is reviewable and fails once those repos
+publish their shapes:
+
+| Service | Previews come from |
+|---|---|
+| noise | `MESSAGE_SHAPES.md`, lifted by `scripts/build-message-previews.mjs` |
+| wbgt, haze | their message builders, executed and pasted |
+| lightning | `MESSAGE_SHAPES.md`, plus the SMS wrapper transcribed from `usecases/lightning/sms.js` |
+| issueChaser | `MESSAGE_SHAPES.md` |
+| ailytics | **none** — the docs describe parsing, never an outbound body |
+| subcon | **none** — SPECS.md gives the rules and the trailers, no complete body |
+
+A preview column need not be a formatter. `amber_enabled`,
+`sms_lightning_format` and every Issue Chaser style are switches, and each
+sends a different thing — which is the only question this file answers.
+
 ## Outbound load (`lib/load-model`)
 
 `◔ Outbound load` in the header answers "how many messages go out to how many

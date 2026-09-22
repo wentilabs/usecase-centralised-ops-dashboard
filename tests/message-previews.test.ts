@@ -8,7 +8,7 @@ import test from "node:test";
 
 import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewContext, previewsFor } from "../lib/message-previews";
 import { FIELDS } from "../lib/field-spec";
-import type { ServiceKey } from "../lib/services";
+import { SERVICE_KEYS, type ServiceKey } from "../lib/services";
 
 /**
  * Guards the formatter previews.
@@ -59,6 +59,15 @@ const EXPECTED: Record<string, string[]> = {
   // Blank is a real option here rather than an absence: it is the legacy
   // relay, and it is what almost every project is on.
   "lightning:sms_lightning_format": ["", "TRI-style"],
+  // Issue Chaser's styles are switches rather than formatters, and each sends
+  // a different thing — which is exactly what a newcomer needs to see.
+  "issueChaser:severity_cadence_chaser_enabled": ["true"],
+  "issueChaser:same_day_open_snapshot_enabled": ["true"],
+  "issueChaser:company_open_backlog_enabled": ["true"],
+  "issueChaser:daily_safety_summary_enabled": ["true"],
+  "issueChaser:daily_safety_company_summary_enabled": ["true"],
+  "issueChaser:daily_safety_chatgroup_summary_enabled": ["true"],
+  "issueChaser:novade_name_list_check_enabled": ["true"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */
@@ -334,4 +343,34 @@ test("every lightning preview names the file it came from", () => {
   ]) {
     assert.match(preview.source, /^lightning /, `${preview.column}=${preview.value} has no source`);
   }
+});
+
+
+/**
+ * Which services show a real message, and why the other two do not.
+ *
+ * Recorded as a test rather than a comment so the gap is reviewable: when one
+ * of these repos publishes its shapes, this fails until the previews are
+ * written, which is the same bargain KNOWN_WITHOUT_PREVIEW makes.
+ */
+const NO_PREVIEWS: Record<string, string> = {
+  // Its README and AGENTS describe parsing and classification in detail and
+  // never print an outbound body. There is no MESSAGE_SHAPES.md to lift from.
+  ailytics: "no published message shapes — the docs describe parsing, not output",
+  // SPECS.md names the headline (`📊 Manpower Summary`) and the checklist's
+  // line rules, but publishes no complete body for either morning report.
+  // Composing one from the rules would be a guess at the layout.
+  subcon: "SPECS.md documents the rules and the trailers, but no complete message body",
+};
+
+test("every service either shows a real message or says why it cannot", () => {
+  const withPreviews = new Set(MESSAGE_PREVIEWS.map((preview) => preview.service));
+  for (const service of SERVICE_KEYS) {
+    const has = withPreviews.has(service);
+    const excused = Boolean(NO_PREVIEWS[service]);
+    assert.notEqual(has, excused, `${service} is both previewed and excused, or neither`);
+  }
+  // Five of seven, and the two gaps are the two repos with no shapes document.
+  assert.deepEqual([...withPreviews].sort(), ["haze", "issueChaser", "lightning", "noise", "wbgt"]);
+  assert.deepEqual(Object.keys(NO_PREVIEWS).sort(), ["ailytics", "subcon"]);
 });

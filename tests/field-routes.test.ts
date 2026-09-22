@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { EVERY_OUTBOUND_ROUTE, bindingsFor, isDeliveryPlumbing, routeHint, routesForField } from "../lib/field-routes";
 import { SERVICE_CONTRACTS } from "../lib/service-contracts";
+import { buildFieldSpec } from "../lib/field-spec";
 import { SERVICE_KEYS } from "../lib/services";
 
 /**
@@ -67,14 +68,42 @@ test("two switches that sit next to each other name different endpoints", () => 
   ]);
 });
 
-test("a column read by two endpoints names both, without repeating one", () => {
+test("a column read by two endpoints names both", () => {
   // Site hours gate the hourly report and the 5-minute alert alike.
   assert.deepEqual(routesForField("wbgt", "site_hours_start"), ["POST /api/wbgt-hourly", "POST /api/wbgt-5min"]);
-  // POC mentions appear in two bindings for WBGT; the same route must not be
-  // listed twice because it was named in both.
-  const poc = routesForField("wbgt", "poc_phone_numbers");
-  assert.deepEqual(poc, [...new Set(poc)]);
-  assert.equal(poc.length, 2);
+  // `four_hourly` is named in two SEPARATE bindings, so this also covers the
+  // merge across bindings rather than within one.
+  assert.deepEqual(routesForField("haze", "four_hourly"), ["POST /api/haze-hourly", "POST /api/haze-kickoff"]);
+
+  // No column currently lands the same route in two bindings, so the de-dup in
+  // `routesForField` is defensive and this only checks it is not making things
+  // worse. Said plainly rather than dressed up as coverage it does not have.
+  for (const service of SERVICE_KEYS) {
+    for (const binding of bindingsFor(service)) {
+      for (const column of binding.columns) {
+        const routes = routesForField(service, column);
+        assert.deepEqual(routes, [...new Set(routes)], `${service}.${column} lists a route twice`);
+      }
+    }
+  }
+});
+
+test("the routes and the preview flag reach the field spec itself", () => {
+  // Carried on the field rather than looked up beside it, so the editor, the
+  // create dialog and an agent reading getSchema all answer from one place.
+  const spec = buildFieldSpec("noise", {
+    enable_half_hourly: { type: "boolean", format: "boolean", enum: null, default: null },
+    five_min_formatter: { type: "string", format: "text", enum: null, default: null },
+    company: { type: "string", format: "text", enum: null, default: null },
+  });
+  assert.deepEqual(spec.fields.enable_half_hourly?.routes, ["POST /api/noise-half-hourly"]);
+  assert.equal(spec.fields.enable_half_hourly?.hasPreview, false);
+  // A formatter with a real preview says so, which is what lets a reader know
+  // the `?` button is worth pressing before pressing it.
+  assert.equal(spec.fields.five_min_formatter?.hasPreview, true);
+  // And a labelling column carries neither.
+  assert.deepEqual(spec.fields.company?.routes, []);
+  assert.equal(spec.fields.company?.hasPreview, false);
 });
 
 test("delivery plumbing says every outbound route rather than listing fifteen", () => {

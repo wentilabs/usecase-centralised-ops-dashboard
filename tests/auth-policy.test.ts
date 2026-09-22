@@ -53,6 +53,8 @@ const field = (over: Partial<FieldSpec>): FieldSpec => ({
   help: "",
   widget: "text",
   options: null,
+  routes: [],
+  hasPreview: false,
   default: null,
   readonly: false,
   hidden: false,

@@ -15,11 +15,18 @@ export function lightningPills(config: ProjectConfigRow): Pill[] {
     { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
     { label: "mute PH", on: on(config.remove_ph_notifications) },
     {
-      // Amber too since `5932bce`. The column is still named for red only, and
-      // a card that kept saying so would understate how often POCs are tagged.
-      label: "🔴🟠 POC mentions",
+      // Amber, and then the signed SMS alerts. The column is still named for
+      // red only, and a card that kept saying so would understate how often
+      // POCs are tagged.
+      label: "⚠️ warning POC mentions",
       on: on(config.enable_red_band_poc_mentions),
     },
+    // Shown only when someone has turned it OFF. It defaults to true, so an
+    // unlit pill on every project would be noise while the OFF state is the
+    // one worth seeing — the reverse of every other flag here.
+    ...(config.enable_green_band_poc_mentions === false
+      ? [{ label: "no all-clear POC mentions", on: true, tone: "warn" as const }]
+      : []),
     {
       // WHO gets tagged, which is a different question from whether anyone is.
       // A fixed list and "whoever is on site today" behave very differently on

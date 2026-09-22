@@ -44,7 +44,11 @@ export const lightningLoadProvider: LoadProvider = {
       ambient.push({
         service: "lightning",
         projectCode,
-        reason: "Every minute a qualifying strike is in range — storm-driven, so it has no hour",
+        // Not "every minute": INV-LTG-09 emits one RED per stop episode and
+        // one all-clear to close it. Storm-driven all the same — the model
+        // cannot say WHEN, only that it is two messages per episode and not a
+        // stream of them.
+        reason: "One RED per storm episode, plus its all-clear — storm-driven, so it has no hour",
         groups: alerts,
       });
     }

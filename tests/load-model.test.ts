@@ -183,6 +183,12 @@ test("lightning is storm-driven apart from its one daily kickoff", () => {
   assert.equal(load.ambient.length, 1);
   assert.equal(load.ambient[0].groups, 2);
   assert.match(load.ambient[0].reason, /no hour/i);
+  // Two messages per episode, not a stream: INV-LTG-09 emits one RED per stop
+  // and one all-clear to close it. "Every minute" overstated it by orders of
+  // magnitude, which is the kind of wrong that makes a reader distrust the
+  // rest of the panel.
+  assert.match(load.ambient[0].reason, /One RED per storm episode, plus its all-clear/);
+  assert.doesNotMatch(load.ambient[0].reason, /every minute/i);
 });
 
 test("a chase that replies in the originating group is named, not counted", () => {

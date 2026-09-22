@@ -13,6 +13,7 @@
     { "id": "stop-runtime-safety", "file": "stop-runtime-safety.sql", "requires": ["stop-directive-deadline"] },
     { "id": "poc-mentions", "file": "poc-mentions.sql", "requires": [] },
     { "id": "manpower-sheet-poc-mentions", "file": "manpower-sheet-poc-mentions.sql", "requires": ["poc-mentions"] },
+    { "id": "green-poc-mentions", "file": "green-poc-mentions.sql", "requires": ["poc-mentions"] },
     {
       "id": "drop-policy-note",
       "file": "drop_policy_note.sql",

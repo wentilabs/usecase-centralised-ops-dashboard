@@ -31,7 +31,15 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     site_extent_radius_m: { label: "Site extent radius (m)", widget: "number", help: "Added to strike radii to cover the site footprint." },
 
     red_radius_m: { label: "🔴 Red radius (m)", widget: "number", row: "red" },
-    red_dwell_seconds: { label: "🔴 Red dwell (s)", widget: "number", row: "red", help: "How long the alert state persists after the last qualifying strike." },
+    red_dwell_seconds: {
+      label: "🔴 Red dwell (s)",
+      widget: "number",
+      row: "red",
+      // Since INV-LTG-08 this is the all-clear clearance window as well, and
+      // it does not honour the strike types below: a project set to G only
+      // still cannot go green while a C strike sits inside the red ring.
+      help: "How long the alert state persists after the last qualifying strike — and how long BOTH ground and cloud strikes must stay outside the red ring before an all-clear is allowed, whatever the strike types below say.",
+    },
     red_detection_types: {
       label: "🔴 Red strike types",
       widget: "multi",
@@ -95,12 +103,19 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
 
     enable_red_band_poc_mentions: {
-      // Red-only until `5932bce`; the column name still says so and is not
-      // worth a migration to rename.
-      label: "🔴🟠 POC mentions",
+      // Red-only when the column was named; it has since taken amber and then
+      // the signed SMS alerts. The name is not worth a migration to change.
+      label: "⚠️ Warning POC mentions",
       // Postgres rejects the save outright if either list is blank, so say so
       // rather than letting the editor surface a raw constraint error.
-      help: "Tags the POCs on AMBER as well as RED and STOP alerts. Postgres requires BOTH lists below to be non-empty before this can be turned on — fill them in the same save.",
+      help: "Tags the POCs on every warning: AMBER, RED/STOP, and signed thunderstorm SMS alerts. Postgres requires the mention groups and a phone source below to be non-empty before this can be turned on — fill them in the same save.",
+    },
+    enable_green_band_poc_mentions: {
+      label: "✅ All-clear POC mentions",
+      // Defaults to TRUE in Postgres, which is the opposite of every other
+      // feature flag here — so an operator reading a blank row is looking at
+      // something that is ON. Said plainly rather than left to be discovered.
+      help: "Tags the same POCs on the all-clear, including TRI-style SMS all-clears. On by default, so leaving it alone keeps the existing behaviour; turn it off for a site that wants to be told when to stop but not when to resume.",
     },
     poc_phone_numbers: {
       label: "POC phone numbers",
@@ -163,7 +178,13 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_lightning_format", "sms_whatsapp_group_id"] },
     {
       title: "POC escalation",
-      fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers", "manpower_sheet_id"],
+      fields: [
+        "enable_red_band_poc_mentions",
+        "enable_green_band_poc_mentions",
+        "poc_alert_wa_groups",
+        "poc_phone_numbers",
+        "manpower_sheet_id",
+      ],
     },
   ],
 };

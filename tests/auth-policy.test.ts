@@ -424,9 +424,32 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   // `default` is a real value, not an absence — shown, but not lit up.
   assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
 
-  // Amber as well as red since `5932bce`, and the column name still says red.
+  // Amber, then the signed SMS alerts, while the column is still named for
+  // red. "POC" stays in the label because that is what a person searches for.
   const ltg = pillsFor("lightning", { enable_red_band_poc_mentions: true });
-  assert.ok(ltg.some((p) => p.label === "🔴🟠 POC mentions" && p.on));
+  assert.ok(ltg.some((p) => p.label === "⚠️ warning POC mentions" && p.on));
+
+  // The all-clear switch defaults to TRUE in Postgres, so the pill is the
+  // reverse of every other flag here: shown only when somebody turned it off,
+  // because that is the state worth seeing.
+  assert.ok(
+    !ltg.some((p) => p.label.includes("all-clear")),
+    "an all-clear mention that is on is the default, and not news",
+  );
+  // Explicitly true is still the default value, so it is still not news — the
+  // absent case above and this one must behave the same.
+  assert.ok(
+    !pillsFor("lightning", {
+      enable_red_band_poc_mentions: true,
+      enable_green_band_poc_mentions: true,
+    }).some((p) => p.label.includes("all-clear")),
+  );
+  assert.ok(
+    pillsFor("lightning", {
+      enable_red_band_poc_mentions: true,
+      enable_green_band_poc_mentions: false,
+    }).some((p) => p.label === "no all-clear POC mentions" && p.on),
+  );
   // A fixed list of numbers is the ordinary case, so it lights nothing extra.
   assert.ok(ltg.some((p) => p.label === "POCs from manpower sheet" && !p.on));
 
@@ -697,6 +720,32 @@ test("the retired lightning policy_note stays hidden while the column exists", (
   });
   assert.equal(spec.fields.policy_note?.hidden, true);
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
+});
+
+test("the lightning card says one RED per stop, not one per tick", () => {
+  // INV-LTG-09 emits RED once per STOP episode; later strikes send nothing and
+  // STOP→WATCH is silent. The old wording described a stream of messages where
+  // there is now one, which is the difference between a site being pestered
+  // and a site being told once.
+  const line = firesAt("lightning", { working_hours_start_hhmm: "0800", working_hours_end_hhmm: "1900" });
+  assert.match(line, /one RED per stop/);
+  assert.doesNotMatch(line, /every tick/);
+  // And INV-LTG-08: the all-clear waits for BOTH strike types to leave the
+  // red ring, which is the part an operator asks about after a storm.
+  assert.match(line, /both strike types have been outside the red ring/);
+  assert.match(line, /08:00–19:00/);
+
+  // The red-only site still says so.
+  assert.match(firesAt("lightning", { amber_enabled: false }), /^red-only/);
+
+  // The dwell field has to carry the same rule, because that is where someone
+  // goes when they want to resume sooner — and shortening it does not do what
+  // the old help implied.
+  const dwell = buildFieldSpec("lightning", {
+    red_dwell_seconds: { type: "integer", format: "int", enum: null, default: null },
+  }).fields.red_dwell_seconds?.help ?? "";
+  assert.match(dwell, /outside the red ring/);
+  assert.match(dwell, /whatever the strike types below say/);
 });
 
 test("the manpower sheet is visible before the switch that reads it", () => {

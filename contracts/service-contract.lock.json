@@ -31,7 +31,7 @@
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "main",
-      "commit": "74f61e0fba36502d5239587e02dc511e389e794b",
+      "commit": "2e621a1f8486e7cbc9da5c9fc01c66557c00a95f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",

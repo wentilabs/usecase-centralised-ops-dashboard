@@ -425,6 +425,32 @@ Bars are sized with `flex-grow`, not percentage heights: a percentage resolves
 against a parent with a definite height and a flex column's children have none,
 which drew every segment at zero pixels under correct-looking numbers.
 
+## Lightning: what the card says, and why
+
+Two invariants changed what a project actually receives, and HALO described
+the old behaviour for a while:
+
+- **INV-LTG-09 — RED is emitted once per STOP episode.** Later red-zone
+  strikes send nothing and STOP→WATCH is silent. The card used to say "every
+  tick while a qualifying strike is in range", which described a stream of
+  messages where there is now one.
+- **INV-LTG-08 — the all-clear is a strict safety claim.** It waits for BOTH
+  ground and cloud strikes to be outside the red ring for the full red dwell,
+  AND for amber to be inactive. It does not honour `red_detection_types`: a
+  project set to G only still cannot go green while a C strike sits in the
+  ring. That is in `red_dwell_seconds`' help, because the dwell field is where
+  someone goes when they want to resume sooner.
+
+`enable_red_band_poc_mentions` has taken amber and then the signed SMS alerts
+without ever being renamed, so HALO calls it "Warning POC mentions" and the
+pill keeps the word POC in it — that is what a person types into the search
+box, and dropping it silently broke `matchesQuery`.
+
+`enable_green_band_poc_mentions` is the one flag in the estate that defaults
+to TRUE. Its pill is therefore inverted: shown only when somebody has turned
+it OFF, because an unlit pill on every project is noise while "this site is
+told to stop but not to resume" is worth seeing.
+
 ## Group names (the alias store)
 
 `ops.whatsapp_group_names` maps chat id → group name. Two paths fill it, and the

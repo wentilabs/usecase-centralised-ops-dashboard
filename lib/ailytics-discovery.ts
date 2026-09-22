@@ -31,8 +31,12 @@ function username(value: unknown): string | null {
 
 /** Treat the Lambda as an untrusted boundary: malformed records are omitted. */
 export function normalizeTelegramGroupDiscoveries(value: unknown): TelegramGroupDiscovery[] {
-  const records =
-    value && typeof value === "object" && Array.isArray((value as { discoveries?: unknown }).discoveries)
+  // The deployed Lambda currently returns the discovery rows as a top-level
+  // array. Keep accepting the envelope used by the HALO contract as well so
+  // the proxy remains compatible with either deployed response shape.
+  const records = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as { discoveries?: unknown }).discoveries)
       ? (value as { discoveries: unknown[] }).discoveries
       : [];
 

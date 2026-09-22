@@ -33,3 +33,32 @@ test("Telegram discovery normalizes bot identities without inventing a group", (
     ],
   );
 });
+
+test("Telegram discovery accepts the deployed Lambda's top-level array response", () => {
+  assert.deepEqual(
+    normalizeTelegramGroupDiscoveries([
+      {
+        telegram_chat_id: "-5113169242",
+        chat_title: "WH tech support",
+        chat_type: "group",
+        bot_status: "member",
+        is_member: true,
+        last_event_at: "2026-09-22T09:39:59+00:00",
+        observed_bot_usernames: [],
+        bot_observations: [],
+      },
+    ]),
+    [
+      {
+        telegram_chat_id: "-5113169242",
+        chat_title: "WH tech support",
+        chat_type: "group",
+        bot_status: "member",
+        is_member: true,
+        last_event_at: "2026-09-22T09:39:59+00:00",
+        observed_bot_usernames: [],
+        bot_observations: [],
+      },
+    ],
+  );
+});

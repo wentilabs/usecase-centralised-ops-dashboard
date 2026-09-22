@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CoordinatePicker } from "./CoordinatePicker";
 import { GroupPicker } from "./GroupPicker";
+import { RouteHint } from "./RouteHint";
 import { HelpText } from "./HelpText";
 import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import type { TelegramGroupDiscovery } from "@/lib/ailytics-discovery";
@@ -646,6 +647,7 @@ export function OnboardDialog({
                       {entry.required && !entry.computed ? <span className="ml-1 text-danger">*</span> : null}
                     </div>
                     <div className="font-mono text-[10px] text-muted-foreground">{entry.column}</div>
+                    <RouteHint service={definition.service} column={entry.column} />
                   </div>
                   <div>{control(entry)}</div>
                   </div>
@@ -683,6 +685,7 @@ export function OnboardDialog({
                         <div className="md:pt-2">
                           <div className="text-sm font-medium">{entry.label}</div>
                           <div className="font-mono text-[10px] text-muted-foreground">{entry.column}</div>
+                          <RouteHint service={definition.service} column={entry.column} />
                         </div>
                         <div>
                           {control(entry)}

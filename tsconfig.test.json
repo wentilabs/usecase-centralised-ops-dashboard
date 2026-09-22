@@ -29,6 +29,7 @@
     "lib/card-summary.ts",
     "lib/jobs.ts",
     "lib/read-json.ts",
+    "lib/field-routes.ts",
     "lib/load-model.ts",
     "lib/load-model/**/*.ts",
     "lib/meter-selection.ts",

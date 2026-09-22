@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { FormatterPreviewButton } from "./FormatterPreview";
+import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
@@ -620,6 +621,7 @@ export function ConfigEditor({
                           <div className="font-mono text-[10px] text-muted-foreground">
                             {name}
                           </div>
+                          <RouteHint service={service} column={name} />
                         </div>
                         <div>
                           <Control

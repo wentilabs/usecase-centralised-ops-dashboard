@@ -35,12 +35,17 @@
  *   wohhup      195x141 of 200x200   fills 71% of its height   103px visible
  *   pentaocean  126x 85 of 200x200   fills 43%                  62px visible
  *   soilbuild   200x120 of 200x120   fills 100%                138px visible
+ *   cccc        126x 78 of 200x200   fills 39%                  57px visible
  *
  * — in the same 145px box. PentaOcean carries wide empty margins and read as
  * half the size of its neighbours; Soilbuild was trimmed to its artwork when it
  * was added, so it filled the box completely and read as twice. These bring all
- * three to about 105px of actual logo. Scaling clips only the empty margin,
+ * four to about 105px of actual logo. Scaling clips only the empty margin,
  * which is why PentaOcean can exceed the box without losing anything.
+ *
+ * The measurements are the alpha bounding box of each file, not an estimate —
+ * re-measurable with any image library, and worth re-running rather than
+ * guessing when a fifth logo arrives, because the margin is the whole variable.
  */
 const ASSETS: Record<string, { src: string; tweak?: string; edgeTweak?: string }> = {
   // Per-logo scale, because one box means something different for each: the
@@ -63,6 +68,27 @@ const ASSETS: Record<string, { src: string; tweak?: string; edgeTweak?: string }
   // is written out above. Green and gold already read on a dark card, so unlike
   // PentaOcean it needs no brightness lift.
   Soilbuild: { src: "/company/soilbuild.png", tweak: "scale-[0.63]", edgeTweak: "scale-75" },
+  /**
+   * The smallest artwork on the largest margin: 78px of logo on a 200px canvas,
+   * which is even emptier than PentaOcean's, so it needs the biggest lift of
+   * the five to end up the same size as its neighbours.
+   *
+   * The brightness is PentaOcean's problem again and worse. Three quarters of
+   * this mark is a near-black navy — measured at roughly `rgb(0,0,72)` against
+   * PentaOcean's `#000080` — and at watermark opacity on a dark card the
+   * wordmark disappears entirely, leaving four green diamonds that name nobody.
+   * `2.5` is a compromise rather than an optimum: it is what brings the navy to
+   * a legible indigo, and any lift large enough to do that also drives the mint
+   * diamonds close to white, because their green channel is already 192. The
+   * wordmark is the half that identifies the company, so it wins the trade.
+   *
+   * **The artwork's wordmark reads "forsea", not "CCCC".** Recorded here rather
+   * than quietly fixed, because the file is not mislabelled — it is the logo
+   * that was supplied for this company — and a future reader who spots the
+   * mismatch should find the answer next to the entry instead of assuming a
+   * mix-up and swapping the file.
+   */
+  CCCC: { src: "/company/cccc.png", tweak: "brightness-[2.5] scale-[1.35]", edgeTweak: "brightness-[2.5] scale-[1.85]" },
 };
 
 /**
@@ -74,10 +100,12 @@ const ASSETS: Record<string, { src: string; tweak?: string; edgeTweak?: string }
  * 527px tall, so the same logo appeared at two noticeably different sizes and
  * read as inconsistent rather than as a background.
  *
- * 250 × 160 is sized against the *shortest* card: the largest tweak is
- * scale-125, giving 312 × 200, which still sits inside a 404 × 257 card. Raising
- * this would spill the mark past a short card's edge, because the card is
- * `relative` without `overflow-hidden`.
+ * 250 × 160 is sized against the *shortest* card: the largest tweak is now
+ * CCCC's scale-[1.35], giving 338 × 216, which still sits inside a 404 × 257
+ * card. Raising this would spill the mark past a short card's edge, because the
+ * card is `relative` without `overflow-hidden` — so a new logo needing a bigger
+ * scale than 1.6 is the point at which this box has to shrink rather than the
+ * tweak growing.
  */
 const BOX = "h-[160px] w-[250px]";
 

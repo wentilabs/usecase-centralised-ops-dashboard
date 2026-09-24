@@ -2968,6 +2968,7 @@ test("a new company is offered everywhere the old ones are", () => {
   // any service, and each migrate_company_column.sql says so outright. So the
   // only way to get it wrong is to add it in one place and not the others.
   assert.ok(COMPANIES.includes("Soilbuild"), "Soilbuild must be in the list");
+  assert.ok(COMPANIES.includes("CCCC"), "CCCC must be in the list");
 
   const text = { type: "string" as const, format: "text", enum: null, default: null };
   for (const service of SERVICE_KEYS) {
@@ -2989,6 +2990,23 @@ test("a new company is offered everywhere the old ones are", () => {
   }
   // And does not match it inside an unrelated word.
   assert.equal(companyIn("topsoil building works"), null);
+
+  // An initialism has one spelling, so the only thing to check is that it is
+  // reachable at all and stays a whole word — `companyIn` strips punctuation
+  // before matching, so a company added to the dropdown but not to the alias
+  // table would silently resolve to null and scope an estate-wide instruction
+  // to nobody.
+  for (const written of ["cccc", "CCCC", "all CCCC projects"]) {
+    assert.equal(companyIn(written), "CCCC", `"${written}" must resolve`);
+  }
+  assert.equal(companyIn("ccccc sites"), null, "a longer run of letters is not the company");
+
+  // Every company in the dropdown must be reachable from chat, which is the
+  // half that is easy to forget: the dropdown is derived from COMPANIES and
+  // fans out on its own, the alias table is hand-written and does not.
+  for (const company of COMPANIES) {
+    assert.equal(companyIn(company), company, `${company} is offered but chat cannot name it`);
+  }
 });
 
 test("every noise cadence with a window shows it the same way", () => {

@@ -49,6 +49,13 @@ const COMPANY_ALIASES: Record<string, string> = {
   // matching, so both reach the same alias.
   "soil build": "Soilbuild",
   "soilbuild group": "Soilbuild",
+  // An initialism rather than a name, so there is no second spelling to accept:
+  // the letters are the only way anyone writes it. Deliberately NOT aliased to
+  // the wordmark on its logo — see `ASSETS` in `CompanyMark` — because an alias
+  // here decides which projects a chat instruction rewrites, and guessing that
+  // two names mean one company is the kind of guess that sends a message to the
+  // wrong site.
+  cccc: "CCCC",
 };
 
 /** The company a sentence names, or null. Longest alias first, so "penta ocean" beats "penta". */

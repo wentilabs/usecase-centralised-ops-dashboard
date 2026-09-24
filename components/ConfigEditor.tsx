@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { FormatterPreviewButton } from "./FormatterPreview";
+import { EnvDefaultHint } from "./EnvDefaultHint";
 import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
@@ -202,7 +203,14 @@ function Control({
       className={base}
       type="text"
       spellCheck={false}
-      placeholder={field.widget === "hhmm" ? "HHMM e.g. 0730" : undefined}
+      // A deployment-dictated column shows its value greyed rather than empty,
+      // so the box is never a blank someone has to guess at. A placeholder is
+      // not a value and is never submitted — adopting it is the button below.
+      placeholder={
+        field.widget === "hhmm"
+          ? "HHMM e.g. 0730"
+          : (field.envDefault?.value ?? undefined)
+      }
       maxLength={field.widget === "hhmm" ? 4 : undefined}
       value={String(value ?? "")}
       onChange={(e) => onChange(e.target.value)}
@@ -640,6 +648,13 @@ export function ConfigEditor({
                           {problemFor[name] ? (
                             <p className="mt-1.5 text-[11px] font-medium text-danger">{problemFor[name]}</p>
                           ) : null}
+                          <EnvDefaultHint
+                            envDefault={field.envDefault}
+                            value={values[name]}
+                            onUse={(next) =>
+                              setDraft((prev) => ({ ...prev, [name]: next }))
+                            }
+                          />
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">
                               <HelpText text={field.help} />

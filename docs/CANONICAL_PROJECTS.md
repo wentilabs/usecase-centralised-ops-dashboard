@@ -43,6 +43,12 @@ still derives listener siblings only from a `lambda_url` ending exactly in
 `/send-message` and continues to show conflicts, but it does not let legacy
 row wiring replace the configured dashboard defaults.
 
+A project saved before those variables existed has them null. Its editor now
+shows each URL greyed as a placeholder with a **Use this** button, rather than
+an empty box — offered, not written, so the row is unchanged until someone takes
+it. The mapping lives once in `lib/env-defaults.ts`; see AGENTS.md, "Columns the
+deployment decides".
+
 ## Onboarding from a canonical project
 
 The project page's **Add this service** link opens the existing service-owned

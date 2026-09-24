@@ -55,6 +55,7 @@ const field = (over: Partial<FieldSpec>): FieldSpec => ({
   options: null,
   routes: [],
   hasPreview: false,
+  envDefault: null,
   default: null,
   readonly: false,
   hidden: false,

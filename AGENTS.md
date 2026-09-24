@@ -579,6 +579,35 @@ Useful keys:
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
 
+## Columns the deployment decides
+
+`lambda_url`, and ailytics' `reply_lambda_url` and `lambda_url_image`, are
+stored per project but are not per-project facts: across the live estate every
+non-blank one of them is the same URL, because there is one listener proxy and
+every project posts to the same three endpoints. `lib/env-defaults.ts` is the
+single registry of which variable fills which column, and a test checks it
+against the pinned contract, against the create dialog's own `envDefault`, and
+against `amplify.yml` — so the three cannot drift into offering different URLs
+for the same column.
+
+`buildFieldSpec` takes `env` and resolves it onto `FieldSpec.envDefault`, so the
+editor, the create dialog and `getSchema` all answer from one place. The lib
+never reads `process.env` itself; the server passes it (`getFieldSpec`,
+`resolveCanonicalEnvDefaults` in the project pages), because this module is
+reachable from client bundles where `process.env` is a different object.
+
+**The default is offered, never adopted.** A blank column shows the URL as the
+input's *placeholder* and a "Use this" button beside it. Nothing is written into
+the draft until that button is pressed, so opening a row for an unrelated edit
+saves exactly what it saved before, and adopting it goes through the ordinary
+diff and audit row. A prefill that looked like a value while the column stayed
+blank would be worse than the blank — the blank is at least honest.
+
+`instance_name` and `client_id` sit beside these and must NOT be defaulted:
+they carry six distinct values tracking which WhatsApp instance a company is on,
+and inventing a deployment-wide answer would route one company's messages
+through another's instance. A test pins that absence.
+
 Columns owned by the alert jobs (e.g. WBGT's `top_of_hour_band`, Lightning's
 `lightning_project_runtime` state) belong in `READONLY` or `hidden`, not in the
 editor.

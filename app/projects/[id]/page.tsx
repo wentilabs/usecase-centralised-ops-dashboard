@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { CanonicalProjectDetail } from "@/components/CanonicalProjectDetail";
 import { getCanonicalProject, listConfigs } from "@/lib/config-repository";
+import { resolveCanonicalEnvDefaults } from "@/lib/env-defaults";
 import { SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
@@ -29,5 +30,7 @@ export default async function CanonicalProjectPage({ params }: { params: Promise
   // Same Viso base the dashboard passes, so a delivery chip on a card here
   // links to the mirrored thread exactly as it does there.
   const visoUrl = (process.env.VISO_URL ?? "").replace(/\/+$/, "") || null;
-  return <CanonicalProjectDetail project={project} rows={rows} errors={errors} canEdit={session.canEdit} visoUrl={visoUrl} />;
+  // Resolved here rather than in the client component, for the same reason the
+  // Viso base is: `process.env` in a client bundle is a different object.
+  return <CanonicalProjectDetail project={project} rows={rows} errors={errors} canEdit={session.canEdit} visoUrl={visoUrl} deliveryDefaults={resolveCanonicalEnvDefaults(process.env)} />;
 }

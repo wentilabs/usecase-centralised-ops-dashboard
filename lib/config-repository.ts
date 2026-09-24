@@ -641,7 +641,11 @@ export async function getFieldSpec(service: ServiceKey): Promise<ServiceFieldSpe
     introspected[name] = { type: p.type, format: p.format, enum: p.enum ?? null, default: p.default };
   }
 
-  const spec = buildFieldSpec(service, introspected);
+  // `process.env` rather than a captured constant: this is the only place that
+  // reads it for the field spec, and the spec is cached per process, so the
+  // deployment's delivery URLs are resolved once and travel to the editor as
+  // ordinary data.
+  const spec = buildFieldSpec(service, introspected, process.env);
   specCache.set(service, spec);
   return spec;
 }

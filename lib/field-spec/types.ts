@@ -1,3 +1,5 @@
+import type { EnvDefault } from "../env-defaults";
+
 export type FieldWidget =
   | "toggle"
   | "select"
@@ -38,6 +40,19 @@ export type FieldSpec = {
   routes: string[];
   /** Whether HALO can show the real message this column produces. */
   hasPreview: boolean;
+  /**
+   * The deployment-wide value this column would take if nobody typed one, and
+   * the variable it came from.
+   *
+   * Carried here for the same reason `routes` is: the editor, the create
+   * dialog and an agent reading `getSchema` should not each work out that
+   * `lambda_url` is really deployment plumbing. See `lib/env-defaults.ts`.
+   *
+   * Null when the column is a genuine per-project value, and also when the
+   * variable is unset on this deployment — an offer HALO cannot honour is not
+   * worth making.
+   */
+  envDefault: EnvDefault | null;
 };
 
 export type FieldGroup = { title: string; fields: string[] };

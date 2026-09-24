@@ -1,5 +1,6 @@
 import type { ServiceKey } from "./services";
 import { routesForField } from "./field-routes";
+import { resolveEnvDefault } from "./env-defaults";
 import { hasPreview } from "./message-previews";
 import { contractFieldFor, contractOptionsFor, contractReadonlyFields } from "./service-contracts";
 import { FIELD_PROVIDERS } from "./field-spec/providers";
@@ -20,6 +21,8 @@ export type {
   ShowIf,
 } from "./field-spec/types";
 export { COMPANIES } from "./field-spec/types";
+export { ENV_DEFAULTS, ENV_DEFAULT_NAMES, envDefaultName, isBlankValue, resolveEnvDefault } from "./env-defaults";
+export type { EnvDefault } from "./env-defaults";
 export { JOB_STATE_COLUMNS, auditChangesWithoutJobState } from "./job-state-policy";
 
 /**
@@ -39,6 +42,14 @@ export const GROUPS: Record<string, FieldGroup[]> = Object.fromEntries(
 export function buildFieldSpec(
   usecase: ServiceKey | string,
   introspected: Record<string, IntrospectedColumn>,
+  /**
+   * The deployment environment, for the columns it dictates. Passed in rather
+   * than read here: this module is reachable from client components, where
+   * `process.env` is a different object. The server passes `process.env` in
+   * `getFieldSpec`; tests pass a literal; callers that do not care omit it and
+   * every `envDefault` comes back null.
+   */
+  env: Record<string, string | undefined> = {},
 ): ServiceFieldSpec {
   const provider = FIELD_PROVIDERS[usecase];
   const readonly = new Set([...(provider?.readonlyFields || []), ...contractReadonlyFields(usecase)]);
@@ -72,6 +83,7 @@ export function buildFieldSpec(
       row: hint.row || null,
       routes: routesForField(usecase as ServiceKey, name),
       hasPreview: hasPreview(usecase as ServiceKey, name),
+      envDefault: resolveEnvDefault(usecase, name, env),
     };
   }
 

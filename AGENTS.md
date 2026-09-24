@@ -224,6 +224,24 @@ The preflight also reports `service_account_email`. That is the fastest way to
 tell a changed credential set apart from a missing scope, and it is the address a
 workbook has to be shared with.
 
+**A whole-workbook export has a hard 6 MB ceiling, and it is not HALO's.** The
+file travels inline as base64 inside the service's JSON reply, and AWS Lambda
+caps a synchronous response at 6,291,456 bytes. Past that, the function finishes
+its work and AWS discards the reply, so API Gateway answers with its own
+`{"message":"Internal Server Error"}` — a body no alert service can produce,
+because `createPostJsonHandler` always replies `{ success: false, error }`.
+Measured against the live noise deployment on 2026-09-24: TSC served 6,121,954
+bytes (97% of the cap) while MVR, P105 and TEST returned the AWS envelope in
+8–11 seconds, and the same MVR workbook exports fine one tab at a time.
+
+`lib/export-failure.ts` tells the two apart on the *shape* of the body — every
+service reply carries `success`, the gateway's carries only `message` — so the
+remedy names the size limit instead of sending someone to check a deployment and
+a set of credentials that are both fine. A 503/504 from the gateway is the other
+half: the PDF path times out at 30s on large workbooks where xlsx finishes in
+8–11s. Match on the shape, never on the text of `message`, which differs per
+failure and per gateway type.
+
 ## Sheet jobs
 
 The action row under the header triggers endpoints that already exist on the

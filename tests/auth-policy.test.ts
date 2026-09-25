@@ -944,6 +944,9 @@ test("jobs are offered on the right tab", () => {
   assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
   assert.deepEqual(jobsForService("wbgt").map((j) => j.key), [
     "wbgt-fill",
+    // 7a32a66 in the WBGT repo. Sits beside the sheet jobs because it reads the
+    // sheet they fill, and it is the only WBGT action that sends anything.
+    "wbgt-monthly-report",
     "wbgt-scrape",
     "wbgt-water-parade",
   ]);

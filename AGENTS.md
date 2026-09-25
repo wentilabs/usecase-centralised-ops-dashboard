@@ -607,30 +607,33 @@ Useful keys:
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
 
-## Pending: the monthly WBGT report
+## Pending: the monthly noise report
 
-The service's `migrate_monthly_wbgt_report.sql` is already applied, so HALO
-introspects `enable_monthly_wbgt_report`, `monthly_wbgt_report_whatsapp_group_ids`
-and `lambda_url_document` and describes all three. Three things are deliberately
-NOT wired yet, because the WBGT repo's `contracts/service.contract.json` change
-is still uncommitted and `contracts:refresh` reads `git show HEAD:` and refuses a
-dirty file:
+The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery
+chip, an env default for `lambda_url_document` and the `✉ Monthly report`
+action. Noise's equivalent is half-blocked, in two separate ways:
 
-- a route hint binding those columns to `POST /api/generate-and-send-monthly-wbgt-report`
-- an `ENV_DEFAULTS` entry mapping `lambda_url_document` to `DEFAULT_LAMBDA_URL_IMAGE`
-- an action button for the route, which takes `projectCode`/`projectCodes`,
-  `dryRun` and `dryRunOverride`
+1. **The contract is uncommitted** in the noise repo, so `contracts:refresh`
+   refuses (it reads `git show HEAD:` and rejects a dirty file). Until it
+   commits there is no route hint for `POST /api/noise-monthly-report` and no
+   action button — both are guarded by tests against the pinned contract.
+2. **`monthly_noise_report_whatsapp_group_ids` does not exist in the database.**
+   Postgres answers `42703 undefined_column` for it, while
+   `enable_monthly_noise_report` is present — so `migrate_monthly_noise_report.sql`
+   has not been run, even though that file adds both columns in one
+   transaction. HALO describes the column already; it simply does not render,
+   because the editor is built from live introspection.
 
-Each is guarded by a test that checks the pinned contract, so adding any of them
-now fails the build rather than shipping an unverified claim. Once that repo
-commits and `contracts:refresh wbgt` runs, all three become small additions.
+Until that migration runs, a project with the flag on has nowhere to put
+recipients, and the job reports it as failed rather than sending.
 
-One detail to carry over when it does: the route's dry-run resolution is
-`body.dryRun === true || (overrideSupplied ? body.dryRunOverride : isDryRun())`.
-An omitted pair therefore falls through to the service's own
-`DRY_RUN_NOTIFICATION`, so HALO must send `{ dryRun: true }` to preview and
-`{ dryRunOverride: false }` to send for real — `dryRun: false` alone hands the
-decision back to the service's environment.
+When both are resolved: repin noise, bind both columns to
+`POST /api/noise-monthly-report`, add the recipients column to `GROUP_COLUMNS`
+(the card-destination test will demand it), and add the action. Noise's dry-run
+is simpler than WBGT's — `body.dryRun === true || (body.dryRun === undefined &&
+resolveDryRun())` — so `dryRun: false` **does** force a live send there, unlike
+WBGT. Its route also takes a `month`, so the job can offer one rather than
+always sending last month.
 
 ## Columns the deployment decides
 

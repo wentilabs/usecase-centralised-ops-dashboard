@@ -42,7 +42,11 @@ test("every column given an env default is a column its service actually has", (
       checked += 1;
     }
   }
-  assert.equal(checked, 9, "seven send URLs plus ailytics' reply and image");
+  assert.equal(
+    checked,
+    10,
+    "seven send URLs, ailytics' reply and image, and WBGT's document URL for the monthly report",
+  );
 });
 
 test("the deployment can actually supply every variable named", async () => {

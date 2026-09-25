@@ -30,7 +30,10 @@ import { SERVICE_KEYS, type ServiceKey } from "./services";
  * another company's instance.
  */
 export const ENV_DEFAULTS: Record<ServiceKey, Record<string, string>> = {
-  wbgt: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
+  // The document URL is optional on WBGT — the service derives it by swapping
+  // `/send-message` for `/send-document` — but offering it costs nothing and
+  // spares anyone the guess when they do need it set explicitly.
+  wbgt: { lambda_url: "DEFAULT_LAMBDA_URL_SEND", lambda_url_document: "DEFAULT_LAMBDA_URL_IMAGE" },
   noise: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
   haze: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
   lightning: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },

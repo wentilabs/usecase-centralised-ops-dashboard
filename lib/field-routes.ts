@@ -65,6 +65,13 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
       columns: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "delivery_scope", "sensor_delivery_groups"],
     },
     { routes: ["POST /api/wbgt-scrape"], columns: ["enable_scrape"] },
+    // The monthly report reads all three, and nothing else does. `monthly_sheet_id`
+    // is deliberately NOT listed here — it belongs to the fill and export routes
+    // that already claim it, and the report only reads the tab they wrote.
+    {
+      routes: ["POST /api/generate-and-send-monthly-wbgt-report"],
+      columns: ["enable_monthly_wbgt_report", "monthly_wbgt_report_whatsapp_group_ids", "lambda_url_document"],
+    },
     { routes: ["POST /api/wbgt-telegram"], columns: ["telegram_chat_ids", "telegram_manual_sensor_label"] },
     { routes: ["POST /api/wbgt-whatsapp"], columns: ["whatsapp_wbgt_source_chat_ids", "whatsapp_manual_sensor_label"] },
     {

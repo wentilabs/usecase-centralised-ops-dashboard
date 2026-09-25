@@ -26,6 +26,7 @@ export type JobKey =
   | "wbgt-fill"
   | "wbgt-scrape"
   | "wbgt-water-parade"
+  | "wbgt-monthly-report"
   | "chaser-refresh-images"
   | "chaser-project-check"
   | "chaser-preview"
@@ -426,6 +427,62 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       from: startDate,
       to: endDate,
     }),
+  },
+  "wbgt-monthly-report": {
+    key: "wbgt-monthly-report",
+    service: "wbgt",
+    label: "✉ Monthly report",
+    title: "Send the monthly WBGT workbook",
+    description:
+      "Exports last month's tab of the monthly sheet as xlsx and sends it to the monthly report groups as a WhatsApp document. The production cron runs this with an empty body; this is the same route driven by hand.",
+    caution:
+      "The month is not a choice: the route always takes the previous Singapore calendar month. Each recipient is recorded per project and month, so a second run does not send the workbook twice to a group that already has it.",
+    baseUrlEnv: "WBGT_API_URL",
+    path: "/api/generate-and-send-monthly-wbgt-report",
+    // No range to pick: the route derives the month itself.
+    dateless: true,
+    // An export, an upload and a document send per recipient, four projects at
+    // a time — the same headroom the other sheet-touching jobs get.
+    timeoutMs: 55_000,
+    precondition: {
+      label: "Monthly report",
+      // The route filters on this flag, so a project without it is not merely
+      // unlikely to send — it is not in the run at all.
+      read: (row) => (row.enable_monthly_wbgt_report === true ? "enabled" : null),
+      unmet: (projectCode) =>
+        `${projectCode} has its monthly report switched off, so this route skips it entirely. Turn on "Monthly report" in the editor first — it also needs a monthly sheet ID and at least one report group.`,
+    },
+    // Deliberately NOT hideUnready. That is the Issue Chaser exception, and it
+    // exists because the Chaser service does not filter on `enabled` itself, so
+    // an unready project there is a hazard rather than a note. This route does
+    // filter on its own flag, so an opted-out project is simply skipped — and
+    // listing it with the reason above is what tells someone the switch is off,
+    // where hiding it just makes the picker mysteriously short.
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Actually send the workbook. Leave off to export it and report who would receive it without posting anything.",
+      },
+    ],
+    /**
+     * Why the two keys are not symmetrical.
+     *
+     * The route resolves `body.dryRun === true || (overrideSupplied ?
+     * body.dryRunOverride : isDryRun())`. So sending `dryRun: false` does NOT
+     * mean "send it" — with no override it falls through to the service's own
+     * `DRY_RUN_NOTIFICATION`, and a deployment with that set would silently
+     * preview a run the operator asked to be real.
+     *
+     * `dryRunOverride: false` is the only value that forces a live send, and
+     * `dryRun: true` is the only one that forces a preview. Naming each
+     * explicitly leaves the service's environment out of a decision made here.
+     */
+    buildPayload: ({ projectCode, flags }) =>
+      flags?.apply === true
+        ? { projectCode, dryRunOverride: false }
+        : { projectCode, dryRun: true },
   },
   "wbgt-scrape": {
     key: "wbgt-scrape",

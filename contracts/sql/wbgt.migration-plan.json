@@ -22,7 +22,8 @@
     { "id": "water-parade-daily-summary", "file": "migrate_water_parade_daily_summary.sql", "requires": ["water-parade"] },
     { "id": "water-parade-summary-timings", "file": "migrate_water_parade_summary_timings.sql", "requires": ["water-parade-daily-summary"] },
     { "id": "mbs-sensor-delivery", "file": "migrate_mbs_sensor_delivery.sql", "requires": ["water-parade-multiple-groups"] },
-    { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] }
+    { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] },
+    { "id": "monthly-wbgt-report", "file": "migrate_monthly_wbgt_report.sql", "requires": [] }
   ],
   "operationalUtilities": [
     { "file": "schedule_job_runs_cleanup.sql", "purpose": "Install the named pg_cron job that deletes WBGT job-run audit rows older than 30 days.", "targetSchemas": ["cron"] }

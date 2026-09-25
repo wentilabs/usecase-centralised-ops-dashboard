@@ -366,3 +366,49 @@ test("the summary preview asks for an immediate build, not a scheduled one", () 
   }
   assert.equal(job.appliesWhen, undefined, "a summary preview must offer no way to send");
 });
+
+test("the monthly WBGT report names dry-run explicitly in both directions", () => {
+  const job = JOBS["wbgt-monthly-report"];
+  const input = { projectCode: "TJR", startDate: "", endDate: "" };
+
+  // Preview is the default, because `appliesWhen` means an unticked box sends
+  // no `apply` at all.
+  assert.equal(job.appliesWhen, "apply");
+  assert.deepEqual(job.buildPayload({ ...input, flags: {} }), { projectCode: "TJR", dryRun: true });
+  assert.deepEqual(job.buildPayload({ ...input, flags: { apply: false } }), { projectCode: "TJR", dryRun: true });
+
+  // Applying sends `dryRunOverride: false`, NOT `dryRun: false`. The route
+  // resolves `body.dryRun === true || (overrideSupplied ? body.dryRunOverride
+  // : isDryRun())`, so `dryRun: false` with no override falls through to the
+  // service's own DRY_RUN_NOTIFICATION — and a deployment with that set would
+  // quietly preview a run the operator asked to be real.
+  const applied = job.buildPayload({ ...input, flags: { apply: true } });
+  assert.deepEqual(applied, { projectCode: "TJR", dryRunOverride: false });
+  assert.equal("dryRun" in applied, false, "sending dryRun:false hands the decision back to the service");
+
+  // Both keys are ones the route accepts; anything else is a 400 naming the key.
+  for (const payload of [job.buildPayload({ ...input, flags: {} }), applied]) {
+    for (const key of Object.keys(payload)) {
+      assert.ok(
+        ["projectCode", "projectCodes", "dryRun", "dryRunOverride"].includes(key),
+        `${key} is not in the route's allowedKeys`,
+      );
+    }
+  }
+});
+
+test("the monthly report is gated on the flag the route itself filters on", () => {
+  const job = JOBS["wbgt-monthly-report"];
+  assert.ok(job.precondition);
+  assert.equal(job.precondition.read({ enable_monthly_wbgt_report: true } as never), "enabled");
+  assert.equal(job.precondition.read({ enable_monthly_wbgt_report: false } as never), null);
+  // Absent reads as off: the column defaults to false in the service's schema.
+  assert.equal(job.precondition.read({} as never), null);
+
+  // It does NOT hide the projects it cannot run. That is the Issue Chaser
+  // exception, and it exists because the Chaser service does not filter on
+  // `enabled` itself; this route does filter on its flag, so an opted-out
+  // project is skipped rather than endangered, and saying why beats vanishing.
+  assert.notEqual(job.hideUnready, true);
+  assert.match(job.precondition.unmet("TJR"), /switched off/);
+});

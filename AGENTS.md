@@ -607,6 +607,31 @@ Useful keys:
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
 
+## Pending: the monthly WBGT report
+
+The service's `migrate_monthly_wbgt_report.sql` is already applied, so HALO
+introspects `enable_monthly_wbgt_report`, `monthly_wbgt_report_whatsapp_group_ids`
+and `lambda_url_document` and describes all three. Three things are deliberately
+NOT wired yet, because the WBGT repo's `contracts/service.contract.json` change
+is still uncommitted and `contracts:refresh` reads `git show HEAD:` and refuses a
+dirty file:
+
+- a route hint binding those columns to `POST /api/generate-and-send-monthly-wbgt-report`
+- an `ENV_DEFAULTS` entry mapping `lambda_url_document` to `DEFAULT_LAMBDA_URL_IMAGE`
+- an action button for the route, which takes `projectCode`/`projectCodes`,
+  `dryRun` and `dryRunOverride`
+
+Each is guarded by a test that checks the pinned contract, so adding any of them
+now fails the build rather than shipping an unverified claim. Once that repo
+commits and `contracts:refresh wbgt` runs, all three become small additions.
+
+One detail to carry over when it does: the route's dry-run resolution is
+`body.dryRun === true || (overrideSupplied ? body.dryRunOverride : isDryRun())`.
+An omitted pair therefore falls through to the service's own
+`DRY_RUN_NOTIFICATION`, so HALO must send `{ dryRun: true }` to preview and
+`{ dryRunOverride: false }` to send for real — `dryRun: false` alone hands the
+decision back to the service's environment.
+
 ## Columns the deployment decides
 
 `lambda_url`, and ailytics' `reply_lambda_url` and `lambda_url_image`, are

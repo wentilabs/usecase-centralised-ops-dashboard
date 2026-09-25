@@ -209,3 +209,65 @@ test("the canonical editor offers the same three the same way", async () => {
     assert.match(await source(page), /resolveCanonicalEnvDefaults\(process\.env\)/, `${page} must resolve them`);
   }
 });
+
+/**
+ * The monthly WBGT report's three columns.
+ *
+ * Live in Supabase since the service's `migrate_monthly_wbgt_report.sql` was
+ * applied, so HALO introspects them whether or not it has anything to say about
+ * them — and before this it had nothing, so all three rendered raw under
+ * "Other" with the column name as the label and no help at all.
+ *
+ * Deliberately NOT asserted against the pinned contract here: the service's
+ * contract change is not committed yet, so the route and the `lambda_url_document`
+ * env default cannot be wired until it is. See the note in AGENTS.md.
+ */
+test("the monthly WBGT report columns are labelled, grouped and explained", () => {
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const spec = buildFieldSpec("wbgt", {
+    lambda_url: text,
+    lambda_url_document: text,
+    enable_monthly_wbgt_report: bool,
+    monthly_wbgt_report_whatsapp_group_ids: text,
+  }, {});
+
+  for (const column of ["lambda_url_document", "enable_monthly_wbgt_report", "monthly_wbgt_report_whatsapp_group_ids"]) {
+    const field = spec.fields[column];
+    assert.ok(field, `${column} must be described`);
+    assert.notEqual(field.label, column, `${column} still renders its own column name as its label`);
+    assert.ok(field.help.length > 40, `${column} needs help text, not a restated label`);
+    assert.ok(
+      spec.groups.some((group) => group.title !== "Other" && group.fields.includes(column)),
+      `${column} is still falling into Other`,
+    );
+  }
+
+  // The recipient list is a group picker, like every other chat-id column —
+  // typing a raw `@g.us` id by hand is how the wrong group gets a workbook.
+  assert.equal(spec.fields.monthly_wbgt_report_whatsapp_group_ids?.widget, "groups");
+  assert.equal(spec.fields.enable_monthly_wbgt_report?.widget, "toggle");
+
+  // The report is its own section: the monthly SHEET is written all month by
+  // the fill job, while this is one delivery to its own audience.
+  const section = spec.groups.find((group) => group.title === "Monthly report");
+  assert.ok(section, "the report needs its own section");
+  assert.deepEqual(section?.fields, ["enable_monthly_wbgt_report", "monthly_wbgt_report_whatsapp_group_ids"]);
+
+  // The document URL belongs with the other delivery plumbing, where the send
+  // URL it is derived from already sits.
+  const delivery = spec.groups.find((group) => group.title === "Delivery");
+  assert.ok(delivery, "the Delivery section must still exist");
+  assert.ok(delivery.fields.includes("lambda_url_document"));
+  assert.ok(delivery.fields.indexOf("lambda_url") < delivery.fields.indexOf("lambda_url_document"));
+});
+
+test("the document URL's help states the one case where it is mandatory", () => {
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const help = buildFieldSpec("wbgt", { lambda_url_document: text }, {}).fields.lambda_url_document?.help ?? "";
+  // `documentEndpoint` throws when this is blank AND lambda_url does not end in
+  // /send-message. Calling the column merely "optional" would be wrong in
+  // exactly the case that breaks the report.
+  assert.match(help, /send-message/);
+  assert.match(help, /required|needed/i);
+});

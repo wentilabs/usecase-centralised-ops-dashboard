@@ -89,6 +89,16 @@ operator's email and note. Rows without an actor render as "changed outside the
 dashboard". Do not make the app the primary writer of audit rows — coverage
 would drop to dashboard-only edits.
 
+The WBGT sensor catalogue is not a project-config table. Basic label saves use
+the existing row schema and refuse stale labels. The optional
+`supabase/wbgt_sensor_label_editor.sql` enhancement, applied after
+`config_audit_setup.sql`, adds versioned trigger-owned audit and a transactional
+rename function so an MBS `sensor_delivery_groups` key follows its sensor label.
+Do not replace that transaction with separate dashboard PATCHes; a partial
+rename would leave the sensor unmapped. Until the enhancement is installed,
+mapped sensors are refused rather than risking a broken delivery mapping, and
+unmapped label edits are not present in the audit trail.
+
 ## Conventions
 
 - **Comments explain why, never what.** Most comments in this repo exist

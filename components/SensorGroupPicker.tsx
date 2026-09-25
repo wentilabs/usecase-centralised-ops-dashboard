@@ -31,6 +31,18 @@ export function SensorGroupPicker({
     return () => { alive = false; };
   }, [projectCode]);
 
+  useEffect(() => {
+    const onLabelChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectCode?: string; oldLabel?: string; newLabel?: string }>).detail;
+      if (detail?.projectCode !== projectCode || !detail.oldLabel || !detail.newLabel) return;
+      setSensors((previous) => previous?.map((sensor) =>
+        sensor.sensorLabel === detail.oldLabel ? { ...sensor, sensorLabel: detail.newLabel! } : sensor,
+      ) ?? null);
+    };
+    window.addEventListener("wbgt-sensor-label-renamed", onLabelChange);
+    return () => window.removeEventListener("wbgt-sensor-label-renamed", onLabelChange);
+  }, [projectCode]);
+
   const mappings = value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, string>
     : {};

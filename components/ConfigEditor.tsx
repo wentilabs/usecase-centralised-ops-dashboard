@@ -8,6 +8,7 @@ import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
+import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
@@ -229,6 +230,7 @@ export function ConfigEditor({
   groupNames = {},
   initialDraft,
   initialNote,
+  canEdit,
 }: {
   service: ServiceKey;
   serviceLabel: string;
@@ -250,6 +252,7 @@ export function ConfigEditor({
    */
   initialDraft?: Draft;
   initialNote?: string;
+  canEdit: boolean;
 }) {
   const [current, setCurrent] = useState<ProjectConfigRow>(row);
   const [draft, setDraft] = useState<Draft>(initialDraft ?? {});
@@ -488,6 +491,19 @@ export function ConfigEditor({
     if (!res.ok) setError(body.error);
   }
 
+  function onWbgtSensorRenamed(oldLabel: string, newLabel: string, config: Record<string, unknown> | null) {
+    if (config) setCurrent((previous) => ({ ...previous, ...config } as ProjectConfigRow));
+    setDraft((previous) => {
+      const value = previous.sensor_delivery_groups;
+      if (!value || typeof value !== "object" || Array.isArray(value)) return previous;
+      const mappings = { ...(value as Record<string, unknown>) };
+      if (!(oldLabel in mappings)) return previous;
+      if (!(newLabel in mappings)) mappings[newLabel] = mappings[oldLabel];
+      delete mappings[oldLabel];
+      return { ...previous, sensor_delivery_groups: mappings };
+    });
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
@@ -668,6 +684,13 @@ export function ConfigEditor({
               );
             })
           )}
+          {!history && service === "wbgt" ? (
+            <WbgtSensorLabelEditor
+              projectCode={String(current.project_code ?? rowId)}
+              canEdit={canEdit}
+              onRenamed={onWbgtSensorRenamed}
+            />
+          ) : null}
         </div>
 
         <footer className="flex shrink-0 flex-col gap-2 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">

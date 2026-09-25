@@ -166,6 +166,7 @@ export function ProjectServiceBoard({
           spec={specs[editing.service]!}
           row={editing.row}
           rowId={rowIdOf(editing.service, editing.row)}
+          canEdit={canEdit}
           groupNames={groupNames}
           initialDraft={editing.draft}
           initialNote={editing.note}

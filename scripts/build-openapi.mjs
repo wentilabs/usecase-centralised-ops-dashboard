@@ -12,12 +12,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const out = mkdtempSync(join(tmpdir(), "halo-openapi-"));
 try {
-  execFileSync("npx", ["tsc", "lib/openapi.ts", "lib/services.ts", "lib/jobs.ts",
+  execFileSync(process.execPath, [join(process.cwd(), "node_modules/typescript/bin/tsc"), "lib/openapi.ts", "lib/services.ts", "lib/jobs.ts",
     "--outDir", out, "--module", "commonjs", "--target", "ES2022", "--skipLibCheck"], { stdio: "pipe" });
-  const { openapiDocument } = await import(join(out, "openapi.js"));
+  const { openapiDocument } = await import(pathToFileURL(join(out, "openapi.js")).href);
   const { stringify } = await import("yaml");
   const body = stringify(openapiDocument, { lineWidth: 0 });
   const header = "# GENERATED from lib/openapi.ts — do not edit by hand. Run `npm run openapi`.\n";

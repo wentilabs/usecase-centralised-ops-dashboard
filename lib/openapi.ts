@@ -529,17 +529,18 @@ export const openapiDocument = {
           "Creations are recorded as a single `created` marker with `action: \"insert\"`, rather than as a diff of every column. Deletions are not recorded.",
           "",
           "`noise_limits` is audited too, via `table` — every change to a meter's permissible levels, hand-made or from the NoiseLynx refresh. Those entries are keyed on the meter's `full_identifier`, so `project` filters by meter there rather than by project code.",
+          "WBGT sensor label changes are included alongside WBGT config history and keep their sensor-row id; they are attributed to the project through `project_code`.",
         ].join("\n"),
         parameters: [
           { name: "service", in: "query", schema: { type: "string", enum: [...SERVICE_KEYS] }, description: "Restrict to one service's config table." },
           {
             name: "table",
             in: "query",
-            schema: { type: "string", enum: ["noise_limits"] },
+            schema: { type: "string", enum: ["noise_limits", "wbgt_sensors"] },
             description:
               "An audited table that is not a service's config row. Takes precedence over `service`.",
           },
-          { name: "project", in: "query", schema: { type: "string" }, description: "Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`." },
+          { name: "project", in: "query", schema: { type: "string" }, description: "Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`. With `table=wbgt_sensors`, this is the sensor's `project_code`." },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500, default: 200 } },
         ],
         responses: {
@@ -601,8 +602,43 @@ export const openapiDocument = {
         description: "Returns the exact active sensor labels used by the MBS per-sensor delivery editor.",
         parameters: [{ name: "project", in: "query", required: true, schema: { type: "string" }, description: "Project code." }],
         responses: {
-          "200": { description: "Active sensors for the project.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "200": { description: "Active sensors for the project, including their ids for targeted edits.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
           "401": errorResponses["401"],
+          "502": { description: "The WBGT sensor catalogue could not be reached, or its one-time label-editor migration has not been applied." },
+        },
+      },
+      patch: {
+        operationId: "updateWbgtSensorLabel",
+        tags: ["configuration"],
+        summary: "Rename one WBGT CloudLynx sensor",
+        description: [
+          "Changes the exact active `wbgts.wbgt_sensors.sensor_label` used by the WBGT scraper on its next run, without requiring a schema migration.",
+          "Pass the `sensorLabel` returned by GET as `baseSensorLabel`; stale edits are refused rather than overwriting another label.",
+          "If an MBS sensor-to-WhatsApp mapping uses either label, the optional `supabase/wbgt_sensor_label_editor.sql` migration is required so both keys change atomically. Without that migration, mapped renames fail closed.",
+          "That optional migration also enables trigger-owned audit attribution. Without it, a basic unmapped label edit succeeds but is not recorded in `ops.config_audit`.",
+        ].join("\n"),
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            properties: {
+              projectCode: { type: "string", description: "WBGT project code." },
+              id: { type: "integer", minimum: 1, description: "Sensor row id from GET /api/wbgt-sensors." },
+              sensorLabel: { type: "string", minLength: 1, maxLength: 200, description: "Exact CloudLynx dropdown label, including its parenthesized WC code." },
+              baseSensorLabel: { type: "string", minLength: 1, maxLength: 200, description: "The sensorLabel value read from GET /api/wbgt-sensors; used as an optimistic-concurrency check." },
+              note: { type: "string", maxLength: 500, description: "Optional reason recorded in the audit history." },
+            },
+            required: ["projectCode", "id", "sensorLabel", "baseSensorLabel"],
+          } } },
+        },
+        responses: {
+          "200": { description: "Sensor label saved; the response includes audit-annotation status." },
+          "400": errorResponses["400"],
+          "401": errorResponses["401"],
+          "403": errorResponses["403"],
+          "404": errorResponses["404"],
+          "409": { description: "The sensor changed since it was read, the new label conflicts, or a mapped rename needs the optional SQL migration." },
+          "502": { description: "The database rejected the rename." },
         },
       },
     },

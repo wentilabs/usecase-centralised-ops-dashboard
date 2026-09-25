@@ -769,6 +769,7 @@ export function DashboardShell({
           spec={editing.service.spec}
           row={editing.row}
           rowId={rowIdOf(editing.service, editing.row)}
+          canEdit={session.canEdit}
           groupNames={groupNames}
           initialDraft={editing.draft}
           initialNote={editing.note}

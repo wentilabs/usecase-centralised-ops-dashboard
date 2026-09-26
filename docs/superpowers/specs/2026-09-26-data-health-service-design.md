@@ -176,6 +176,47 @@ Immutable attempt log: incident ID, recipient chat ID, message kind
 attempt time, and outcome. A delivery failure is visible without reopening or
 duplicating the incident.
 
+### `ops.outbound_delivery_events`
+
+This is the common, append-only evidence feed written by source services; it
+does **not** belong to HALO's browser-facing configuration surface. Data Health
+reads it with server credentials and derives delivery observations from it.
+Every service that sends a customer-facing WhatsApp message adopts this same
+contract in the Lambda or worker that actually calls its WhatsApp provider.
+One sender cannot stand in for another: MBS records MBS sends, the Noise
+sender records Noise sends, and so on.
+
+Each event includes:
+
+| Field | Meaning |
+|---|---|
+| `attempt_id` | UUID for one destination send attempt; all transitions for that attempt share it. |
+| `delivery_intent_key` | Optional stable key for retries of one logical scheduled/event-triggered message. Without it, retries are not inferred. |
+| `event_type` | `intent`, `attempted`, `provider_pending`, `provider_accepted`, `provider_rejected`, `transport_failed`, `device_delivered`, or `read`. |
+| `source_system` | Stable identifier for the Lambda or worker that emitted the event. |
+| `source_service` | One of HALO's seven source-service keys. |
+| `source_project_code` | The source service's exact configured alias. It is never inferred from a chat ID, group name, or similar project code. |
+| `message_class` | Catalog-defined notification class, such as `hourly_report`, `threshold_alert`, or `water_parade_reminder`. |
+| `destination_chat_id`, `client_id` | Destination and sending-account correlation dimensions. |
+| `provider_message_id`, `provider_ack` | Nullable provider evidence. Raw provider acknowledgements are normalized by the producing adapter. |
+| `http_status`, `error_kind` | Nullable safe transport/provider-failure classification; never raw errors or response bodies. |
+| `occurred_at` | UTC time at which this immutable transition happened. |
+
+The table has a UUID primary key, a uniqueness constraint on
+`(attempt_id, event_type)`, and indexes for policy-window reads
+(`source_service`, `source_project_code`, `message_class`,
+`destination_chat_id`, `occurred_at DESC`) and later provider-message receipt
+reconciliation. It stores no message body, attachment URL, mention target,
+secret, request payload, or stack trace.
+
+The emitter writes `intent` when it has made a decision to send to one
+destination, `attempted` immediately before the provider call, and one
+terminal/provider event after the response or error. Writing telemetry is
+fail-open: an event-store error is logged safely but never suppresses or
+changes an existing customer message. A source may use `delivery_intent_key`
+to group its own retries. Data Health never guesses retry linkage from text,
+chat ID, or timing alone.
+
 ## Probe catalog and health rules
 
 A code-and-contract-defined catalog is the only place source schemas and table
@@ -207,17 +248,52 @@ asserting data loss.
 
 Delivery health is evaluated separately from data health. A delivery-capable
 probe compares scheduled or event-triggered delivery expectations with the
-source service's normalized outbound-attempt records. It warns when an expected
-attempt has not appeared after its catalog grace period, and warns or becomes
-critical when provider rejections or exhausted retries exceed the declared
+source service's normalized `ops.outbound_delivery_events` records. Its catalog
+declares the exact supported `message_class` values, the source alias resolver,
+the expected-message rule, grace period, and whether that rule supplies a
+stable `delivery_intent_key`. It warns when an expected intent has not appeared
+after its catalog grace period, and warns or becomes critical when provider
+rejections or **source-correlated** exhausted retries exceed the declared
 threshold. A provider-accepted message is healthy for acceptance, but is not
 called delivered.
 
 Delivery and read receipts are shown only when the configured WhatsApp provider
-returns and persists them. Services without normalized attempt records report
-`Delivery: not monitored`; services with attempts but no receipts report
-`Provider accepted` or `Send failed`. Missing delivery telemetry is never
-converted into a failed-delivery assertion.
+returns and persists them as `device_delivered` or `read` events. The producer,
+not Data Health, maps its provider-specific acknowledgement values to these
+normalised event types. For the current WhatsApp Web listener convention,
+`ack: 1` means server accepted, `ack: 2` device delivered, and `ack: 3` read;
+Data Health stores the raw acknowledgement only as supporting evidence.
+
+The capability is per policy and per message class—not a global switch:
+
+| Source adapter capability | Data Health check and card copy |
+|---|---|
+| no compatible event feed | `Delivery: not monitored` (neutral grey) |
+| `intent`/`attempted` only | expected-attempt gap where the catalog can define expectations; otherwise `Delivery: attempts recorded` |
+| provider terminal events | provider-acceptance/rejection health; successful state is `Delivery: Provider accepted` |
+| source-correlated retry key | persistent/exhausted retry health |
+| persisted delivery/read events | delivery/read health with `Delivered` or `Read` labels |
+
+Data checks remain available for every eligible policy even when its delivery
+adapter is not installed. Missing delivery telemetry is never converted into a
+failed-delivery assertion, and one service's telemetry outage cannot change
+another service's card.
+
+### Source-adapter rollout
+
+The common event feed applies to every HALO source service: WBGT, Noise, Haze,
+Lightning, Ailytics, Subcon Activities, and Issue Chaser. Each source service
+owns its adapter because only its sender knows whether a message was actually
+intended, retried, suppressed, or handed to the provider. The adapter must use
+the source row's exact configured project alias and must not make a cross-table
+project match.
+
+MBS WBGT is the first verified adapter because its live listener response
+already exposes a provider message ID and acknowledgement. It is a pilot, not
+a special product scope. Its two initial message classes are WBGT advisory and
+Water Parade reminder. The remaining services adopt the same contract at their
+own outbound boundary before Data Health enables their delivery checks. HALO
+continues to render their delivery state as `not monitored` until that happens.
 
 ## Notifications
 
@@ -261,9 +337,11 @@ not replace, live schema introspection.
 ## Compatibility, migration, and rollback
 
 The migration is additive: create the schema, configuration/state tables,
-indexes, RLS, constraints, audit attachment, and PostgREST exposure. It does
-not change any source-service table, route, scheduler, message, authentication
-mode, or configuration meaning.
+`ops.outbound_delivery_events`, indexes, RLS, constraints, audit attachment,
+and PostgREST exposure for configuration only. It does not change any
+source-service table, route, scheduler, message, authentication mode, or
+configuration meaning. Source-event writers use server credentials; the event
+table is not browser-exposed through PostgREST.
 
 No project gets a policy automatically. A new policy is disabled and reports
 `Collecting baseline` before enough evidence exists. Missing canonical
@@ -271,19 +349,27 @@ identity, alias, or catalog probe makes it visibly ineligible and sends no
 notification. An unreadable Data Health schema is an isolated HALO error and
 cannot blank existing tabs.
 
-The immediate off-switch is `enabled = false`; the service-wide off-switch is
-disabling its external scheduler. Rollback retains additive evidence tables but
-can safely revert application code. No source-data migration needs reversal.
+The immediate policy off-switch is `enabled = false`; the service-wide
+off-switch is disabling its external scheduler. Each source adapter also has a
+deployment-level telemetry off-switch, which stops new event writes without
+changing customer sends. Rollback retains additive evidence tables but can
+safely revert application code. No source-data migration needs reversal.
 
 ## Verification and rollout
 
 The Data Health service requires unit tests for thresholds, baselines,
 sensitivity, unknown state, source-query failures, expected-delivery gaps,
 provider rejection, receipt capability, incidents, cooldowns, recovery, and
-idempotency; contract tests for route/schema/catalog parity; scenario tests for
-healthy, stale, low-volume, monitor-failure, muted, disabled, concurrent,
-delivery-failure, and receipt-unavailable paths; and opt-in read-only
-integration checks.
+idempotency; contract tests for route/schema/catalog parity and each
+source-adapter capability; scenario tests for healthy, stale, low-volume,
+monitor-failure, muted, disabled, concurrent, delivery-failure, and
+receipt-unavailable paths; and opt-in read-only integration checks.
+
+Every source adapter requires characterization tests that its existing listener
+payload, message recipient/content, endpoint, response, retry behavior, and
+failure semantics are unchanged with telemetry disabled and enabled. It also
+requires event-sequence tests for accepted, rejected, transport-failed, and
+receipt-unavailable outcomes before its policy capability can be enabled.
 
 HALO requires characterization tests proving seven-service behavior is
 unchanged, plus coverage for placement below existing action/sheet links, card
@@ -291,10 +377,14 @@ rendering, mobile detail behavior, group-name resolution, recipient validation,
 concurrency conflicts, audit annotation, canonical-project association,
 RLS/audit SQL, and fanout isolation.
 
-Rollout: deploy the additive migration and runtime with scheduler off; deploy
-HALO's read-only cards; exercise one disabled canary policy using a dedicated
-test recipient; enable the scheduler; then enable production policies one at a
-time after baseline collection and recipient confirmation.
+Rollout: deploy the additive migration with all source adapters disabled;
+deploy each adapter independently and certify its event sequence against a
+non-customer test or normal controlled send; deploy HALO's read-only cards;
+then enable Data Health's scheduler. Enable production policies one at a time
+after baseline collection, recipient confirmation, and verification that the
+policy's declared delivery capability matches its source adapter. MBS WBGT is
+the initial canary; it does not unlock delivery monitoring for the other six
+services.
 
 ## Acceptance criteria
 
@@ -308,6 +398,9 @@ time after baseline collection and recipient confirmation.
 - Delivery health distinguishes expected attempts, provider acceptance, and
   confirmed delivery/read receipts; unsupported telemetry is visibly not
   monitored rather than treated as a delivery failure.
+- Every delivery-enabled source service emits the common event contract with
+  its exact source alias; a source without a certified adapter remains clearly
+  unmonitored without disabling its data-health checks.
 - Incidents are deduplicated, escalation-aware, recoverable, and auditable.
 - Project-code collisions cannot cause cross-service or cross-project scans.
 - Existing HALO behavior and all seven source-service contracts retain their

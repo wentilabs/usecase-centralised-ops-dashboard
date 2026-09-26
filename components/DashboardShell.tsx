@@ -18,6 +18,8 @@ import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
+import { DataHealthBoard } from "./DataHealthBoard";
+import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
@@ -62,6 +64,7 @@ function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null 
 
 export function DashboardShell({
   services,
+  projectHealth = [],
   fetchedAt,
   session,
   initialGroupNames,
@@ -72,6 +75,7 @@ export function DashboardShell({
   focusPropose = false,
 }: {
   services: ServiceData[];
+  projectHealth: ProjectHealth[];
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -101,6 +105,10 @@ export function DashboardShell({
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
   );
+  const healthByProject = useMemo(
+    () => new Map(projectHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
+    [projectHealth],
+  );
   const [editing, setEditing] = useState<{
     service: ServiceData;
     row: ProjectConfigRow;
@@ -112,6 +120,7 @@ export function DashboardShell({
   // Mobile-only surfaces: the service/actions drawer, and the card detail sheet
   // that carries the details the phone card leaves out.
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dataHealthOpen, setDataHealthOpen] = useState(false);
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
   const [job, setJob] = useState<JobDefinition | null>(null);
   const [exporter, setExporter] = useState<ExportDefinition | null>(null);
@@ -415,6 +424,7 @@ export function DashboardShell({
             </button>
           ))}
         </nav>
+        <button type="button" onClick={() => setDataHealthOpen(true)} className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary">Data health</button>
 
         {/* Not a service tab: a whole-estate view that cuts across all of them.
             Kept visually apart from the tabs for that reason. */}
@@ -628,6 +638,7 @@ export function DashboardShell({
               onOpenMap={() => setLightningMap(String(row.project_code ?? ""))}
               onOpenLimits={() => setNoiseLimits(String(row.project_code ?? ""))}
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
+              health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />
@@ -663,6 +674,8 @@ export function DashboardShell({
           dataBusy={reloadingData || reloading}
         />
       ) : null}
+
+      {dataHealthOpen ? <DataHealthBoard services={services} projectHealth={projectHealth} onClose={() => setDataHealthOpen(false)} /> : null}
 
       {/* The sheet's row comes from `rows`, so an edit saved from within it is
           reflected the next time it is opened. */}

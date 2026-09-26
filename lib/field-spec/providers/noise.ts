@@ -130,6 +130,15 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups" },
+    data_health_group_ids: {
+      label: "Data Health groups",
+      widget: "groups",
+      help: "Internal operations groups for automatic Data Health reminders. They never receive the project’s normal client alerts; leave blank to keep monitoring visible but silent.",
+    },
+    data_health_message_template: {
+      label: "Data Health message template",
+      help: "Optional full message. Use only {{project_code}}, {{service}}, {{status}}, and {{latest_receipt}}; blank uses the safe default.",
+    },
     lambda_url: { label: "Send-message proxy URL" },
 
     noise_meters_included: {
@@ -238,7 +247,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     // Titled for the decision, not repeated from the field: a section and a
     // control with the same words read as a rendering mistake.
     { title: "Meters", fields: ["noise_meters_included"] },
-    { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },
     // Its own section, as on WBGT: the analysis workbook is written all month

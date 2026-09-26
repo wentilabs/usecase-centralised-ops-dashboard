@@ -4,6 +4,7 @@ import { DashboardShell, type ServiceData } from "@/components/DashboardShell";
 import { chatIdsIn } from "@/lib/card-summary";
 import { getCanonicalProject, getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { getGroupNames } from "@/lib/group-names";
+import { listProjectHealth } from "@/lib/data-health-repository";
 import { SERVICES, SERVICE_KEYS, isServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
@@ -58,10 +59,14 @@ export default async function DashboardPage({
       spec: specResult.status === "fulfilled" ? specResult.value : null,
     };
   });
+  const projectHealth = await listProjectHealth(
+    Object.fromEntries(services.map((service) => [service.key, service.rows])),
+  ).catch(() => new Map());
 
   return (
     <DashboardShell
       services={services}
+      projectHealth={Array.from(projectHealth.values())}
       fetchedAt={new Date().toISOString()}
       initialGroupNames={groupNames.map}
       visoUrl={visoUrl}

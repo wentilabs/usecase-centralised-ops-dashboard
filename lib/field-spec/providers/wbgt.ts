@@ -76,6 +76,15 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
+    data_health_group_ids: {
+      label: "Data Health groups",
+      widget: "groups",
+      help: "Internal operations groups for automatic Data Health reminders. They never receive the project’s normal client alerts; leave blank to keep monitoring visible but silent.",
+    },
+    data_health_message_template: {
+      label: "Data Health message template",
+      help: "Optional full message. Use only {{project_code}}, {{service}}, {{status}}, and {{latest_receipt}}; blank uses the safe default.",
+    },
     lambda_url_document: {
       label: "Send-document URL",
       /**
@@ -266,7 +275,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Site hours & mutes",
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
-    { title: "Delivery", fields: ["whatsapp_group_id", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url", "lambda_url_document"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url", "lambda_url_document"] },
     {
       // Its own section rather than a third entry under Sheets: the monthly
       // sheet is an artefact the fill job writes all month, and this is a

@@ -90,6 +90,7 @@ test("Ailytics records its externally visible routes and discovery authenticatio
       { method: "POST", path: "/ailytics-safety/status-summary", kind: "scheduled", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/yesterday-24h-summary", kind: "scheduled", authentication: "none" },
       { method: "POST", path: "/ailytics-safety/retry-pending-deliveries", kind: "scheduled", authentication: "none" },
+      { method: "POST", path: "/ailytics-safety/test-reply-resend", kind: "diagnostic", authentication: "lambda-auth" },
     ],
   );
 });

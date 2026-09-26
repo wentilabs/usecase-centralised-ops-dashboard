@@ -3,6 +3,8 @@
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
 import { ServiceTag } from "./ServiceTag";
 import { CompanyMark } from "./CompanyMark";
+import { DataHealthRow } from "./DataHealthRow";
+import type { ProjectHealth } from "@/lib/data-health";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 
@@ -88,6 +90,7 @@ export function ProjectCard({
   onOpenMap,
   onOpenLimits,
   protectedMeters,
+  health,
 }: {
   service: ServiceKey;
   config: ProjectConfigRow;
@@ -112,6 +115,8 @@ export function ProjectCard({
    * the count; the names are in the limits view.
    */
   protectedMeters?: string[];
+  /** Automatic source-table health for this service/project pair. */
+  health?: ProjectHealth;
 }) {
   const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
@@ -370,6 +375,8 @@ export function ProjectCard({
           ))}
         </div>
       ) : null}
+
+      <DataHealthRow health={health} />
 
       <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
         <span className="hidden md:inline">

@@ -10,7 +10,8 @@
     { "method": "POST", "path": "/ailytics-safety/whatsapp-events", "kind": "webhook", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/status-summary", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/ailytics-safety/yesterday-24h-summary", "kind": "scheduled", "authentication": "none" },
-    { "method": "POST", "path": "/ailytics-safety/retry-pending-deliveries", "kind": "scheduled", "authentication": "none" }
+    { "method": "POST", "path": "/ailytics-safety/retry-pending-deliveries", "kind": "scheduled", "authentication": "none" },
+    { "method": "POST", "path": "/ailytics-safety/test-reply-resend", "kind": "diagnostic", "authentication": "lambda-auth" }
   ],
   "configuration": {
     "schema": "ailytics",

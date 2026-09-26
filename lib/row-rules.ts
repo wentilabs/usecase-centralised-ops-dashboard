@@ -1,4 +1,5 @@
 import type { ServiceKey } from "./services";
+import { validateDataHealthTemplate } from "./data-health-template";
 
 /**
  * The multi-column CHECK constraints, in a form HALO can evaluate.
@@ -473,6 +474,10 @@ export function rowProblems(
   where: Where = "editing",
 ): RowProblem[] {
   const problems: RowProblem[] = [];
+  if (service === "wbgt" || service === "noise") {
+    const template = validateDataHealthTemplate(row.data_health_message_template);
+    if (!template.valid) problems.push({ constraint: "data_health_message_template_format", columns: ["data_health_message_template"], message: template.message });
+  }
   for (const rule of ROW_RULES[service] ?? []) {
     const message = rule.check(row, label, where);
     if (message) problems.push({ constraint: rule.constraint, columns: rule.columns, message });

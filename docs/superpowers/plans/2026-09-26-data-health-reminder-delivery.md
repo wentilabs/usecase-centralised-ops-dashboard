@@ -15,7 +15,7 @@
 - HALO must never call a WhatsApp endpoint or own delivery credentials.
 - Apply only forward, additive migrations; do not backfill, alter readings rows, or change existing customer-alert destinations.
 - `data_health_group_ids` is nullable on WBGT and Noise config rows; blank means monitor-only and no fallback destination is allowed.
-- WBGT thresholds are amber at 2h/red at 4h; Noise thresholds are amber at 12h/red at 24h, measured from newest `created_at`.
+- WBGT and Noise thresholds are both amber at 1h/red at 4h, measured from newest `created_at`.
 - Amber repeats at most every 12h; red repeats at most every 6h; recovery sends once after a previously notified incident becomes green.
 - A failed delivery has one initial attempt plus retries after 1, 3, and 5 minutes; no body/credential/raw provider response enters logs or browser surfaces.
 - The first live deployment configures only WBGT TEST and Noise TEST with the provided internal group through HALO; no group identifier is committed.

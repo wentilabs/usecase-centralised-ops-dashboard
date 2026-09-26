@@ -92,7 +92,7 @@ a sender between projects. `instance_name` remains a source-runtime setting;
 it is included only when that source's documented sender contract requires it.
 
 The worker owns the ingestion thresholds already approved for the card pilot:
-WBGT amber at 2 hours/red at 4 hours; Noise amber at 12 hours/red at 24 hours.
+WBGT and Noise are both amber at 1 hour/red at 4 hours.
 It reads the newest row by authoritative `created_at`, using the existing
 derived table-name convention. The policy has explicit `now` input and matching
 boundary tests; it does not call HALO to decide a state.

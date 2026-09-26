@@ -14,7 +14,7 @@ test("the health reader fetches only the newest narrow WBGT and Noise evidence r
     if (url.includes("c_991_wbgt_data_hourly")) {
       return Response.json([{ created_at: "2026-09-26T11:30:00.000Z", reading_timestamp: "2026-09-26T11:00:00.000Z" }]);
     }
-    return Response.json([{ created_at: "2026-09-26T06:30:00.000Z", date: "2026-09-26", time_hhmm: "06:30" }]);
+    return Response.json([{ created_at: "2026-09-26T11:30:00.000Z", date: "2026-09-26", time_hhmm: "11:30" }]);
   };
 
   const health = await listProjectHealth(

@@ -43,8 +43,9 @@ The displayed states are:
 | Monitor unavailable | red | the source query timed out or failed for a reason not attributable to project data |
 | Not yet covered | neutral | a non-pilot service, or a project code whose table name cannot safely be derived |
 
-For the initial pilot, WBGT warns after two hours and becomes critical after
-four; Noise warns after twelve hours and becomes critical after twenty-four.
+For the initial pilot, both WBGT and Noise warn after one hour and become
+critical after four hours. Noise records every five minutes, so it uses the
+same timely ingestion expectation as WBGT.
 These are explicit initial operational budgets, not a claim that either
 service's customer-facing schedule has those intervals. The card includes the
 newest receipt time and the state wording so an operator can distinguish a

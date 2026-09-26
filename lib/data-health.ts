@@ -47,7 +47,7 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
       projectCode: trimmed,
       schema: "wbgts",
       table,
-      warningAfterMs: 2 * HOUR,
+      warningAfterMs: 1 * HOUR,
       criticalAfterMs: 4 * HOUR,
       sourceTimeFields: ["reading_timestamp"],
     };
@@ -61,8 +61,8 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
       projectCode: trimmed,
       schema: "noise-meters",
       table,
-      warningAfterMs: 12 * HOUR,
-      criticalAfterMs: 24 * HOUR,
+      warningAfterMs: 1 * HOUR,
+      criticalAfterMs: 4 * HOUR,
       sourceTimeFields: ["date", "time_hhmm"],
     };
   }

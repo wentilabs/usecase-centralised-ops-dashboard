@@ -17,7 +17,7 @@ test("automatic health targets use the existing WBGT and Noise table conventions
     projectCode: "C 991",
     schema: "wbgts",
     table: "c_991_wbgt_data_hourly",
-    warningAfterMs: 2 * 60 * 60 * 1000,
+    warningAfterMs: 1 * 60 * 60 * 1000,
     criticalAfterMs: 4 * 60 * 60 * 1000,
     sourceTimeFields: ["reading_timestamp"],
   });
@@ -26,8 +26,8 @@ test("automatic health targets use the existing WBGT and Noise table conventions
     projectCode: "CR 106",
     schema: "noise-meters",
     table: "cr_106_noise_data_daily",
-    warningAfterMs: 12 * 60 * 60 * 1000,
-    criticalAfterMs: 24 * 60 * 60 * 1000,
+    warningAfterMs: 1 * 60 * 60 * 1000,
+    criticalAfterMs: 4 * 60 * 60 * 1000,
     sourceTimeFields: ["date", "time_hhmm"],
   });
   assert.equal(healthTarget("haze", "C991"), null);
@@ -39,8 +39,8 @@ test("ingestion freshness moves from receiving to delayed to no recent data at e
   const target = healthTarget("wbgt", "C991");
   assert.ok(target);
 
-  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T10:00:00.001Z" }, NOW).tone, "good");
-  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T10:00:00.000Z" }, NOW).tone, "warn");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.001Z" }, NOW).tone, "good");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.000Z" }, NOW).tone, "warn");
   assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T08:00:00.000Z" }, NOW).tone, "danger");
   assert.equal(assessIngestionHealth(target, { kind: "empty" }, NOW).label, "Data: no data received yet");
 });

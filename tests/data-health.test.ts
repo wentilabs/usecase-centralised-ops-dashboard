@@ -1,24 +1,67 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { dataHealthAvailability, healthBadge, latestSnapshots, validateHealthPolicyDraft } from "../lib/data-health";
+import {
+  assessIngestionHealth,
+  healthBadge,
+  healthKey,
+  healthTarget,
+} from "../lib/data-health";
 
-test("data health policies begin disabled and require recipients before enabling", () => {
-  const disabled = validateHealthPolicyDraft({
-    canonical_project_id: "00000000-0000-4000-8000-000000000001",
-    source_service: "wbgt",
-  });
-  assert.deepEqual(disabled.problems, []);
-  assert.equal(disabled.draft?.enabled, false);
+const NOW = new Date("2026-09-26T12:00:00.000Z");
 
-  const enabledWithoutRecipients = validateHealthPolicyDraft({
-    canonical_project_id: "00000000-0000-4000-8000-000000000001",
-    source_service: "wbgt",
-    enabled: true,
-    data_checks: ["staleness"],
-    recipient_group_ids: [],
+test("automatic health targets use the existing WBGT and Noise table conventions", () => {
+  assert.deepEqual(healthTarget("wbgt", "C 991"), {
+    service: "wbgt",
+    projectCode: "C 991",
+    schema: "wbgts",
+    table: "c_991_wbgt_data_hourly",
+    warningAfterMs: 2 * 60 * 60 * 1000,
+    criticalAfterMs: 4 * 60 * 60 * 1000,
+    sourceTimeFields: ["reading_timestamp"],
   });
-  assert.match(enabledWithoutRecipients.problems.join(" "), /recipient/i);
+  assert.deepEqual(healthTarget("noise", "CR 106"), {
+    service: "noise",
+    projectCode: "CR 106",
+    schema: "noise-meters",
+    table: "cr_106_noise_data_daily",
+    warningAfterMs: 12 * 60 * 60 * 1000,
+    criticalAfterMs: 24 * 60 * 60 * 1000,
+    sourceTimeFields: ["date", "time_hhmm"],
+  });
+  assert.equal(healthTarget("haze", "C991"), null);
+});
+
+test("ingestion freshness moves from receiving to delayed to no recent data at exact pilot boundaries", () => {
+  const target = healthTarget("wbgt", "C991");
+  assert.ok(target);
+
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T10:00:00.001Z" }, NOW).tone, "good");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T10:00:00.000Z" }, NOW).tone, "warn");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T08:00:00.000Z" }, NOW).tone, "danger");
+  assert.equal(assessIngestionHealth(target, { kind: "empty" }, NOW).label, "Data: no data received yet");
+});
+
+test("invalid and future receipt timestamps do not appear fresh, and source-table failures keep their own wording", () => {
+  const target = healthTarget("noise", "WCP");
+  assert.ok(target);
+
+  assert.deepEqual(assessIngestionHealth(target, { kind: "row", createdAt: "not-a-date" }, NOW), {
+    service: "noise",
+    projectCode: "WCP",
+    tone: "neutral",
+    label: "Data: receipt time unavailable",
+    newestReceivedAt: null,
+    sourceEventAt: null,
+  });
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T12:01:00.000Z" }, NOW).label, "Data: receipt time is in the future");
+  assert.equal(assessIngestionHealth(target, { kind: "missing_table" }, NOW).label, "Data: table unavailable");
+  assert.equal(assessIngestionHealth(target, { kind: "monitor_error" }, NOW).label, "Data: monitor unavailable");
+});
+
+test("health keys isolate identical project codes in different services", () => {
+  assert.notEqual(healthKey("wbgt", "MBS"), healthKey("noise", "MBS"));
+  assert.equal(healthKey("wbgt", "MBS"), healthKey("wbgt", "MBS"));
 });
 
 test("provider acceptance remains distinct from delivery and read", () => {
@@ -26,13 +69,4 @@ test("provider acceptance remains distinct from delivery and read", () => {
     tone: "good",
     label: "Delivery: Provider accepted",
   });
-});
-
-test("unavailable Data Health storage remains neutral and newest snapshots win", () => {
-  assert.deepEqual(dataHealthAvailability(new Error("406 PGRST106 schema is not exposed")), { available: false, reason: "not_configured" });
-  const snapshots = latestSnapshots([
-    { policy_id: "p1", data_outcome: "warn", delivery_outcome: "transport_failed", evaluated_at: "2026-09-26T01:00:00.000Z" },
-    { policy_id: "p1", data_outcome: "good", delivery_outcome: "provider_accepted", evaluated_at: "2026-09-26T02:00:00.000Z" },
-  ]);
-  assert.equal(snapshots.get("p1")?.data_outcome, "good");
 });

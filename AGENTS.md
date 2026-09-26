@@ -643,6 +643,21 @@ Open to anyone the dashboard is open to — `session.allowed`, not `canEdit`. It
 writes nothing, and the people covering are the ones most likely to hold a
 read-only account.
 
+**Secondary sources are named, with the variables they need.** Naming only the
+main upstream makes a card read as though it were the only one. WBGT also
+receives from the Telegram bot (`TELEGRAM_WBGT_BOT_TOKEN`) and from manual meter
+photos on WhatsApp; lightning also relays forwarded vendor SMS on
+`POST /api/lightning-sms`, which arrives even when the NEA tick finds nothing.
+Every column named is checked against the pinned contract, and every variable is
+a NAME.
+
+**One of those carries a warning, and only one.** A WBGT project on manual photos
+does nothing until the *listener* repo — not this one — sets
+`WBGT_WHATSAPP_WEBHOOK_URL` to the central service's `/api/wbgt-whatsapp`.
+Nothing on this side errors when it is unset; the photo is simply never
+forwarded. That silence is why it renders as a warning rather than a note, and a
+test keeps it the only one so the styling stays worth reading.
+
 **The store is a stage, and the page says so.** Noise and WBGT do not read their
 vendor at send time: a scrape writes into the project's own table —
 `noise-meters.<code>_noise_data_daily`, `wbgts.<code>_wbgt_data_hourly`, named by

@@ -285,3 +285,60 @@ test("there is one reader of the readings tables, not two", async () => {
   assert.match(model, /healthTarget\(service, projectCode\)\?\.table/);
   assert.doesNotMatch(model, /replace\(\/\[\^a-z0-9\]\+\/g/, "the second copy of the naming rule is gone");
 });
+
+test("the secondary sources are named, with the variables they need", () => {
+  // Naming only the main upstream makes a card read as though it were the only
+  // one, and these are where someone unfamiliar gets stuck.
+  const wbgt = SERVICE_SOURCES.wbgt.alsoFrom ?? [];
+  assert.deepEqual(
+    wbgt.map((entry) => entry.label),
+    ["Telegram bot", "Manual photos on WhatsApp", "External Telegram channels"],
+  );
+  assert.deepEqual(SERVICE_SOURCES.lightning.alsoFrom?.map((entry) => entry.label), ["Forwarded SMS"]);
+
+  // Every column named is one the service's contract declares, same mirror rule
+  // as everywhere else — a renamed column must fail the build, not misdirect.
+  for (const service of SERVICE_KEYS) {
+    const fields = new Set(Object.keys(SERVICE_CONTRACTS[service]!.configuration.fields));
+    for (const entry of SERVICE_SOURCES[service].alsoFrom ?? []) {
+      for (const column of entry.columns ?? []) {
+        assert.ok(fields.has(column), `${service}.${column} is named as a source switch but is not in the contract`);
+      }
+      // Variable NAMES only, here as everywhere.
+      for (const name of entry.env ?? []) {
+        assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${entry.label} env entry "${name}" is not a variable name`);
+      }
+    }
+  }
+});
+
+test("the manual-photo path warns that its variable lives in another repo", () => {
+  const manual = SERVICE_SOURCES.wbgt.alsoFrom?.find((entry) => entry.label === "Manual photos on WhatsApp");
+  assert.ok(manual, "manual photo ingestion must be described");
+
+  // The pointer that is easy to miss and expensive to miss. The listener repo
+  // that RECEIVES the photo has to be told where to forward it, and this
+  // service cannot notice that it never was — the photo simply never arrives,
+  // and nothing here errors.
+  assert.deepEqual(manual.env, ["WBGT_WHATSAPP_WEBHOOK_URL"]);
+  assert.match(manual.envRepo ?? "", /not this one/, "it must say the variable is not this service's");
+  assert.ok(manual.critical, "a silent failure needs a warning, not a note");
+  assert.match(manual.critical, /WBGT_WHATSAPP_WEBHOOK_URL/);
+  assert.match(manual.critical, /\/api\/wbgt-whatsapp/, "it must name the route to point at");
+  assert.match(manual.critical, /never/, "it must say the failure is silent");
+
+  // And it is the only path that carries one, so the warning styling stays rare
+  // enough to mean something.
+  const warned = SERVICE_KEYS.flatMap((service) =>
+    (SERVICE_SOURCES[service].alsoFrom ?? []).filter((entry) => entry.critical),
+  );
+  assert.equal(warned.length, 1);
+});
+
+test("lightning's SMS route is a real inbound route, not just prose", () => {
+  // It arrives even when the NEA tick finds nothing, so it is a second source
+  // rather than a variation on the first — and the route must be contracted.
+  assert.ok(SERVICE_SOURCES.lightning.inbound.includes("POST /api/lightning-sms"));
+  const declared = new Set(SERVICE_CONTRACTS.lightning!.routes.map((route) => `${route.method} ${route.path}`));
+  assert.ok(declared.has("POST /api/lightning-sms"));
+});

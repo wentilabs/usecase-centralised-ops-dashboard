@@ -5,6 +5,7 @@ import { dataHealthDetail, healthKey, type ProjectHealth } from "@/lib/data-heal
 import {
   SERVICE_SOURCES,
   SERVICE_STORAGE,
+  type ServiceSource,
   EXPECTATION_NOTE,
   readingExpectation,
   readingsTableFor,
@@ -100,6 +101,8 @@ function ServiceSourceCard({ service, error }: { service: ServiceKey; error?: st
         <p className="mt-0.5 text-[13px] leading-snug">{source.breaks}</p>
       </div>
 
+      {source.alsoFrom?.length ? <AlsoFrom entries={source.alsoFrom} /> : null}
+
       {source.inbound.length ? <InboundRoutes service={service} routes={source.inbound} /> : null}
 
       <DebugOrder service={service} />
@@ -125,6 +128,58 @@ function ServiceSourceCard({ service, error }: { service: ServiceKey; error?: st
 
       {error ? <p className="text-xs text-danger">This service&apos;s rows could not be read: {error}</p> : null}
     </article>
+  );
+}
+
+/**
+ * The other ways readings reach a service.
+ *
+ * Naming only the main upstream makes a card read as though it were the only
+ * one, and these are exactly where someone unfamiliar gets stuck: a WBGT
+ * project on manual photos is not affected by a CloudLynx outage at all, and
+ * lightning's forwarded SMS arrives even when the NEA tick finds nothing.
+ *
+ * `critical` is rendered as a warning rather than a note because the one that
+ * exists is silent when unmet: a listener repo without WBGT_WHATSAPP_WEBHOOK_URL
+ * simply never forwards the photo, and nothing on this side errors.
+ */
+function AlsoFrom({ entries }: { entries: NonNullable<ServiceSource["alsoFrom"]> }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Also arrives from
+      </div>
+      <ul className="mt-1 flex flex-col gap-2">
+        {entries.map((entry) => (
+          <li key={entry.label} className="leading-snug">
+            <div className="text-[13px] font-medium">{entry.label}</div>
+            <div className="text-[12px] text-muted-foreground">{entry.how}</div>
+            {entry.env?.length ? (
+              <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-[11px]">
+                {entry.env.map((name) => (
+                  <span key={name} className="font-mono text-primary/80">{name}</span>
+                ))}
+                {entry.envRepo ? (
+                  <span className="text-muted-foreground">in {entry.envRepo}</span>
+                ) : null}
+              </div>
+            ) : null}
+            {entry.columns?.length ? (
+              <div className="mt-0.5 flex flex-wrap gap-1.5 font-mono text-[10px] text-muted-foreground">
+                {entry.columns.map((column) => (
+                  <span key={column}>{column}</span>
+                ))}
+              </div>
+            ) : null}
+            {entry.critical ? (
+              <p className="mt-1 rounded border border-danger/40 bg-danger/10 px-2 py-1 text-[12px] leading-snug text-danger">
+                ⚠ {entry.critical}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

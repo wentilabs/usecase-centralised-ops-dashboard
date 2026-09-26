@@ -62,6 +62,27 @@ export type ServiceSource = {
   breaks: string;
   /** Whether this service's projects each choose their own upstream. */
   perProject?: "noise" | "wbgt";
+  /**
+   * The other ways readings reach this service.
+   *
+   * Naming only the main upstream makes a card read as though it were the only
+   * one, and the secondary paths are exactly where an unfamiliar person gets
+   * stuck: a WBGT project on manual photo ingestion is not affected by a
+   * CloudLynx outage at all, and lightning's forwarded SMS arrives on a route
+   * nothing else uses.
+   */
+  alsoFrom?: {
+    label: string;
+    how: string;
+    /** Environment variable NAMES this path needs. Never values. */
+    env?: string[];
+    /** Where that variable lives, when it is not this service's own. */
+    envRepo?: string;
+    /** Config columns that switch this path on for a project. */
+    columns?: string[];
+    /** A warning worth reading before the path is configured. */
+    critical?: string;
+  }[];
 };
 
 /**
@@ -100,6 +121,32 @@ export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
     ],
     breaks: "Readings go stale; the hourly report has nothing new. Manual-ingestion projects are unaffected — check the project's source first.",
     perProject: "wbgt",
+    alsoFrom: [
+      {
+        label: "Telegram bot",
+        how: "A site posts readings to the WBGT bot; the webhook stores them as a scrape would.",
+        env: ["TELEGRAM_WBGT_BOT_TOKEN"],
+        columns: ["telegram_chat_ids", "telegram_manual_sensor_label"],
+      },
+      {
+        label: "Manual photos on WhatsApp",
+        how: "A site photographs the meter display and the photo is read into a reading. These projects never scrape, so CloudLynx being down does not affect them.",
+        env: ["WBGT_WHATSAPP_WEBHOOK_URL"],
+        // The pointer that is easy to miss and expensive to miss: the variable
+        // is not this service's. The listener repo that RECEIVES the photo has
+        // to be told where to forward it, and this side cannot notice that it
+        // never was — the photo simply never arrives.
+        envRepo: "the WhatsApp listener repo, not this one",
+        columns: ["whatsapp_wbgt_source_chat_ids", "whatsapp_manual_sensor_label"],
+        critical:
+          "A project on manual photos does nothing until the listener repo sets WBGT_WHATSAPP_WEBHOOK_URL to this service's /api/wbgt-whatsapp. Without it the photo is never forwarded, and nothing here errors — the readings simply never arrive.",
+      },
+      {
+        label: "External Telegram channels",
+        how: "Third-party channels post readings in. The only inbound route that is HMAC-signed.",
+        columns: ["enable_external_telegram_alerts"],
+      },
+    ],
   },
   haze: {
     upstream: "data.gov.sg",
@@ -115,8 +162,15 @@ export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
     transport: "api",
     how: "Public NEA API, polled every minute against each project's trigger rings.",
     loginUrlEnv: "NEA_API_KEY",
-    inbound: ["POST /api/lightning-tick"],
+    inbound: ["POST /api/lightning-tick", "POST /api/lightning-sms"],
     breaks: "No detections, so no warnings and no all-clears. The worst of the seven to miss: silence looks like good weather.",
+    alsoFrom: [
+      {
+        label: "Forwarded SMS",
+        how: "A vendor's SMS warning is forwarded in and relayed to its own group. Independent of the NEA feed — it arrives even when the tick finds nothing.",
+        columns: ["enable_sms_lightning_alerts", "sms_whatsapp_group_id", "sms_lightning_format"],
+      },
+    ],
   },
   ailytics: {
     upstream: "Ailytics",

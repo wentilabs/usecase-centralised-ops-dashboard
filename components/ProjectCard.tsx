@@ -3,6 +3,7 @@
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
 import { ServiceTag } from "./ServiceTag";
 import { CompanyMark } from "./CompanyMark";
+import { DataHealthRow } from "./DataHealthRow";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
 
@@ -370,6 +371,8 @@ export function ProjectCard({
           ))}
         </div>
       ) : null}
+
+      <DataHealthRow />
 
       <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
         <span className="hidden md:inline">

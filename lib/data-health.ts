@@ -20,6 +20,7 @@ export type HealthPolicyDraft = {
 
 export type HealthPolicy = HealthPolicyDraft & { id: string; project_code: string; created_at: string; updated_at: string };
 export type HealthSnapshot = { policy_id: string; data_outcome: HealthTone; delivery_outcome: DeliveryOutcome | null; evaluated_at: string | null };
+export type DataHealthAvailability = { available: boolean; reason: "ready" | "not_configured" | "unreachable" };
 
 const DATA_CHECKS = new Set<DataCheck>(["staleness", "volume_trend"]);
 const DELIVERY_CHECKS = new Set<DeliveryCheck>(["expected_attempt", "provider_acceptance", "receipt"]);
@@ -63,4 +64,17 @@ export function healthBadge(outcome: DeliveryOutcome): { tone: HealthTone; label
   if (outcome === "transport_failed") return { tone: "danger", label: "Delivery: failed" };
   if (outcome === "provider_pending") return { tone: "warn", label: "Delivery: pending" };
   return { tone: "neutral", label: "Delivery: not monitored" };
+}
+
+export function dataHealthAvailability(error?: unknown): DataHealthAvailability {
+  if (!error) return { available: true, reason: "ready" };
+  return { available: false, reason: /PGRST106|406|schema/i.test(error instanceof Error ? error.message : String(error)) ? "not_configured" : "unreachable" };
+}
+
+export function latestSnapshots(rows: Array<HealthSnapshot>): Map<string, HealthSnapshot> {
+  return rows.reduce((latest, row) => {
+    const previous = latest.get(row.policy_id);
+    if (!previous || String(row.evaluated_at ?? "") > String(previous.evaluated_at ?? "")) latest.set(row.policy_id, row);
+    return latest;
+  }, new Map<string, HealthSnapshot>());
 }

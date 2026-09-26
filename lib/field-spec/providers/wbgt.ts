@@ -76,6 +76,11 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups", help: "Comma-separated; one message per group." },
+    data_health_group_ids: {
+      label: "Data Health groups",
+      widget: "groups",
+      help: "Internal operations groups for automatic Data Health reminders. They never receive the project’s normal client alerts; leave blank to keep monitoring visible but silent.",
+    },
     delivery_scope: {
       label: "Delivery scope",
       widget: "select",
@@ -233,7 +238,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Site hours & mutes",
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
-    { title: "Delivery", fields: ["whatsapp_group_id", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],

@@ -42,3 +42,17 @@ test("a covered project with a receipt shows only that receipt below its health 
     "a latest receipt must replace, rather than follow, the automatic-monitoring explanation",
   );
 });
+
+test("WBGT and Noise expose a dedicated ungated Data Health group picker", async () => {
+  const [wbgt, noise, groups] = await Promise.all([
+    source("lib/field-spec/providers/wbgt.ts"),
+    source("lib/field-spec/providers/noise.ts"),
+    source("lib/card-summary/groups.ts"),
+  ]);
+
+  for (const provider of [wbgt, noise]) {
+    assert.match(provider, /data_health_group_ids:\s*\{[\s\S]*?label:\s*"Data Health groups"[\s\S]*?widget:\s*"groups"[\s\S]*?internal operations/i);
+  }
+  assert.match(groups, /wbgt:[\s\S]*?data_health_group_ids/, "WBGT recipient ids must resolve to group names");
+  assert.match(groups, /noise:[\s\S]*?data_health_group_ids/, "Noise recipient ids must resolve to group names");
+});

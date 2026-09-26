@@ -20,6 +20,7 @@ export function splitList(value: unknown): string[] {
 const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   wbgt: [
     { column: "whatsapp_group_id" },
+    { column: "data_health_group_ids", role: "data health" },
     // This was a `single` column: the service read it with a bare
     // `String(...).trim()` and posted the whole value as one chatId, so a second
     // id corrupted the send rather than adding a recipient. `ff2ec70` in the
@@ -31,6 +32,7 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   ],
   noise: [
     { column: "whatsapp_group_id" },
+    { column: "data_health_group_ids", role: "data health" },
     // A real destination, not a setting: the expiry warning goes here and
     // nowhere else, so a card that omitted it showed a project as talking to
     // one group when it talks to two.

@@ -607,6 +607,42 @@ Useful keys:
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
 
+## The Developer tab
+
+`/developer` answers one question for whoever is covering: where does each
+service's raw data come from, what drives it, and what stops when that upstream
+stops. It exists because the answer was spread across seven repositories, which
+is no use to someone on call.
+
+`lib/source-model.ts` is a **mirror**, not a document. Noise already encodes its
+answer in `lib/noise-source-registry.js` and WBGT in
+`scrapers/cloudlynx-wbgt/profile.js`; the tests check this file against the
+pinned contracts, so a `source_type` added upstream fails the build rather than
+leaving a project's row reading "no adapter for this value" while the service is
+perfectly happy.
+
+Three rules hold it honest:
+
+- **No credential values, ever.** Profiles name the environment VARIABLE a
+  scraper reads. A test rejects anything in the file shaped like a secret, and
+  the page is open to read-only accounts, so the cost of one pasted value is
+  high and the cost of the check is nothing.
+- **A schedule appears only where `load-model/crons.ts` can prove one**, because
+  that file was read off the AWS console and the service READMEs disagree with
+  it — WBGT's contradicts the console about its own hourly rule. Ingestion
+  routes mostly have no proven rule, and the page says so in those words. A
+  confident wrong schedule is worse than an admitted gap when the reader is
+  mid-incident.
+- **URLs come from the scrapers themselves**, not from the vendor's name. All
+  three of Geoscan, Trackmaster and AlphaLab live somewhere other than the
+  obvious guess (`realtime.geoscanrealtime.com`, `qsis.trackmaster.in`,
+  `alphalabonline.com`), and Trackmaster signs in through a browser then pulls
+  its report from a separate API host.
+
+Open to anyone the dashboard is open to — `session.allowed`, not `canEdit`. It
+writes nothing, and the people covering are the ones most likely to hold a
+read-only account.
+
 ## Pending: the monthly noise report
 
 The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery

@@ -432,6 +432,15 @@ export function DashboardShell({
         >
           Projects
         </a>
+        {/* For whoever is covering: where each service's readings come from,
+            what drives them, and what stops when the upstream does. */}
+        <a
+          href="/developer"
+          className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary"
+          title="Where the raw readings come from, per service and per project"
+        >
+          Developer
+        </a>
 
         <input
           ref={(element) => {

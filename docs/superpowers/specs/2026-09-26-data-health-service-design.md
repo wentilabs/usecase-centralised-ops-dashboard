@@ -2,19 +2,19 @@
 
 ## Goal
 
-Create a separately deployed Data Health service that detects delayed, missing,
-or unexpectedly sparse source data and unhealthy outbound delivery for every
-project configured in HALO, then notifies dedicated operations WhatsApp groups.
-HALO configures and explains the monitor; it never runs scans or sends
-messages.
+Create a separately deployed Data Health service that automatically detects
+delayed, missing, or unexpectedly sparse source data and unhealthy outbound
+delivery for every project configured in HALO, then notifies operations
+WhatsApp groups. HALO derives monitoring from existing project configuration
+and exposes recipient overrides; it never runs scans or sends messages.
 
 ## Product decision
 
-Data Health is a first-class HALO operational surface that is surfaced inside
-each existing source-service project card. Its compact health row appears below
-that card's sheet and action links, while a dedicated Data Health tab provides
-the cross-project operational view. It is not added to the seven-member
-`ServiceKey` source-service registry.
+Data Health is compulsory for every existing and newly created project/service
+configuration row. Its compact health row appears below that card's sheet and
+action links, while a dedicated Data Health tab provides the cross-project
+operational view. It is not added to the seven-member `ServiceKey` source-service
+registry.
 
 The source registry represents one runtime configuration per project code and
 feeds canonical aliases. Data Health instead needs multiple policies for one
@@ -25,15 +25,15 @@ dedicated surface preserves all seven source-service contracts.
 
 ## Customer behavior
 
-An authorized operator can open the **Data health** row on any source-service
-card, select that card's canonical project and source service, then create a
-disabled health policy. The same policy is available from the dedicated Data
-Health tab. After choosing operations recipient groups and enabling it, the
-scheduled Data Health service evaluates the policy.
+Every normal project configuration row is automatically a Data Health monitor;
+there is no policy to create, table to select, or monitoring switch to enable.
+The runner resolves the source adapter and monitored project table from the
+service's fixed catalog and the row's existing configuration. A project added
+through HALO is therefore monitored as soon as its normal row exists.
 
 Each card answers:
 
-1. Is monitoring enabled?
+1. What is the automatically derived monitoring state?
 2. Does it check stale data, population decline, outbound delivery, or a
    combination?
 3. When was each dimension last evaluated and what is its current state?
@@ -93,31 +93,23 @@ Excluded:
 - Matching projects by similar codes across schemas; only `ops.projects` and
   its approved aliases establish identity.
 
-## Policy configuration and cards
+## Automatic monitoring and recipient configuration
 
-One policy represents one `(canonical project, source service)` pair. The
-runner resolves that source's current alias from
-`ops.projects.service_aliases` on every run. Its stored `project_code` is
-only a display label, synchronized from `primary_alias`; it is never used to
-join source data.
+One monitor exists for every `(canonical project, source service)` that already
+has a normal service configuration row. The runner resolves that source's
+current alias from `ops.projects.service_aliases` on every run. Its stored
+`project_code` is only a display label, synchronized from `primary_alias`; it
+is never used to join source data.
 
 | Field | Meaning | Default |
 |---|---|---|
-| `enabled` | Permits scheduled evaluation and notification. | `false` |
-| `canonical_project_id` | Identity in `ops.projects`. | required |
-| `source_service` | One of the seven source services. | required |
-| `project_code` | Synchronized card/audit display label. | derived |
-| `data_checks` | `staleness`, `volume_trend`, or both. | both |
-| `delivery_checks` | `expected_attempt`, `provider_acceptance`, and, when supported, `receipt`. | `expected_attempt`, `provider_acceptance` |
-| `sensitivity` | `relaxed`, `standard`, or `strict`. | `standard` |
-| `recipient_group_ids` | Operations WhatsApp group IDs. | required before enable |
-| `notification_cooldown_minutes` | Minimum unresolved-reminder interval. | 360 |
-| `notify_on_recovery` | Sends recovery after an incident closes. | `true` |
-| `muted_until` | Explicit, time-bounded operational mute. | `null` |
+| `data_health_recipient_group_ids` | Operations WhatsApp recipients for this project/service monitor. | empty → central fallback |
 
-The editor groups fields as **Status**, **Data health**, **Delivery health**,
-**Sensitivity**, and **Operations delivery**. `enabled` is first. A policy
-cannot be enabled without at least one applicable probe and recipient group.
+`data_health_recipient_group_ids` is an ordinary editable group-picker field
+on every service configuration row. It stores comma-separated group ids exactly
+as existing delivery fields do. It never defaults to a customer-facing delivery
+group: blank means the runner uses `DATA_HEALTH_DEFAULT_GROUP_IDS`, its required
+central operations-recipient configuration.
 
 Every eligible source-service card gains a compact **Data health** row directly
 below its sheet/action links. It shows two independently coloured indicators:
@@ -125,8 +117,9 @@ green for healthy, amber for warning or collecting baseline, red for critical
 or monitor unavailable, and neutral grey for disabled, not configured, or
 unsupported telemetry. A capability label such as `Provider accepted` remains
 written beside its colour; it is never shown as `Delivered` without a receipt.
-The row opens that source service's health-policy editor and history; on a
-phone, the same content appears in the existing detail sheet.
+The row opens the source service's health history; on a phone, the same content
+appears in the existing detail sheet. The ordinary card **Edit** form contains
+the recipient override field.
 
 The expanded Data Health policy view retains HALO conventions: enabled/disabled
 status, pills for `Stale data` and `Volume trend`, a toned warning pill for an

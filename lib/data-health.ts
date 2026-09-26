@@ -1,4 +1,5 @@
 import { noiseTableForProject, wbgtTableForProject } from "./onboarding/naming";
+import { activityLabel, type Activity } from "./data-health-activity";
 import type { ServiceKey } from "./services";
 
 export type HealthTone = "good" | "warn" | "danger" | "neutral";
@@ -110,7 +111,26 @@ export function dataHealthDetail(health: ProjectHealth | undefined): string {
     : "Monitoring is automatic. This project is covered; no receipt timestamp is available.";
 }
 
-export function assessIngestionHealth(target: HealthTarget, evidence: IngestionEvidence, now: Date): ProjectHealth {
+/**
+ * @param activity What the project is supposed to be doing right now. Outside a
+ * cadence window there is nothing to judge, and an age-only verdict reports a
+ * site that stopped exactly as configured as though it had broken. Omitted, the
+ * assessment falls back to the target's fixed budgets — which is only correct
+ * for a caller that knows the project is active.
+ */
+export function assessIngestionHealth(
+  target: HealthTarget,
+  evidence: IngestionEvidence,
+  now: Date,
+  activity?: Activity,
+): ProjectHealth {
+  // Nothing is expected, so nothing is wrong. This is checked before the
+  // evidence, deliberately: a dormant project's table is legitimately empty,
+  // and "no data received yet" on a project nothing asks of is a false alarm
+  // rather than a softer one.
+  const idle = activity ? activityLabel(activity) : null;
+  if (idle) return result(target, "neutral", idle, null, null);
+
   if (evidence.kind === "empty") return result(target, "danger", "Data: no data received yet", null, null);
   if (evidence.kind === "missing_table") return result(target, "danger", "Data: table unavailable", null, null);
   if (evidence.kind === "monitor_error") return result(target, "danger", "Data: monitor unavailable", null, null);
@@ -121,8 +141,20 @@ export function assessIngestionHealth(target: HealthTarget, evidence: IngestionE
 
   const ageMs = now.getTime() - new Date(newestReceivedAt).getTime();
   if (ageMs < 0) return result(target, "neutral", "Data: receipt time is in the future", newestReceivedAt, sourceEventAt);
-  if (ageMs >= target.criticalAfterMs) return result(target, "danger", "Data: no recent data", newestReceivedAt, sourceEventAt);
-  if (ageMs >= target.warningAfterMs) return result(target, "warn", "Data: delayed", newestReceivedAt, sourceEventAt);
+
+  /**
+   * The configuration's own answer to "how long is too long", where available.
+   *
+   * A project running every hour of a site day tolerates an hour; one that
+   * reports once a day tolerates a day, and judging that at the flat one-hour
+   * budget called it broken for twenty-three hours out of twenty-four. The
+   * fixed budgets remain the fallback for a caller with no activity to pass.
+   */
+  const warnAfter = activity?.state === "active" ? activity.toleranceMs : target.warningAfterMs;
+  const criticalAfter = activity?.state === "active" ? activity.toleranceMs * 2 : target.criticalAfterMs;
+
+  if (ageMs >= criticalAfter) return result(target, "danger", "Data: no recent data", newestReceivedAt, sourceEventAt);
+  if (ageMs >= warnAfter) return result(target, "warn", "Data: delayed", newestReceivedAt, sourceEventAt);
   return result(target, "good", "Data: receiving", newestReceivedAt, sourceEventAt);
 }
 

@@ -6,11 +6,8 @@ import {
   SERVICE_SOURCES,
   SERVICE_STORAGE,
   type ServiceSource,
-  EXPECTATION_NOTE,
-  readingExpectation,
   readingsTableFor,
   storesReadings,
-  type ReadingExpectation,
   TRANSPORT_LABEL,
   normalizeSourceType,
   profilesFor,
@@ -329,50 +326,33 @@ function InboundRoutes({ service, routes }: { service: ServiceKey; routes: strin
  * services write at least hourly when healthy, so an hour is normal, a few
  * hours is worth a glance, and a day is the answer.
  */
-function ProjectChip({ code, health, expectation }: {
-  code: string;
-  health?: ProjectHealth;
-  expectation: ReadingExpectation;
-}) {
-  const note = EXPECTATION_NOTE[expectation];
-
+function ProjectChip({ code, health }: { code: string; health?: ProjectHealth }) {
   /**
-   * The verdict is the shared reader's; the one correction is dormancy.
+   * The verdict is the shared reader's, whole.
    *
-   * `assessIngestionHealth` judges a table purely on age, which is right for a
-   * project something is asking readings of and wrong for one nothing is.
-   * Noise scraping is demand-driven: with every cadence off, no demand is
-   * created, the table is correctly stale forever, and the reader calls it
-   * danger. Seven live noise projects are in that state.
-   *
-   * Measured at 18:29 on an ordinary working day, the shared budgets — warn at
-   * one hour, critical at four — put 19 of 32 noise projects in danger, seven
-   * of them dormant and the rest simply outside their cadence window. A column
-   * that is mostly red is a column nobody reads, so this view says `idle` for
-   * the ones nothing asks of, and leaves the rest exactly as the reader found
-   * them.
-   *
-   * Deliberately a view-level overlay rather than a change to
-   * `assessIngestionHealth`: the budgets are someone else's calibration to
-   * revisit, and quietly rewriting them here would leave the board and this
-   * page disagreeing about the same project.
+   * This used to carry its own dormancy rule, because `assessIngestionHealth`
+   * judged a table purely on age and would call a project nothing asks of
+   * "danger". It is now cadence-aware — outside a project's hours it returns
+   * neutral with an idle label — so a second rule here would be a second answer
+   * to a question that already has one.
    */
+  const idle = health?.tone === "neutral";
   const tone =
-    expectation !== "demanded"
-      ? "border-border opacity-60"
-      : health?.tone === "danger"
-        ? "border-danger/50 text-danger"
-        : health?.tone === "warn"
-          ? "border-warn/50 text-warn"
+    health?.tone === "danger"
+      ? "border-danger/50 text-danger"
+      : health?.tone === "warn"
+        ? "border-warn/50 text-warn"
+        : idle
+          ? "border-border opacity-60"
           : "border-border";
 
   return (
     <span
       className={`flex flex-col rounded border bg-muted/20 px-2 py-1 leading-tight ${tone}`}
-      title={[dataHealthDetail(health), note].filter(Boolean).join(" · ")}
+      title={health?.label ?? dataHealthDetail(health)}
     >
       <span className="font-mono text-[13px]">{code}</span>
-      <span className="text-[10px] opacity-80">{note ? "idle" : describeAge(health)}</span>
+      <span className="text-[10px] opacity-80">{idle ? "idle" : describeAge(health)}</span>
     </span>
   );
 }
@@ -410,9 +390,6 @@ function PerProjectTable({ service, rows, error, health }: {
   error?: string;
   health: Map<string, ProjectHealth>;
 }) {
-  const expectation = new Map(
-    rows.map((row) => [String(row.project_code ?? ""), readingExpectation(row)] as const),
-  );
   const profiles = profilesFor(service)!;
   const byProfile = new Map<string, { codes: string[]; profile: SourceProfile | null }>();
 
@@ -507,7 +484,6 @@ function PerProjectTable({ service, rows, error, health }: {
                           key={code}
                           code={code}
                           health={health.get(healthKey(service, code))}
-                          expectation={expectation.get(code) ?? "demanded"}
                         />
                       ))}
                     </div>
@@ -522,9 +498,9 @@ function PerProjectTable({ service, rows, error, health }: {
       <p className="mt-2.5 text-xs text-muted-foreground">
         Each code shows when its own readings table was last written to — the first thing to check when a
         message is missing, because the cadence jobs read the table, never the portal. A code marked{" "}
-        <span className="opacity-60">idle</span> has no cadence switched on, so nothing asks it for readings.
-        A gap of a few hours is normal outside a project&apos;s cadence window — scraping is demand-driven —
-        so only a full day is marked. For the reason behind any gap, read{" "}
+        <span className="opacity-60">idle</span> is outside its cadence hours, or has none switched on, so
+        nothing is expected of it and nothing is judged. An age is shown only where the project is due to
+        be producing. For the reason behind any gap, read{" "}
         <span className="font-mono">{SERVICE_STORAGE[service].supporting[0]?.table}</span>. Every profile
         above is offered in the {SERVICES[service].label} editor&apos;s{" "}
         <code className="font-mono">source_type</code> field. Changing it moves that project to a different

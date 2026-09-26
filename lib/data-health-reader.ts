@@ -6,6 +6,7 @@ import {
   type IngestionEvidence,
   type ProjectHealth,
 } from "./data-health";
+import { activityFor, type Activity } from "./data-health-activity";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -79,19 +80,37 @@ export async function listProjectHealth(
     url,
     key,
   };
+  // The row travels with its target: the verdict needs to know what this
+  // project is supposed to be doing right now, and only the row can say.
   const targets = (["wbgt", "noise"] as const).flatMap((service) =>
     (configured[service] ?? []).flatMap((row) => {
       const target = healthTarget(service, String(row.project_code ?? ""));
-      return target ? [target] : [];
+      return target ? [{ target, activity: activityFor(service, row, readOptions.now) }] : [];
     }),
   );
-  const reads = await Promise.allSettled(targets.map(async (target) => ({ target, evidence: await newestEvidence(target, readOptions) })));
+  /**
+   * An idle project is not queried at all.
+   *
+   * Its verdict does not depend on the evidence — nothing is expected of it, so
+   * nothing about its table can be wrong — and skipping it removes most of the
+   * estate's requests outside site hours, which is when this runs most often.
+   */
+  const reads = await Promise.allSettled(
+    targets.map(async ({ target, activity }) =>
+      activity.state === "active"
+        ? { evidence: await newestEvidence(target, readOptions) }
+        : { evidence: { kind: "skipped" } as unknown as IngestionEvidence },
+    ),
+  );
   const health = new Map<string, ProjectHealth>();
 
   reads.forEach((read, index) => {
-    const target = targets[index];
+    const { target, activity } = targets[index];
     const evidence = read.status === "fulfilled" ? read.value.evidence : { kind: "monitor_error" as const };
-    health.set(healthKey(target.service, target.projectCode), assessIngestionHealth(target, evidence, readOptions.now));
+    health.set(
+      healthKey(target.service, target.projectCode),
+      assessIngestionHealth(target, evidence, readOptions.now, activity),
+    );
   });
   return health;
 }

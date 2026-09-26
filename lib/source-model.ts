@@ -512,34 +512,3 @@ export function readingsTableFor(service: ServiceKey, projectCode: string): stri
 export function storesReadings(service: ServiceKey): boolean {
   return SERVICE_STORAGE[service].readingsTable !== null;
 }
-
-/**
- * Whether anything is actually asking this project for readings.
- *
- * Without this the freshness column cries wolf. Noise scraping is
- * demand-driven: a cadence declares what it needs and the scraper fetches it,
- * so a project with every cadence off creates no demand and its table is
- * correctly, permanently stale. Four of the thirty-two noise projects are in
- * exactly that state — CPW, JCube, KCDE and PSR — and colouring them the same
- * as a live project that has stopped would train everyone to ignore the colour.
- *
- * The distinction is what makes the column worth reading: on the same screen,
- * one of those four sitting at 11 hours is fine, and HMD at 11 hours with its
- * hourly report on is the thing to go and look at.
- */
-export type ReadingExpectation = "demanded" | "dormant" | "disabled";
-
-export function readingExpectation(row: ProjectConfigRow): ReadingExpectation {
-  if (row.enabled === false) return "disabled";
-  // Any `enable_*` flag that is on. Deliberately generic rather than a list of
-  // cadence names: a cadence added upstream should count the day it appears,
-  // and the alternative is a list that silently stops covering one.
-  const anyOn = Object.entries(row).some(([key, value]) => key.startsWith("enable_") && value === true);
-  return anyOn ? "demanded" : "dormant";
-}
-
-export const EXPECTATION_NOTE: Record<ReadingExpectation, string | null> = {
-  demanded: null,
-  dormant: "no cadences on — nothing asks for readings",
-  disabled: "project disabled",
-};

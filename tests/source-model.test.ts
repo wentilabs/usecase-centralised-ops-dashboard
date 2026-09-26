@@ -4,10 +4,8 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
-  EXPECTATION_NOTE,
   NOISE_SOURCE_PROFILES,
   SERVICE_STORAGE,
-  readingExpectation,
   readingsTableFor,
   storesReadings,
   SERVICE_SOURCES,
@@ -224,47 +222,19 @@ test("only the two services that keep their own readings say they do", () => {
   }
 });
 
-test("a project nothing asks for is not reported as stale", () => {
-  // Noise scraping is demand-driven: with every cadence off, nothing asks and
-  // the table is correctly stale forever. Four live projects are in that state,
-  // and colouring them like a failure would train everyone to ignore the colour.
-  const dormant = { project_code: "KCDE", enabled: true } as unknown as ProjectConfigRow;
-  assert.equal(readingExpectation(dormant), "dormant");
-  assert.ok(EXPECTATION_NOTE.dormant);
-
-  const off = { project_code: "X", enabled: false, enable_hourly: true } as unknown as ProjectConfigRow;
-  assert.equal(readingExpectation(off), "disabled", "a disabled project outranks its cadences");
-
-  const live = { project_code: "HMD", enabled: true, enable_hourly: true } as unknown as ProjectConfigRow;
-  assert.equal(readingExpectation(live), "demanded");
-  assert.equal(EXPECTATION_NOTE.demanded, null, "a live project carries no excuse for being stale");
-
-  // Generic over `enable_*` rather than a list of cadence names, so a cadence
-  // added upstream counts the day it appears.
-  const future = { project_code: "Y", enabled: true, enable_something_new: true } as unknown as ProjectConfigRow;
-  assert.equal(readingExpectation(future), "demanded");
-  // A flag that is off, or a non-boolean, is not demand.
-  assert.equal(
-    readingExpectation({ project_code: "Z", enabled: true, enable_hourly: false } as unknown as ProjectConfigRow),
-    "dormant",
-  );
-});
-
-test("the freshness verdict is the shared reader's, with dormancy the one correction", async () => {
+test("the freshness verdict is the shared reader's, whole", async () => {
   const guide = await source("components/DeveloperGuide.tsx");
 
-  // The tone comes from data-health's assessIngestionHealth, not from a second
-  // set of thresholds here. Two judgements of the same table would drift into
-  // the board and this page disagreeing about whether a site is healthy.
+  // The tone comes from data-health's assessIngestionHealth, which is now
+  // cadence-aware: outside a project's hours it returns neutral with an idle
+  // label. This view used to carry its own dormancy rule on top, because the
+  // shared one judged purely on age; keeping it would now be a second answer to
+  // a question that already has one.
   assert.match(guide, /health\?\.tone === "danger"/);
   assert.match(guide, /health\?\.tone === "warn"/);
+  assert.match(guide, /health\?\.tone === "neutral"/, "neutral is the idle case, and it comes from the reader");
+  assert.doesNotMatch(guide, /readingExpectation/, "the local dormancy rule is gone");
   assert.doesNotMatch(guide, /hours >= \d+/, "no second threshold may live in the view");
-
-  // The one thing this view adds: a project nothing asks readings of is never
-  // coloured as though it had stopped. Measured at 18:29 on an ordinary working
-  // day, the shared budgets put 19 of 32 noise projects in danger, seven of
-  // them dormant — and a column that is mostly red is a column nobody reads.
-  assert.match(guide, /expectation !== "demanded"\s*\n?\s*\? "border-border opacity-60"/);
 });
 
 test("there is one reader of the readings tables, not two", async () => {

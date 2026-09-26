@@ -669,24 +669,32 @@ claiming a table: haze and lightning compute and discard, the sheet-backed three
 read a store that is not ours.
 
 **Freshness comes from the shared data-health reader, not a second one.** The
-per-project chips render `assessIngestionHealth`'s verdict. An earlier pass here
-had its own reader, its own copy of the `lib/naming.js` table rule and its own
-thresholds; all three duplicated `lib/data-health*.ts`, so all three were
-removed. `readingsTableFor` now delegates to `healthTarget`, and tests fail if a
-second reader or a second naming rule reappears.
+per-project chips render `assessIngestionHealth`'s verdict, whole. An earlier
+pass here had its own reader, its own copy of the `lib/naming.js` table rule,
+its own thresholds and its own dormancy rule; every one duplicated
+`lib/data-health*.ts`, and every one is gone. Tests fail if a second reader, a
+second naming rule or a second threshold reappears.
 
-**One correction is applied at the view level: dormancy.** `assessIngestionHealth`
-judges a table purely on age, which is right for a project something asks
-readings of and wrong for one nothing does. Noise scraping is demand-driven — with
-every cadence off, no demand is created and the table is correctly stale forever.
-Measured at 18:29 on an ordinary working day, the shared budgets (warn 1h,
-critical 4h) put **19 of 32 noise projects in danger**, seven of them dormant and
-the rest simply outside their cadence window, where
-`skipped_outside_project_cadence_window` is the normal end of a site's day. This
-page marks the dormant ones `idle` and leaves every other verdict untouched —
-deliberately a view overlay rather than an edit to the budgets, which are someone
-else's calibration to revisit, and rewriting them here would leave the board and
-this page disagreeing about the same project.
+**Health is judged against the cadence, not the clock.** `assessIngestionHealth`
+used to compare age to a fixed budget — warn at an hour, critical at four —
+whatever the project was configured to do. Most of the estate is outside its
+cadence window most of the day, so at 18:29 on an ordinary working day that put
+19 of 32 noise projects in danger while the jobs' own runs recorded
+`skipped_outside_project_cadence_window` for them. A board that is mostly red is
+a board nobody reads.
+
+`lib/data-health-activity.ts` asks it the other way round: is this project
+inside an hour where something should have happened? Outside one the card reads
+`idle` and the evidence is not even fetched, which also removes most of the
+estate's queries outside site hours. Inside one, the tolerated gap is the time
+since the project's previous active hour plus an hour's grace — so an hourly
+cadence is judged hourly, and a once-a-day report is judged daily rather than
+called broken for twenty-three hours out of twenty-four.
+
+The windows are NOT re-derived there. `lib/load-model` already reads every
+service's cadence flags, start and end times and site hours, and is already
+tested as a mirror of them; a second reading would drift on exactly the hours
+that decide whether someone is woken up.
 
 ## Pending: the monthly noise report
 

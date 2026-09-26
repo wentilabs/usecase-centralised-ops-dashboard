@@ -4,7 +4,25 @@ import assert from "node:assert/strict";
 import { healthKey } from "../lib/data-health";
 import { listProjectHealth } from "../lib/data-health-reader";
 
-const NOW = new Date("2026-09-26T12:00:00.000Z");
+const NOW = new Date("2026-09-26T12:00:00.000Z"); // 20:00 SGT
+
+/**
+ * A project that is actually due to produce something at NOW.
+ *
+ * The evidence reader only queries a project inside one of its cadence hours —
+ * outside them nothing is expected, so there is nothing a table could tell us.
+ * These fixtures were bare `{ project_code }` rows, which read as dormant and
+ * would now be skipped, so each carries the minimum configuration that puts
+ * 20:00 inside its window. WBGT needs site hours that reach it; noise's hourly
+ * cadence has no window set and therefore runs all day.
+ */
+const active = (projectCode: string, service: "wbgt" | "noise") => ({
+  project_code: projectCode,
+  enabled: true,
+  whatsapp_group_id: "120363000000000000@g.us",
+  enable_hourly: true,
+  ...(service === "wbgt" ? { site_hours_start: 8, site_hours_end: 21 } : {}),
+});
 
 test("the health reader fetches only the newest narrow WBGT and Noise evidence rows", async () => {
   const calls: Array<{ url: string; profile: string | null }> = [];
@@ -19,9 +37,9 @@ test("the health reader fetches only the newest narrow WBGT and Noise evidence r
 
   const health = await listProjectHealth(
     {
-      wbgt: [{ project_code: "C 991" }],
-      noise: [{ project_code: "CR 106" }],
-      haze: [{ project_code: "C 991" }],
+      wbgt: [active("C 991", "wbgt")],
+      noise: [active("CR 106", "noise")],
+      haze: [active("C 991", "wbgt")],
     },
     { fetchImpl, now: NOW, url: "https://health.example", key: "test-key" },
   );
@@ -47,8 +65,8 @@ test("a missing table or failed sibling query becomes that card's result without
 
   const health = await listProjectHealth(
     {
-      wbgt: [{ project_code: "C991" }, { project_code: "MBS" }],
-      noise: [{ project_code: "WCP" }],
+      wbgt: [active("C991", "wbgt"), active("MBS", "wbgt")],
+      noise: [active("WCP", "noise")],
     },
     { fetchImpl, now: NOW, url: "https://health.example", key: "test-key" },
   );
@@ -67,8 +85,8 @@ test("only a PostgREST undefined-table response is a table failure", async () =>
 
   const health = await listProjectHealth(
     {
-      wbgt: [{ project_code: "MBS" }],
-      noise: [{ project_code: "WCP" }],
+      wbgt: [active("MBS", "wbgt")],
+      noise: [active("WCP", "noise")],
     },
     { fetchImpl, now: NOW, url: "https://health.example", key: "test-key" },
   );

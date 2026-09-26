@@ -32,3 +32,13 @@ test("Data Health is automatic and the estate board offers no policy setup actio
   assert.match(board, /automatically monitored/i, "the board must label the pilot as automatic");
   assert.doesNotMatch(board, /Set up policy|database migration required/i, "the board must not offer the retired policy flow");
 });
+
+test("a covered project with a receipt shows only that receipt below its health badges", async () => {
+  const row = await source("components/DataHealthRow.tsx");
+
+  assert.match(
+    row,
+    /health\?\.newestReceivedAt\s*\?\s*`Latest receipt \$\{formatSgt\(health\.newestReceivedAt\)\} SGT\.`\s*:\s*dataHealthDetail\(health\)/,
+    "a latest receipt must replace, rather than follow, the automatic-monitoring explanation",
+  );
+});

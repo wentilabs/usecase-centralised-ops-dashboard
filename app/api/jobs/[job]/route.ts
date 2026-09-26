@@ -95,6 +95,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     startDate?: string;
     endDate?: string;
     choice?: string;
+    month?: string;
     flags?: Record<string, boolean>;
   };
   try {
@@ -157,6 +158,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
         endDate: body.endDate as string,
         ...(choice ? { choice } : {}),
         ...(date ? { date } : {}),
+        // Already validated by validateJobInput above, against the offered
+        // months rather than merely by shape: an unoffered month does not fail
+        // upstream, it resolves to a different year on WBGT.
+        ...(job.monthly && body.month ? { month: body.month } : {}),
         flags,
       });
 
@@ -197,7 +202,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
 
       console.log(
         `[halo][job] ${job.key}${choice ? `/${choice}` : ""} project=${body.projectCode} ` +
-          `${date ? `date=${date}` : job.dateless ? "scope=current-state" : `range=${body.startDate}..${body.endDate}`} ` +
+          `${date ? `date=${date}` : job.monthly ? `month=${body.month}` : job.dateless ? "scope=current-state" : `range=${body.startDate}..${body.endDate}`} ` +
           `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
       );
 

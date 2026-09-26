@@ -954,7 +954,7 @@ paths:
         The precondition is re-checked server-side, because every one of these jobs reports success while
         doing nothing when it is unmet.
 
-        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `wbgt-monthly-report`, `chaser-refresh-images`, `chaser-project-check`, `chaser-preview`, `chaser-summary-preview`, `chaser-novade-sync`, `chaser-company-sync`. Sending dates to one of those is ignored.
+        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `chaser-refresh-images`, `chaser-project-check`, `chaser-preview`, `chaser-summary-preview`, `chaser-novade-sync`, `chaser-company-sync`. Sending dates to one of those is ignored.
 
         Some jobs do more than one thing and take a `choice`. Omitted, the first option is used: `chaser-preview`: `severity_cadence` | `same_day_open`; `chaser-summary-preview`: `plain` | `company` | `chatgroup` | `novade`.
       parameters:
@@ -968,6 +968,7 @@ paths:
               - noise-sync
               - wbgt-fill
               - wbgt-monthly-report
+              - noise-monthly-report
               - wbgt-scrape
               - wbgt-water-parade
               - chaser-refresh-images

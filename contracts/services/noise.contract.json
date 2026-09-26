@@ -17,6 +17,7 @@
     { "method": "POST", "path": "/api/noise-limit-refresh", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/noise-sheet-bootstrap", "kind": "operator", "authentication": "none" },
     { "method": "POST", "path": "/api/noise-sheet-export", "kind": "operator", "authentication": "none" },
+    { "method": "POST", "path": "/api/noise-monthly-report", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/noise-sheet-sync", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/noise-sheet-sync-master-template", "kind": "operator", "authentication": "none" }
   ],
@@ -30,6 +31,8 @@
       "instance_name": { "label": "WhatsApp instance", "group": "delivery", "mutable": true, "role": "configuration", "help": "Listener instance passed independently for every project delivery." },
       "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier required for client delivery." },
       "whatsapp_group_id": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations; each is attempted independently." },
+      "enable_monthly_noise_report": { "label": "Monthly Noise XLSX report", "group": "cadences", "mutable": true, "role": "feature-flag", "help": "Explicit opt-in for the day-one previous-month XLSX export and WhatsApp document. Successful deliveries are recorded per project, report month, and recipient." },
+      "monthly_noise_report_whatsapp_group_ids": { "label": "Monthly Noise report groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated WhatsApp destinations for monthly Noise XLSX reports, independent of regular alert groups." },
       "enable_5min": { "label": "5-minute alerts", "group": "cadences", "mutable": true, "role": "feature-flag", "help": "Enables the five-minute assessment family and contributes scrape demand." },
       "enable_half_hourly": { "label": "In-hour assessments", "group": "cadences", "mutable": true, "role": "feature-flag", "help": "Enables assessment-minute messages and contributes scrape demand." },
       "enable_hourly": { "label": "Hourly reports", "group": "cadences", "mutable": true, "role": "feature-flag", "help": "Enables completed-hour messages and contributes scrape demand." },

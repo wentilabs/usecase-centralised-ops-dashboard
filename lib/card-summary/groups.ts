@@ -46,6 +46,10 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
     // the role says so, because a chip that just read as another recipient
     // would imply these groups get the whole half-hourly stream.
     { column: "exceedance_half_hourly_wa_groups", role: "half-hourly warnings only" },
+    // Once a month, and to its own audience — the same shape as WBGT's. An
+    // unlabelled chip would read as another recipient of every noise message,
+    // which is the opposite of what this list is.
+    { column: "monthly_noise_report_whatsapp_group_ids", role: "monthly report" },
   ],
   haze: [{ column: "wa_group_ids" }],
   lightning: [

@@ -27,6 +27,7 @@ export type JobKey =
   | "wbgt-scrape"
   | "wbgt-water-parade"
   | "wbgt-monthly-report"
+  | "noise-monthly-report"
   | "chaser-refresh-images"
   | "chaser-project-check"
   | "chaser-preview"
@@ -35,6 +36,44 @@ export type JobKey =
   | "chaser-company-sync";
 
 export type JobFlag = { key: string; label: string; help: string };
+
+/** The months a monthly report can be asked for, newest first, as `YYYY-MM`. */
+export const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The last twelve COMPLETED Singapore calendar months.
+ *
+ * Twelve, and completed, because that is exactly the set both endpoints can
+ * address. Noise takes `YYYY-MM` and would accept any past month; WBGT takes a
+ * bare `mmm` and resolves it to the most recent occurrence at or before last
+ * month, so "Aug" can only ever mean the Aug within the last twelve. Offering a
+ * thirteenth month would let someone pick Aug 2025 on WBGT and silently be sent
+ * Aug 2026 — a plausible, wrong workbook, which is worse than not offering it.
+ *
+ * Computed rather than stored, because the set moves every month.
+ */
+export function completedMonths(now: Date = new Date(), count = 12): string[] {
+  // Singapore is UTC+8 and never shifts, so the calendar month there is the
+  // UTC month of the same instant shifted forward — no timezone library needed.
+  const sgt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const months: string[] = [];
+  for (let back = 1; back <= count; back += 1) {
+    const date = new Date(Date.UTC(sgt.getUTCFullYear(), sgt.getUTCMonth() - back, 1));
+    months.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return months;
+}
+
+/** "2026-08" → "Aug", the only month format the WBGT route accepts. */
+export function monthAbbreviation(month: string): string {
+  const index = Number(month.slice(5, 7)) - 1;
+  return MONTH_ABBREVIATIONS[index] ?? "";
+}
+
+/** "2026-08" → "Aug 2026", for the picker. */
+export function monthLabel(month: string): string {
+  return `${monthAbbreviation(month)} ${month.slice(0, 4)}`;
+}
 
 /**
  * One choice among several, for a job that does more than one thing.
@@ -59,6 +98,8 @@ export type JobInput = {
   endDate: string;
   /** The selected `choice` option's value, when the job declares one. */
   choice?: string;
+  /** The chosen completed calendar month as `YYYY-MM`, for a `monthly` job. */
+  month?: string;
   flags?: Record<string, boolean>;
 };
 
@@ -146,6 +187,19 @@ export type JobDefinition = {
    * A dateless job is never chunked, because there is nothing to divide.
    */
   dateless?: true;
+  /**
+   * Asks for one completed calendar month instead of a date range.
+   *
+   * Implies `dateless` — there is no range to chunk — but is kept separate,
+   * because the dialog must render a month picker rather than nothing. A job
+   * that is merely dateless asks for no period at all.
+   *
+   * The chosen month reaches `buildPayload` as `month`, canonical `YYYY-MM`.
+   * Converting it to whatever the endpoint wants belongs there: noise takes
+   * `YYYY-MM` and WBGT takes a bare `mmm`, and the picker should not have to
+   * know that.
+   */
+  monthly?: true;
   /** Inclusive day limit the endpoint itself enforces, if any. */
   maxSpanDays?: number;
   /**
@@ -436,11 +490,12 @@ export const JOBS: Record<JobKey, JobDefinition> = {
     description:
       "Exports last month's tab of the monthly sheet as xlsx and sends it to the monthly report groups as a WhatsApp document. The production cron runs this with an empty body; this is the same route driven by hand.",
     caution:
-      "The month is not a choice: the route always takes the previous Singapore calendar month. Each recipient is recorded per project and month, so a second run does not send the workbook twice to a group that already has it.",
+      "Each recipient is recorded per project and month, so a second run does not send the workbook twice to a group that already has it. Only completed months are offered — the current one is never exported.",
     baseUrlEnv: "WBGT_API_URL",
     path: "/api/generate-and-send-monthly-wbgt-report",
-    // No range to pick: the route derives the month itself.
-    dateless: true,
+    // The route gained a `month` parameter in b9862c9; it was previously fixed
+    // to the previous month, and this was dateless.
+    monthly: true,
     // An export, an upload and a document send per recipient, four projects at
     // a time — the same headroom the other sheet-touching jobs get.
     timeoutMs: 55_000,
@@ -479,10 +534,63 @@ export const JOBS: Record<JobKey, JobDefinition> = {
      * `dryRun: true` is the only one that forces a preview. Naming each
      * explicitly leaves the service's environment out of a decision made here.
      */
-    buildPayload: ({ projectCode, flags }) =>
-      flags?.apply === true
-        ? { projectCode, dryRunOverride: false }
-        : { projectCode, dryRun: true },
+    /**
+     * `month` goes as a bare `mmm`, which is the only form this route takes —
+     * it resolves the abbreviation to the most recent occurrence at or before
+     * last month. That is why only twelve months are offered: a thirteenth
+     * would resolve to the wrong year without complaining.
+     */
+    buildPayload: ({ projectCode, month, flags }) => ({
+      projectCode,
+      ...(month ? { month: monthAbbreviation(month) } : {}),
+      ...(flags?.apply === true ? { dryRunOverride: false } : { dryRun: true }),
+    }),
+  },
+  "noise-monthly-report": {
+    key: "noise-monthly-report",
+    service: "noise",
+    label: "✉ Monthly report",
+    title: "Send the monthly Noise workbook",
+    description:
+      "Exports one completed month of the analysis workbook as xlsx and sends it to the monthly report groups as a WhatsApp document. The cron sends last month; here you pick which.",
+    caution:
+      "Each recipient is recorded per project and month, so a second run does not send the same month twice to a group that already has it. Only completed months are offered.",
+    baseUrlEnv: "NOISE_API_URL",
+    path: "/api/noise-monthly-report",
+    monthly: true,
+    // An export, an upload and a document send per recipient — the same
+    // headroom the other sheet-touching jobs get.
+    timeoutMs: 55_000,
+    precondition: {
+      label: "Monthly report",
+      // The route filters on this flag, so a project without it is not merely
+      // unlikely to send — it is not in the run at all.
+      read: (row) => (row.enable_monthly_noise_report === true ? "enabled" : null),
+      unmet: (projectCode) =>
+        `${projectCode} has its monthly report switched off, so this route skips it entirely. Turn on "Monthly report" in the editor first — it also needs an analysis sheet and at least one report group.`,
+    },
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Actually send the workbook. Leave off to export it and report who would receive it without posting anything.",
+      },
+    ],
+    /**
+     * snake_case, and `month` as `YYYY-MM` — noise differs from WBGT on both.
+     *
+     * Its dry-run resolution is also the simpler of the two:
+     * `body.dryRun === true || (body.dryRun === undefined && resolveDryRun())`.
+     * An explicit `false` therefore DOES force a live send here, where on WBGT
+     * it would fall through to the service's own environment. Sending the key
+     * explicitly either way keeps that difference out of the caller's head.
+     */
+    buildPayload: ({ projectCode, month, flags }) => ({
+      project_code: projectCode,
+      ...(month ? { month } : {}),
+      dryRun: flags?.apply !== true,
+    }),
   },
   "wbgt-scrape": {
     key: "wbgt-scrape",
@@ -957,9 +1065,28 @@ export function validateJobInput(
     }
   }
 
-  // A dateless job has no range to check, and asking for one would block a job
-  // whose endpoint does not accept it. The precondition below still applies.
-  if (!job?.dateless) {
+  /**
+   * A month, and only one the endpoints can actually address.
+   *
+   * Not merely "looks like YYYY-MM": WBGT takes a bare `mmm` and resolves it to
+   * the most recent occurrence at or before last month, so a month outside the
+   * offered twelve does not fail — it silently resolves to a different year and
+   * sends a plausible, wrong workbook. Checking membership rather than shape is
+   * what makes that impossible.
+   */
+  if (job?.monthly) {
+    const offered = completedMonths();
+    if (!input.month) problems.push("Choose a month.");
+    else if (!offered.includes(input.month)) {
+      problems.push(
+        `${input.month} is not one of the last twelve completed months (${offered[offered.length - 1]} to ${offered[0]}).`,
+      );
+    }
+  }
+
+  // A dateless or monthly job has no range to check, and asking for one would
+  // block a job whose endpoint does not accept it. The precondition still applies.
+  if (!job?.dateless && !job?.monthly) {
     if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
     if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
   }

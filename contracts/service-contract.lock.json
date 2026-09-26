@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "main",
-      "commit": "8cbe05d17b00bf692a0d729b8e7de7a8978feec1",
+      "commit": "80514388f01c1cd2bbbdd8d016f00edc1ab24cec",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -59,7 +59,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "main",
-      "commit": "7a32a666b20039efa14b18c9a23b25c9c8e266ea",
+      "commit": "b9862c9d5c120fec478d9611c38950c3886fac0f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

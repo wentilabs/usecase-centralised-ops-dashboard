@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
-import { defaultChoice, eachChunk, jobTargets, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
+import { completedMonths, defaultChoice, eachChunk, jobTargets, monthLabel, spanDays, validateJobInput, type JobDefinition } from "@/lib/jobs";
 import { previewMessages, readJson, summariseJobResult, type PreviewMessage } from "@/lib/read-json";
 import type { ProjectConfigRow } from "@/lib/services";
 import { useEscapeKey } from "@/lib/use-body-scroll-lock";
@@ -42,6 +42,16 @@ export function JobDialog({
   // Always a real option, never blank: a job with a choice has a primary one,
   // and an empty select would be a state the endpoint cannot be called in.
   const [choice, setChoice] = useState<string | undefined>(() => defaultChoice(job));
+  /**
+   * The months this job can be asked for, computed once on open.
+   *
+   * Recomputing per render would let the list shift under a dialog left open
+   * across midnight on the first of a month, and the value already chosen would
+   * quietly stop being in it.
+   */
+  const months = useMemo(() => (job.monthly ? completedMonths() : []), [job.monthly]);
+  // The newest completed month, which is what the cron itself sends.
+  const [month, setMonth] = useState<string>(() => (job.monthly ? completedMonths()[0] ?? "" : ""));
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
   /**
@@ -63,7 +73,7 @@ export function JobDialog({
 
   const selected = targets.find((target) => target.projectCode === projectCode);
   const problems = validateJobInput(
-    { projectCode, startDate, endDate, choice },
+    { projectCode, startDate, endDate, choice, month },
     { job, ready: selected?.ready, reason: selected?.reason },
   );
   const canRun = problems.length === 0;
@@ -114,6 +124,7 @@ export function JobDialog({
             projectCode,
             ...(chunk ? { startDate: chunk.startDate, endDate: chunk.endDate } : {}),
             ...(choice ? { choice } : {}),
+            ...(job.monthly && month ? { month } : {}),
             flags,
           }),
         });
@@ -228,9 +239,36 @@ export function JobDialog({
           </>
         ) : null}
 
-        {/* A dateless job acts on current state, so there is no range to ask
-            for. Two empty date fields would read as something left unfilled. */}
-        {job.dateless ? null : (
+        {/* One completed calendar month, where a ranged job asks for dates.
+            Only twelve are offered, and only completed ones: WBGT's route takes
+            a bare `mmm` and resolves it to the most recent occurrence, so a
+            thirteenth month would silently fetch the wrong year. */}
+        {job.monthly ? (
+          <div className="mt-4">
+            <label className="block text-xs text-muted-foreground" htmlFor="job-month">
+              Month
+            </label>
+            <select
+              id="job-month"
+              className={field}
+              value={month}
+              disabled={busy}
+              onChange={(event) => setMonth(event.target.value)}
+            >
+              {months.map((value) => (
+                <option key={value} value={value}>
+                  {monthLabel(value)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Completed months only — the current one is never exported. The newest is what the
+              scheduled run sends.
+            </p>
+          </div>
+        ) : null}
+
+        {job.dateless || job.monthly ? null : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-xs text-muted-foreground" htmlFor="job-start">

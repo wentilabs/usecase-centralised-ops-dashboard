@@ -129,9 +129,15 @@ test("Issue Chaser marks only its token-aware operator routes as optional auth",
   );
 });
 
-test("Noise pins all sixteen open routes and distinguishes scheduled from operator jobs", () => {
+test("Noise pins all seventeen open routes and distinguishes scheduled from operator jobs", () => {
   const routes = SERVICE_CONTRACTS.noise.routes;
-  assert.equal(routes.length, 16);
+  assert.equal(routes.length, 17);
+  // 8051438. Scheduled like its WBGT twin: the cron runs it with an empty body
+  // for last month, and HALO's button is the same route with a month named.
+  assert.equal(
+    routes.find((route) => route.path === "/api/noise-monthly-report")?.kind,
+    "scheduled",
+  );
   assert.ok(routes.every((route) => route.authentication === "none"));
   assert.equal(routes.find((route) => route.path === "/api/noise-sheet-export")?.kind, "operator");
   assert.equal(routes.find((route) => route.path === "/api/noise-hourly")?.kind, "scheduled");

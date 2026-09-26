@@ -11,7 +11,9 @@ import {
   jobPaths,
   jobTargets,
   validateJobInput,
-} from "../lib/jobs";
+  completedMonths,
+  monthAbbreviation,
+  monthLabel} from "../lib/jobs";
 import { SERVICE_CONTRACTS } from "../lib/service-contracts";
 import { previewMessages, summariseJobResult } from "../lib/read-json";
 import type { ProjectConfigRow } from "../lib/services";
@@ -411,4 +413,83 @@ test("the monthly report is gated on the flag the route itself filters on", () =
   // project is skipped rather than endangered, and saying why beats vanishing.
   assert.notEqual(job.hideUnready, true);
   assert.match(job.precondition.unmet("TJR"), /switched off/);
+});
+
+test("both monthly reports ask for a month, in the format their own route takes", () => {
+  const month = "2026-08";
+  const input = { projectCode: "TJR", startDate: "", endDate: "", month };
+
+  // Same question in the dialog, two different wire formats. WBGT takes a bare
+  // abbreviation; noise takes YYYY-MM and snake_case keys.
+  assert.deepEqual(JOBS["wbgt-monthly-report"].buildPayload({ ...input, flags: { apply: true } }), {
+    projectCode: "TJR",
+    month: "Aug",
+    dryRunOverride: false,
+  });
+  assert.deepEqual(JOBS["noise-monthly-report"].buildPayload({ ...input, flags: { apply: true } }), {
+    project_code: "TJR",
+    month: "2026-08",
+    dryRun: false,
+  });
+
+  // And both still preview by default.
+  assert.equal(JOBS["wbgt-monthly-report"].buildPayload({ ...input, flags: {} }).dryRun, true);
+  assert.equal(JOBS["noise-monthly-report"].buildPayload({ ...input, flags: {} }).dryRun, true);
+
+  // Neither is dateless any more — a monthly job renders a picker, where a
+  // dateless one renders nothing and would silently send no month at all.
+  for (const key of ["wbgt-monthly-report", "noise-monthly-report"] as const) {
+    assert.equal(JOBS[key].monthly, true);
+    assert.notEqual(JOBS[key].dateless, true);
+    for (const name of Object.keys(JOBS[key].buildPayload({ ...input, flags: {} }))) {
+      assert.ok(
+        ["projectCode", "project_code", "month", "dryRun", "dryRunOverride"].includes(name),
+        `${key} sends ${name}, which its route's allowedKeys would reject`,
+      );
+    }
+  }
+});
+
+test("only a month both endpoints can address is offered", () => {
+  // Twelve completed months, newest first. WBGT resolves a bare "Aug" to the
+  // most recent occurrence at or before last month, so a thirteenth would not
+  // fail — it would quietly fetch a different year's workbook.
+  const at = new Date("2026-09-26T10:00:00Z"); // 18:00 SGT, September
+  const months = completedMonths(at);
+  assert.equal(months.length, 12);
+  assert.equal(months[0], "2026-08", "the newest completed month, never the current one");
+  assert.equal(months[11], "2025-09");
+  assert.deepEqual(months, [...new Set(months)]);
+
+  // Singapore is UTC+8, so an instant that is still August in UTC is already
+  // September there — and the newest completed month moves with it.
+  assert.equal(completedMonths(new Date("2026-08-31T16:30:00Z"))[0], "2026-08");
+  assert.equal(completedMonths(new Date("2026-08-31T15:30:00Z"))[0], "2026-07");
+
+  assert.equal(monthAbbreviation("2026-01"), "Jan");
+  assert.equal(monthAbbreviation("2026-12"), "Dec");
+  assert.equal(monthLabel("2026-08"), "Aug 2026");
+});
+
+test("a month outside the offered twelve is refused rather than resolved", () => {
+  const job = JOBS["wbgt-monthly-report"];
+  const base = { projectCode: "TJR", startDate: "", endDate: "" };
+  const offered = completedMonths();
+
+  assert.deepEqual(validateJobInput({ ...base, month: offered[0] }, { job, ready: "enabled" }), []);
+  // The dangerous case: a real month, correctly formatted, that WBGT would
+  // resolve to a different year. It must not reach the route.
+  const problems = validateJobInput({ ...base, month: "2019-08" }, { job, ready: "enabled" });
+  assert.ok(problems.some((problem) => problem.includes("2019-08")), problems.join(" "));
+  // And a missing month is refused too — an absent one means "last month" at
+  // the route, which is not what an operator who opened a picker asked for.
+  assert.ok(validateJobInput({ ...base }, { job, ready: "enabled" }).includes("Choose a month."));
+
+  // A monthly job must not also be made to supply dates it has no field for.
+  assert.equal(
+    validateJobInput({ ...base, month: offered[0] }, { job, ready: "enabled" }).some((problem) =>
+      problem.includes("date"),
+    ),
+    false,
+  );
 });

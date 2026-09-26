@@ -941,7 +941,14 @@ test("the historical scrape always sends its mandatory opt-in", () => {
 });
 
 test("jobs are offered on the right tab", () => {
-  assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
+  // Declaration order, which is the order the action row renders: set the sheet
+  // up, keep it in sync, then send the month out of it.
+  assert.deepEqual(jobsForService("noise").map((j) => j.key), [
+    "noise-bootstrap",
+    "noise-sync",
+    // 8051438 in the noise repo.
+    "noise-monthly-report",
+  ]);
   assert.deepEqual(jobsForService("wbgt").map((j) => j.key), [
     "wbgt-fill",
     // 7a32a66 in the WBGT repo. Sits beside the sheet jobs because it reads the

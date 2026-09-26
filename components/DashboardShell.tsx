@@ -18,6 +18,7 @@ import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
+import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
@@ -62,6 +63,7 @@ function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null 
 
 export function DashboardShell({
   services,
+  projectHealth,
   fetchedAt,
   session,
   initialGroupNames,
@@ -72,6 +74,7 @@ export function DashboardShell({
   focusPropose = false,
 }: {
   services: ServiceData[];
+  projectHealth: ProjectHealth[];
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -100,6 +103,10 @@ export function DashboardShell({
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
+  );
+  const healthByProject = useMemo(
+    () => new Map(projectHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
+    [projectHealth],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -605,6 +612,7 @@ export function DashboardShell({
               onOpenMap={() => setLightningMap(String(row.project_code ?? ""))}
               onOpenLimits={() => setNoiseLimits(String(row.project_code ?? ""))}
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
+              health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />
@@ -641,7 +649,7 @@ export function DashboardShell({
         />
       ) : null}
 
-      {dataHealthOpen ? <DataHealthBoard services={services} onClose={() => setDataHealthOpen(false)} /> : null}
+      {dataHealthOpen ? <DataHealthBoard services={services} projectHealth={projectHealth} onClose={() => setDataHealthOpen(false)} /> : null}
 
       {/* The sheet's row comes from `rows`, so an edit saved from within it is
           reflected the next time it is opened. */}

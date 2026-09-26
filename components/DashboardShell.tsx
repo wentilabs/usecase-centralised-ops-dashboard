@@ -17,6 +17,7 @@ import { OnboardDialog } from "./OnboardDialog";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
+import { DataHealthBoard } from "./DataHealthBoard";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
@@ -111,6 +112,7 @@ export function DashboardShell({
   // Mobile-only surfaces: the service/actions drawer, and the card detail sheet
   // that carries the details the phone card leaves out.
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dataHealthOpen, setDataHealthOpen] = useState(false);
   const [viewing, setViewing] = useState<{ service: ServiceData; row: ProjectConfigRow } | null>(null);
   const [job, setJob] = useState<JobDefinition | null>(null);
   const [exporter, setExporter] = useState<ExportDefinition | null>(null);
@@ -409,6 +411,7 @@ export function DashboardShell({
             </button>
           ))}
         </nav>
+        <button type="button" onClick={() => setDataHealthOpen(true)} className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary">Data health</button>
 
         {/* Not a service tab: a whole-estate view that cuts across all of them.
             Kept visually apart from the tabs for that reason. */}
@@ -637,6 +640,8 @@ export function DashboardShell({
           dataBusy={reloadingData || reloading}
         />
       ) : null}
+
+      {dataHealthOpen ? <DataHealthBoard services={services} onClose={() => setDataHealthOpen(false)} /> : null}
 
       {/* The sheet's row comes from `rows`, so an edit saved from within it is
           reflected the next time it is opened. */}

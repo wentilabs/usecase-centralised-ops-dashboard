@@ -643,6 +643,36 @@ Open to anyone the dashboard is open to — `session.allowed`, not `canEdit`. It
 writes nothing, and the people covering are the ones most likely to hold a
 read-only account.
 
+**The store is a stage, and the page says so.** Noise and WBGT do not read their
+vendor at send time: a scrape writes into the project's own table —
+`noise-meters.<code>_noise_data_daily`, `wbgts.<code>_wbgt_data_hourly`, named by
+the `normalizeProjectCode` rule mirrored from both repos' `lib/naming.js` — and
+the cadence jobs read that. So a missing message is a question about the table
+first and the scraper second, which is the order the card's numbered check
+states. The other five store nothing of their own, and a test stops them
+claiming a table: haze and lightning compute and discard, the sheet-backed three
+read a store that is not ours.
+
+**Freshness comes from the shared data-health reader, not a second one.** The
+per-project chips render `assessIngestionHealth`'s verdict. An earlier pass here
+had its own reader, its own copy of the `lib/naming.js` table rule and its own
+thresholds; all three duplicated `lib/data-health*.ts`, so all three were
+removed. `readingsTableFor` now delegates to `healthTarget`, and tests fail if a
+second reader or a second naming rule reappears.
+
+**One correction is applied at the view level: dormancy.** `assessIngestionHealth`
+judges a table purely on age, which is right for a project something asks
+readings of and wrong for one nothing does. Noise scraping is demand-driven — with
+every cadence off, no demand is created and the table is correctly stale forever.
+Measured at 18:29 on an ordinary working day, the shared budgets (warn 1h,
+critical 4h) put **19 of 32 noise projects in danger**, seven of them dormant and
+the rest simply outside their cadence window, where
+`skipped_outside_project_cadence_window` is the normal end of a site's day. This
+page marks the dormant ones `idle` and leaves every other verdict untouched —
+deliberately a view overlay rather than an edit to the budgets, which are someone
+else's calibration to revisit, and rewriting them here would leave the board and
+this page disagreeing about the same project.
+
 ## Pending: the monthly noise report
 
 The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery

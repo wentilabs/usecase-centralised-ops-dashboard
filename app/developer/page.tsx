@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { DeveloperGuide } from "@/components/DeveloperGuide";
 import { listConfigs } from "@/lib/config-repository";
+import { listProjectHealth } from "@/lib/data-health-repository";
 import { SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
@@ -40,5 +41,17 @@ export default async function DeveloperPage() {
     else errors[service] = result.reason instanceof Error ? result.reason.message : String(result.reason);
   });
 
-  return <DeveloperGuide rows={rows} errors={errors} />;
+  // The live half, read through the shared data-health reader rather than a
+  // second one of our own: it already queries each project's readings table and
+  // already owns the freshness verdict, and two readers of the same tables
+  // would drift into disagreeing about whether a site is healthy.
+  const health = await listProjectHealth(rows).catch(() => new Map());
+
+  return (
+    <DeveloperGuide
+      rows={rows}
+      errors={errors}
+      health={health}
+    />
+  );
 }

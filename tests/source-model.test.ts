@@ -4,7 +4,12 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
+  EXPECTATION_NOTE,
   NOISE_SOURCE_PROFILES,
+  SERVICE_STORAGE,
+  readingExpectation,
+  readingsTableFor,
+  storesReadings,
   SERVICE_SOURCES,
   SOURCE_ALIASES,
   WBGT_SOURCE_PROFILES,
@@ -167,4 +172,116 @@ test("the page is open to anyone who can open the dashboard", async () => {
 test("the tab is reachable from the dashboard", async () => {
   const shell = await source("components/DashboardShell.tsx");
   assert.match(shell, /href="\/developer"/);
+});
+
+// ---------------------------------------------------------------------------
+// Storage: the half that says a message job reads a table, not a vendor.
+// ---------------------------------------------------------------------------
+
+test("the table name is the services' own rule, not an approximation", () => {
+  // lib/naming.js, byte-identical in the noise and WBGT repos. Getting this
+  // wrong points someone at a table that does not exist.
+  assert.equal(readingsTableFor("noise", "ZRA"), "zra_noise_data_daily");
+  assert.equal(readingsTableFor("wbgt", "TJR"), "tjr_wbgt_data_hourly");
+  // Real codes carry spaces and punctuation, and all three of these exist live.
+  assert.equal(readingsTableFor("noise", "FJX-Newport Plaza"), "fjx_newport_plaza_noise_data_daily");
+  assert.equal(readingsTableFor("noise", "MBS IR2"), "mbs_ir2_noise_data_daily");
+  assert.equal(readingsTableFor("wbgt", "CR 106"), "cr_106_wbgt_data_hourly");
+
+  // A code the services would refuse has no table, and saying so beats guessing
+  // a name: normalizeProjectCode throws there rather than returning something.
+  assert.equal(readingsTableFor("noise", "  "), null);
+  // The naming rule lives in one place now — data-health's healthTarget — and
+  // this delegates to it rather than deriving the name a second time.
+
+  // Services that store nothing have no table at any code.
+  for (const service of ["haze", "lightning", "ailytics", "subcon", "issueChaser"] as const) {
+    assert.equal(readingsTableFor(service, "ZRA"), null, `${service} stores no readings`);
+  }
+});
+
+test("only the two services that keep their own readings say they do", () => {
+  // The point the page exists to make, and the one it must not overstate:
+  // "check the table first" is right for two services and meaningless for five.
+  assert.deepEqual(SERVICE_KEYS.filter(storesReadings), ["wbgt", "noise"]);
+
+  for (const service of SERVICE_KEYS) {
+    const storage = SERVICE_STORAGE[service];
+    assert.ok(storage.debugOrder.length >= 2, `${service} needs an ordered check`);
+    // Order is the content. A service that stores readings must send the reader
+    // to the table before anything else — checking the scraper first is exactly
+    // the mistake this page was built to prevent.
+    if (storesReadings(service)) {
+      assert.match(storage.debugOrder[0], /table/i, `${service} must send you to the table first`);
+      assert.ok(storage.supporting.some((entry) => entry.table.endsWith("_job_runs")), `${service} needs job runs`);
+    } else {
+      assert.doesNotMatch(
+        storage.debugOrder[0],
+        /check the .*table|rows in the/i,
+        `${service} stores nothing, so it must not send anyone looking for a table`,
+      );
+    }
+  }
+});
+
+test("a project nothing asks for is not reported as stale", () => {
+  // Noise scraping is demand-driven: with every cadence off, nothing asks and
+  // the table is correctly stale forever. Four live projects are in that state,
+  // and colouring them like a failure would train everyone to ignore the colour.
+  const dormant = { project_code: "KCDE", enabled: true } as unknown as ProjectConfigRow;
+  assert.equal(readingExpectation(dormant), "dormant");
+  assert.ok(EXPECTATION_NOTE.dormant);
+
+  const off = { project_code: "X", enabled: false, enable_hourly: true } as unknown as ProjectConfigRow;
+  assert.equal(readingExpectation(off), "disabled", "a disabled project outranks its cadences");
+
+  const live = { project_code: "HMD", enabled: true, enable_hourly: true } as unknown as ProjectConfigRow;
+  assert.equal(readingExpectation(live), "demanded");
+  assert.equal(EXPECTATION_NOTE.demanded, null, "a live project carries no excuse for being stale");
+
+  // Generic over `enable_*` rather than a list of cadence names, so a cadence
+  // added upstream counts the day it appears.
+  const future = { project_code: "Y", enabled: true, enable_something_new: true } as unknown as ProjectConfigRow;
+  assert.equal(readingExpectation(future), "demanded");
+  // A flag that is off, or a non-boolean, is not demand.
+  assert.equal(
+    readingExpectation({ project_code: "Z", enabled: true, enable_hourly: false } as unknown as ProjectConfigRow),
+    "dormant",
+  );
+});
+
+test("the freshness verdict is the shared reader's, with dormancy the one correction", async () => {
+  const guide = await source("components/DeveloperGuide.tsx");
+
+  // The tone comes from data-health's assessIngestionHealth, not from a second
+  // set of thresholds here. Two judgements of the same table would drift into
+  // the board and this page disagreeing about whether a site is healthy.
+  assert.match(guide, /health\?\.tone === "danger"/);
+  assert.match(guide, /health\?\.tone === "warn"/);
+  assert.doesNotMatch(guide, /hours >= \d+/, "no second threshold may live in the view");
+
+  // The one thing this view adds: a project nothing asks readings of is never
+  // coloured as though it had stopped. Measured at 18:29 on an ordinary working
+  // day, the shared budgets put 19 of 32 noise projects in danger, seven of
+  // them dormant — and a column that is mostly red is a column nobody reads.
+  assert.match(guide, /expectation !== "demanded"\s*\n?\s*\? "border-border opacity-60"/);
+});
+
+test("there is one reader of the readings tables, not two", async () => {
+  const page = await source("app/developer/page.tsx");
+  // The shared reader already queries each project's table and already owns the
+  // verdict. It scopes itself to wbgt and noise, so this page does not repeat
+  // that either.
+  assert.match(page, /listProjectHealth\(rows\)/);
+  assert.doesNotMatch(page, /readingsFreshness/, "the duplicate reader is gone");
+
+  const repo = await source("lib/config-repository.ts");
+  assert.doesNotMatch(repo, /readingsFreshness/, "and it is not left behind in the repository");
+
+  // The table name is derived in one place too. Both were mirrors of the same
+  // lib/naming.js, and two copies of a naming rule drift into pointing two
+  // parts of HALO at different tables.
+  const model = await source("lib/source-model.ts");
+  assert.match(model, /healthTarget\(service, projectCode\)\?\.table/);
+  assert.doesNotMatch(model, /replace\(\/\[\^a-z0-9\]\+\/g/, "the second copy of the naming rule is gone");
 });

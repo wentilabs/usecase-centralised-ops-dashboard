@@ -1,4 +1,5 @@
 import { CRONS, type CronRule } from "./load-model/crons";
+import { healthTarget } from "./data-health";
 import { SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
@@ -326,3 +327,165 @@ export function rulesForRoute(service: ServiceKey, route: string): CronRule[] {
 export function sourceRows(): { service: ServiceKey; source: ServiceSource }[] {
   return SERVICE_KEYS.map((service) => ({ service, source: SERVICE_SOURCES[service] }));
 }
+
+/**
+ * Where a service's ground truth actually lives.
+ *
+ * The distinction this exists to make, and the one the page was missing: noise
+ * and WBGT do NOT read their vendor at send time. A scrape writes into the
+ * project's own table and the cadence jobs read that table — nothing in the
+ * message path touches Browserbase. So a missing message is a question about
+ * the table first, and the scraper only second.
+ *
+ * It is equally important that this is NOT true of the other five. Haze and
+ * lightning compute from the API on each request and store no readings at all,
+ * so "check the table" is advice with no table behind it; the sheet-backed
+ * three read someone else's store. Telling all seven to check Supabase would
+ * send five of them looking for something that does not exist.
+ */
+export type Storage = {
+  /** The Postgres schema, as `Accept-Profile` takes it. */
+  schema: string | null;
+  /**
+   * The per-project readings table, as a pattern with `<code>` standing in for
+   * the normalised project code. Null when the service stores no readings.
+   */
+  readingsTable: string | null;
+  /** Tables worth opening second, with what each answers. */
+  supporting: { table: string; holds: string }[];
+  /** The ordered questions to ask when a message did not arrive. */
+  debugOrder: string[];
+};
+
+export const SERVICE_STORAGE: Record<ServiceKey, Storage> = {
+  noise: {
+    schema: "noise-meters",
+    readingsTable: "<code>_noise_data_daily",
+    supporting: [
+      { table: "noise_job_runs", holds: "every run, with its errors and record count" },
+      { table: "noise_limits", holds: "the per-meter limits an exceedance is judged against" },
+      { table: "noise_project_configs", holds: "the row the editor writes" },
+    ],
+    debugOrder: [
+      "Does the project's table hold rows for today? None means ingestion failed — the vendor portal or Browserbase, not the message job.",
+      "Rows there but no message? Read noise_job_runs for that job_type and project; errors and details name the failure.",
+      "Job clean but nothing arrived? Delivery: lambda_url, the group ids, instance_name.",
+    ],
+  },
+  wbgt: {
+    schema: "wbgts",
+    readingsTable: "<code>_wbgt_data_hourly",
+    supporting: [
+      { table: "wbgt_job_runs", holds: "every run, with its errors and sensor counts" },
+      { table: "wbgt_sensors", holds: "which sensors a project has, and their labels" },
+      { table: "wbgt_sensor_alert_state", holds: "the last band each sensor alerted on" },
+      { table: "wbgt_notification_outbox", holds: "messages queued for delivery" },
+      { table: "water_parade_cycles", holds: "open and closed Water Parade cycles" },
+    ],
+    debugOrder: [
+      "Does the project's table hold rows for the hour? None means no reading arrived — CloudLynx, Browserbase, or a project that ingests manually.",
+      "Rows there but no message? Read wbgt_job_runs for that job_type and project, then wbgt_notification_outbox for anything stuck.",
+      "Job clean but nothing arrived? Delivery: lambda_url, the group ids, instance_name.",
+    ],
+  },
+  haze: {
+    schema: "haze",
+    readingsTable: null,
+    supporting: [{ table: "haze_project_configs", holds: "the row the editor writes" }],
+    debugOrder: [
+      "Nothing is stored — the band is computed from the PSI feed on each run, so there is no table to inspect.",
+      "A miss is the API call or the configuration: the four-hourly window, the site hours, the group ids.",
+      "It fails for every project at once. One quiet project is configuration, not the feed.",
+    ],
+  },
+  lightning: {
+    schema: "lightning",
+    readingsTable: null,
+    supporting: [
+      { table: "lightning_project_configs", holds: "the row the editor writes, including the trigger rings" },
+    ],
+    debugOrder: [
+      "Detections are not stored as readings — the tick compares them against each project's rings and moves on.",
+      "Use the ⚡ map on the Lightning tab: it replays real detections against the real rings at a chosen time.",
+      "Silence is the dangerous case here. No warning looks exactly like no storm.",
+    ],
+  },
+  ailytics: {
+    schema: "ailytics",
+    readingsTable: null,
+    supporting: [{ table: "project_configs", holds: "the row the editor writes" }],
+    debugOrder: [
+      "Nothing is fetched, so there is no ingestion to check — events arrive or they do not.",
+      "If they stopped, the sending side broke. There is no failed request on ours to find.",
+    ],
+  },
+  subcon: {
+    schema: "manpower_activity",
+    readingsTable: null,
+    supporting: [],
+    debugOrder: [
+      "The workbook is the store. Open the project's spreadsheet_id and check the rows are there.",
+      "If the sheet is fine, check the service account still has access — a rename or a move breaks one project only.",
+    ],
+  },
+  issueChaser: {
+    schema: "issue_chaser",
+    readingsTable: null,
+    supporting: [],
+    debugOrder: [
+      "The Safety workbook is the store. Open safety_sheet_id and check the rows are there.",
+      "Then run ◇ Diagnose project on the Issue Chaser tab — it checks a project against its workbook and names what it cannot read.",
+    ],
+  },
+};
+
+/**
+ * The table this project's readings are written to, or null.
+ *
+ * Delegates to `healthTarget` rather than deriving the name again. Both were
+ * mirrors of the same `lib/naming.js` — byte-identical in the noise and WBGT
+ * repos — and two copies of a naming rule is one copy too many: the way they
+ * fail is by drifting apart and pointing two parts of HALO at different tables.
+ * `healthTarget` also refuses a stem it cannot vouch for, which is the right
+ * answer for a code the services themselves would reject.
+ */
+export function readingsTableFor(service: ServiceKey, projectCode: string): string | null {
+  if (!SERVICE_STORAGE[service].readingsTable) return null;
+  return healthTarget(service, projectCode)?.table ?? null;
+}
+
+/** Which services keep their own copy of the readings they act on. */
+export function storesReadings(service: ServiceKey): boolean {
+  return SERVICE_STORAGE[service].readingsTable !== null;
+}
+
+/**
+ * Whether anything is actually asking this project for readings.
+ *
+ * Without this the freshness column cries wolf. Noise scraping is
+ * demand-driven: a cadence declares what it needs and the scraper fetches it,
+ * so a project with every cadence off creates no demand and its table is
+ * correctly, permanently stale. Four of the thirty-two noise projects are in
+ * exactly that state — CPW, JCube, KCDE and PSR — and colouring them the same
+ * as a live project that has stopped would train everyone to ignore the colour.
+ *
+ * The distinction is what makes the column worth reading: on the same screen,
+ * one of those four sitting at 11 hours is fine, and HMD at 11 hours with its
+ * hourly report on is the thing to go and look at.
+ */
+export type ReadingExpectation = "demanded" | "dormant" | "disabled";
+
+export function readingExpectation(row: ProjectConfigRow): ReadingExpectation {
+  if (row.enabled === false) return "disabled";
+  // Any `enable_*` flag that is on. Deliberately generic rather than a list of
+  // cadence names: a cadence added upstream should count the day it appears,
+  // and the alternative is a list that silently stops covering one.
+  const anyOn = Object.entries(row).some(([key, value]) => key.startsWith("enable_") && value === true);
+  return anyOn ? "demanded" : "dormant";
+}
+
+export const EXPECTATION_NOTE: Record<ReadingExpectation, string | null> = {
+  demanded: null,
+  dormant: "no cadences on — nothing asks for readings",
+  disabled: "project disabled",
+};

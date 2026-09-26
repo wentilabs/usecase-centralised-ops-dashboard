@@ -1,5 +1,10 @@
 # Data Health HALO Surface Implementation Plan
 
+> **Superseded:** This optional-policy plan was replaced by
+> `2026-09-26-automatic-wbgt-noise-health.md`. The approved pilot derives
+> monitoring from existing WBGT and Noise configuration rows and does not
+> create a `data_health` policy schema, setup flow, or migration.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add HALO's configurable, read-safe Data Health surface: per-source-card status, a policy editor for dedicated operations recipients, and an estate-wide tab.

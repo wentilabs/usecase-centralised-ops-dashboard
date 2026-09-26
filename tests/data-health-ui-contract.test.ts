@@ -15,6 +15,7 @@ test("the dashboard composes server health into the matching source card below i
   assert.match(page, /listProjectHealth/, "the server page must read automatic health");
   assert.match(page, /projectHealth=\{/, "the page must pass health to the client shell");
   assert.match(shell, /healthKey\(/, "the shell must resolve health with service plus project code");
+  assert.match(shell, /projectHealth\s*=\s*\[\]/, "the shell must preserve neutral cards when a stale client render lacks health");
   assert.match(shell, /health=\{/, "the shell must supply the card's health result");
   assert.match(card, /health\?: ProjectHealth/, "the card must accept its own health result");
   assert.match(card, /<DataHealthRow health=\{health\}/, "the card must render the supplied result");
@@ -27,7 +28,7 @@ test("Data Health is automatic and the estate board offers no policy setup actio
     source("components/DataHealthBoard.tsx"),
   ]);
 
-  assert.match(row, /Monitoring is automatic/, "the card must explain there is no project setup step");
+  assert.match(row, /dataHealthDetail\(health\)/, "the card must explain automatic monitoring through the tested health-detail policy");
   assert.match(board, /automatically monitored/i, "the board must label the pilot as automatic");
   assert.doesNotMatch(board, /Set up policy|database migration required/i, "the board must not offer the retired policy flow");
 });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   assessIngestionHealth,
+  dataHealthDetail,
   healthBadge,
   healthKey,
   healthTarget,
@@ -30,6 +31,8 @@ test("automatic health targets use the existing WBGT and Noise table conventions
     sourceTimeFields: ["date", "time_hhmm"],
   });
   assert.equal(healthTarget("haze", "C991"), null);
+  assert.equal(healthTarget("wbgt", "!!!"), null);
+  assert.equal(healthTarget("noise", "1"), null);
 });
 
 test("ingestion freshness moves from receiving to delayed to no recent data at exact pilot boundaries", () => {
@@ -62,6 +65,20 @@ test("invalid and future receipt timestamps do not appear fresh, and source-tabl
 test("health keys isolate identical project codes in different services", () => {
   assert.notEqual(healthKey("wbgt", "MBS"), healthKey("noise", "MBS"));
   assert.equal(healthKey("wbgt", "MBS"), healthKey("wbgt", "MBS"));
+});
+
+test("only unsupported services say not yet covered; covered failures retain their status explanation", () => {
+  const target = healthTarget("wbgt", "C991");
+  assert.ok(target);
+  assert.equal(dataHealthDetail(undefined), "Monitoring is automatic. This service is not yet covered by the pilot.");
+  assert.equal(
+    dataHealthDetail(assessIngestionHealth(target, { kind: "missing_table" }, NOW)),
+    "Monitoring is automatic. This project is covered; no receipt timestamp is available.",
+  );
+  assert.equal(
+    dataHealthDetail(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.000Z" }, NOW)),
+    "Monitoring is automatic. This project is covered.",
+  );
 });
 
 test("provider acceptance remains distinct from delivery and read", () => {

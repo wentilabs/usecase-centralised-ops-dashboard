@@ -40,11 +40,13 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
   if (!trimmed) return null;
 
   if (service === "wbgt") {
+    const table = wbgtTableForProject(trimmed);
+    if (!hasSafeTableStem(table, "_wbgt_data_hourly")) return null;
     return {
       service,
       projectCode: trimmed,
       schema: "wbgts",
-      table: wbgtTableForProject(trimmed),
+      table,
       warningAfterMs: 2 * HOUR,
       criticalAfterMs: 4 * HOUR,
       sourceTimeFields: ["reading_timestamp"],
@@ -52,11 +54,13 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
   }
 
   if (service === "noise") {
+    const table = noiseTableForProject(trimmed);
+    if (!hasSafeTableStem(table, "_noise_data_daily")) return null;
     return {
       service,
       projectCode: trimmed,
       schema: "noise-meters",
-      table: noiseTableForProject(trimmed),
+      table,
       warningAfterMs: 12 * HOUR,
       criticalAfterMs: 24 * HOUR,
       sourceTimeFields: ["date", "time_hhmm"],
@@ -64,6 +68,11 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
   }
 
   return null;
+}
+
+function hasSafeTableStem(table: string, suffix: string): boolean {
+  const stem = table.slice(0, -suffix.length);
+  return /^[a-z][a-z0-9_]*$/.test(stem);
 }
 
 function parseTimestamp(value: unknown): string | null {
@@ -92,6 +101,13 @@ export function neutralHealth(service: ServiceKey, projectCode: string): Project
     newestReceivedAt: null,
     sourceEventAt: null,
   };
+}
+
+export function dataHealthDetail(health: ProjectHealth | undefined): string {
+  if (!health) return "Monitoring is automatic. This service is not yet covered by the pilot.";
+  return health.newestReceivedAt
+    ? "Monitoring is automatic. This project is covered."
+    : "Monitoring is automatic. This project is covered; no receipt timestamp is available.";
 }
 
 export function assessIngestionHealth(target: HealthTarget, evidence: IngestionEvidence, now: Date): ProjectHealth {

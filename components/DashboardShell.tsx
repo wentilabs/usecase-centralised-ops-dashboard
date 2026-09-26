@@ -63,7 +63,7 @@ function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null 
 
 export function DashboardShell({
   services,
-  projectHealth,
+  projectHealth = [],
   fetchedAt,
   session,
   initialGroupNames,

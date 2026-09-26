@@ -50,9 +50,13 @@ async function newestEvidence(target: HealthTarget, options: Required<Pick<Healt
         "Accept-Profile": target.schema,
       },
     });
-    if (!response.ok) return response.status === 404 ? { kind: "missing_table" } : { kind: "monitor_error" };
+    if (!response.ok) {
+      const error = await response.json().catch(() => null) as { code?: unknown } | null;
+      return response.status === 404 && error?.code === "PGRST205" ? { kind: "missing_table" } : { kind: "monitor_error" };
+    }
     const rows = await response.json() as unknown;
-    if (!Array.isArray(rows) || !rows.length || !rows[0] || typeof rows[0] !== "object") return { kind: "empty" };
+    if (!Array.isArray(rows)) return { kind: "monitor_error" };
+    if (!rows.length || !rows[0] || typeof rows[0] !== "object") return { kind: "empty" };
     const row = rows[0] as Record<string, unknown>;
     return { kind: "row", createdAt: row.created_at, sourceEventAt: sourceEventAt(target, row) };
   } catch {

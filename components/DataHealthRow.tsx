@@ -1,5 +1,5 @@
 import { formatSgt } from "@/lib/card-summary";
-import { healthBadge, type DeliveryOutcome, type HealthTone, type ProjectHealth } from "@/lib/data-health";
+import { dataHealthDetail, healthBadge, type DeliveryOutcome, type HealthTone, type ProjectHealth } from "@/lib/data-health";
 
 function toneClass(tone: HealthTone) {
   return tone === "good" ? "bg-on/15 text-on ring-on/30" : tone === "warn" ? "bg-warn/15 text-warn ring-warn/30" : tone === "danger" ? "bg-danger/15 text-danger ring-danger/30" : "bg-muted text-muted-foreground ring-border";
@@ -23,7 +23,7 @@ export function DataHealthRow({
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${toneClass(deliveryBadge.tone)}`}>{deliveryBadge.label}</span>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Monitoring is automatic.{health?.newestReceivedAt ? ` Latest receipt ${formatSgt(health.newestReceivedAt)} SGT.` : " This service is not yet covered by the pilot."}
+        {dataHealthDetail(health)}{health?.newestReceivedAt ? ` Latest receipt ${formatSgt(health.newestReceivedAt)} SGT.` : ""}
       </p>
     </section>
   );

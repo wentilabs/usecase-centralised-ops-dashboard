@@ -35,34 +35,28 @@ export function DeveloperGuide({ rows, errors }: {
   errors: Partial<Record<ServiceKey, string>>;
 }) {
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-3 py-4 md:px-5">
-      <header className="border-b border-border pb-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h1 className="text-xl font-semibold">Where the readings come from</h1>
-          <Link href="/" className="rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary">
-            ← Dashboard
-          </Link>
-        </div>
-        <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-          One page for whoever is covering: the upstream behind each service, how a reading physically
-          arrives, what stops when that upstream does, and — for Noise and WBGT, where it differs per
-          project — which portal each site is actually read from.
-        </p>
-        <p className="mt-1.5 max-w-3xl text-[12px] text-muted-foreground">
-          No passwords are shown anywhere on this page, by design. Each source names the environment
-          variable its service reads; the values live in that service&apos;s deployment and nowhere else.
-        </p>
+    // Narrower gutter than the sibling pages: this one is a wide reference
+    // table read across, and every pixel of gutter is a project code that wraps.
+    <main className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-2 py-4 md:px-3">
+      <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
+        <h1 className="text-2xl font-semibold">Where the readings come from</h1>
+        <Link href="/" className="rounded-lg border border-border bg-card px-3 py-1 text-sm hover:border-primary">
+          ← Dashboard
+        </Link>
       </header>
+
+      {/* The per-project tables lead. They are the half nobody can derive from
+          a repository and the reason someone opens this page; the seven service
+          cards are reference material underneath them. */}
+      {(["noise", "wbgt"] as const).map((service) => (
+        <PerProjectTable key={service} service={service} rows={rows[service] ?? []} error={errors[service]} />
+      ))}
 
       <section className="grid gap-3 md:grid-cols-2">
         {SERVICE_KEYS.map((service) => (
           <ServiceSourceCard key={service} service={service} error={errors[service]} />
         ))}
       </section>
-
-      {(["noise", "wbgt"] as const).map((service) => (
-        <PerProjectTable key={service} service={service} rows={rows[service] ?? []} error={errors[service]} />
-      ))}
     </main>
   );
 }
@@ -75,23 +69,23 @@ function ServiceSourceCard({ service, error }: { service: ServiceKey; error?: st
       <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
         <ServiceTag service={service} />
         <span>{source.upstream}</span>
-        <span className="ml-auto rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="ml-auto rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
           {TRANSPORT_LABEL[source.transport]}
         </span>
       </h2>
 
-      <p className="text-[13px] leading-snug">{source.how}</p>
+      <p className="text-sm leading-snug">{source.how}</p>
 
       {/* The half that is actually useful mid-incident, and the half a README
           never says: not "what is this" but "what have I lost". */}
       <div className="rounded-lg border border-warn/40 bg-warn/10 p-2.5">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-warn">When it is down</div>
-        <p className="mt-0.5 text-[12px] leading-snug">{source.breaks}</p>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-warn">When it is down</div>
+        <p className="mt-0.5 text-[13px] leading-snug">{source.breaks}</p>
       </div>
 
       {source.inbound.length ? <InboundRoutes service={service} routes={source.inbound} /> : null}
 
-      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px]">
+      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
         {source.loginUrl ? (
           <a
             href={source.loginUrl}
@@ -103,14 +97,14 @@ function ServiceSourceCard({ service, error }: { service: ServiceKey; error?: st
           </a>
         ) : null}
         {source.loginUrlEnv ? (
-          <span className="font-mono text-[10px] text-muted-foreground">{source.loginUrlEnv}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{source.loginUrlEnv}</span>
         ) : null}
         <Link href={`/?service=${service}`} className="ml-auto text-muted-foreground hover:text-foreground">
           {SERVICES[service].label} tab →
         </Link>
       </div>
 
-      {error ? <p className="text-[11px] text-danger">This service&apos;s rows could not be read: {error}</p> : null}
+      {error ? <p className="text-xs text-danger">This service&apos;s rows could not be read: {error}</p> : null}
     </article>
   );
 }
@@ -134,28 +128,28 @@ function InboundRoutes({ service, routes }: { service: ServiceKey; routes: strin
 
   return (
     <div>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Brought in by
       </div>
       <ul className="mt-1 flex flex-col gap-1">
         {resolved.map(({ route, rules }) => (
           <li key={route} className="leading-snug">
-            <span className="font-mono text-[10px] text-primary/80">{route}</span>
+            <span className="font-mono text-[11px] text-primary/80">{route}</span>
             {rules.map((rule) => (
-              <span key={rule.name} className="ml-1.5 text-[10px] text-muted-foreground">
+              <span key={rule.name} className="ml-1.5 text-[11px] text-muted-foreground">
                 · {describeHours(rule.hours)} SGT <span className="font-mono opacity-70">{rule.utc}</span>
               </span>
             ))}
             {/* Only where its siblings DO carry one, so the odd one out is
                 marked rather than the whole list being captioned twice. */}
             {!rules.length && anyProven ? (
-              <span className="ml-1.5 text-[10px] italic text-muted-foreground/70">· schedule not mirrored</span>
+              <span className="ml-1.5 text-[11px] italic text-muted-foreground/70">· schedule not mirrored</span>
             ) : null}
           </li>
         ))}
       </ul>
       {!anyProven ? (
-        <p className="mt-1 text-[10px] italic leading-snug text-muted-foreground/70">
+        <p className="mt-1 text-[11px] italic leading-snug text-muted-foreground/70">
           schedule not mirrored in HALO — these are driven from the EventBridge console, and HALO only
           mirrors the rules that send a message
         </p>
@@ -203,22 +197,22 @@ function PerProjectTable({ service, rows, error }: {
       <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
         <ServiceTag service={service} />
         <span>Per-project sources</span>
-        <span className="text-[11px] font-normal text-muted-foreground">
+        <span className="text-xs font-normal text-muted-foreground">
           {rows.length} project{rows.length === 1 ? "" : "s"} · set by <code className="font-mono">source_type</code>
         </span>
       </h2>
 
       {error ? (
-        <p className="mt-2 text-[12px] text-danger">Rows could not be read: {error}</p>
+        <p className="mt-2 text-[13px] text-danger">Rows could not be read: {error}</p>
       ) : !rows.length ? (
-        <p className="mt-2 text-[12px] text-muted-foreground">No projects configured.</p>
+        <p className="mt-2 text-[13px] text-muted-foreground">No projects configured.</p>
       ) : (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-[12px]">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="py-1.5 pr-3 font-medium">Source</th>
-                <th className="py-1.5 pr-3 font-medium">Sign in at</th>
+              <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                <th className="w-[300px] py-1.5 pr-4 font-medium">Source</th>
+                <th className="whitespace-nowrap py-1.5 pr-4 font-medium">Sign in at</th>
                 <th className="py-1.5 pr-3 font-medium">Credentials</th>
                 <th className="py-1.5 font-medium">Projects</th>
               </tr>
@@ -226,11 +220,11 @@ function PerProjectTable({ service, rows, error }: {
             <tbody>
               {groups.map(([key, { codes, profile }]) => (
                 <tr key={key} className="border-b border-border/50 align-top">
-                  <td className="py-2 pr-3">
+                  <td className="w-[300px] py-2 pr-4 align-top">
                     <div className="font-medium">{profile?.label ?? key}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">source_type = {key}</div>
+                    <div className="font-mono text-[11px] text-muted-foreground">source_type = {key}</div>
                     {profile?.workerMode ? (
-                      <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {profile.workerMode === "dedicated"
                           ? "scrapes alone"
                           : profile.workerMode === "single"
@@ -239,16 +233,16 @@ function PerProjectTable({ service, rows, error }: {
                       </div>
                     ) : null}
                     {profile?.note ? (
-                      <div className="mt-0.5 max-w-xs text-[10px] leading-snug text-muted-foreground">{profile.note}</div>
+                      <div className="mt-1 text-[11px] leading-snug text-muted-foreground">{profile.note}</div>
                     ) : null}
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-4 align-top">
                     {profile ? (
                       <a
                         href={profile.loginUrl}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="text-primary hover:underline"
+                        className="whitespace-nowrap text-primary hover:underline"
                       >
                         {profile.upstream} ↗
                       </a>
@@ -260,11 +254,11 @@ function PerProjectTable({ service, rows, error }: {
                       </span>
                     )}
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-4 align-top">
                     {profile ? (
                       <div className="flex flex-col gap-0.5">
                         {profile.credentialEnv.map((name) => (
-                          <span key={name} className="font-mono text-[10px] text-muted-foreground">
+                          <span key={name} className="font-mono text-[11px] text-muted-foreground">
                             {name}
                           </span>
                         ))}
@@ -274,7 +268,7 @@ function PerProjectTable({ service, rows, error }: {
                   <td className="py-2">
                     <div className="flex flex-wrap gap-1">
                       {codes.sort().map((code) => (
-                        <span key={code} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px]">
+                        <span key={code} className="rounded border border-border bg-muted/20 px-2 py-1 font-mono text-[13px]">
                           {code}
                         </span>
                       ))}
@@ -287,7 +281,7 @@ function PerProjectTable({ service, rows, error }: {
         </div>
       )}
 
-      <p className="mt-2.5 text-[11px] text-muted-foreground">
+      <p className="mt-2.5 text-xs text-muted-foreground">
         Every profile listed above is offered in the {SERVICES[service].label} editor&apos;s{" "}
         <code className="font-mono">source_type</code> field. Changing it moves that project to a different
         portal and a different sign-in — it is not a label.

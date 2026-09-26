@@ -34,10 +34,10 @@ export type Transport =
   | "inbound";
 
 export const TRANSPORT_LABEL: Record<Transport, string> = {
-  browser: "Headless browser (Browserbase)",
+  browser: "Browserbase scrape",
   api: "HTTP API",
-  sheets: "Google Sheets API",
-  inbound: "Pushed to us (webhook)",
+  sheets: "Sheets API",
+  inbound: "Inbound webhook",
 };
 
 export type ServiceSource = {
@@ -72,23 +72,22 @@ export type ServiceSource = {
  */
 export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
   noise: {
-    upstream: "NoiseLynx, Geoscan, Trackmaster or AlphaLab",
+    upstream: "NoiseLynx · Geoscan · Trackmaster · AlphaLab",
     transport: "browser",
-    how: "A real browser signs in to the meter vendor's portal and reads the readings off the page. Which vendor depends on the project — see the table below.",
+    how: "Browserbase signs in to the meter vendor's portal and reads the page. Vendor varies per project.",
     loginUrl: "https://www.noiselynx.com/noiselynx/Login.aspx",
     loginUrlEnv: "NOISELYNX_LOGIN_URL",
     // Noise has no scrape cron of its own: the cadence jobs declare what they
     // need and the scraper fetches it. That is why a project with every cadence
     // off is also a project nothing is scraped for.
     inbound: ["POST /api/noise-5min", "POST /api/noise-half-hourly", "POST /api/noise-hourly"],
-    breaks:
-      "Readings stop updating. The cadence jobs still run and still send, reporting the last figures they have — so a stale portal looks like a quiet site rather than an outage. Check the vendor portal first, not the Lambda.",
+    breaks: "Readings go stale, but cadences still send the last figures — reads as a quiet site, not an outage. Check the vendor portal, not the Lambda.",
     perProject: "noise",
   },
   wbgt: {
     upstream: "CloudLynx AMR",
     transport: "browser",
-    how: "A real browser signs in to CloudLynx and reads each sensor's latest WBGT. Some projects instead receive readings as photos or Telegram messages and have no scraping at all.",
+    how: "Browserbase scrape of CloudLynx. Some projects arrive by photo or Telegram instead and never scrape.",
     loginUrl: "https://www.noiselynx.com/cloudlynxamr/Login.aspx",
     loginUrlEnv: "WBGT_LOGIN_URL",
     inbound: [
@@ -98,54 +97,48 @@ export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
       "POST /api/wbgt-whatsapp",
       "POST /api/water-parade-intake",
     ],
-    breaks:
-      "Readings stop updating and the hourly report has nothing new to say. A project on manual ingestion is unaffected by a CloudLynx outage — check its source before assuming the portal is the problem.",
+    breaks: "Readings go stale; the hourly report has nothing new. Manual-ingestion projects are unaffected — check the project's source first.",
     perProject: "wbgt",
   },
   haze: {
     upstream: "data.gov.sg",
     transport: "api",
-    how: "The hourly job calls Singapore's open PSI feed directly. No login, no browser, no per-project source.",
+    how: "Public PSI feed, called hourly. No login, no browser, same source for every project.",
     loginUrl: "https://data.gov.sg/datasets?query=psi",
     loginUrlEnv: "DATA_GOV_SG_API_KEY",
     inbound: [],
-    breaks:
-      "No PSI band can be computed, so no advisory is sent. Nothing is stored stale — the job simply has nothing to report, for every project at once.",
+    breaks: "No PSI band, so no advisory. Nothing goes stale — it fails for every project at once.",
   },
   lightning: {
-    upstream: "NEA lightning feed",
+    upstream: "NEA lightning",
     transport: "api",
-    how: "The minutely tick polls NEA for strike detections and compares them against each project's trigger rings. No login and no browser.",
+    how: "Public NEA API, polled every minute against each project's trigger rings.",
     loginUrlEnv: "NEA_API_KEY",
     inbound: ["POST /api/lightning-tick"],
-    breaks:
-      "No strikes are detected, so no warnings and no all-clears are sent. This is the most dangerous of the seven to miss: silence looks exactly like good weather.",
+    breaks: "No detections, so no warnings and no all-clears. The worst of the seven to miss: silence looks like good weather.",
   },
   ailytics: {
     upstream: "Ailytics",
     transport: "inbound",
-    how: "Ailytics pushes events to us — nothing is fetched. Telegram and WhatsApp webhooks deliver them as they happen.",
+    how: "Ailytics pushes to us over Telegram and WhatsApp webhooks. Nothing is fetched.",
     inbound: ["POST /telegram-webhook", "POST /ailytics-safety/whatsapp-events"],
-    breaks:
-      "Events simply stop arriving, and there is no failed request to find — the sending side is the one that broke. The summaries still run and report on whatever was received.",
+    breaks: "Events stop arriving and there is no failed request to find — the sender broke. Summaries still run on what was received.",
   },
   subcon: {
-    upstream: "Google Sheets, plus a housekeeping webhook",
+    upstream: "Google Sheets",
     transport: "sheets",
-    how: "The manpower and activity numbers are read from each project's workbook with the service account. Housekeeping photos arrive separately, pushed in.",
+    how: "Sheets API on each project's workbook. Housekeeping photos are pushed in separately.",
     loginUrl: "https://docs.google.com/spreadsheets/",
     inbound: ["POST /housekeeping-intake"],
-    breaks:
-      "A workbook that is renamed, moved, or unshared from the service account stops that ONE project — the others are unaffected. The error names the sheet.",
+    breaks: "A renamed, moved or unshared workbook stops that one project only. The error names the sheet.",
   },
   issueChaser: {
-    upstream: "Google Sheets (the Safety workbook)",
+    upstream: "Google Sheets · Safety workbook",
     transport: "sheets",
-    how: "Every run reads the project's Safety workbook with the service account. There is no other source: the workbook is the system of record.",
+    how: "Sheets API on the Safety workbook. No other source — the workbook is the system of record.",
     loginUrl: "https://docs.google.com/spreadsheets/",
     inbound: [],
-    breaks:
-      "Chasing stops for that project alone, and the run reports which workbook it could not read. Sharing is the usual cause — check the service account still has access.",
+    breaks: "Chasing stops for that project alone; the run names the workbook. Usually a sharing change.",
   },
 };
 
@@ -189,7 +182,7 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
     loginUrl: NOISELYNX_LOGIN,
     credentialEnv: ["NOISELYNX_USERNAME", "NOISELYNX_PASSWORD"],
     workerMode: "pooled",
-    note: "Most of the estate. Shares one browser pool, so these projects queue behind each other.",
+    note: "Most of the estate. Shares one browser pool, so these queue behind each other.",
   },
   whgd: {
     profile: "whgd",
@@ -215,7 +208,7 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
     loginUrl: "https://realtime.geoscanrealtime.com/login",
     credentialEnv: ["GEOSCAN_USERNAME", "GEOSCAN_PASSWORD"],
     workerMode: "dedicated",
-    note: "A different vendor, not a different NoiseLynx sign-in. Scrapes alone, and reads its figures out of a per-project PDF.",
+    note: "Different vendor, not a NoiseLynx sign-in. Reads figures out of a per-project PDF.",
   },
   trackmaster: {
     profile: "trackmaster",
@@ -228,7 +221,7 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
     loginUrl: "https://qsis.trackmaster.in/home/login",
     credentialEnv: ["TRACKMASTER_USERNAME", "TRACKMASTER_PASSWORD"],
     workerMode: "dedicated",
-    note: "Signs in through the browser at qsis.trackmaster.in, then pulls the report from api1.trackmaster.in with that session.",
+    note: "Browser sign-in at qsis.trackmaster.in, then the report from api1.trackmaster.in.",
   },
   alphalab: {
     profile: "alphalab",
@@ -240,7 +233,7 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
     loginUrl: "https://www.alphalabonline.com/#/login",
     credentialEnv: ["ALPHALAB_USERNAME", "ALPHALAB_PASSWORD"],
     workerMode: "dedicated",
-    note: "Signs in at alphalabonline.com and reads the dashboard's own calls to alphalab.hantar.com.",
+    note: "Signs in at alphalabonline.com, reads the dashboard's calls to alphalab.hantar.com.",
   },
 };
 

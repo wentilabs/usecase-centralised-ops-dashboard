@@ -89,6 +89,16 @@ operator's email and note. Rows without an actor render as "changed outside the
 dashboard". Do not make the app the primary writer of audit rows — coverage
 would drop to dashboard-only edits.
 
+The WBGT sensor catalogue is not a project-config table. Basic label saves use
+the existing row schema and refuse stale labels. The optional
+`supabase/wbgt_sensor_label_editor.sql` enhancement, applied after
+`config_audit_setup.sql`, adds versioned trigger-owned audit and a transactional
+rename function so an MBS `sensor_delivery_groups` key follows its sensor label.
+Do not replace that transaction with separate dashboard PATCHes; a partial
+rename would leave the sensor unmapped. Until the enhancement is installed,
+mapped sensors are refused rather than risking a broken delivery mapping, and
+unmapped label edits are not present in the audit trail.
+
 ## Conventions
 
 - **Comments explain why, never what.** Most comments in this repo exist
@@ -224,6 +234,24 @@ The preflight also reports `service_account_email`. That is the fastest way to
 tell a changed credential set apart from a missing scope, and it is the address a
 workbook has to be shared with.
 
+**A whole-workbook export has a hard 6 MB ceiling, and it is not HALO's.** The
+file travels inline as base64 inside the service's JSON reply, and AWS Lambda
+caps a synchronous response at 6,291,456 bytes. Past that, the function finishes
+its work and AWS discards the reply, so API Gateway answers with its own
+`{"message":"Internal Server Error"}` — a body no alert service can produce,
+because `createPostJsonHandler` always replies `{ success: false, error }`.
+Measured against the live noise deployment on 2026-09-24: TSC served 6,121,954
+bytes (97% of the cap) while MVR, P105 and TEST returned the AWS envelope in
+8–11 seconds, and the same MVR workbook exports fine one tab at a time.
+
+`lib/export-failure.ts` tells the two apart on the *shape* of the body — every
+service reply carries `success`, the gateway's carries only `message` — so the
+remedy names the size limit instead of sending someone to check a deployment and
+a set of credentials that are both fine. A 503/504 from the gateway is the other
+half: the PDF path times out at 30s on large workbooks where xlsx finishes in
+8–11s. Match on the shape, never on the text of `message`, which differs per
+failure and per gateway type.
+
 ## Sheet jobs
 
 The action row under the header triggers endpoints that already exist on the
@@ -261,12 +289,240 @@ of them reports success while doing nothing when it is unmet:
   `enable_scrape !== false` and skips with `project_scrape_disabled_<code>`. That
   makes the MANUAL projects ineligible, which the dialog says in those words.
 
+- `chaser-refresh-images` needs `safety_sheet_id`. It re-signs the Supabase photo
+  link behind every OPEN row's `=IMAGE(...)` formula, on the monthly archive tabs
+  only (`Safety-Sep 2026`); the live `Safety` tab is excluded upstream by
+  `readSafetySheetSnapshots(..., { includeLive: false })`. A closed row whose
+  photo has expired stays expired, which is the usual reason a refresh "missed"
+  one.
+
 `maxSpanDays` mirrors a limit the endpoint enforces itself (31 for the historical
 scrape), so the range is refused before the round trip. Declared `flags` are
 allow-listed in the route — an undeclared flag is dropped rather than forwarded.
 
-Requires `NOISE_API_URL` and `WBGT_API_URL`. Unset, the button still appears and
-names the missing variable rather than failing silently.
+Five more Chaser actions sit beside it: `chaser-project-check` reports what the
+service can see in the workbook, `chaser-preview` builds either chase style's
+messages without delivering, `chaser-summary-preview` builds one of the four
+scheduled reports the same way, `chaser-novade-sync` rewrites the PIC column
+from the Novade Name List tab, and `chaser-company-sync` fills the Company
+column from each row's PIC — inserting a Company column at I where a tab has
+none, which is a structural change and is said so in the caution.
+
+All six share `chaserPrecondition`: enabled, with a Safety workbook. `enabled`
+is checked HERE because the service does not check it at all — its
+`listProjectConfigs` has no such filter, so a switched-off project would be
+read, matched and written to exactly like a live one. `hideUnready` then keeps
+those rows out of the picker entirely, which is the one place HALO departs from
+"list it and say why": this picker is meant to BE the list of projects set up on
+Issue Chaser, and a row that is switched off is not one of them however clearly
+it is annotated. The server re-check still refuses it, so a stale client cannot
+get past it.
+
+Both sync routes send `dryRun` explicitly. The service's OpenAPI says the key
+"defaults to true; only `false` writes"; its code says `body.dryRun === true`,
+so an omitted key WRITES. Sending it every time means HALO's flag decides rather
+than a default its own documentation and implementation disagree about.
+
+`appliesWhen` names the flag a job needs before it acts; without it ticked the
+job previews. The flag is phrased as the destructive act (`apply`) and never as
+`dryRun`, because the route forwards only flags that are `true` — an unticked
+`dryRun` arrives as absent, indistinguishable from never offered, and the job
+would write. Positive phrasing makes the absent case safe by construction, and
+the dialog states which mode the run is in rather than leaving it to be inferred
+from a checkbox.
+
+`chaser-summary-preview` sends `scheduled: false`. Omitted, it defaults to TRUE
+on those routes and the run only fires when the project-local hour matches its
+configured schedule, so a preview asked for at the wrong time comes back skipped
+and reads as a broken configuration.
+
+`choice` is one select among several options; `path` may be a map keyed by its
+values when the options are separate endpoints. `jobPaths` derives the full set
+from that map, and the contract test checks every one — a job's least-clicked
+option is the one most likely to be renamed upstream unnoticed.
+
+`resultView` decides how the answer renders: `counts` for a job that writes,
+`messages` for a preview (its output IS the message text), `json` for a
+diagnostic whose fields are the answer.
+
+**Not wired, deliberately.** `/api/issue-chaser-company-open` joined the
+contract in `37faf1d`, but it needs a `targets` array of company→group pairs
+that HALO does not model, and it delivers to real groups. `/api/issue-chaser-operator-preview`
+and `-send` are a two-step build-then-send pair around a stored expiring run,
+which does not fit a single dialog, and `-send` is the one operator route that
+delivers to real groups.
+
+`dateless: true` marks a job whose endpoint takes no range at all — the dialog
+drops the two date fields and `validateJobInput` stops asking for them. The
+default is the other way round, so a ranged job that forgets the flag demands
+dates loudly instead of silently running over whatever the endpoint assumes.
+
+Requires `NOISE_API_URL`, `WBGT_API_URL` and `ISSUE_CHASER_API_URL`. Unset, the
+button still appears and names the missing variable rather than failing
+silently.
+
+## Finding your way from a column to a handler
+
+Two surfaces exist for the same newcomer problem: the routes are legible and
+the columns are legible, and nothing joins them.
+
+**`lib/field-routes.ts`** gives each column the endpoint it steers, rendered
+under the column name in the configuration drawer and the create-project
+dialog as `↳ POST /api/noise-half-hourly`. No base URL — which deployment it
+is, is an environment question. Coverage is deliberate: a column earns a route
+when knowing the route tells you something, delivery plumbing says "every
+outbound route" rather than listing fifteen paths, and labelling columns say
+nothing at all, which is itself the signal.
+
+It is a mirror, so it has the same guard as `row-rules` and the cron table: a
+test checks every route string against the service's pinned contract and every
+column name against that contract's field list. It rejected
+`water_parade_photo_group_id` on the first run — a column HALO knows from live
+introspection but WBGT's contract does not declare — so
+`/api/water-parade-intake` is deliberately unbound rather than pointed at
+something undeclared.
+
+**`lib/message-previews.ts`** shows the real message behind a switch. Five of
+the seven services are covered; the two that are not are recorded as a test
+rather than a comment, so the gap is reviewable and fails once those repos
+publish their shapes:
+
+| Service | Previews come from |
+|---|---|
+| noise | `MESSAGE_SHAPES.md`, lifted by `scripts/build-message-previews.mjs` |
+| wbgt, haze | their message builders, executed and pasted |
+| lightning | `MESSAGE_SHAPES.md`, plus the SMS wrapper transcribed from `usecases/lightning/sms.js` |
+| issueChaser | `MESSAGE_SHAPES.md` |
+| ailytics | **none** — the docs describe parsing, never an outbound body |
+| subcon | **none** — SPECS.md gives the rules and the trailers, no complete body |
+
+A preview column need not be a formatter. `amber_enabled`,
+`sms_lightning_format` and every Issue Chaser style are switches, and each
+sends a different thing — which is the only question this file answers.
+
+## Outbound load (`lib/load-model`)
+
+`◔ Outbound load` in the header answers "how many messages go out to how many
+groups, hour by hour". It is arithmetic on the config rows the dashboard
+already holds — no request, no persistence, nothing observed. It describes what
+the crons are CONFIGURED to do, not what they did.
+
+One provider per service, shaped like `lib/card-summary/schedule-providers` and
+for the same reason: the cadence rules belong beside the service that owns them.
+Each provider cites the upstream file it was read from, because this is a
+MIRROR of behaviour in another repository and drifts the way `lib/row-rules.ts`
+does. `Record<ServiceKey, LoadProvider>` makes a missing provider a compile
+error rather than a service that reads as quiet.
+
+Three distinctions carry the whole thing:
+
+- **scheduled** — fires in that hour whatever the readings say.
+- **conditional** — fires only if they qualify; the number is the WORST case
+  for that hour, so it reads as capacity and not as a forecast. Drawn faded,
+  and the toggle removes it from both the bars and the breakdown so the rows
+  always add up to the column above them.
+- **ambient** — real traffic with no clock position: lightning (storm-driven),
+  ailytics forwarding, subcon's housekeeping intake, and any chase that replies
+  in an issue's own originating group, where the destination count lives in a
+  spreadsheet. Listed by name beside the chart rather than smeared across the
+  day.
+
+### The cron table is the missing half
+
+`lib/load-model/crons.ts` records the EventBridge rules that actually invoke
+the services, read from the AWS console on 2026-09-22. There is no IaC anywhere
+in the estate, so this is the only place in any repository that knows them, and
+it is **authoritative over the service READMEs**, several of which are wrong —
+WBGT's contradicts itself about its own hourly rule in two sections
+(`cron(6,21,36,51)` against `cron(2,17,32,47)`; the live rule is
+`cron(1/15 * * * ? *)`).
+
+**The expressions are UTC.** The console's own labels prove it:
+`cron(0 11 * * ? *)` is named "Noise Evening Summary 7PM", and 11:00 UTC is
+19:00 in Singapore. Every `hours` array is the UTC hour list plus eight.
+
+A project's configuration can only fire in an hour its rule runs in, and that
+is not a formality. Four things the model got wrong before this table existed:
+
+| | Was | Actually |
+|---|---|---|
+| Chaser chat-group summary | whatever its schedule column named | `cron(0 0 * * ? *)` — 08:00 SGT only, so any other configured hour **never sends** |
+| Water Parade reminders | once an hour, across the site day | `cron(30,56 3-11 * * ? *)` — twice an hour, 11:00–19:59 SGT only |
+| Noise morning summary | `morning_summary_start_hhmm` | `cron(0 23 * * ? *)` — 07:00 SGT, fixed; the column describes the period summarised |
+| Subcon morning reports | the configured start hour | that column is a **gate**; the sends land on the rules' hours (10:05, 12:05, 16:05 SGT) |
+
+Two cadences were missing outright: ailytics' issues status summary
+(`cron(0 10 * * ? *)` — 18:00 SGT) and the lightning daily kickoff
+(`cron(30 23 * * ? *)` — 07:30 SGT), which is the one lightning send that has an
+hour. Subcon's nightly housekeeping report turned out to have one too
+(`cron(10 14 ? * * *)` — 22:10 SGT), so it moved from the ambient list onto the
+chart.
+
+`/daily-manpower-summary` carries **two** rules, at 10:05 and 16:05 SGT, and
+`morningReportGate` is a bare `currentSgtHour >= startHour` with no once-a-day
+guard beside it — so a project past its gate is summarised twice. If a guard
+exists elsewhere in that service, this over-counts by one send per project.
+
+A configured hour its rule never runs in is a silent misconfiguration: the
+project looks scheduled and sends nothing. Those are surfaced by name in the
+"not on the clock" list rather than left as a bar that is merely absent, and
+the project card says so too — `firesAt` appends "its job only runs at 08:00,
+so that one never sends" rather than quietly listing an hour that cannot
+happen.
+
+`company_open_backlog_enabled` is the one Chaser style with no rule at all:
+nothing in the console invokes `/api/issue-chaser-company-open`, so enabled
+means "allowed to run" rather than "running". Its pill says `(on demand)` and
+it appears in the ambient list rather than on the chart.
+
+**When a rule changes in the console it must be changed here** — nothing
+detects that. The `utc` string is kept verbatim so the two can be compared by
+eye.
+
+**Hours only, deliberately.** The minutes are now known, but the question being
+asked is which hours cluster, and Sunday and public-holiday mutes are not
+applied — so the chart describes an ordinary working day. Weekly rules are left
+out for the same reason: the Novade name reminder and sync (Saturdays), the
+Water Parade photo refresh (Saturdays), the noise limits refresh (Sundays) and
+the Sunday Leq12h hourly summary. Rules that post nothing to a group — scrapes,
+sheet fills, retries, ingestion, health checks — are out too; they cost Lambda
+time, but this model counts messages.
+
+Bars are sized with `flex-grow`, not percentage heights: a percentage resolves
+against a parent with a definite height and a flex column's children have none,
+which drew every segment at zero pixels under correct-looking numbers.
+
+## Lightning: what the card says, and why
+
+Two invariants changed what a project actually receives, and HALO described
+the old behaviour for a while:
+
+- **INV-LTG-09 — RED is emitted once per STOP episode.** Later red-zone
+  strikes send nothing and STOP→WATCH is silent. The card used to say "every
+  tick while a qualifying strike is in range", which described a stream of
+  messages where there is now one.
+- **INV-LTG-08 — the all-clear is a strict safety claim.** It waits for BOTH
+  ground and cloud strikes to be outside the red ring for the full red dwell,
+  AND for amber to be inactive. It does not honour `red_detection_types`: a
+  project set to G only still cannot go green while a C strike sits in the
+  ring. That is in `red_dwell_seconds`' help, because the dwell field is where
+  someone goes when they want to resume sooner.
+
+`enable_red_band_poc_mentions` has taken amber and then the signed SMS alerts
+without ever being renamed, so HALO calls it "Warning POC mentions" and the
+pill keeps the word POC in it — that is what a person types into the search
+box, and dropping it silently broke `matchesQuery`.
+
+`enable_green_band_poc_mentions` is the one flag in the estate that defaults
+to TRUE. Its pill is therefore inverted: shown only when somebody has turned
+it OFF, because an unlit pill on every project is noise while "this site is
+told to stop but not to resume" is worth seeing.
+
+It is also hidden until `enable_red_band_poc_mentions` is on. That used to be
+a UI judgement about a control that was legal but pointless; since lightning's
+`40db522` the warning flag is the master switch and this one only narrows it,
+so the field genuinely does nothing on its own and the UI is agreeing with the
+service rather than second-guessing it.
 
 ## Group names (the alias store)
 
@@ -350,6 +606,99 @@ Useful keys:
   running only the other
 - `row` — fields sharing a row key sit side by side on one compact row
 - `widget` — `toggle | select | number | text | hhmm | csv | multi | sheet`
+
+## The Developer tab
+
+`/developer` answers one question for whoever is covering: where does each
+service's raw data come from, what drives it, and what stops when that upstream
+stops. It exists because the answer was spread across seven repositories, which
+is no use to someone on call.
+
+`lib/source-model.ts` is a **mirror**, not a document. Noise already encodes its
+answer in `lib/noise-source-registry.js` and WBGT in
+`scrapers/cloudlynx-wbgt/profile.js`; the tests check this file against the
+pinned contracts, so a `source_type` added upstream fails the build rather than
+leaving a project's row reading "no adapter for this value" while the service is
+perfectly happy.
+
+Three rules hold it honest:
+
+- **No credential values, ever.** Profiles name the environment VARIABLE a
+  scraper reads. A test rejects anything in the file shaped like a secret, and
+  the page is open to read-only accounts, so the cost of one pasted value is
+  high and the cost of the check is nothing.
+- **A schedule appears only where `load-model/crons.ts` can prove one**, because
+  that file was read off the AWS console and the service READMEs disagree with
+  it — WBGT's contradicts the console about its own hourly rule. Ingestion
+  routes mostly have no proven rule, and the page says so in those words. A
+  confident wrong schedule is worse than an admitted gap when the reader is
+  mid-incident.
+- **URLs come from the scrapers themselves**, not from the vendor's name. All
+  three of Geoscan, Trackmaster and AlphaLab live somewhere other than the
+  obvious guess (`realtime.geoscanrealtime.com`, `qsis.trackmaster.in`,
+  `alphalabonline.com`), and Trackmaster signs in through a browser then pulls
+  its report from a separate API host.
+
+Open to anyone the dashboard is open to — `session.allowed`, not `canEdit`. It
+writes nothing, and the people covering are the ones most likely to hold a
+read-only account.
+
+## Pending: the monthly noise report
+
+The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery
+chip, an env default for `lambda_url_document` and the `✉ Monthly report`
+action. Noise's equivalent is half-blocked, in two separate ways:
+
+1. **The contract is uncommitted** in the noise repo, so `contracts:refresh`
+   refuses (it reads `git show HEAD:` and rejects a dirty file). Until it
+   commits there is no route hint for `POST /api/noise-monthly-report` and no
+   action button — both are guarded by tests against the pinned contract.
+2. **`monthly_noise_report_whatsapp_group_ids` does not exist in the database.**
+   Postgres answers `42703 undefined_column` for it, while
+   `enable_monthly_noise_report` is present — so `migrate_monthly_noise_report.sql`
+   has not been run, even though that file adds both columns in one
+   transaction. HALO describes the column already; it simply does not render,
+   because the editor is built from live introspection.
+
+Until that migration runs, a project with the flag on has nowhere to put
+recipients, and the job reports it as failed rather than sending.
+
+When both are resolved: repin noise, bind both columns to
+`POST /api/noise-monthly-report`, add the recipients column to `GROUP_COLUMNS`
+(the card-destination test will demand it), and add the action. Noise's dry-run
+is simpler than WBGT's — `body.dryRun === true || (body.dryRun === undefined &&
+resolveDryRun())` — so `dryRun: false` **does** force a live send there, unlike
+WBGT. Its route also takes a `month`, so the job can offer one rather than
+always sending last month.
+
+## Columns the deployment decides
+
+`lambda_url`, and ailytics' `reply_lambda_url` and `lambda_url_image`, are
+stored per project but are not per-project facts: across the live estate every
+non-blank one of them is the same URL, because there is one listener proxy and
+every project posts to the same three endpoints. `lib/env-defaults.ts` is the
+single registry of which variable fills which column, and a test checks it
+against the pinned contract, against the create dialog's own `envDefault`, and
+against `amplify.yml` — so the three cannot drift into offering different URLs
+for the same column.
+
+`buildFieldSpec` takes `env` and resolves it onto `FieldSpec.envDefault`, so the
+editor, the create dialog and `getSchema` all answer from one place. The lib
+never reads `process.env` itself; the server passes it (`getFieldSpec`,
+`resolveCanonicalEnvDefaults` in the project pages), because this module is
+reachable from client bundles where `process.env` is a different object.
+
+**The default is offered, never adopted.** A blank column shows the URL as the
+input's *placeholder* and a "Use this" button beside it. Nothing is written into
+the draft until that button is pressed, so opening a row for an unrelated edit
+saves exactly what it saved before, and adopting it goes through the ordinary
+diff and audit row. A prefill that looked like a value while the column stayed
+blank would be worse than the blank — the blank is at least honest.
+
+`instance_name` and `client_id` sit beside these and must NOT be defaulted:
+they carry six distinct values tracking which WhatsApp instance a company is on,
+and inventing a deployment-wide answer would route one company's messages
+through another's instance. A test pins that absence.
 
 Columns owned by the alert jobs (e.g. WBGT's `top_of_hour_band`, Lightning's
 `lightning_project_runtime` state) belong in `READONLY` or `hidden`, not in the
@@ -884,6 +1233,10 @@ untrue to a client:
   layer follows the viewport and is capped, so counting hits from it would give a
   number that changes when you pan. `evidenceFor` reads a separate, tight box
   around the focused project.
+- **A focused view prioritises nearby rows within the display cap.** The viewport
+  total remains authoritative, while a second tight-box query is merged ahead of
+  the newest viewport rows and sorted by distance to the selected site. This keeps
+  the capped sample useful for explaining why an alert did or did not fire.
 - **That query asks only for the types a tier counts.** A storm is
   overwhelmingly intra-cloud: filtering to `G` took one site's worst hour from
   2,130 rows to 15. This is what keeps the evidence query under the cap, and the
@@ -1078,8 +1431,10 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
 
 14. A truncated evidence query is a **false** all-clear, not a
    hedged one. The lightning map once reported "no qualifying strike" for a
-   window that contained a ground strike 1.8 km inside a 3 km ring: the 500 most
-   recently published detections in the box did not reach back far enough.
+   window that contained a ground strike 1.8 km inside a 3 km ring: the most
+   recently published detections in the box did not reach back far enough. The
+   display sample may now prioritise near-site candidates, but the separate
+   evidence query remains the source of truth for the alert decision.
    PostgREST also caps any result at 1000 rows and returns 1000 for a larger
    request without complaining, so raising `limit` is not a fix. The fixes are
    the type filter and a tight box; if the cap is still hit, the UI refuses to

@@ -171,9 +171,20 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       widget: "groups",
       help: "Where the by-chat-group summary goes. Blank falls back to the shared Summary destination, and then to WhatsApp group IDs — three levels, most specific first.",
     },
+    company_open_backlog_enabled: {
+      label: "Company open backlog",
+      help:
+        "Lets the per-company backlog chase run for this project. It is the only style with no schedule of its own — nothing invokes it on a cron, so it sends only when somebody calls it, and the company-to-group routing comes from that request rather than from anything here (INV-ICH-19).",
+    },
     daily_safety_chatgroup_summary_schedule: {
       label: "Chat group summary schedule",
-      help: "When the by-chat-group summary runs, in SGT. Its own schedule, so the three summaries can differ. `HH00,lookback`, semicolon-separated: `0800,4` is 8am covering today plus the 4 days before; `0900,0;2100,0` is 9am and 9pm each covering today only. Whole hours only — an entry that cannot be read stops the run, so nothing is sent.",
+      // The other two summaries run on an hourly rule, so any hour they name
+      // really does fire. This one does not, and the difference is invisible
+      // from the column — a project can be configured perfectly and send
+      // nothing at all.
+      help:
+        "When the by-chat-group summary runs, in SGT. `HH00,lookback`, semicolon-separated — `0800,4` is 8am covering today plus the 4 days before. " +
+        "Only an `0800` entry ever fires. Unlike the other two summaries, this one's EventBridge rule runs once a day at 08:00 SGT, so an entry naming any other hour is read by nothing and the report is never sent. Whole hours only.",
     },
     daily_safety_company_summary_whatsapp_group_ids: {
       label: "Company summary destination",
@@ -276,6 +287,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
         "same_day_open_snapshot_enabled",
         "same_day_open_snapshot_schedule",
         "include_days_before_snapshot",
+        "company_open_backlog_enabled",
       ],
     },
     {

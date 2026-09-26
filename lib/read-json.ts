@@ -57,7 +57,10 @@ export function summariseJobResult(result: unknown): string {
       return;
     }
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      if (key === "errors" && Array.isArray(value)) {
+      // `failures` is the issue-chaser shape for the same thing — one entry per
+      // cell it could not write, with the tab and range on it. Without this the
+      // line said "40 eligible, 38 updated" and never named the two that broke.
+      if ((key === "errors" || key === "failures") && Array.isArray(value)) {
         for (const entry of value.slice(0, 3)) {
           const text = typeof entry === "string" ? entry : JSON.stringify(entry);
           if (text) errors.push(text.slice(0, 160));
@@ -82,6 +85,48 @@ export function summariseJobResult(result: unknown): string {
   return errors.length ? `${summary} — ${[...new Set(errors)].join("; ")}` : summary;
 }
 
+/** One message a preview says it would post, and where. */
+export type PreviewMessage = { chatId: string; kind: string; message: string };
+
+/**
+ * The messages inside a preview's response, wherever the service put them.
+ *
+ * The two Issue Chaser previews disagree on the key: a chase run pushes
+ * `results: [{ chatId, kind, message }]` and a summary run pushes
+ * `send_results: [{ chatId, sent: false, message }]`. Rather than encode both,
+ * this looks for the shape — any object carrying a string `message` — so a
+ * third preview shipping a third key still renders.
+ *
+ * An empty list is a real answer and not a failure: a report with nothing to
+ * say sends nothing, which is exactly what a preview should show.
+ */
+export function previewMessages(result: unknown, limit = 40): PreviewMessage[] {
+  const found: PreviewMessage[] = [];
+
+  const walk = (node: unknown, depth: number): void => {
+    if (found.length >= limit || !node || typeof node !== "object" || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      found.push({
+        chatId: typeof record.chatId === "string" ? record.chatId : "",
+        // `kind` is only present on a chase run. A summary entry is one report
+        // for one group, so that is what it is called when the key is absent.
+        kind: typeof record.kind === "string" ? record.kind : "summary",
+        message: record.message,
+      });
+      return;
+    }
+    for (const value of Object.values(record)) walk(value, depth + 1);
+  };
+
+  walk(result, 0);
+  return found;
+}
+
 /** Count fields worth reporting, and what to call them in one line. */
 const COUNT_KEYS: Record<string, string> = {
   configs_processed: "projects",
@@ -95,4 +140,11 @@ const COUNT_KEYS: Record<string, string> = {
   cellsSkippedNoReading: "cells with no reading",
   rowsUpdated: "rows",
   sheetsCreated: "tabs created",
+  // The safety image refresh reports these three at the top level and again per
+  // project; identical strings collapse, and a job is always one project here.
+  // Labelled neutrally on purpose — the key is generic enough that another
+  // service may start returning it, and "12 eligible" stays true if one does.
+  eligible: "eligible",
+  updated: "updated",
+  failed: "failed",
 };

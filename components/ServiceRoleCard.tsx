@@ -11,14 +11,15 @@ import type { ServiceFieldSpec } from "@/lib/field-spec";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import type { ProjectConfigRow, ServiceKey } from "@/lib/services";
 
-/** What the live rows say about this service's place in the project. */
-export type ServiceRoleStatus =
-  | "Enabled"
-  | "Disabled"
-  | "Not onboarded"
-  | "Alias not found"
-  | "Ambiguous alias"
-  | "Could not read";
+/**
+ * What the live rows say about this service's place in the project.
+ *
+ * Re-exported rather than declared here: the status is decided by
+ * `lib/service-role.ts`, which is where the alias-matching rule lives and where
+ * it can be tested without a DOM.
+ */
+export type { ServiceRoleStatus } from "@/lib/service-role";
+import type { ServiceRoleStatus } from "@/lib/service-role";
 
 function statusTone(status: ServiceRoleStatus): string {
   if (status === "Enabled") return "text-on";

@@ -25,20 +25,30 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const service = params.get("service");
-  // `table` reaches the audited tables that are not a service's config row —
-  // today just `noise_limits`, whose history is per METER and so is keyed on
-  // `full_identifier` rather than a project code. Allow-listed rather than
-  // passed through: `table_name` is a filter value, and the set of things worth
-  // asking for is small and known.
+  // `table` reaches the audited tables that are not a service's config row.
+  // Allow-listed rather than passed through: `table_name` is a filter value,
+  // and the set of things worth asking for is small and known.
   const table = params.get("table");
-  const AUDITED_TABLES = new Set(["noise_limits"]);
+  const AUDITED_TABLES = new Set(["noise_limits", "wbgt_sensors"]);
   if (table && !AUDITED_TABLES.has(table)) {
     return NextResponse.json({ error: `No audit history is kept for “${table}”.` }, { status: 400 });
   }
   try {
+    const project = params.get("project") ?? undefined;
+    if (!table && service === "wbgt" && project) {
+      const [configEntries, sensorEntries] = await Promise.all([
+        listAudit({ table: SERVICES.wbgt.table, rowId: project, limit: 50 }),
+        listAudit({ table: "wbgt_sensors", projectCode: project, limit: 50 }),
+      ]);
+      const entries = [...configEntries, ...sensorEntries]
+        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+        .slice(0, Number(params.get("limit") ?? 200));
+      return NextResponse.json({ entries });
+    }
     const entries = await listAudit({
       table: table ?? (service && isServiceKey(service) ? SERVICES[service].table : undefined),
-      rowId: params.get("project") ?? undefined,
+      rowId: table === "wbgt_sensors" ? undefined : project,
+      ...(table === "wbgt_sensors" && project ? { projectCode: project } : {}),
       limit: Number(params.get("limit") ?? 200),
     });
     return NextResponse.json({ entries });

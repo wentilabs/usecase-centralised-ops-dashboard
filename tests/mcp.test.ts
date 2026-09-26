@@ -117,10 +117,16 @@ test("an unknown tool has no plan", () => {
 });
 
 test("missing required arguments are named before the request is made", () => {
-  // `job` is a required path parameter, so it is missing too — the flattened
-  // schema makes path and body arguments indistinguishable to the caller, which
+  // `job` is a required path parameter and `projectCode` a required body field;
+  // the flattened schema makes the two indistinguishable to the caller, which
   // is the point.
-  assert.deepEqual(missingRequired("runJob", { projectCode: "ZRA" }).sort(), ["endDate", "job", "startDate"]);
+  assert.deepEqual(missingRequired("runJob", {}).sort(), ["job", "projectCode"]);
+  assert.deepEqual(missingRequired("runJob", { projectCode: "ZRA" }).sort(), ["job"]);
+  // The dates are deliberately NOT in the required set: one job takes no range
+  // at all, and a schema that demanded two dates for it would be wrong for
+  // every caller. Which jobs need a range is in the operation's description,
+  // and the route refuses a ranged job that arrives without one.
+  assert.deepEqual(missingRequired("runJob", { job: "wbgt-fill", projectCode: "ZRA" }), []);
   assert.deepEqual(missingRequired("runJob", { job: "wbgt-fill", projectCode: "ZRA", startDate: "2026-08-01", endDate: "2026-08-02" }), []);
   // A blank string is missing, not present.
   assert.deepEqual(missingRequired("geocodeAddress", { q: "" }), ["q"]);

@@ -8,6 +8,9 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     red_detection_types: ["G", "C"],
     amber_detection_types: ["G", "C"],
+    // lightning_sms_lightning_format_check: null, or this one value. The
+    // select renders "— not set —" as null, which is the legacy behaviour.
+    sms_lightning_format: ["TRI-style"],
   },
   fields: {
     company: {
@@ -28,7 +31,15 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     site_extent_radius_m: { label: "Site extent radius (m)", widget: "number", help: "Added to strike radii to cover the site footprint." },
 
     red_radius_m: { label: "🔴 Red radius (m)", widget: "number", row: "red" },
-    red_dwell_seconds: { label: "🔴 Red dwell (s)", widget: "number", row: "red", help: "How long the alert state persists after the last qualifying strike." },
+    red_dwell_seconds: {
+      label: "🔴 Red dwell (s)",
+      widget: "number",
+      row: "red",
+      // Since INV-LTG-08 this is the all-clear clearance window as well, and
+      // it does not honour the strike types below: a project set to G only
+      // still cannot go green while a C strike sits inside the red ring.
+      help: "How long the alert state persists after the last qualifying strike — and how long BOTH ground and cloud strikes must stay outside the red ring before an all-clear is allowed, whatever the strike types below say.",
+    },
     red_detection_types: {
       label: "🔴 Red strike types",
       widget: "multi",
@@ -73,6 +84,11 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       help: "Controls signed SMS Gateway thunderstorm alerts only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
       row: "sms",
     },
+    sms_lightning_format: {
+      label: "SMS source format",
+      help: "Leave unset for the legacy alert-only forwarding. TRI-style also recognises that gateway's All-Clear message, so the site is told when the alert lifts rather than left waiting.",
+      row: "sms",
+    },
     sms_whatsapp_group_id: {
       label: "SMS destination",
       widget: "groups",
@@ -87,21 +103,59 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
 
     enable_red_band_poc_mentions: {
-      label: "🔴 Red POC mentions",
+      // Red-only when the column was named; it has since taken amber and then
+      // the signed SMS alerts. The name is not worth a migration to change.
+      label: "⚠️ Warning POC mentions",
       // Postgres rejects the save outright if either list is blank, so say so
       // rather than letting the editor surface a raw constraint error.
-      help: "RED alerts only. Postgres requires BOTH lists below to be non-empty before this can be turned on — fill them in the same save.",
+      help: "Tags the POCs on every warning: AMBER, RED/STOP, and signed thunderstorm SMS alerts. Postgres requires the mention groups and a phone source below to be non-empty before this can be turned on — fill them in the same save.",
+    },
+    enable_green_band_poc_mentions: {
+      label: "✅ All-clear POC mentions",
+      /**
+       * Hidden until the warning switch is on, because it now does nothing
+       * without it.
+       *
+       * `shouldMentionPocs` used to read the two flags independently, so
+       * warnings-off with green-on was reachable and would mention people on
+       * the all-clear and never on the stop that preceded it. `40db522` in the
+       * lightning repo made the warning flag the master switch and left green
+       * to narrow it, so hiding this one is now the UI agreeing with the
+       * service rather than second-guessing it.
+       *
+       * It defaults to TRUE in Postgres, the opposite of every other flag
+       * here, so it is ON for a row nobody has touched — which is why it says
+       * so rather than leaving that to be discovered.
+       */
+      showIf: { field: "enable_red_band_poc_mentions", equals: true },
+      help: "Narrows the switch above rather than acting on its own: while warnings tag the POCs, this decides whether the all-clear does too, including TRI-style SMS all-clears. On by default, so leaving it alone keeps the existing behaviour; turn it off for a site that wants to be told when to stop but not when to resume.",
     },
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
-      help: "Comma-separated international numbers, e.g. 6591234567. Required when red mentions are on.",
+      help: "Comma-separated international numbers, e.g. 6591234567. Or the exact word `manpower-sheet` to tag whoever is on that day's Manpower tab instead of a fixed list — then fill in the Manpower sheet below.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
+    },
+    manpower_sheet_id: {
+      label: "Manpower sheet",
+      // Deliberately NOT gated on the mentions switch, unlike the two
+      // lists beside it. Two reasons. It is a resource pointer, and this
+      // repo already holds that where a thing is read from is decided
+      // before it is switched on — the SMS destination says so in as many
+      // words. And the constraint wants both POC lists non-blank in the
+      // SAME save, so the sheet has to be fillable before the switch is
+      // flipped rather than after.
+      //
+      // It also matters that the column is already populated: the seed
+      // migration filled it from ops.projects for every matching project,
+      // so hiding it behind an off switch hid a value that was already
+      // there on most rows.
+      help: "Where “whoever is on site today” is read from, when POC phone numbers is the exact word `manpower-sheet`. Seeded once from this project's Manpower workbook in Common Resources; the service keeps its own copy and does not follow that one afterwards, so changing it there will not change it here.",
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
       widget: "groups",
-      help: "Which of the groups above may carry RED mentions. Required when red mentions are on.",
+      help: "Which of the groups above may carry mentions. Blank fails closed to no mentions at all, and it is required when mentions are on.",
       showIf: { field: "enable_red_band_poc_mentions", equals: true },
     },
 
@@ -134,10 +188,16 @@ export const lightningFieldProvider: ServiceFieldProvider = {
       ],
     },
     { title: "Delivery", fields: ["whatsapp_group_id", "instance_name", "client_id", "lambda_url"] },
-    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_whatsapp_group_id"] },
+    { title: "SMS Gateway", fields: ["enable_sms_lightning_alerts", "sms_lightning_format", "sms_whatsapp_group_id"] },
     {
       title: "POC escalation",
-      fields: ["enable_red_band_poc_mentions", "poc_alert_wa_groups", "poc_phone_numbers"],
+      fields: [
+        "enable_red_band_poc_mentions",
+        "enable_green_band_poc_mentions",
+        "poc_alert_wa_groups",
+        "poc_phone_numbers",
+        "manpower_sheet_id",
+      ],
     },
   ],
 };

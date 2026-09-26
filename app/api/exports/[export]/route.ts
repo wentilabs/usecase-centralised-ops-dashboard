@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { EXPORTS, isExportKey } from "@/lib/jobs";
+import { describeExportFailure } from "@/lib/export-failure";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -73,21 +74,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ex
     }
 
     if (!res.ok || !parsed) {
-      const detail = parsed?.error ?? text.slice(0, 500);
+      // Who answered decides what to say. A body carrying `error` is the
+      // service's own handler; `{"message":"..."}` is the AWS envelope, and
+      // means the service never got to reply — see lib/export-failure.ts.
+      const blocker = describeExportFailure({ status: res.status, parsed, text, definition });
       return NextResponse.json(
         {
           ready: false,
-          blockers: [
-            {
-              code: "service_error",
-              summary: `The ${definition.service} service returned ${res.status}`,
-              remedy:
-                `Check that ${definition.path} is deployed on the ${definition.service} Lambda and that its Google ` +
-                `credentials are set. The service's own message is below.`,
-              detail: String(detail),
-            },
-          ],
-          error: parsed?.error ?? `Service returned ${res.status}`,
+          blockers: [blocker],
+          error: parsed?.error ?? blocker.summary,
         },
         { status: 200 },
       );

@@ -85,6 +85,19 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       label: "Data Health message template",
       help: "Optional full message. Use only {{project_code}}, {{service}}, {{status}}, and {{latest_receipt}}; blank uses the safe default.",
     },
+    lambda_url_document: {
+      label: "Send-document URL",
+      /**
+       * Optional in practice, required in one specific case.
+       *
+       * `documentEndpoint` in the service takes this verbatim when set; when
+       * blank it rewrites `lambda_url`'s trailing `/send-message` to
+       * `/send-document`, and **throws** when `lambda_url` does not end that
+       * way. So a blank here is safe only while the send URL keeps that suffix
+       * — which every project in the estate does today, all on the one proxy.
+       */
+      help: "Only needed if the monthly report must post somewhere other than the send URL. Left blank, the service swaps `/send-message` for `/send-document` on the URL above — which works for every project today. It is required if that URL ever stops ending in `/send-message`.",
+    },
     delivery_scope: {
       label: "Delivery scope",
       widget: "select",
@@ -154,6 +167,26 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     water_parade_enabled: {
       label: "Water Parade",
       help: "Outbound only — off still records cycles, roster snapshots, inbound events, photo decisions and reminder audits. It just stops the reminders and the sheet projections.",
+    },
+    enable_monthly_wbgt_report: {
+      label: "Monthly report",
+      /**
+       * Off by default, and fail-loud rather than fail-quiet: a project turned
+       * on without the rest configured is reported as `failed` with the missing
+       * column named, not skipped. So the preconditions belong in the help,
+       * where they can be met before the switch is flipped.
+       */
+      help: "Off by default. On, this project joins the monthly job: last month's tab of the monthly sheet — the previous Singapore calendar month, never the current one — is exported as xlsx and sent to the groups below as a document. It needs the monthly sheet ID, at least one group, and a client ID — without any of them the project is reported as failed rather than quietly skipped.",
+    },
+    monthly_wbgt_report_whatsapp_group_ids: {
+      label: "Monthly report groups",
+      widget: "groups",
+      /**
+       * A separate list from `whatsapp_group_id` on purpose: a monthly workbook
+       * is a different audience from a heat alert, and the service reads only
+       * this column for the report.
+       */
+      help: "Who receives the workbook. Separate from the alert groups above — the report reads only this list, so leaving it blank stops the report even with the switch on. Each group is tracked per month, so a re-run does not send twice.",
     },
     water_parade_outbound_group_id: {
       label: "Water Parade reminder group",
@@ -242,7 +275,15 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Site hours & mutes",
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
-    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url", "lambda_url_document"] },
+    {
+      // Its own section rather than a third entry under Sheets: the monthly
+      // sheet is an artefact the fill job writes all month, and this is a
+      // delivery that happens once and goes to its own audience. Filing them
+      // together read as one feature with five settings.
+      title: "Monthly report",
+      fields: ["enable_monthly_wbgt_report", "monthly_wbgt_report_whatsapp_group_ids"],
+    },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],

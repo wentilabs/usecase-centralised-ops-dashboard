@@ -43,6 +43,12 @@ still derives listener siblings only from a `lambda_url` ending exactly in
 `/send-message` and continues to show conflicts, but it does not let legacy
 row wiring replace the configured dashboard defaults.
 
+A project saved before those variables existed has them null. Its editor now
+shows each URL greyed as a placeholder with a **Use this** button, rather than
+an empty box — offered, not written, so the row is unchanged until someone takes
+it. The mapping lives once in `lib/env-defaults.ts`; see AGENTS.md, "Columns the
+deployment decides".
+
 ## Onboarding from a canonical project
 
 The project page's **Add this service** link opens the existing service-owned
@@ -54,6 +60,18 @@ the normal onboarding dialog, and the new row is still always disabled.
 After a successful insert HALO records the exact service alias in
 `ops.projects.service_aliases`. If that HALO-only update fails, the response
 states so plainly; the disabled service row is not modified or enabled.
+
+**A missing alias must never hide a row.** That attach runs after the insert and
+only warns on failure, precisely so a registry hiccup cannot cost you the
+service row — but the project page used to match rows *only* by the recorded
+alias, so a blank one reported "Not onboarded" over a row that existed, was
+enabled, and was delivering. CCCC hit it: haze and lightning were onboarded from
+the project page, both rows were written as `CCCC`, and both cards said the
+service was absent. `lib/service-role.ts` now resolves a blank alias to the
+primary alias, which is what the editor has always told operators it means. An
+*explicit* alias still wins and is never satisfied by a row under the primary
+one — that override exists for sites whose live code genuinely differs, and
+adopting the wrong row would be worse than reporting none.
 
 The Noise analysis workbook and WBGT monthly workbook are stored as separate
 canonical references. They prefill only `noise.google_sheet_id` and

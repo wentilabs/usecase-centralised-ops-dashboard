@@ -70,8 +70,24 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     poc_phone_numbers: {
       label: "POC phone numbers",
       widget: "csv",
-      help: "Comma-separated international numbers, e.g. 6591234567. These are mentioned, not messaged directly.",
+      help: "Comma-separated international numbers, e.g. 6591234567. These are mentioned, not messaged directly. Or the exact word `manpower-sheet` to tag whoever is on that day's Manpower tab instead of a fixed list — then fill in the Manpower sheet below.",
       showIf: { field: "enable_poc_mentions", equals: true },
+    },
+    manpower_sheet_id: {
+      label: "Manpower sheet",
+      // Deliberately NOT gated on the mentions switch, unlike the two
+      // lists beside it. Two reasons. It is a resource pointer, and this
+      // repo already holds that where a thing is read from is decided
+      // before it is switched on — the SMS destination says so in as many
+      // words. And the constraint wants both POC lists non-blank in the
+      // SAME save, so the sheet has to be fillable before the switch is
+      // flipped rather than after.
+      //
+      // It also matters that the column is already populated: the seed
+      // migration filled it from ops.projects for every matching project,
+      // so hiding it behind an off switch hid a value that was already
+      // there on most rows.
+      help: "Where “whoever is on site today” is read from, when POC phone numbers is the exact word `manpower-sheet`. Seeded once from this project's Manpower workbook in Common Resources; the service keeps its own copy and does not follow that one afterwards, so changing it there will not change it here.",
     },
     poc_alert_wa_groups: {
       label: "POC mention groups",
@@ -101,7 +117,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },
     {
       title: "POC escalation",
-      fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_alert_wa_groups", "poc_phone_numbers"],
+      fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_alert_wa_groups", "poc_phone_numbers", "manpower_sheet_id"],
     },
   ],
 };

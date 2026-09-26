@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { FormatterPreviewButton } from "./FormatterPreview";
+import { EnvDefaultHint } from "./EnvDefaultHint";
+import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
+import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
@@ -201,7 +204,14 @@ function Control({
       className={base}
       type="text"
       spellCheck={false}
-      placeholder={field.widget === "hhmm" ? "HHMM e.g. 0730" : undefined}
+      // A deployment-dictated column shows its value greyed rather than empty,
+      // so the box is never a blank someone has to guess at. A placeholder is
+      // not a value and is never submitted — adopting it is the button below.
+      placeholder={
+        field.widget === "hhmm"
+          ? "HHMM e.g. 0730"
+          : (field.envDefault?.value ?? undefined)
+      }
       maxLength={field.widget === "hhmm" ? 4 : undefined}
       value={String(value ?? "")}
       onChange={(e) => onChange(e.target.value)}
@@ -220,6 +230,7 @@ export function ConfigEditor({
   groupNames = {},
   initialDraft,
   initialNote,
+  canEdit,
 }: {
   service: ServiceKey;
   serviceLabel: string;
@@ -241,6 +252,7 @@ export function ConfigEditor({
    */
   initialDraft?: Draft;
   initialNote?: string;
+  canEdit: boolean;
 }) {
   const [current, setCurrent] = useState<ProjectConfigRow>(row);
   const [draft, setDraft] = useState<Draft>(initialDraft ?? {});
@@ -479,10 +491,23 @@ export function ConfigEditor({
     if (!res.ok) setError(body.error);
   }
 
+  function onWbgtSensorRenamed(oldLabel: string, newLabel: string, config: Record<string, unknown> | null) {
+    if (config) setCurrent((previous) => ({ ...previous, ...config } as ProjectConfigRow));
+    setDraft((previous) => {
+      const value = previous.sensor_delivery_groups;
+      if (!value || typeof value !== "object" || Array.isArray(value)) return previous;
+      const mappings = { ...(value as Record<string, unknown>) };
+      if (!(oldLabel in mappings)) return previous;
+      if (!(newLabel in mappings)) mappings[newLabel] = mappings[oldLabel];
+      delete mappings[oldLabel];
+      return { ...previous, sensor_delivery_groups: mappings };
+    });
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-      <aside className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:w-[min(760px,100vw)] md:border-l md:border-border">
+      <aside className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:w-[min(1040px,100vw)] md:border-l md:border-border">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 pt-safe md:px-5 md:py-4">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -584,7 +609,7 @@ export function ConfigEditor({
                     return (
                       <div
                         key={name}
-                        className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[240px_1fr] md:items-start md:gap-4 md:py-2 ${
+                        className={`grid grid-cols-1 gap-1.5 rounded-lg px-2 py-2.5 md:grid-cols-[320px_1fr] md:items-start md:gap-4 md:py-2 ${
                           problemFor[name]
                             ? "bg-danger/10 ring-1 ring-danger/40"
                             : changed
@@ -620,6 +645,7 @@ export function ConfigEditor({
                           <div className="font-mono text-[10px] text-muted-foreground">
                             {name}
                           </div>
+                          <RouteHint service={service} column={name} />
                         </div>
                         <div>
                           <Control
@@ -638,6 +664,13 @@ export function ConfigEditor({
                           {problemFor[name] ? (
                             <p className="mt-1.5 text-[11px] font-medium text-danger">{problemFor[name]}</p>
                           ) : null}
+                          <EnvDefaultHint
+                            envDefault={field.envDefault}
+                            value={values[name]}
+                            onUse={(next) =>
+                              setDraft((prev) => ({ ...prev, [name]: next }))
+                            }
+                          />
                           {field.help ? (
                             <p className="mt-1.5 text-[11px] text-muted-foreground">
                               <HelpText text={field.help} />
@@ -651,6 +684,13 @@ export function ConfigEditor({
               );
             })
           )}
+          {!history && service === "wbgt" ? (
+            <WbgtSensorLabelEditor
+              projectCode={String(current.project_code ?? rowId)}
+              canEdit={canEdit}
+              onRenamed={onWbgtSensorRenamed}
+            />
+          ) : null}
         </div>
 
         <footer className="flex shrink-0 flex-col gap-2 border-t border-border bg-card px-4 pt-3 pb-safe md:px-5 md:py-3">

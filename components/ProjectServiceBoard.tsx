@@ -4,42 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfigEditor } from "./ConfigEditor";
 import { ProjectCard } from "./ProjectCard";
-import { ServiceRoleCard, type ServiceRoleStatus } from "./ServiceRoleCard";
+import { ServiceRoleCard } from "./ServiceRoleCard";
 import { SmartChat } from "./SmartChat";
 import type { CanonicalProject } from "@/lib/canonical-projects";
 import type { ServiceFieldSpec } from "@/lib/field-spec";
+import { serviceRoleFor, type ServiceRole } from "@/lib/service-role";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
-
-/** The row a service holds for this project, and how to talk about it. */
-type Role = {
-  service: ServiceKey;
-  alias: string | null;
-  row: ProjectConfigRow | null;
-  status: ServiceRoleStatus;
-  error?: string;
-};
-
-function roleFor(
-  service: ServiceKey,
-  project: CanonicalProject,
-  rows: ProjectConfigRow[],
-  error?: string,
-): Role {
-  const alias = project.service_aliases[service] ?? null;
-  const matching = alias ? rows.filter((row) => String(row.project_code ?? "").trim() === alias) : [];
-  const status: ServiceRoleStatus = error
-    ? "Could not read"
-    : !alias
-      ? "Not onboarded"
-      : matching.length === 0
-        ? "Alias not found"
-        : matching.length > 1
-          ? "Ambiguous alias"
-          : matching[0].enabled === true
-            ? "Enabled"
-            : "Disabled";
-  return { service, alias, row: matching.length === 1 ? matching[0] : null, status, error };
-}
 
 /**
  * This project's services, as the dashboard draws them.
@@ -120,7 +90,7 @@ export function ProjectServiceBoard({
   );
 
   const roles = useMemo(
-    () => SERVICE_KEYS.map((service) => roleFor(service, project, live[service] ?? [], errors[service])),
+    () => SERVICE_KEYS.map((service) => serviceRoleFor(service, project, live[service] ?? [], errors[service])),
     [project, live, errors],
   );
 
@@ -196,6 +166,7 @@ export function ProjectServiceBoard({
           spec={specs[editing.service]!}
           row={editing.row}
           rowId={rowIdOf(editing.service, editing.row)}
+          canEdit={canEdit}
           groupNames={groupNames}
           initialDraft={editing.draft}
           initialNote={editing.note}

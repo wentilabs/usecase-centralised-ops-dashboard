@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { metrics } from "@/lib/server-metrics";
 import type { NextRequest } from "next/server";
 
-import { DEFAULT_JOB_TIMEOUT_MS, JOBS, budgetFor, isJobKey, validateJobInput } from "@/lib/jobs";
+import { DEFAULT_JOB_TIMEOUT_MS, JOBS, budgetFor, defaultChoice, isJobKey, jobPath, validateJobInput } from "@/lib/jobs";
 import { listConfigs } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 import type { ProjectConfigRow } from "@/lib/services";
@@ -94,6 +94,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
     projectCode?: string;
     startDate?: string;
     endDate?: string;
+    choice?: string;
     flags?: Record<string, boolean>;
   };
   try {
@@ -119,6 +120,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
   const flags = Object.fromEntries(
     Object.entries(body.flags ?? {}).filter(([key, value]) => allowed.has(key) && value === true),
   );
+
+  // A job with several endpoints resolves which one from the operator's choice.
+  // Validated above, so an unrecognised value never reaches this; absent means
+  // the primary option, which is what a chat-planned run carries.
+  const choice = job.choice ? (body.choice ?? defaultChoice(job)) : undefined;
+  const path = jobPath(job, choice);
 
   /**
    * One upstream call per date for a `perDay` job, one for the whole range
@@ -148,6 +155,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
         projectCode: body.projectCode as string,
         startDate: body.startDate as string,
         endDate: body.endDate as string,
+        ...(choice ? { choice } : {}),
         ...(date ? { date } : {}),
         flags,
       });
@@ -158,7 +166,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       let text: string;
       const callStarted = Date.now();
       try {
-        res = await fetch(`${base}${job.path}`, {
+        res = await fetch(`${base}${path}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(lastPayload),
@@ -188,7 +196,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       perDate.push({ date, status: res.status, result: parsed ?? text.slice(0, 2000) });
 
       console.log(
-        `[halo][job] ${job.key} project=${body.projectCode} ${date ? `date=${date}` : `range=${body.startDate}..${body.endDate}`} ` +
+        `[halo][job] ${job.key}${choice ? `/${choice}` : ""} project=${body.projectCode} ` +
+          `${date ? `date=${date}` : job.dateless ? "scope=current-state" : `range=${body.startDate}..${body.endDate}`} ` +
           `flags=${JSON.stringify(flags)} actor=${session.email ?? "local"} status=${res.status}`,
       );
 
@@ -217,7 +226,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
                 : `Ran out of time after ${perDate.length} of ${dates.length} dates. ` +
                   `Re-run from ${dates[perDate.length]} — this job is idempotent.`,
             }),
-        sent: { url: `${base}${job.path}`, payload: lastPayload },
+        sent: { url: `${base}${path}`, payload: lastPayload },
 
         result: perDate[0]?.result ?? null,
       },

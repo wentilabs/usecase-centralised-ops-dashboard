@@ -1,5 +1,13 @@
 import { SERVICE_KEYS } from "./services";
-import { JOB_KEYS } from "./jobs";
+import { JOBS, JOB_KEYS } from "./jobs";
+
+/** Jobs whose endpoint takes no date range, named so the contract cannot drift. */
+const DATELESS_JOB_KEYS = JOB_KEYS.filter((key) => JOBS[key].dateless);
+
+/** Jobs that take a `choice`, and the option values each accepts. */
+const JOB_CHOICES = JOB_KEYS.filter((key) => JOBS[key].choice).map(
+  (key) => `\`${key}\`: ${JOBS[key].choice!.options.map((option) => `\`${option.value}\``).join(" | ")}`,
+);
 
 /**
  * The OpenAPI description of HALO's API, and the single source of truth for it.
@@ -66,6 +74,13 @@ export const openapiDocument = {
       "The column set for each service is not fixed in this document. It is introspected from the live",
       "database, so new columns appear without a release. Call `getSchema` first and work from what it",
       "returns, including each field's widget, options, default and help text.",
+      "",
+      "`getSchema` also carries three things that answer \"what does this column actually do\": `routes`, the",
+      "`METHOD /path` endpoints on the service that read it; `hasPreview`, set when HALO can show the",
+      "real message that column produces; and `envDefault`, present only on the handful of columns whose",
+      "value the deployment dictates rather than the project — the delivery URLs. It carries `{ name, value }`,",
+      "the variable and the URL it holds. Treat it as the answer when the stored value is blank; it is an",
+      "offer, not a stored value, so a row that has never been filled in still reads back blank.",
       "",
       "**Agents:** the same operations are available over MCP at `/api/mcp` (Streamable HTTP, JSON only),",
       "with tools derived from this document — one tool per `operationId`, carrying safety annotations.",
@@ -324,7 +339,7 @@ export const openapiDocument = {
         tags: ["configuration"],
         summary: "Lightning detections in a published-time window",
         description:
-          "Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 500) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. Reads only.",
+          "Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 800) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. The focused map view separately prioritises near-site candidates within its display cap. Reads only.",
         parameters: [
           {
             name: "at",
@@ -346,7 +361,7 @@ export const openapiDocument = {
             required: false,
             schema: { type: "integer" },
             description:
-              "How many rows to return, default 500. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.",
+              "How many rows to return, default 800. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.",
           },
           {
             name: "types",
@@ -514,17 +529,18 @@ export const openapiDocument = {
           "Creations are recorded as a single `created` marker with `action: \"insert\"`, rather than as a diff of every column. Deletions are not recorded.",
           "",
           "`noise_limits` is audited too, via `table` — every change to a meter's permissible levels, hand-made or from the NoiseLynx refresh. Those entries are keyed on the meter's `full_identifier`, so `project` filters by meter there rather than by project code.",
+          "WBGT sensor label changes are included alongside WBGT config history and keep their sensor-row id; they are attributed to the project through `project_code`.",
         ].join("\n"),
         parameters: [
           { name: "service", in: "query", schema: { type: "string", enum: [...SERVICE_KEYS] }, description: "Restrict to one service's config table." },
           {
             name: "table",
             in: "query",
-            schema: { type: "string", enum: ["noise_limits"] },
+            schema: { type: "string", enum: ["noise_limits", "wbgt_sensors"] },
             description:
               "An audited table that is not a service's config row. Takes precedence over `service`.",
           },
-          { name: "project", in: "query", schema: { type: "string" }, description: "Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`." },
+          { name: "project", in: "query", schema: { type: "string" }, description: "Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`. With `table=wbgt_sensors`, this is the sensor's `project_code`." },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500, default: 200 } },
         ],
         responses: {
@@ -586,8 +602,43 @@ export const openapiDocument = {
         description: "Returns the exact active sensor labels used by the MBS per-sensor delivery editor.",
         parameters: [{ name: "project", in: "query", required: true, schema: { type: "string" }, description: "Project code." }],
         responses: {
-          "200": { description: "Active sensors for the project.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "200": { description: "Active sensors for the project, including their ids for targeted edits.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
           "401": errorResponses["401"],
+          "502": { description: "The WBGT sensor catalogue could not be reached, or its one-time label-editor migration has not been applied." },
+        },
+      },
+      patch: {
+        operationId: "updateWbgtSensorLabel",
+        tags: ["configuration"],
+        summary: "Rename one WBGT CloudLynx sensor",
+        description: [
+          "Changes the exact active `wbgts.wbgt_sensors.sensor_label` used by the WBGT scraper on its next run, without requiring a schema migration.",
+          "Pass the `sensorLabel` returned by GET as `baseSensorLabel`; stale edits are refused rather than overwriting another label.",
+          "If an MBS sensor-to-WhatsApp mapping uses either label, the optional `supabase/wbgt_sensor_label_editor.sql` migration is required so both keys change atomically. Without that migration, mapped renames fail closed.",
+          "That optional migration also enables trigger-owned audit attribution. Without it, a basic unmapped label edit succeeds but is not recorded in `ops.config_audit`.",
+        ].join("\n"),
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            properties: {
+              projectCode: { type: "string", description: "WBGT project code." },
+              id: { type: "integer", minimum: 1, description: "Sensor row id from GET /api/wbgt-sensors." },
+              sensorLabel: { type: "string", minLength: 1, maxLength: 200, description: "Exact CloudLynx dropdown label, including its parenthesized WC code." },
+              baseSensorLabel: { type: "string", minLength: 1, maxLength: 200, description: "The sensorLabel value read from GET /api/wbgt-sensors; used as an optimistic-concurrency check." },
+              note: { type: "string", maxLength: 500, description: "Optional reason recorded in the audit history." },
+            },
+            required: ["projectCode", "id", "sensorLabel", "baseSensorLabel"],
+          } } },
+        },
+        responses: {
+          "200": { description: "Sensor label saved; the response includes audit-annotation status." },
+          "400": errorResponses["400"],
+          "401": errorResponses["401"],
+          "403": errorResponses["403"],
+          "404": errorResponses["404"],
+          "409": { description: "The sensor changed since it was read, the new label conflicts, or a mapped rename needs the optional SQL migration." },
+          "502": { description: "The database rejected the rename." },
         },
       },
     },
@@ -693,6 +744,14 @@ export const openapiDocument = {
           "",
           "The precondition is re-checked server-side, because every one of these jobs reports success while",
           "doing nothing when it is unmet.",
+          "",
+          `Most jobs need \`startDate\` and \`endDate\`. These act on current state and take neither: ${DATELESS_JOB_KEYS.map(
+            (key) => `\`${key}\``,
+          ).join(", ")}. Sending dates to one of those is ignored.`,
+          "",
+          `Some jobs do more than one thing and take a \`choice\`. Omitted, the first option is used: ${JOB_CHOICES.join(
+            "; ",
+          )}.`,
         ].join("\n"),
         parameters: [{ name: "job", in: "path", required: true, schema: { type: "string", enum: [...JOB_KEYS] } }],
         requestBody: {
@@ -703,11 +762,14 @@ export const openapiDocument = {
                 type: "object",
                 properties: {
                   projectCode: { type: "string" },
-                  startDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive." },
-                  endDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive." },
-                  flags: { type: "object", additionalProperties: { type: "boolean" }, description: "Only flags the job declares are forwarded." },
+                  startDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
+                  endDate: { type: "string", format: "date", description: "YYYY-MM-DD, inclusive. Required except on a job listed as dateless above." },
+                  choice: { type: "string", description: "For a job that declares one — see the list above. Omitted means its first option." },
+                  flags: { type: "object", additionalProperties: { type: "boolean" }, description: "Only flags the job declares are forwarded, and only when true. A job that previews unless told otherwise names its flag; `apply` is that flag on every job that has one." },
                 },
-                required: ["projectCode", "startDate", "endDate"],
+                // Only the project code holds for every job; the route rejects a
+                // ranged job that arrives without dates, naming which is missing.
+                required: ["projectCode"],
               },
             },
           },

@@ -6,6 +6,7 @@
     { "id": "alert-threshold", "file": "alert-only-when-at-least.sql", "requires": [] },
     { "id": "advisory-format", "file": "advisory-format.sql", "requires": [] },
     { "id": "poc-mentions", "file": "poc-mentions.sql", "requires": [] },
+    { "id": "manpower-sheet-poc-mentions", "file": "manpower-sheet-poc-mentions.sql", "requires": ["poc-mentions"] },
     { "id": "four-hourly", "file": "four-hourly.sql", "requires": [] },
     { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
     { "id": "retry", "file": "retry.sql", "requires": [] }

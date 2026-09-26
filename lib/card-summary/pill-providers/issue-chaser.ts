@@ -25,6 +25,11 @@ export function issueChaserPills(config: ProjectConfigRow): Pill[] {
     ...(config.daily_safety_company_summary_enabled
       ? [{ label: "summary by company", on: true, tone: "info" as const }]
       : []),
+    // No schedule anywhere invokes this one, so it reads differently from the
+    // styles above it: enabled means "allowed to run", not "running".
+    ...(config.company_open_backlog_enabled
+      ? [{ label: "company backlog (on demand)", on: true, tone: "info" as const }]
+      : []),
     { label: "reply in origin group", on: config.send_to_originating_groups !== false },
     // Shown only when set: an unlit "0 excluded" pill on every project would
     // be noise, and this is the exception rather than a setting most have.

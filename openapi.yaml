@@ -17,6 +17,13 @@ info:
     database, so new columns appear without a release. Call `getSchema` first and work from what it
     returns, including each field's widget, options, default and help text.
 
+    `getSchema` also carries three things that answer "what does this column actually do": `routes`, the
+    `METHOD /path` endpoints on the service that read it; `hasPreview`, set when HALO can show the
+    real message that column produces; and `envDefault`, present only on the handful of columns whose
+    value the deployment dictates rather than the project — the delivery URLs. It carries `{ name, value }`,
+    the variable and the URL it holds. Treat it as the answer when the stored value is blank; it is an
+    offer, not a stored value, so a row that has never been filled in still reads back blank.
+
     **Agents:** the same operations are available over MCP at `/api/mcp` (Streamable HTTP, JSON only),
     with tools derived from this document — one tool per `operationId`, carrying safety annotations.
     That is usually the better surface; this one is the contract it is generated from.
@@ -316,7 +323,7 @@ paths:
       tags:
         - configuration
       summary: Lightning detections in a published-time window
-      description: Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 500) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. Reads only.
+      description: Every NEA lightning detection published between `at - window` and `at`, island-wide and beyond — the ingest path applies no geographic filter, so an empty result means NEA reported nothing rather than that anything was discarded. Filtered on publish time, not strike time, because that is what the service could have acted on; each row carries both so the lag is visible. Ordered by publish time descending and capped by `limit` (default 800) and by PostgREST's own 1000-row ceiling, with `total` reporting the size of the whole match — compare the two before treating a result as complete. Pass `bbox` to narrow to a viewport and see more of a busy window. The focused map view separately prioritises near-site candidates within its display cap. Reads only.
       parameters:
         - name: at
           in: query
@@ -339,7 +346,7 @@ paths:
           required: false
           schema:
             type: integer
-          description: How many rows to return, default 500. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.
+          description: How many rows to return, default 800. PostgREST caps any result at 1000, so a larger value is accepted but not honoured — compare `total` against the rows returned rather than trusting the limit.
         - name: types
           in: query
           required: false
@@ -624,6 +631,7 @@ paths:
         Creations are recorded as a single `created` marker with `action: "insert"`, rather than as a diff of every column. Deletions are not recorded.
 
         `noise_limits` is audited too, via `table` — every change to a meter's permissible levels, hand-made or from the NoiseLynx refresh. Those entries are keyed on the meter's `full_identifier`, so `project` filters by meter there rather than by project code.
+        WBGT sensor label changes are included alongside WBGT config history and keep their sensor-row id; they are attributed to the project through `project_code`.
       parameters:
         - name: service
           in: query
@@ -644,12 +652,13 @@ paths:
             type: string
             enum:
               - noise_limits
+              - wbgt_sensors
           description: An audited table that is not a service's config row. Takes precedence over `service`.
         - name: project
           in: query
           schema:
             type: string
-          description: Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`.
+          description: Restrict to one project — `project_code`, the row id for Ailytics and Subcon, or the meter's `full_identifier` when `table=noise_limits`. With `table=wbgt_sensors`, this is the sensor's `project_code`.
         - name: limit
           in: query
           schema:
@@ -749,13 +758,69 @@ paths:
           description: Project code.
       responses:
         "200":
-          description: Active sensors for the project.
+          description: Active sensors for the project, including their ids for targeted edits.
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
         "401": *a1
+        "502":
+          description: The WBGT sensor catalogue could not be reached, or its one-time label-editor migration has not been applied.
+    patch:
+      operationId: updateWbgtSensorLabel
+      tags:
+        - configuration
+      summary: Rename one WBGT CloudLynx sensor
+      description: |-
+        Changes the exact active `wbgts.wbgt_sensors.sensor_label` used by the WBGT scraper on its next run, without requiring a schema migration.
+        Pass the `sensorLabel` returned by GET as `baseSensorLabel`; stale edits are refused rather than overwriting another label.
+        If an MBS sensor-to-WhatsApp mapping uses either label, the optional `supabase/wbgt_sensor_label_editor.sql` migration is required so both keys change atomically. Without that migration, mapped renames fail closed.
+        That optional migration also enables trigger-owned audit attribution. Without it, a basic unmapped label edit succeeds but is not recorded in `ops.config_audit`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectCode:
+                  type: string
+                  description: WBGT project code.
+                id:
+                  type: integer
+                  minimum: 1
+                  description: Sensor row id from GET /api/wbgt-sensors.
+                sensorLabel:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Exact CloudLynx dropdown label, including its parenthesized WC code.
+                baseSensorLabel:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: The sensorLabel value read from GET /api/wbgt-sensors; used as an optimistic-concurrency check.
+                note:
+                  type: string
+                  maxLength: 500
+                  description: Optional reason recorded in the audit history.
+              required:
+                - projectCode
+                - id
+                - sensorLabel
+                - baseSensorLabel
+      responses:
+        "200":
+          description: Sensor label saved; the response includes audit-annotation status.
+        "400": *a3
+        "401": *a1
+        "403": *a2
+        "404": *a4
+        "409":
+          description: The sensor changed since it was read, the new label conflicts, or a mapped rename needs the optional SQL migration.
+        "502":
+          description: The database rejected the rename.
   /api/noise-limits:
     get:
       operationId: listNoiseLimits
@@ -888,6 +953,10 @@ paths:
 
         The precondition is re-checked server-side, because every one of these jobs reports success while
         doing nothing when it is unmet.
+
+        Most jobs need `startDate` and `endDate`. These act on current state and take neither: `wbgt-monthly-report`, `chaser-refresh-images`, `chaser-project-check`, `chaser-preview`, `chaser-summary-preview`, `chaser-novade-sync`, `chaser-company-sync`. Sending dates to one of those is ignored.
+
+        Some jobs do more than one thing and take a `choice`. Omitted, the first option is used: `chaser-preview`: `severity_cadence` | `same_day_open`; `chaser-summary-preview`: `plain` | `company` | `chatgroup` | `novade`.
       parameters:
         - name: job
           in: path
@@ -898,8 +967,15 @@ paths:
               - noise-bootstrap
               - noise-sync
               - wbgt-fill
+              - wbgt-monthly-report
               - wbgt-scrape
               - wbgt-water-parade
+              - chaser-refresh-images
+              - chaser-project-check
+              - chaser-preview
+              - chaser-summary-preview
+              - chaser-novade-sync
+              - chaser-company-sync
       requestBody:
         required: true
         content:
@@ -912,20 +988,21 @@ paths:
                 startDate:
                   type: string
                   format: date
-                  description: YYYY-MM-DD, inclusive.
+                  description: YYYY-MM-DD, inclusive. Required except on a job listed as dateless above.
                 endDate:
                   type: string
                   format: date
-                  description: YYYY-MM-DD, inclusive.
+                  description: YYYY-MM-DD, inclusive. Required except on a job listed as dateless above.
+                choice:
+                  type: string
+                  description: For a job that declares one — see the list above. Omitted means its first option.
                 flags:
                   type: object
                   additionalProperties:
                     type: boolean
-                  description: Only flags the job declares are forwarded.
+                  description: Only flags the job declares are forwarded, and only when true. A job that previews unless told otherwise names its flag; `apply` is that flag on every job that has one.
               required:
                 - projectCode
-                - startDate
-                - endDate
       responses:
         "200":
           description: The service's own response, passed through.

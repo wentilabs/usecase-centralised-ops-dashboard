@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewsFor } from "../lib/message-previews";
+import { MESSAGE_PREVIEWS, fallbackValue, hasPreview, previewContext, previewsFor } from "../lib/message-previews";
 import { FIELDS } from "../lib/field-spec";
-import type { ServiceKey } from "../lib/services";
+import { SERVICE_KEYS, type ServiceKey } from "../lib/services";
 
 /**
  * Guards the formatter previews.
@@ -52,6 +52,22 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
   "haze:advisory_format": ["default", "wohhup"],
+  // Not formatters, but columns that choose between message shapes all the
+  // same — which is what this inventory is really about. Booleans, so their
+  // "values" are the two states.
+  "lightning:amber_enabled": ["true", "false"],
+  // Blank is a real option here rather than an absence: it is the legacy
+  // relay, and it is what almost every project is on.
+  "lightning:sms_lightning_format": ["", "TRI-style"],
+  // Issue Chaser's styles are switches rather than formatters, and each sends
+  // a different thing — which is exactly what a newcomer needs to see.
+  "issueChaser:severity_cadence_chaser_enabled": ["true"],
+  "issueChaser:same_day_open_snapshot_enabled": ["true"],
+  "issueChaser:company_open_backlog_enabled": ["true"],
+  "issueChaser:daily_safety_summary_enabled": ["true"],
+  "issueChaser:daily_safety_company_summary_enabled": ["true"],
+  "issueChaser:daily_safety_chatgroup_summary_enabled": ["true"],
+  "issueChaser:novade_name_list_check_enabled": ["true"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */
@@ -66,6 +82,12 @@ const BLANK_RESOLVES_TO: Record<string, string> = {
   "wbgt:five_min_alert_formatter": "short",
   "wbgt:intermittent_reports_formatter": "red15",
   "haze:advisory_format": "default",
+  // `amber_enabled` is `not null default true` in Postgres, so a row that has
+  // never been touched is a project that DOES get a warning first.
+  "lightning:amber_enabled": "true",
+  // And this one is nullable: blank means the legacy relay, so the default is
+  // the blank value itself.
+  "lightning:sms_lightning_format": "",
 };
 
 const split = (key: string) => {
@@ -220,10 +242,13 @@ test("WBGT short crossing previews use boundary-safe wording", () => {
  * thing these previews exist to avoid.
  */
 const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
-  // Empty, and worth keeping that way: an entry here is a formatter whose real
-  // message nobody can produce. `wbgt:hourly_message_formatter` sat here until
-  // the service implemented it, at which point "a recorded gap is a real gap"
-  // failed until the note came out.
+  // Empty again, and worth keeping that way: an entry here is a formatter
+  // whose real message nobody can produce.
+  //
+  // `lightning:sms_lightning_format` sat here on the reasoning that it names
+  // an INBOUND format. That was half right and therefore wrong — the column
+  // also decides what is forwarded, and only one of its values forwards an
+  // all-clear at all. It has a real preview now.
 };
 
 test("every formatter field in the spec has a preview, or a recorded reason", () => {
@@ -267,4 +292,107 @@ test("hasPreview only claims columns that have one", () => {
   assert.equal(hasPreview("noise", "hourly_formatter"), true);
   assert.equal(hasPreview("wbgt", "hourly_formatter"), false);
   assert.equal(hasPreview("noise", "whatsapp_group_id"), false);
+});
+
+
+test("lightning shows what a site is actually told, on both columns that change it", () => {
+  // Red and the all-clear go to every project whatever this column says, so
+  // they are context rather than options — the choice is only whether a
+  // warning arrives first.
+  const context = previewContext("lightning", "amber_enabled");
+  assert.ok(context?.shared?.length === 2);
+  assert.match(context!.shared![0].text, /STOP WORK NOW/);
+  assert.match(context!.shared![1].text, /SAFE TO RESUME WORK/);
+  // The one-RED rule belongs in the caption: it is the thing an operator is
+  // surprised by, and the body itself does not state it.
+  assert.match(context!.shared![0].caption ?? "", /once per stop/);
+
+  const amber = previewsFor("lightning", "amber_enabled");
+  assert.deepEqual(amber.map((preview) => preview.value), ["true", "false"], "the default comes first");
+  assert.match(amber[0].bubbles[0].text, /GET READY TO SEEK LIGHTNING PROTECTED SHELTER/);
+  // Off has no message, so it has no bubble. A body invented to fill the space
+  // is the one thing these previews exist to prevent.
+  assert.equal(amber[1].kind, "cadence");
+  assert.deepEqual(amber[1].bubbles, []);
+  assert.ok(amber[1].cadence?.some((row) => /nothing/.test(row.fires)));
+});
+
+test("the SMS relay preview shows the all-clear only where it exists", () => {
+  const sms = previewsFor("lightning", "sms_lightning_format");
+  assert.deepEqual(sms.map((preview) => preview.value), ["", "TRI-style"]);
+  // Blank is the legacy relay: one bubble, no source line, no instructions.
+  assert.equal(sms[0].bubbles.length, 1);
+  assert.doesNotMatch(sms[0].bubbles[0].text, /Source: Lightning SMS/);
+  assert.doesNotMatch(sms[0].bubbles[0].text, /SAFE TO RESUME/);
+  assert.equal(fallbackValue("lightning", "sms_lightning_format"), "");
+
+  // TRI-style is the only value that forwards an all-clear, which is the whole
+  // reason to set it — a project without it never hears the alert lift.
+  assert.equal(sms[1].bubbles.length, 2);
+  assert.match(sms[1].bubbles[1].text, /SAFE TO RESUME WORK/);
+  assert.ok(sms[1].bubbles.every((bubble) => /Source: Lightning SMS/.test(bubble.text)));
+  assert.ok(sms[1].bubbles.every((bubble) => bubble.text.startsWith("🚨⚡️ ")), "the received SMS is preserved above the instructions");
+});
+
+test("every lightning preview names the file it came from", () => {
+  // Provenance is the whole contract here: a wrong example is worse than none
+  // because it would be trusted.
+  for (const preview of [
+    ...previewsFor("lightning", "amber_enabled"),
+    ...previewsFor("lightning", "sms_lightning_format"),
+  ]) {
+    assert.match(preview.source, /^lightning /, `${preview.column}=${preview.value} has no source`);
+  }
+});
+
+
+/**
+ * Which services show a real message, and why the other two do not.
+ *
+ * Recorded as a test rather than a comment so the gap is reviewable: when one
+ * of these repos publishes its shapes, this fails until the previews are
+ * written, which is the same bargain KNOWN_WITHOUT_PREVIEW makes.
+ */
+const NO_PREVIEWS: Record<string, string> = {
+  // Its README and AGENTS describe parsing and classification in detail and
+  // never print an outbound body. There is no MESSAGE_SHAPES.md to lift from.
+  ailytics: "no published message shapes — the docs describe parsing, not output",
+  // SPECS.md names the headline (`📊 Manpower Summary`) and the checklist's
+  // line rules, but publishes no complete body for either morning report.
+  // Composing one from the rules would be a guess at the layout.
+  subcon: "SPECS.md documents the rules and the trailers, but no complete message body",
+};
+
+test("every service either shows a real message or says why it cannot", () => {
+  const withPreviews = new Set(MESSAGE_PREVIEWS.map((preview) => preview.service));
+  for (const service of SERVICE_KEYS) {
+    const has = withPreviews.has(service);
+    const excused = Boolean(NO_PREVIEWS[service]);
+    assert.notEqual(has, excused, `${service} is both previewed and excused, or neither`);
+  }
+  // Five of seven, and the two gaps are the two repos with no shapes document.
+  assert.deepEqual([...withPreviews].sort(), ["haze", "issueChaser", "lightning", "noise", "wbgt"]);
+  assert.deepEqual(Object.keys(NO_PREVIEWS).sort(), ["ailytics", "subcon"]);
+});
+
+test("help text never carries markdown the renderer cannot show", async () => {
+  // `HelpText` splits backticked runs and nothing else, so `**bold**` reaches
+  // the screen as four literal asterisks. Caught in a screenshot rather than
+  // in review, which is exactly the kind of thing a test should catch first.
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  for (const service of SERVICE_KEYS) {
+    const file = service === "issueChaser" ? "issue-chaser" : service;
+    const source = await readFile(resolve(`lib/field-spec/providers/${file}.ts`), "utf8");
+    // Every string literal in the file, not only the one directly after
+    // `help:` — the first version anchored there and missed a help built by
+    // concatenating two strings across lines, which is exactly where the
+    // markdown was. Comments are stripped first so prose about `**` does not
+    // fail the check.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    for (const [, help] of code.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+      assert.doesNotMatch(help, /\*\*/, `${service} help uses ** which renders literally: ${help.slice(0, 60)}…`);
+      assert.doesNotMatch(help, /\[[^\]]+\]\([^)]+\)/, `${service} help uses a markdown link, which renders literally`);
+    }
+  }
 });

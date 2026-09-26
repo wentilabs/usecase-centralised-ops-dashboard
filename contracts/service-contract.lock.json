@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "cd7cdb77ad300b06923dfb90b8cfc4f501701915",
+      "commit": "863722e5877c6e0c37de5e7df69c1a60228a76a9",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "main",
-      "commit": "03e17152646ffbf0c47e4b5cf986db952ef309b5",
+      "commit": "91fbe8b5f20378a08bce30afeb21cd6d526a306d",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -31,7 +31,7 @@
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "main",
-      "commit": "98ef95b40f478c380a77b1bc3ba0fc25f2eaddee",
+      "commit": "40db52239c2b06b5f2b431f17235bc691047c0fe",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -59,7 +59,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "main",
-      "commit": "072f11ef5a35147b36c8dd6ef7414685c5d2c019",
+      "commit": "7a32a666b20039efa14b18c9a23b25c9c8e266ea",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

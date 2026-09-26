@@ -33,6 +33,16 @@ export function hazePills(config: ProjectConfigRow): Pill[] {
     { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
     { label: "mute PH", on: on(config.remove_ph_notifications) },
     { label: "POC mentions", on: on(config.enable_poc_mentions) },
+    {
+      // WHO gets tagged, which is a different question from whether anyone is.
+      // A fixed list and "whoever is on site today" behave very differently on
+      // a Monday, and only this value tells them apart. Same setting, same
+      // wording and same reasoning as lightning's.
+      label: "POCs from manpower sheet",
+      on:
+        on(config.enable_poc_mentions) &&
+        String(config.poc_phone_numbers ?? "").trim() === "manpower-sheet",
+    },
     { label: `${String(config.advisory_format ?? "default")} format`, on: config.advisory_format === "wohhup" },
   ];
 }

@@ -1,5 +1,6 @@
 import { ProjectServiceBoard } from "./ProjectServiceBoard";
 import { CanonicalProjectEditor } from "./CanonicalProjectEditor";
+import type { EnvDefault } from "@/lib/env-defaults";
 import { canonicalSheetHref, type CanonicalProject, type CanonicalProjectDraft } from "@/lib/canonical-projects";
 import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "@/lib/services";
 
@@ -15,11 +16,14 @@ export function CanonicalProjectDetail({
   errors,
   canEdit,
   visoUrl = null,
+  deliveryDefaults = {},
 }: {
   project: CanonicalProject;
   rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
   errors: Partial<Record<ServiceKey, string>>;
   canEdit: boolean;
+  /** Resolved server-side; the editor offers these for URL columns still null. */
+  deliveryDefaults?: Record<string, EnvDefault>;
   /** Viso base URL, so delivery chips on the cards link to the mirrored thread. */
   visoUrl?: string | null;
 }) {
@@ -58,7 +62,7 @@ export function CanonicalProjectDetail({
         visoUrl={visoUrl}
       />
 
-      <CanonicalProjectEditor initial={asDraft(project)} project={project} canEdit={canEdit} compact hideHeader />
+      <CanonicalProjectEditor initial={asDraft(project)} project={project} canEdit={canEdit} deliveryDefaults={deliveryDefaults} compact hideHeader />
     </main>
   );
 }

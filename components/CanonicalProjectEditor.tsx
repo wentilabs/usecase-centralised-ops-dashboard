@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CoordinatePicker } from "./CoordinatePicker";
+import { EnvDefaultHint } from "./EnvDefaultHint";
+import type { EnvDefault } from "@/lib/env-defaults";
 import {
   canonicalProjectMapHref,
   canonicalSheetHref,
@@ -122,6 +124,7 @@ export function CanonicalProjectEditor({
   initial,
   project,
   canEdit,
+  deliveryDefaults = {},
   conflicts = [],
   compact = false,
   hideHeader = false,
@@ -129,6 +132,16 @@ export function CanonicalProjectEditor({
   initial: CanonicalProjectDraft;
   project?: CanonicalProject;
   canEdit: boolean;
+  /**
+   * The delivery URLs this deployment dictates, per column.
+   *
+   * A NEW project already carries them as real values — `blankCanonicalProjectDraft`
+   * writes them into the draft, so the hint never fires there. This is for the
+   * existing project whose columns are null: the registry has one, and before
+   * this its three URL boxes were simply empty with nothing to say what belongs
+   * in them.
+   */
+  deliveryDefaults?: Record<string, EnvDefault>;
   conflicts?: CandidateConflict[];
   /** Detail pages provide their own hierarchy above this compact field grid. */
   compact?: boolean;
@@ -264,9 +277,33 @@ export function CanonicalProjectEditor({
             <label className="grid gap-1 text-sm"><FieldTitle label="Manpower workbook ID" href={canonicalSheetHref(draft.manpower_workbook_id)} /><input className={input} value={text(draft.manpower_workbook_id)} onChange={(event) => setText("manpower_workbook_id", event.target.value)} /></label>
             <label className="grid gap-1 text-sm"><FieldTitle label="Noise analysis sheet ID" href={canonicalSheetHref(draft.noise_workbook_id)} /><input className={input} value={text(draft.noise_workbook_id)} onChange={(event) => setText("noise_workbook_id", event.target.value)} /></label>
             <label className="grid gap-1 text-sm"><FieldTitle label="WBGT monthly sheet ID" href={canonicalSheetHref(draft.wbgt_workbook_id)} /><input className={input} value={text(draft.wbgt_workbook_id)} onChange={(event) => setText("wbgt_workbook_id", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm md:col-span-2">Send-message URL<input className={input} value={text(draft.send_message_url)} onChange={(event) => setText("send_message_url", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">Reply-message URL<input className={input} value={text(draft.reply_message_url)} onChange={(event) => setText("reply_message_url", event.target.value)} /></label>
-            <label className="grid gap-1 text-sm">Send-document URL<input className={input} value={text(draft.send_document_url)} onChange={(event) => setText("send_document_url", event.target.value)} /></label>
+            {/* The three deployment-dictated URLs. Same offer as the service
+                editor makes, for the same reason: they are one value each
+                across the whole estate, and nobody can retype them from
+                memory. Shown greyed, adopted only on purpose. */}
+            {([
+              ["send_message_url", "Send-message URL", "md:col-span-2"],
+              ["reply_message_url", "Reply-message URL", ""],
+              ["send_document_url", "Send-document URL", ""],
+            ] as const).map(([column, label, span]) => (
+              <div key={column} className={`grid gap-1 text-sm ${span}`}>
+                <label className="grid gap-1">
+                  {label}
+                  <input
+                    className={input}
+                    placeholder={deliveryDefaults[column]?.value}
+                    value={text(draft[column])}
+                    onChange={(event) => setText(column, event.target.value)}
+                  />
+                </label>
+                <EnvDefaultHint
+                  envDefault={deliveryDefaults[column]}
+                  value={draft[column]}
+                  onUse={(next) => setText(column, next)}
+                  disabled={!canEdit}
+                />
+              </div>
+            ))}
             <label className="grid gap-1 text-sm">WhatsApp instance name<input className={input} value={text(draft.whatsapp_instance_name)} onChange={(event) => setText("whatsapp_instance_name", event.target.value)} /></label>
             <label className="grid gap-1 text-sm">WhatsApp client ID<input className={input} value={text(draft.whatsapp_client_id)} onChange={(event) => setText("whatsapp_client_id", event.target.value)} /></label>
           </div>

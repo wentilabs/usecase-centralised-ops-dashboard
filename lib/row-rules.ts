@@ -153,9 +153,23 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
       // lightning_red_poc_mentions_check
       constraint: "lightning_red_poc_mentions_check",
       columns: ["enable_red_band_poc_mentions", "poc_phone_numbers", "poc_alert_wa_groups"],
+      // Unchanged by `1956176`, and it did not need to change: the
+      // manpower-sheet source is stored IN `poc_phone_numbers` as the literal
+      // word, which is non-blank and so satisfies the same constraint.
       check: requires("enable_red_band_poc_mentions", ["poc_phone_numbers", "poc_alert_wa_groups"], {
-        whenOff: "turn Red POC mentions off",
+        whenOff: "turn POC mentions off",
       }),
+    },
+    {
+      // lightning_sms_lightning_format_check, from sms-lightning-format.sql.
+      constraint: "lightning_sms_lightning_format_check",
+      columns: ["sms_lightning_format"],
+      check: (row, label) => {
+        const value = String(row.sms_lightning_format ?? "").trim();
+        // Null and blank are both the legacy alert-only behaviour.
+        if (!value || value === "TRI-style") return null;
+        return `${label("sms_lightning_format")} must be TRI-style, or left unset for the legacy alert-only forwarding — “${value}” is neither.`;
+      },
     },
     {
       constraint: "lightning_working_hours_check",

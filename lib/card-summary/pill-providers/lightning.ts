@@ -14,6 +14,33 @@ export function lightningPills(config: ProjectConfigRow): Pill[] {
     { label: `v${config.config_version ?? 1}`, on: true },
     { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
     { label: "mute PH", on: on(config.remove_ph_notifications) },
-    { label: "🔴 POC mentions", on: on(config.enable_red_band_poc_mentions) },
+    {
+      // Amber, and then the signed SMS alerts. The column is still named for
+      // red only, and a card that kept saying so would understate how often
+      // POCs are tagged.
+      label: "⚠️ warning POC mentions",
+      on: on(config.enable_red_band_poc_mentions),
+    },
+    // Shown only when someone has turned it OFF. It defaults to true, so an
+    // unlit pill on every project would be noise while the OFF state is the
+    // one worth seeing — the reverse of every other flag here.
+    ...(config.enable_green_band_poc_mentions === false
+      ? [{ label: "no all-clear POC mentions", on: true, tone: "warn" as const }]
+      : []),
+    {
+      // WHO gets tagged, which is a different question from whether anyone is.
+      // A fixed list and "whoever is on site today" behave very differently on
+      // a Monday, and only this value tells them apart.
+      label: "POCs from manpower sheet",
+      on:
+        on(config.enable_red_band_poc_mentions) &&
+        String(config.poc_phone_numbers ?? "").trim() === "manpower-sheet",
+    },
+    {
+      // Only the declared format understands the gateway's All-Clear message,
+      // so a project without it is one that never hears the alert lift.
+      label: "TRI SMS format",
+      on: String(config.sms_lightning_format ?? "").trim() === "TRI-style",
+    },
   ];
 }

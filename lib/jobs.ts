@@ -20,14 +20,45 @@ import type { ProjectConfigRow, ServiceKey } from "./services";
  *    nothing when the precondition is unmet.
  */
 
-export type JobKey = "noise-bootstrap" | "noise-sync" | "wbgt-fill" | "wbgt-scrape" | "wbgt-water-parade";
+export type JobKey =
+  | "noise-bootstrap"
+  | "noise-sync"
+  | "wbgt-fill"
+  | "wbgt-scrape"
+  | "wbgt-water-parade"
+  | "wbgt-monthly-report"
+  | "chaser-refresh-images"
+  | "chaser-project-check"
+  | "chaser-preview"
+  | "chaser-summary-preview"
+  | "chaser-novade-sync"
+  | "chaser-company-sync";
 
 export type JobFlag = { key: string; label: string; help: string };
+
+/**
+ * One choice among several, for a job that does more than one thing.
+ *
+ * A flag is a boolean the endpoint accepts; a choice picks WHICH endpoint, or
+ * which style the one endpoint runs. Both the Issue Chaser previews need it:
+ * one report exists in three splits (plain, by company, by chat group) that
+ * live at three paths, and the chase preview takes the style in its body.
+ *
+ * Exactly one option is always selected — the first is the default — so there
+ * is no "nothing chosen" state to handle.
+ */
+export type JobChoice = {
+  label: string;
+  help: string;
+  options: { value: string; label: string; help?: string }[];
+};
 
 export type JobInput = {
   projectCode: string;
   startDate: string;
   endDate: string;
+  /** The selected `choice` option's value, when the job declares one. */
+  choice?: string;
   flags?: Record<string, boolean>;
 };
 
@@ -82,9 +113,39 @@ export type JobDefinition = {
   title: string;
   description: string;
   /** Env var holding the service's base URL, e.g. https://…/prod */
-  baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL";
-  path: string;
+  baseUrlEnv: "NOISE_API_URL" | "WBGT_API_URL" | "ISSUE_CHASER_API_URL";
+  /**
+   * The endpoint, or one endpoint per `choice` option keyed by its value.
+   *
+   * A map rather than a second list of paths beside a resolver: `jobPaths`
+   * derives the full set from this one field, so the contract check cannot be
+   * looking at a different list from the one the route posts to.
+   */
+  path: string | Record<string, string>;
+  /** A single choice the operator makes, when the job does more than one thing. */
+  choice?: JobChoice;
+  /**
+   * How to show what came back.
+   *
+   * `counts` is right for a job that writes: the question is how much it wrote.
+   * A PREVIEW has no counts worth reading — its whole value is the message
+   * text — and a diagnostic's value is its fields, so summarising either into
+   * "nothing to write" would throw away the only output that mattered.
+   */
+  resultView?: "counts" | "messages" | "json";
   precondition: JobPrecondition;
+  /**
+   * This endpoint takes no date range: it acts on current state.
+   *
+   * Absent means a range is required, which is the safe default — forgetting
+   * the flag on a dateless job makes the dialog demand two dates the endpoint
+   * would ignore, which is visible immediately. A default of "no dates" would
+   * fail the other way, silently dropping the range from a job that needs one
+   * and running it over whatever the endpoint assumes instead.
+   *
+   * A dateless job is never chunked, because there is nothing to divide.
+   */
+  dateless?: true;
   /** Inclusive day limit the endpoint itself enforces, if any. */
   maxSpanDays?: number;
   /**
@@ -122,6 +183,32 @@ export type JobDefinition = {
   timeoutMs?: number;
   /** Optional booleans the endpoint accepts. */
   flags?: JobFlag[];
+  /**
+   * This job PREVIEWS unless the named flag is ticked.
+   *
+   * The flag is phrased as the destructive act (`apply`) rather than as
+   * `dryRun`, because the route forwards only flags that are `true`: an
+   * unticked `dryRun` would arrive as absent, indistinguishable from never
+   * having been offered, and the job would write. Positive phrasing makes the
+   * absent case the safe one by construction.
+   *
+   * Named here rather than inferred from the flag list so the dialog can say
+   * which mode it is in, in words. An unticked checkbox is not a statement,
+   * and "will this actually send?" is the question an operator has in their
+   * hand before pressing the button.
+   */
+  appliesWhen?: string;
+  /**
+   * List only the projects the precondition passes.
+   *
+   * The default is the opposite, and deliberately so: a project that cannot
+   * run is normally still listed with the reason, because "why is that one
+   * missing" is otherwise unanswerable from the screen. The Issue Chaser
+   * maintenance jobs are the exception — their picker is meant to BE the list
+   * of projects set up on the service, and a row that is switched off is not
+   * one of them however clearly it is annotated.
+   */
+  hideUnready?: true;
   /** Extra warning shown in the dialog for jobs that do more than write a sheet. */
   caution?: string;
   buildPayload: (input: JobInput) => Record<string, unknown>;
@@ -181,6 +268,63 @@ function waterParadePrecondition(): JobPrecondition {
       return null;
     },
     unmet: (projectCode) => `${projectCode} is not ready for a Water Parade rebuild.`,
+  };
+}
+
+/** The default option — the one selected when nothing has been chosen yet. */
+export function defaultChoice(job: { choice?: JobChoice }): string | undefined {
+  return job.choice?.options[0]?.value;
+}
+
+/**
+ * Where this job posts, for the option given.
+ *
+ * An absent or unrecognised choice falls back to the first declared option
+ * rather than throwing: a chat-planned run carries no choice, and the primary
+ * option is the right default for both jobs that have one. The response echoes
+ * the URL it used, so the fallback is visible rather than silent.
+ */
+export function jobPath(job: { path: string | Record<string, string>; choice?: JobChoice }, choice?: string): string {
+  if (typeof job.path === "string") return job.path;
+  return job.path[choice ?? ""] ?? job.path[defaultChoice(job) ?? ""] ?? Object.values(job.path)[0];
+}
+
+/** Every endpoint this job can reach — what the contract check verifies. */
+export function jobPaths(job: { path: string | Record<string, string> }): string[] {
+  return typeof job.path === "string" ? [job.path] : [...new Set(Object.values(job.path))];
+}
+
+/**
+ * What "set up on Issue Chaser" means, for the maintenance jobs.
+ *
+ * Two conditions, and the second is not the obvious one. A Safety workbook is
+ * needed because every one of these routes reads it — `listProjectConfigs`
+ * filters on `safety_sheet_id` and silently drops the rest.
+ *
+ * `enabled` is checked HERE rather than upstream, because upstream does not
+ * check it at all: the service's `listProjectConfigs` has no `enabled` filter,
+ * so a switched-off project would be read, matched and written to exactly like
+ * a live one. That makes hiding it a real guard rather than a cosmetic one.
+ */
+function chaserPrecondition(): JobPrecondition {
+  const sheetId = (row: ProjectConfigRow) => readSheetId(row.safety_sheet_id);
+  return {
+    label: "Issue Chaser setup",
+    read: (row) => {
+      if (row.enabled === false) return null;
+      const id = sheetId(row);
+      return id ? `Safety workbook ${id.slice(0, 12)}…` : null;
+    },
+    detail: (row, projectCode) => {
+      if (row.enabled === false) {
+        return `${projectCode} is switched off in Issue Chaser. The service reads it anyway — its project list is not filtered on enabled — so it is kept out of this picker rather than left runnable.`;
+      }
+      if (!sheetId(row)) {
+        return `${projectCode} has no Safety workbook ID, and every one of these routes reads that workbook. The service drops the project before it starts.`;
+      }
+      return null;
+    },
+    unmet: (projectCode) => `${projectCode} is not set up on Issue Chaser.`,
   };
 }
 
@@ -284,6 +428,62 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       to: endDate,
     }),
   },
+  "wbgt-monthly-report": {
+    key: "wbgt-monthly-report",
+    service: "wbgt",
+    label: "✉ Monthly report",
+    title: "Send the monthly WBGT workbook",
+    description:
+      "Exports last month's tab of the monthly sheet as xlsx and sends it to the monthly report groups as a WhatsApp document. The production cron runs this with an empty body; this is the same route driven by hand.",
+    caution:
+      "The month is not a choice: the route always takes the previous Singapore calendar month. Each recipient is recorded per project and month, so a second run does not send the workbook twice to a group that already has it.",
+    baseUrlEnv: "WBGT_API_URL",
+    path: "/api/generate-and-send-monthly-wbgt-report",
+    // No range to pick: the route derives the month itself.
+    dateless: true,
+    // An export, an upload and a document send per recipient, four projects at
+    // a time — the same headroom the other sheet-touching jobs get.
+    timeoutMs: 55_000,
+    precondition: {
+      label: "Monthly report",
+      // The route filters on this flag, so a project without it is not merely
+      // unlikely to send — it is not in the run at all.
+      read: (row) => (row.enable_monthly_wbgt_report === true ? "enabled" : null),
+      unmet: (projectCode) =>
+        `${projectCode} has its monthly report switched off, so this route skips it entirely. Turn on "Monthly report" in the editor first — it also needs a monthly sheet ID and at least one report group.`,
+    },
+    // Deliberately NOT hideUnready. That is the Issue Chaser exception, and it
+    // exists because the Chaser service does not filter on `enabled` itself, so
+    // an unready project there is a hazard rather than a note. This route does
+    // filter on its own flag, so an opted-out project is simply skipped — and
+    // listing it with the reason above is what tells someone the switch is off,
+    // where hiding it just makes the picker mysteriously short.
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Actually send the workbook. Leave off to export it and report who would receive it without posting anything.",
+      },
+    ],
+    /**
+     * Why the two keys are not symmetrical.
+     *
+     * The route resolves `body.dryRun === true || (overrideSupplied ?
+     * body.dryRunOverride : isDryRun())`. So sending `dryRun: false` does NOT
+     * mean "send it" — with no override it falls through to the service's own
+     * `DRY_RUN_NOTIFICATION`, and a deployment with that set would silently
+     * preview a run the operator asked to be real.
+     *
+     * `dryRunOverride: false` is the only value that forces a live send, and
+     * `dryRun: true` is the only one that forces a preview. Naming each
+     * explicitly leaves the service's environment out of a decision made here.
+     */
+    buildPayload: ({ projectCode, flags }) =>
+      flags?.apply === true
+        ? { projectCode, dryRunOverride: false }
+        : { projectCode, dryRun: true },
+  },
   "wbgt-scrape": {
     key: "wbgt-scrape",
     service: "wbgt",
@@ -349,6 +549,223 @@ export const JOBS: Record<JobKey, JobDefinition> = {
       fromDate: startDate,
       toDate: endDate,
       ...(flags?.dryRun ? { dryRun: true } : {}),
+    }),
+  },
+  "chaser-refresh-images": {
+    key: "chaser-refresh-images",
+    service: "issueChaser",
+    label: "⟳ Refresh photo links",
+    title: "Refresh the Safety workbook's photo links",
+    description:
+      "Re-signs the Supabase photo link behind every open row's Image formula, so photos that have gone blank display again. Idempotent, and it sends nothing.",
+    caution:
+      "Monthly archive tabs only (Safety-Sep 2026 and the like) — the live Safety tab is deliberately left alone. It also touches open rows only: a closed row whose photo has expired stays expired.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/refresh-safety-image-links",
+    // No range: the job acts on whatever the workbook holds right now.
+    dateless: true,
+    // It reads every archive tab of the workbook in one batchGet, signs each
+    // link ten at a time and writes the formulas back in one batch. A year of
+    // archives is a lot of rows, and there is no range to chunk it by, so it
+    // gets the same headroom as the noise bootstrap.
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Write the refreshed formulas into the workbook. Leave off to list the cells that would change without signing a URL or touching the sheet.",
+      },
+    ],
+    // snake_case `project_code`: the handler reads `project_code` first and
+    // `projectCode` as an alias. Always scoped to one project, though the
+    // endpoint would take every mapped workbook if the key were omitted —
+    // every other job here runs one project at a time, and an estate-wide
+    // sheet write is not something to reach by leaving a field blank.
+    buildPayload: ({ projectCode, flags }) => ({
+      project_code: projectCode,
+      dryRun: flags?.apply !== true,
+    }),
+  },
+  "chaser-project-check": {
+    key: "chaser-project-check",
+    service: "issueChaser",
+    label: "◇ Diagnose project",
+    title: "Check a project against its Safety workbook",
+    description:
+      "Reads the workbook and reports what the service can actually see: tabs found, open rows, how many are addressable, and which gates would stop a run right now. Reads only — nothing is sent or written.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/issue-chaser-project-check",
+    dateless: true,
+    // The fields ARE the answer here. Counted into one line, a diagnostic
+    // saying "312 rows, 40 open, 6 with no serial number" becomes "nothing to
+    // write", which is both useless and false.
+    resultView: "json",
+    // It reads every discovered tab of the workbook before answering.
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    buildPayload: ({ projectCode }) => ({ project_code: projectCode }),
+  },
+  "chaser-preview": {
+    key: "chaser-preview",
+    service: "issueChaser",
+    label: "◎ Preview a chase",
+    title: "Preview what a chaser style would send",
+    description:
+      "Builds the exact messages a style would post right now, per destination group, and returns them. The endpoint cannot deliver at all — it never calls the listener.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/issue-chaser-preview",
+    dateless: true,
+    resultView: "messages",
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    choice: {
+      label: "Style",
+      help: "Which chaser to build. This is the one route that reads `style` from the body — the two scheduled routes each hard-code their own.",
+      options: [
+        {
+          value: "severity_cadence",
+          label: "Severity cadence (P1/P2/P3)",
+          help: "The forever-open chaser, one reminder per issue that is due now.",
+        },
+        {
+          value: "same_day_open",
+          label: "Same-day open snapshot",
+          help: "One group summary of issues opened today and still open.",
+        },
+      ],
+    },
+    // `style` goes in the body; `dryRun` is redundant on a route that cannot
+    // deliver, and sent anyway so the request says what it is for.
+    buildPayload: ({ projectCode, choice }) => ({
+      project_code: projectCode,
+      style: choice,
+      dryRun: true,
+    }),
+  },
+  "chaser-summary-preview": {
+    key: "chaser-summary-preview",
+    service: "issueChaser",
+    label: "▤ Preview a summary",
+    title: "Preview a Safety summary",
+    description:
+      "Builds one of the scheduled reports as it would read right now and returns the message instead of sending it. A project with that report switched off comes back as feature_disabled, which is the honest answer rather than an empty preview.",
+    caution:
+      "Preview only. HALO deliberately offers no live send for these — the crons own that, and a second manual run would post the same report to a site group twice.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    // One report in three splits, plus the weekly Novade audit. Four paths, one
+    // button: they answer the same question and differ only in the grouping.
+    path: {
+      plain: "/api/past-days-safety-summary",
+      company: "/api/past-days-company-safety-summary",
+      chatgroup: "/api/past-days-chatgroup-safety-summary",
+      novade: "/api/remind-write-novade-names",
+    },
+    dateless: true,
+    resultView: "messages",
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    choice: {
+      label: "Report",
+      help: "Which report to build. The first three are the same statistics split differently; the last is the weekly name-list audit.",
+      options: [
+        { value: "plain", label: "Past-days safety summary", help: "The whole site, over `summary_days` days." },
+        { value: "company", label: "…split by company", help: "Each day's open issues grouped by the workbook's Company column." },
+        { value: "chatgroup", label: "…split by chat group", help: "Grouped by the ChatGroup column; rows without one are left out." },
+        { value: "novade", label: "Novade name reminder", help: "Counts rows with a phone number and WhatsApp name but no Novade name." },
+      ],
+    },
+    /**
+     * `scheduled: false` is the load-bearing key.
+     *
+     * Omitted, it defaults to TRUE on these routes, and a scheduled run only
+     * fires when the project's local hour matches its schedule — so a preview
+     * asked for at 14:00 against an 08:00 report would come back skipped and
+     * look like a broken configuration. False means "build it now regardless".
+     *
+     * The Novade reminder has no scheduled mode and ignores the key.
+     */
+    buildPayload: ({ projectCode }) => ({
+      project_code: projectCode,
+      scheduled: false,
+      dryRun: true,
+    }),
+  },
+  "chaser-novade-sync": {
+    key: "chaser-novade-sync",
+    service: "issueChaser",
+    label: "⇄ Sync Novade names",
+    title: "Replace temporary names in the PIC column",
+    description:
+      "Looks up each PIC's real Novade name in the workbook's Novade Name List tab and rewrites the PIC cell across every discovered Safety tab. Previews by default; the result lists every cell it would change, old value and new.",
+    caution:
+      "Ticking apply writes to the Safety workbook. A PIC with no Novade name is left alone, and an ambiguous name — one phone matching two Novade names — is skipped rather than guessed.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/sync-novade-names",
+    dateless: true,
+    // `updates` is the output worth reading: which cell, from what, to what.
+    resultView: "json",
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Write the names into the workbook. Leave off to preview the changes first.",
+      },
+    ],
+    /**
+     * `dryRun` is sent EXPLICITLY on every call.
+     *
+     * The service's own OpenAPI says it "defaults to true; only `false`
+     * writes". Its code says otherwise — `dryRunRequested` is
+     * `body.dryRun === true`, so an omitted key WRITES. Sending the value
+     * every time means HALO's flag decides rather than a default that its
+     * documentation and its implementation disagree about.
+     */
+    buildPayload: ({ projectCode, flags }) => ({
+      project_code: projectCode,
+      dryRun: flags?.apply !== true,
+    }),
+  },
+  "chaser-company-sync": {
+    key: "chaser-company-sync",
+    service: "issueChaser",
+    label: "⇄ Sync company names",
+    title: "Fill the Company column from each row's PIC",
+    description:
+      "Resolves every Safety row's PIC through the workbook's Novade Name List and writes that person's company into the Company column. A row whose PIC resolves to several people gets all their companies, comma-separated. Previews by default.",
+    caution:
+      "Ticking apply writes to the Safety workbook, and a tab that has no Company column gets one INSERTED at column I — a structural change, not just cell values. A PIC that cannot be resolved, or that is ambiguous, is left alone rather than guessed at. Unlike every other Chaser feature this one has no per-project flag: it runs wherever a Safety workbook is mapped.",
+    baseUrlEnv: "ISSUE_CHASER_API_URL",
+    path: "/api/sync-company-names",
+    dateless: true,
+    // `columns_to_insert` and the per-tab counts are the answer, and the
+    // column insertion is the part worth reading before ticking apply.
+    resultView: "json",
+    timeoutMs: 55_000,
+    precondition: chaserPrecondition(),
+    hideUnready: true,
+    appliesWhen: "apply",
+    flags: [
+      {
+        key: "apply",
+        label: "apply",
+        help: "Write the companies into the workbook, inserting a Company column where a tab has none. Leave off to preview both.",
+      },
+    ],
+    // Explicit for the same reason as the Novade sync beside it: an omitted
+    // `dryRun` writes.
+    buildPayload: ({ projectCode, flags }) => ({
+      project_code: projectCode,
+      dryRun: flags?.apply !== true,
     }),
   },
 };
@@ -489,7 +906,7 @@ export type JobTarget = {
  * hiding them, which is the more diagnosable choice.
  */
 export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTarget[] {
-  return rows
+  const targets = rows
     .map((row) => {
       const projectCode = String(row.project_code ?? "");
       const ready = job.precondition.read(row);
@@ -501,6 +918,10 @@ export function jobTargets(job: JobDefinition, rows: ProjectConfigRow[]): JobTar
     })
     .filter((target) => target.projectCode)
     .sort((a, b) => a.projectCode.localeCompare(b.projectCode));
+
+  // Filtered here rather than in the dialog so the chat plan and the server
+  // re-check see the same list the picker does.
+  return job.hideUnready ? targets.filter((target) => target.ready) : targets;
 }
 
 function isIsoDate(value: string): boolean {
@@ -523,10 +944,27 @@ export function validateJobInput(
 ): string[] {
   const problems: string[] = [];
   if (!input.projectCode) problems.push("Choose a project.");
-  if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
-  if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
 
-  if (input.startDate && input.endDate && isIsoDate(input.startDate) && isIsoDate(input.endDate)) {
+  // A choice the job does not declare is dropped by the route; one it does
+  // declare has to be a real option, or the path lookup would quietly fall
+  // back to the first and run something the caller did not ask for.
+  if (job?.choice && input.choice !== undefined) {
+    if (!job.choice.options.some((option) => option.value === input.choice)) {
+      problems.push(
+        `${input.choice} is not one of ${job.choice.label.toLowerCase()}: ` +
+          `${job.choice.options.map((option) => option.value).join(", ")}.`,
+      );
+    }
+  }
+
+  // A dateless job has no range to check, and asking for one would block a job
+  // whose endpoint does not accept it. The precondition below still applies.
+  if (!job?.dateless) {
+    if (!input.startDate || !isIsoDate(input.startDate)) problems.push("Start date must be YYYY-MM-DD.");
+    if (!input.endDate || !isIsoDate(input.endDate)) problems.push("End date must be YYYY-MM-DD.");
+  }
+
+  if (!job?.dateless && input.startDate && input.endDate && isIsoDate(input.startDate) && isIsoDate(input.endDate)) {
     if (input.startDate > input.endDate) {
       problems.push("Start date is after the end date.");
     } else if (job?.maxSpanDays) {

@@ -29,6 +29,11 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
     // table. Each id now gets its own reminder, delivery row and outbound
     // message id, so quoted replies still correlate per group.
     { column: "water_parade_outbound_group_id", role: "water parade" },
+    // Once a month, and to its own audience — typically a client or management
+    // group that gets the workbook and none of the heat alerts. The role is
+    // load-bearing: an unlabelled chip here would read as another recipient of
+    // every WBGT message, which is the opposite of what this list is.
+    { column: "monthly_wbgt_report_whatsapp_group_ids", role: "monthly report" },
   ],
   noise: [
     { column: "whatsapp_group_id" },

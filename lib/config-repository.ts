@@ -211,7 +211,9 @@ export async function listLightningDetections({
   if (!res.ok) throw new Error(`lightning detections: ${res.status} ${res.text.slice(0, 200)}`);
 
   // `count=exact` reports the size of the whole match in Content-Range, so the
-  // map can say "500 of 3,120" instead of implying it drew everything.
+  // map can say "800 of 3,120" instead of implying it drew everything. The
+  // focused map view may merge a separate near-site candidate query ahead of
+  // this viewport sample.
   const range = res.headers?.get?.("content-range") ?? "";
   const total = Number(range.split("/")[1]);
 
@@ -240,16 +242,111 @@ export async function listNoiseLimits(projectCode: string): Promise<MeterLimits[
 }
 
 /** Active WBGT sensors used by the MBS sensor-delivery editor. */
-export async function listWbgtSensors(projectCode: string): Promise<{ sensorLabel: string; siteName: string | null }[]> {
+export type WbgtSensor = {
+  id: number;
+  sensorLabel: string;
+  siteName: string | null;
+  updatedAt: string;
+};
+
+export async function listWbgtSensors(projectCode: string): Promise<WbgtSensor[]> {
   const res = await request(
-    `wbgt_sensors?select=sensor_label,site_name&active=is.true&project_code=eq.${encodeURIComponent(projectCode)}&order=sensor_label.asc`,
+    `wbgt_sensors?select=id,sensor_label,site_name&active=is.true&project_code=eq.${encodeURIComponent(projectCode)}&order=sensor_label.asc`,
     { schema: "wbgts" },
   );
   if (!res.ok) throw new Error(`WBGT sensors for ${projectCode}: ${res.status} ${res.text.slice(0, 200)}`);
   return ((res.body ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: Number(row.id),
     sensorLabel: String(row.sensor_label ?? "").trim(),
     siteName: row.site_name ? String(row.site_name).trim() : null,
+    updatedAt: String(row.updated_at ?? ""),
   })).filter((row) => row.sensorLabel);
+}
+
+/** Direct save path that works against the existing catalogue schema without a migration. */
+export async function renameWbgtSensorLabelDirect(input: {
+  projectCode: string;
+  id: number;
+  baseSensorLabel: string;
+  sensorLabel: string;
+}): Promise<WbgtSensor[]> {
+  const res = await request(
+    `wbgt_sensors?id=eq.${input.id}&project_code=eq.${encodeURIComponent(input.projectCode)}` +
+      `&active=is.true&sensor_label=eq.${encodeURIComponent(input.baseSensorLabel)}`,
+    {
+      schema: "wbgts",
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ sensor_label: input.sensorLabel }),
+    },
+  );
+  if (!res.ok) throw new Error(`WBGT sensor rename: ${res.status} ${res.text.slice(0, 300)}`);
+  return ((res.body ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: Number(row.id),
+    sensorLabel: String(row.sensor_label ?? "").trim(),
+    siteName: row.site_name ? String(row.site_name).trim() : null,
+    updatedAt: String(row.updated_at ?? ""),
+  }));
+}
+
+/** Read a sensor version for the transactional MBS rename path, available after its optional migration. */
+export async function getWbgtSensor(projectCode: string, id: number): Promise<WbgtSensor | null> {
+  const res = await request(
+    `wbgt_sensors?select=id,sensor_label,site_name,updated_at&active=is.true` +
+      `&project_code=eq.${encodeURIComponent(projectCode)}&id=eq.${id}&limit=1`,
+    { schema: "wbgts" },
+  );
+  if (!res.ok) throw new Error(`WBGT sensor version: ${res.status} ${res.text.slice(0, 200)}`);
+  const row = ((res.body ?? []) as Record<string, unknown>[])[0];
+  return row ? {
+    id: Number(row.id),
+    sensorLabel: String(row.sensor_label ?? "").trim(),
+    siteName: row.site_name ? String(row.site_name).trim() : null,
+    updatedAt: String(row.updated_at ?? ""),
+  } : null;
+}
+
+/** Atomically rename one active sensor and preserve any label-keyed MBS group map. */
+export async function renameWbgtSensorLabel(input: {
+  projectCode: string;
+  id: number;
+  sensorLabel: string;
+  baseUpdatedAt: string;
+}): Promise<{
+  status: "updated" | "unchanged" | "conflict" | "not_found" | "mapping_conflict";
+  sensor?: WbgtSensor;
+  configUpdatedAt?: string | null;
+  config?: Record<string, unknown> | null;
+}> {
+  const res = await request(
+    "rpc/rename_wbgt_sensor_label",
+    {
+      schema: "ops",
+      method: "POST",
+      body: JSON.stringify({
+        p_sensor_id: input.id,
+        p_project_code: input.projectCode,
+        p_sensor_label: input.sensorLabel,
+        p_base_updated_at: input.baseUpdatedAt,
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`WBGT sensor rename: ${res.status} ${res.text.slice(0, 300)}`);
+  const result = res.body as Record<string, unknown>;
+  const row = result.sensor as Record<string, unknown> | undefined;
+  return {
+    status: String(result.status) as "updated" | "unchanged" | "conflict" | "not_found" | "mapping_conflict",
+    ...(row ? {
+      sensor: {
+        id: Number(row.id),
+        sensorLabel: String(row.sensor_label ?? "").trim(),
+        siteName: row.site_name ? String(row.site_name).trim() : null,
+        updatedAt: String(row.updated_at ?? ""),
+      },
+    } : {}),
+    configUpdatedAt: typeof result.config_updated_at === "string" ? result.config_updated_at : null,
+    config: result.config && typeof result.config === "object" ? result.config as Record<string, unknown> : null,
+  };
 }
 
 /**
@@ -639,7 +736,11 @@ export async function getFieldSpec(service: ServiceKey): Promise<ServiceFieldSpe
     introspected[name] = { type: p.type, format: p.format, enum: p.enum ?? null, default: p.default };
   }
 
-  const spec = buildFieldSpec(service, introspected);
+  // `process.env` rather than a captured constant: this is the only place that
+  // reads it for the field spec, and the spec is cached per process, so the
+  // deployment's delivery URLs are resolved once and travel to the editor as
+  // ordinary data.
+  const spec = buildFieldSpec(service, introspected, process.env);
   specCache.set(service, spec);
   return spec;
 }
@@ -680,7 +781,7 @@ function withoutJobState(entry: Omit<AuditEntry, "external">): Omit<AuditEntry, 
   return changes ? { ...entry, changes } : null;
 }
 
-export async function listAudit(options: { table?: string; rowId?: string; limit?: number } = {}) {
+export async function listAudit(options: { table?: string; rowId?: string; projectCode?: string; limit?: number } = {}) {
   const limit = Math.min(options.limit ?? 200, 1000);
   // Over-fetch, because the filtering below happens after the database has
   // already chosen the page. On a WBGT project most rows are still job state
@@ -692,6 +793,7 @@ export async function listAudit(options: { table?: string; rowId?: string; limit
   const params = ["select=*", "order=at.desc", `limit=${fetched}`];
   if (options.table) params.push(`table_name=eq.${encodeURIComponent(options.table)}`);
   if (options.rowId) params.push(`row_id=eq.${encodeURIComponent(options.rowId)}`);
+  if (options.projectCode) params.push(`project_code=eq.${encodeURIComponent(options.projectCode)}`);
 
   const res = await request(`config_audit?${params.join("&")}`, { schema: "ops" });
   if (!res.ok) throw new Error(auditSetupHint(res.status));

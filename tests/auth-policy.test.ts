@@ -53,6 +53,9 @@ const field = (over: Partial<FieldSpec>): FieldSpec => ({
   help: "",
   widget: "text",
   options: null,
+  routes: [],
+  hasPreview: false,
+  envDefault: null,
   default: null,
   readonly: false,
   hidden: false,
@@ -407,11 +410,85 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   const hazePills = pillsFor("haze", { enable_poc_mentions: true, advisory_format: "wohhup" });
   assert.ok(hazePills.some((p) => p.label === "POC mentions" && p.on));
   assert.ok(hazePills.some((p) => p.label === "wohhup format" && p.on));
+  // Haze took the same manpower-sheet source as lightning, so it reads the
+  // same on the card — a fixed list lights nothing extra.
+  assert.ok(hazePills.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+  assert.ok(
+    pillsFor("haze", { enable_poc_mentions: true, poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+  );
+  assert.ok(
+    !pillsFor("haze", { poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+    "the switch has to be on for the source to mean anything",
+  );
   // `default` is a real value, not an absence — shown, but not lit up.
   assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
 
+  // Amber, then the signed SMS alerts, while the column is still named for
+  // red. "POC" stays in the label because that is what a person searches for.
   const ltg = pillsFor("lightning", { enable_red_band_poc_mentions: true });
-  assert.ok(ltg.some((p) => p.label === "🔴 POC mentions" && p.on));
+  assert.ok(ltg.some((p) => p.label === "⚠️ warning POC mentions" && p.on));
+
+  // The all-clear switch defaults to TRUE in Postgres, so the pill is the
+  // reverse of every other flag here: shown only when somebody turned it off,
+  // because that is the state worth seeing.
+  assert.ok(
+    !ltg.some((p) => p.label.includes("all-clear")),
+    "an all-clear mention that is on is the default, and not news",
+  );
+  // Explicitly true is still the default value, so it is still not news — the
+  // absent case above and this one must behave the same.
+  assert.ok(
+    !pillsFor("lightning", {
+      enable_red_band_poc_mentions: true,
+      enable_green_band_poc_mentions: true,
+    }).some((p) => p.label.includes("all-clear")),
+  );
+  assert.ok(
+    pillsFor("lightning", {
+      enable_red_band_poc_mentions: true,
+      enable_green_band_poc_mentions: false,
+    }).some((p) => p.label === "no all-clear POC mentions" && p.on),
+  );
+  // A fixed list of numbers is the ordinary case, so it lights nothing extra.
+  assert.ok(ltg.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+
+  // WHO gets tagged is a separate question from whether anyone is: "whoever is
+  // on site today" and a fixed list behave very differently on a Monday.
+  const sheetPocs = pillsFor("lightning", {
+    enable_red_band_poc_mentions: true,
+    poc_phone_numbers: "manpower-sheet",
+  });
+  assert.ok(sheetPocs.some((p) => p.label === "POCs from manpower sheet" && p.on));
+  // The switch has to be on for it to mean anything.
+  assert.ok(
+    !pillsFor("lightning", { poc_phone_numbers: "manpower-sheet" }).some(
+      (p) => p.label === "POCs from manpower sheet" && p.on,
+    ),
+  );
+
+  // Only a declared format understands the gateway's All-Clear, so a project
+  // without one never hears the alert lift.
+  assert.ok(pillsFor("lightning", {}).some((p) => p.label === "TRI SMS format" && !p.on));
+  assert.ok(
+    pillsFor("lightning", { sms_lightning_format: "TRI-style" }).some(
+      (p) => p.label === "TRI SMS format" && p.on,
+    ),
+  );
+
+  // Enabled means "allowed to run", not "running" — nothing schedules it.
+  assert.ok(
+    pillsFor("issueChaser", { company_open_backlog_enabled: true }).some(
+      (p) => p.label === "company backlog (on demand)" && p.on,
+    ),
+  );
+  assert.ok(
+    !pillsFor("issueChaser", {}).some((p) => p.label.startsWith("company backlog")),
+    "an unlit capability is not worth a pill",
+  );
 
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
   // Subcon has no outbound surface at all now, so there is no such pill to show.
@@ -586,6 +663,57 @@ test("chat ids are collected across every service's columns", () => {
   assert.deepEqual(chatIdsIn([{}]), []);
 });
 
+
+test("the card says when a chaser summary is set for an hour it can never run in", () => {
+  // The chat-group summary's rule runs once a day at 08:00 SGT while the other
+  // two run hourly, so an hour the column names is not necessarily an hour the
+  // report goes out in. The card has to say so: otherwise a project reads as
+  // scheduled for 16:00 and sends nothing, and nothing on the screen disagrees.
+  const chaserBase = {
+    enabled: true,
+    whatsapp_group_ids: "a@g.us",
+    daily_safety_summary_enabled: true,
+    daily_safety_summary_schedule: "0800,3",
+  };
+
+  const stranded = firesAt("issueChaser", {
+    ...chaserBase,
+    daily_safety_chatgroup_summary_enabled: true,
+    daily_safety_chatgroup_summary_schedule: "1600,3",
+  });
+  assert.match(stranded, /chat-group split is set for 16:00/);
+  assert.match(stranded, /only runs at 08:00, so that one never sends/);
+
+  // Configured for the hour it actually runs in: no warning at all.
+  assert.doesNotMatch(
+    firesAt("issueChaser", {
+      ...chaserBase,
+      daily_safety_chatgroup_summary_enabled: true,
+      daily_safety_chatgroup_summary_schedule: "0800,3",
+    }),
+    /never sends/,
+  );
+
+  // The other summaries are not second-guessed — their rule is hourly, so
+  // 16:00 is a perfectly good hour for them.
+  assert.doesNotMatch(
+    firesAt("issueChaser", { ...chaserBase, daily_safety_summary_schedule: "1600,3" }),
+    /never sends/,
+  );
+
+  // A switched-off report with a stale hour still in its column is not a
+  // warning: nothing is scheduled, so nothing is being missed. This is the
+  // ordinary state of a report somebody turned off without clearing it.
+  assert.doesNotMatch(
+    firesAt("issueChaser", {
+      ...chaserBase,
+      daily_safety_chatgroup_summary_enabled: false,
+      daily_safety_chatgroup_summary_schedule: "1600,3",
+    }),
+    /never sends/,
+  );
+});
+
 test("the retired lightning policy_note stays hidden while the column exists", () => {
   // An unlisted column falls through to "Other", so dropping it from the spec
   // is not enough until the DROP COLUMN migration has actually run.
@@ -595,6 +723,70 @@ test("the retired lightning policy_note stays hidden while the column exists", (
   });
   assert.equal(spec.fields.policy_note?.hidden, true);
   assert.ok(!spec.groups.some((g) => g.title === "Other"), "policy_note must not resurface under Other");
+});
+
+test("the lightning card says one RED per stop, not one per tick", () => {
+  // INV-LTG-09 emits RED once per STOP episode; later strikes send nothing and
+  // STOP→WATCH is silent. The old wording described a stream of messages where
+  // there is now one, which is the difference between a site being pestered
+  // and a site being told once.
+  const line = firesAt("lightning", { working_hours_start_hhmm: "0800", working_hours_end_hhmm: "1900" });
+  assert.match(line, /one RED per stop/);
+  assert.doesNotMatch(line, /every tick/);
+  // And INV-LTG-08: the all-clear waits for BOTH strike types to leave the
+  // red ring, which is the part an operator asks about after a storm.
+  assert.match(line, /both strike types have been outside the red ring/);
+  assert.match(line, /08:00–19:00/);
+
+  // The red-only site still says so.
+  assert.match(firesAt("lightning", { amber_enabled: false }), /^red-only/);
+
+  // The dwell field has to carry the same rule, because that is where someone
+  // goes when they want to resume sooner — and shortening it does not do what
+  // the old help implied.
+  const dwell = buildFieldSpec("lightning", {
+    red_dwell_seconds: { type: "integer", format: "int", enum: null, default: null },
+  }).fields.red_dwell_seconds?.help ?? "";
+  assert.match(dwell, /outside the red ring/);
+  assert.match(dwell, /whatever the strike types below say/);
+});
+
+test("the manpower sheet is visible before the switch that reads it", () => {
+  // Gated on the mentions toggle, this was invisible on every project but the
+  // one that had mentions on — while the seed migration had already filled the
+  // column from ops.projects on most rows. A populated value nobody can see.
+  for (const [service, column] of [
+    ["lightning", "manpower_sheet_id"],
+    ["haze", "manpower_sheet_id"],
+  ] as const) {
+    const spec = buildFieldSpec(service, {
+      [column]: { type: "string", format: "text", enum: null, default: null },
+    });
+    assert.equal(spec.fields[column]?.showIf, null, `${service}.${column} must not be hidden behind a switch`);
+    assert.equal(spec.fields[column]?.hidden, false);
+    // Named, not left as a raw column name.
+    assert.equal(spec.fields[column]?.label, "Manpower sheet");
+    assert.match(spec.fields[column]?.help ?? "", /manpower-sheet/);
+    // Filed with the POC settings it belongs to, not under Other.
+    assert.ok(
+      spec.groups.some((group) => group.title === "POC escalation" && group.fields.includes(column)),
+      `${service}.${column} should sit with the POC settings`,
+    );
+  }
+});
+
+test("the SMS source format is a choice, not a box to type a typo into", () => {
+  // `lightning_sms_lightning_format_check` accepts exactly one value or null.
+  // Without the options the column renders as free text, and the operator
+  // finds that out from a rejected save instead of from the dropdown.
+  const spec = buildFieldSpec("lightning", {
+    sms_lightning_format: { type: "string", format: "text", enum: null, default: null },
+  });
+  assert.deepEqual(spec.fields.sms_lightning_format?.options, ["TRI-style"]);
+  assert.equal(spec.fields.sms_lightning_format?.widget, "select");
+  // The select renders "— not set —" as null, which is the legacy behaviour —
+  // so the one value must NOT be the column's default.
+  assert.equal(spec.fields.sms_lightning_format?.default, null);
 });
 
 // ---------------------------------------------------------------------------
@@ -752,6 +944,9 @@ test("jobs are offered on the right tab", () => {
   assert.deepEqual(jobsForService("noise").map((j) => j.key), ["noise-bootstrap", "noise-sync"]);
   assert.deepEqual(jobsForService("wbgt").map((j) => j.key), [
     "wbgt-fill",
+    // 7a32a66 in the WBGT repo. Sits beside the sheet jobs because it reads the
+    // sheet they fill, and it is the only WBGT action that sends anything.
+    "wbgt-monthly-report",
     "wbgt-scrape",
     "wbgt-water-parade",
   ]);
@@ -2777,6 +2972,7 @@ test("a new company is offered everywhere the old ones are", () => {
   // any service, and each migrate_company_column.sql says so outright. So the
   // only way to get it wrong is to add it in one place and not the others.
   assert.ok(COMPANIES.includes("Soilbuild"), "Soilbuild must be in the list");
+  assert.ok(COMPANIES.includes("CCCC"), "CCCC must be in the list");
 
   const text = { type: "string" as const, format: "text", enum: null, default: null };
   for (const service of SERVICE_KEYS) {
@@ -2798,6 +2994,23 @@ test("a new company is offered everywhere the old ones are", () => {
   }
   // And does not match it inside an unrelated word.
   assert.equal(companyIn("topsoil building works"), null);
+
+  // An initialism has one spelling, so the only thing to check is that it is
+  // reachable at all and stays a whole word — `companyIn` strips punctuation
+  // before matching, so a company added to the dropdown but not to the alias
+  // table would silently resolve to null and scope an estate-wide instruction
+  // to nobody.
+  for (const written of ["cccc", "CCCC", "all CCCC projects"]) {
+    assert.equal(companyIn(written), "CCCC", `"${written}" must resolve`);
+  }
+  assert.equal(companyIn("ccccc sites"), null, "a longer run of letters is not the company");
+
+  // Every company in the dropdown must be reachable from chat, which is the
+  // half that is easy to forget: the dropdown is derived from COMPANIES and
+  // fans out on its own, the alias table is hand-written and does not.
+  for (const company of COMPANIES) {
+    assert.equal(companyIn(company), company, `${company} is offered but chat cannot name it`);
+  }
 });
 
 test("every noise cadence with a window shows it the same way", () => {

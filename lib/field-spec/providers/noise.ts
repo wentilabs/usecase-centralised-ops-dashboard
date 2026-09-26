@@ -161,6 +161,21 @@ export const noiseFieldProvider: ServiceFieldProvider = {
 
     google_sheet_id: { label: "Analysis sheet ID", widget: "sheet" },
 
+    enable_monthly_noise_report: {
+      label: "Monthly report",
+      /**
+       * An explicit opt-in, off by default. The route filters on it, so a
+       * project without it is not in the run at all rather than merely
+       * unlikely to send.
+       */
+      help: "Off by default. On, this project joins the monthly job: a completed Singapore calendar month of the analysis workbook is exported as xlsx and sent to the groups below as a document. The cron sends last month; the route can be pointed at an earlier one.",
+    },
+    monthly_noise_report_whatsapp_group_ids: {
+      label: "Monthly report groups",
+      widget: "groups",
+      help: "Who receives the workbook. Separate from the alert groups — the report reads only this list. Each group is recorded per project and month, so a re-run does not send the same month twice.",
+    },
+
     // Hidden: unused ids, identity and audit stamps.
     debug_google_sheet_id: { hidden: true },
     project_code: { hidden: true },
@@ -235,5 +250,11 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },
+    // Its own section, as on WBGT: the analysis workbook is written all month
+    // by the sync job, and this is one delivery of it to its own audience.
+    {
+      title: "Monthly report",
+      fields: ["enable_monthly_noise_report", "monthly_noise_report_whatsapp_group_ids"],
+    },
   ],
 };

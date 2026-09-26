@@ -10,7 +10,15 @@ export const lightningScheduleProvider: ScheduleProvider = {
             ? `${formatHhmm(config.working_hours_start_hhmm)}–${formatHhmm(config.working_hours_end_hhmm)}`
             : "all day";
     const scope = config.amber_enabled === false ? "red-only" : "red + amber";
-    return `${scope} — every tick while a qualifying strike is in range, working hours ${hours}${mutesSuffix(config)}`;
+    // "Every tick while a qualifying strike is in range" was true until
+    // INV-LTG-09: RED is now emitted ONCE per STOP episode, later strikes send
+    // nothing, and STOP→WATCH is silent. The old wording described a stream of
+    // messages where there is now one, which is the difference between a site
+    // that is being pestered and one that is not.
+    return (
+      `${scope} — one RED per stop, then the all-clear once both strike types have been ` +
+      `outside the red ring for the full red dwell, working hours ${hours}${mutesSuffix(config)}`
+    );
   },
   hasCadence(config: ProjectConfigRow): boolean {
     return config.enabled !== false;

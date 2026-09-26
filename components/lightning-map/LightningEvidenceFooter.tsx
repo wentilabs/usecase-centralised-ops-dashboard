@@ -99,7 +99,11 @@ export function LightningEvidenceFooter({
         <span className="hidden md:inline">faded = earlier in the window</span>
         <span className="ml-auto font-mono">
           {loading ? "loading…" : `${detectionsLength} shown`}
-          {view && view.total > detectionsLength ? ` of ${view.total} (cap ${DETECTION_CAP} — zoom in)` : ""}
+          {view && view.total > detectionsLength
+            ? ` of ${view.total} (cap ${DETECTION_CAP}${view.prioritized && focus ? ` — ${view.priorityTruncated ? "nearest available to" : "nearest to"} ${focus.project_code} prioritised` : " — zoom in"})`
+            : view?.prioritized && focus
+              ? ` · ${view.priorityTruncated ? "nearest available to" : "nearest to"} ${focus.project_code} prioritised`
+              : ""}
           {view ? ` · ${formatSgtClock(view.from)} → ${formatSgtClock(view.to)} SGT` : ""}
         </span>
       </div>

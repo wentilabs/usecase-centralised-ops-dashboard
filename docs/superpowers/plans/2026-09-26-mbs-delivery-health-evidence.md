@@ -1,19 +1,21 @@
-# MBS Delivery-Health Evidence Implementation Plan
+# MBS Delivery-Health Evidence Pilot Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce durable, retry-aware MBS WBGT delivery evidence that the future Data Health service can use to report WhatsApp-server acceptance without claiming recipient delivery or read status.
+**Goal:** Produce the first durable, retry-aware source-delivery adapter—MBS WBGT—that the platform-wide Data Health service can use to report WhatsApp-server acceptance without claiming recipient delivery or read status.
 
-**Architecture:** Add an append-only `ops.outbound_delivery_events` feed in the shared Supabase project. The MBS Lambda writes `intent`, `attempted`, and terminal provider events around its existing WhatsApp call, but only when a caller supplies explicit, enabled telemetry metadata. First adopters are the MBS WBGT advisory and Water Parade reminder paths; the Data Health runner will consume this feed in its own subsequent implementation.
+**Architecture:** Add an append-only `ops.outbound_delivery_events` feed in the shared Supabase project. The MBS Lambda writes `intent`, `attempted`, and terminal provider events around its existing WhatsApp call, but only when a caller supplies explicit, enabled telemetry metadata. MBS WBGT advisory and Water Parade reminder are the pilot producers; every other HALO source service adopts the same feed through its own adapter before that service's delivery health is enabled. The Data Health runner consumes the common feed in a separate platform implementation.
 
 **Tech Stack:** Node.js 22 AWS Lambda, Axios, `@supabase/supabase-js`, PostgreSQL/Supabase, existing plain Node assertion tests.
 
 **Spec:** `docs/superpowers/specs/2026-09-26-data-health-service-design.md`
 
+> **Scope boundary:** This is not a MBS-only Data Health feature. The product scope remains every eligible project across WBGT, Noise, Haze, Lightning, Ailytics, Subcon Activities, and Issue Chaser. This plan implements the first verified evidence producer only; policies whose source has not adopted the shared feed must render `Delivery: not monitored` (neutral grey), never a failure.
+
 ## Global Constraints
 
 - Preserve the existing `POST /wbgt-reading` endpoint, payload, scheduling, message content, destinations, and fail-soft WBGT/Water Parade behavior.
-- This phase monitors only MBS's `wbgt_advisory` and `water_parade_reminder` messages; it must not label unrelated MBS messages as WBGT.
+- This pilot monitors only MBS's `wbgt_advisory` and `water_parade_reminder` messages; it must not label unrelated MBS messages as WBGT. It establishes the reusable event contract for every other source adapter.
 - `ack: 1` is **WhatsApp server accepted**; only a future persisted `ack: 2` / `ack: 3` can be labelled delivered / read.
 - Delivery telemetry is opt-in and fail-open: a missing deployment setting or a Supabase telemetry failure must never prevent a customer message.
 - Keep delivery evidence append-only. Do not store message body, mention targets, raw provider response, secrets, or stack traces.
@@ -34,9 +36,9 @@
 
 ### 1. Customer behavior
 
-**Repository-proven before state:** MBS logs the listener response in CloudWatch and returns it to the immediate caller, but does not persist outbound WhatsApp outcomes. WBGT continues after a send failure; Water Parade is explicitly fail-soft. The listener's current success response includes a provider message ID and `ack: 1`.
+**Repository-proven before state:** MBS logs the listener response in CloudWatch and returns it to the immediate caller, but does not persist outbound WhatsApp outcomes. WBGT continues after a send failure; Water Parade is explicitly fail-soft. The listener's current success response includes a provider message ID and `ack: 1`. The Data Health specification covers all seven HALO source services; their adapters still require the same investigation before delivery monitoring is enabled.
 
-**After state:** No customer-facing message, recipient, schedule, or endpoint changes. Operators will later be able to see, per MBS WBGT delivery, whether MBS formed an intent, attempted the listener call, received WhatsApp-server acceptance, or received an error/rejection. The only customer-visible behavior remains exactly as it is today.
+**After state:** No customer-facing message, recipient, schedule, or endpoint changes. Operators will later be able to see, per MBS WBGT delivery, whether MBS formed an intent, attempted the listener call, received WhatsApp-server acceptance, or received an error/rejection. The platform-wide Data Health view shows neutral `not monitored` delivery health for every source not yet producing this evidence. The only customer-visible behavior remains exactly as it is today.
 
 **Engineering recommendation:** Treat `ack: 1` as `provider_accepted` / “WhatsApp accepted,” not Delivered. A 2xx listener response whose body lacks a successful result is recorded as `provider_rejected`; it still preserves the caller's existing return value and logging behavior.
 
@@ -313,7 +315,7 @@ git -C /Users/wentilabs/Desktop/code-repo/mdw-lambda-wh-mbs commit -m "feat: ins
 
 **Consumes:** Task 2's `mbsWbgtTelemetry` and Task 3's final optional send-helper metadata argument.
 
-**Produces:** the first two correctly scoped source-delivery producers for Data Health.
+**Produces:** the first two correctly scoped source-delivery producers for Data Health; subsequent source-service adapters reuse the same contract.
 
 - [ ] **Step 1: Write flow-specific failing tests**
 
@@ -395,7 +397,7 @@ git -C /Users/wentilabs/Desktop/code-repo/mdw-lambda-wh-mbs commit -m "docs: des
 
 ## Self-Review
 
-**Spec coverage:** The plan implements the spec's normalized outbound-attempt prerequisite, expected/attempted/provider-acceptance distinction, unsupported-receipt honesty, source-project identity safety, append-only evidence, backwards compatibility, testing, and staged rollout. It intentionally does not create the Data Health runtime, policy tables, HALO tab/card, incidents, or notifier; those depend on this source feed but form a separate independently deployable project.
+**Spec coverage:** The plan implements the spec's normalized outbound-attempt prerequisite, expected/attempted/provider-acceptance distinction, unsupported-receipt honesty, source-project identity safety, append-only evidence, backwards compatibility, testing, and staged rollout for the MBS adapter. The overall product remains platform-wide: it intentionally does not create the Data Health runtime, policy tables, HALO tab/card, incidents, notifier, or the remaining six source adapters; those form separate independently deployable projects and must render `not monitored` until each source publishes the common evidence.
 
 **Step scan:** Every implementation task begins with a failing test, names concrete files/interfaces, preserves the exact existing send contract, and ends with focused verification and a commit.
 
@@ -403,4 +405,4 @@ git -C /Users/wentilabs/Desktop/code-repo/mdw-lambda-wh-mbs commit -m "docs: des
 
 **Review focus:** The five risky boundary cases are each assigned to Tasks 2–4, where their assertions are explicit.
 
-**Proportion:** This plan is deliberately limited to the MBS evidence producer. The Data Health service and HALO UI remain a subsequent plan because neither can be shipped or meaningfully tested before this source telemetry contract exists.
+**Proportion:** This plan is deliberately limited to the MBS evidence pilot. The platform-wide Data Health service, HALO UI, and six additional source adapters remain subsequent plans because they must each preserve their own message and scheduling contracts while consuming the same evidence interface.

@@ -81,6 +81,10 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       widget: "groups",
       help: "Internal operations groups for automatic Data Health reminders. They never receive the project’s normal client alerts; leave blank to keep monitoring visible but silent.",
     },
+    data_health_message_template: {
+      label: "Data Health message template",
+      help: "Optional full message. Use only {{project_code}}, {{service}}, {{status}}, and {{latest_receipt}}; blank uses the safe default.",
+    },
     delivery_scope: {
       label: "Delivery scope",
       widget: "select",
@@ -238,7 +242,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Site hours & mutes",
       fields: ["site_hours_start", "site_hours_end", "skip_lunch_hour", "remove_sunday_notifications", "remove_ph_notifications"],
     },
-    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "delivery_scope", "sensor_delivery_groups", "instance_name", "client_id", "lambda_url"] },
     {
       title: "POC escalation",
       fields: ["enable_red_band_poc_mentions", "poc_alert_minimum_band", "poc_alert_wa_groups", "poc_phone_numbers"],

@@ -56,3 +56,11 @@ test("WBGT and Noise expose a dedicated ungated Data Health group picker", async
   assert.match(groups, /wbgt:[\s\S]*?data_health_group_ids/, "WBGT recipient ids must resolve to group names");
   assert.match(groups, /noise:[\s\S]*?data_health_group_ids/, "Noise recipient ids must resolve to group names");
 });
+
+test("WBGT and Noise expose an ungated Data Health message template", async () => {
+  for (const path of ["lib/field-spec/providers/wbgt.ts", "lib/field-spec/providers/noise.ts"]) {
+    const provider = await source(path);
+    assert.match(provider, /data_health_message_template:\s*\{[\s\S]*?label:\s*"Data Health message template"[\s\S]*?project_code[\s\S]*?latest_receipt/i);
+    assert.doesNotMatch(provider.match(/data_health_message_template:\s*\{[\s\S]*?\n\s*\},/)?.[0] ?? "", /showIf/);
+  }
+});

@@ -236,6 +236,10 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
 
   issueChaser: [
     {
+      columns: ["issues_format"],
+      routes: ["POST /api/issue-chaser-severity-cadence", "POST /api/issue-chaser-same-day-open", "POST /api/issue-chaser-company-open", "POST /api/past-days-safety-summary", "POST /api/past-days-company-safety-summary", "POST /api/past-days-chatgroup-safety-summary", "POST /api/issue-chaser-preview", "POST /api/issue-chaser-operator-preview", "POST /api/issue-chaser-operator-send", "POST /api/issue-chaser-project-check"],
+    },
+    {
       routes: ["POST /api/issue-chaser-severity-cadence"],
       columns: [
         "severity_cadence_chaser_enabled",

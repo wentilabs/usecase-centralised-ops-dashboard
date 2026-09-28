@@ -16,6 +16,12 @@ export const issueChaserOnboarding: OnboardDefinition = {
     ],
     fields: [
       {
+        column: "issues_format", label: "Issues format", kind: "select",
+        required: false, notNull: true, fallback: "wohhup_issue_format",
+        options: ["wohhup_issue_format", "cccc_issue_format"],
+        help: "Wohhup: P1/P2/P3. CCCC: A1/A2/B/C, with a shared 3-hour reminder cooldown after the first target passes. Company identity does not select the format.",
+      },
+      {
         column: "project_code",
         label: "Project code",
         kind: "text",

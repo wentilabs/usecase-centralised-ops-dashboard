@@ -1503,3 +1503,16 @@ npx tsc -p tsconfig.test.json && node --test .test-dist/tests/mobile-contract.te
    WL/Wentilabs coordination groups. Tolerance belongs in how a token may be
    SPELLED — synonym, inflection, one word or two — never in how many of them
    have to be there.
+
+## Issue Chaser format selection
+
+`issue_chaser.project_configs.issues_format` is the behavior selector; `company` remains
+identity only. The default `wohhup_issue_format` preserves P1/P2/P3. CCCC uses
+`cccc_issue_format` and A1/A2/B/C throughout reminders and summaries. First severity
+reminders use issue age: next eligible check, 24 hours, three days, seven days; every
+CCCC band then uses a three-hour successful-send cooldown. The existing P1 window pair
+also governs A1, and the P2/P3 pair governs A2/B/C. HALO must show those semantics in the
+editor, onboarding, schedule summary and load labels. The service migration must be applied
+before rollout and schema caches refreshed. Source: `lib/field-spec/providers/issue-chaser.ts`,
+`lib/card-summary/schedule-providers/issue-chaser.ts`, `tests/issue-formats.test.ts`, and
+Issue Chaser's `supabase/migrate_issues_format.sql`.

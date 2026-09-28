@@ -205,6 +205,11 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     },
   ],
   issueChaser: [
+    {
+      constraint: "issue_chaser_issues_format_check",
+      columns: ["issues_format"],
+      check: (row) => blank(row, "issues_format") || ["wohhup_issue_format", "cccc_issue_format"].includes(String(row.issues_format)) ? null : "Issues format must be wohhup_issue_format or cccc_issue_format.",
+    },
     // migrate_severity_reminder_age_limit.sql. Nullable on purpose — blank is
     // unlimited, which is what every project runs today — so the rule has to
     // let blank through and catch only a negative.
@@ -342,12 +347,12 @@ export const ROW_RULES: Partial<Record<ServiceKey, RowRule[]>> = {
     {
       constraint: "issue_chaser_p1_window_check",
       columns: ["severity_p1_window_start", "severity_p1_window_end"],
-      check: window("severity_p1_window_start", "severity_p1_window_end", "The P1 send window"),
+      check: window("severity_p1_window_start", "severity_p1_window_end", "The P1/A1 send window"),
     },
     {
       constraint: "issue_chaser_p2_p3_window_check",
       columns: ["severity_p2_p3_window_start", "severity_p2_p3_window_end"],
-      check: window("severity_p2_p3_window_start", "severity_p2_p3_window_end", "The P2/P3 send window"),
+      check: window("severity_p2_p3_window_start", "severity_p2_p3_window_end", "The other bands send window"),
     },
     {
       constraint: "issue_chaser_summary_days_check",

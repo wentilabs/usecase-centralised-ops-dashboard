@@ -28,9 +28,9 @@ export const issueChaserScheduleProvider: ScheduleProvider = {
                 ? " — today's issues only"
                 : ` — today and the ${days} days before`;
           parts.push(
-            `P1 every 3h ${severityWindow(config, "severity_p1_window_start", "severity_p1_window_end")}` +
-              `, P2 daily and P3 weekly ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}` +
-              age,
+            (config.issues_format === "cccc_issue_format"
+              ? `A1 next eligible check ${severityWindow(config, "severity_p1_window_start", "severity_p1_window_end")}, A2 after 24h, B after 3 days, C after 7 days ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}; all repeat every 3h after successful delivery`
+              : `P1 every 3h ${severityWindow(config, "severity_p1_window_start", "severity_p1_window_end")}, P2 daily and P3 weekly ${severityWindow(config, "severity_p2_p3_window_start", "severity_p2_p3_window_end")}`) + age,
           );
         }
     if (config.same_day_open_snapshot_enabled) {

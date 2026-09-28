@@ -7,8 +7,14 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
   checkEnums: {
     company: [...COMPANIES],
     timezone: ["Asia/Singapore"],
+    issues_format: ["wohhup_issue_format", "cccc_issue_format"],
   },
   fields: {
+    issues_format: {
+      label: "Issues format",
+      widget: "select",
+      help: "Wohhup keeps P1/P2/P3 behavior. CCCC uses A1/A2/B/C: first reminders at the next eligible check, after 24 hours, 3 days and 7 days; all repeat with a 3-hour cooldown after successful delivery. Applies to every issue reminder and summary. Company does not select the format.",
+    },
     company: {
       label: "Company",
       help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
@@ -37,7 +43,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
     // configure first and switch on last.
     severity_cadence_chaser_enabled: {
       label: "Severity cadence chaser",
-      help: "Chases open issues until they are closed: P1 every 3 hours, P2 daily, P3 weekly. Round the clock unless you set a send window below, in which case anything due outside it waits for the next hour inside it.",
+      help: "Chases open issues using Issues format. Wohhup: P1 every 3 hours, P2 daily, P3 weekly. CCCC: A1 next eligible check, A2 after 24 hours, B after 3 days, C after 7 days; then a 3-hour cooldown for every band. Due issues outside a send window wait for the next eligible check.",
     },
     same_day_open_snapshot_enabled: {
       label: "Same-day open snapshot",
@@ -55,25 +61,25 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
       showIf: { field: "same_day_open_snapshot_enabled", equals: true },
     },
     severity_p1_window_start: {
-      label: "P1 window start",
+      label: "P1 / A1 window start",
       row: "p1_window",
-      help: "Limits the P1 cadence to these hours, SGT. Enter four digits — 0700, 1900 — and it reads back as 07:00:00. The start hour counts and the end hour does not, so 0700–1900 stops at 18:59; overnight pairs like 2200–0600 work. Set both ends or neither, and they must differ.",
+      help: "Limits the P1 (Wohhup) or A1 (CCCC) cadence to these hours, SGT. Enter four digits — 0700, 1900 — and it reads back as 07:00:00. The start hour counts and the end hour does not, so 0700–1900 stops at 18:59; overnight pairs like 2200–0600 work. Set both ends or neither, and they must differ.",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p1_window_end: {
-      label: "P1 window end",
+      label: "P1 / A1 window end",
       row: "p1_window",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
       help: "Leave both ends empty for 24-hour eligibility.",
     },
     severity_p2_p3_window_start: {
-      label: "P2/P3 window start",
+      label: "Other bands window start",
       row: "p2p3_window",
-      help: "The same gate, shared by P2 and P3. Four digits, start hour counts and end hour does not, overnight allowed; set both ends or neither and they must differ.",
+      help: "The same gate, shared by P2/P3 (Wohhup) or A2/B/C (CCCC). Four digits, start hour counts and end hour does not, overnight allowed; set both ends or neither and they must differ.",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
     },
     severity_p2_p3_window_end: {
-      label: "P2/P3 window end",
+      label: "Other bands window end",
       row: "p2p3_window",
       showIf: { field: "severity_cadence_chaser_enabled", equals: true },
       help: "Leave both ends empty for 24-hour eligibility.",
@@ -274,7 +280,7 @@ export const issueChaserFieldProvider: ServiceFieldProvider = {
   },
   groups: [
     { title: "Status", fields: ["enabled", "company", "timezone"] },
-    { title: "Safety sheet", fields: ["safety_sheet_id"] },
+    { title: "Safety sheet", fields: ["safety_sheet_id", "issues_format"] },
     {
       title: "Chaser styles",
       fields: [

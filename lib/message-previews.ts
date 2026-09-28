@@ -1,5 +1,6 @@
 import type { ServiceKey } from "./services";
 import { NOISE_PREVIEWS } from "./message-previews.generated";
+import { ISSUE_FORMAT_PREVIEWS } from "./issue-chaser-previews.generated";
 
 /**
  * What each formatter option actually sends to WhatsApp.
@@ -511,9 +512,9 @@ const ISSUE_CHASER_PREVIEWS: FormatterPreview[] = [
     service: "issueChaser",
     column: "severity_cadence_chaser_enabled",
     value: "true",
-    summary: "One reminder per open issue, on the priority's own clock — P1 every 3 hours, P2 daily, P3 weekly.",
+    summary: "One reminder per open issue using Issues format. Wohhup: P1 every 3 hours, P2 daily, P3 weekly. CCCC: first targets then a shared 3-hour cooldown; see the Issues format preview.",
     kind: "message",
-    bubbles: [{ caption: "One issue, one message", text: CHASER_REMINDER }],
+    bubbles: [{ caption: "Wohhup example — see Issues format for CCCC", text: CHASER_REMINDER }],
     source: "issue-chaser MESSAGE_SHAPES.md §Adaptive issue reminder",
   },
   {
@@ -582,6 +583,7 @@ const ISSUE_CHASER_PREVIEWS: FormatterPreview[] = [
 
 export const MESSAGE_PREVIEWS: FormatterPreview[] = [
   ...NOISE_PREVIEWS,
+  ...ISSUE_FORMAT_PREVIEWS,
   ...WBGT_PREVIEWS,
   ...HAZE_PREVIEWS,
   ...LIGHTNING_PREVIEWS,

@@ -6,6 +6,8 @@ import { splitList } from "../groups";
 export function issueChaserPills(config: ProjectConfigRow): Pill[] {
   const on = (value: unknown) => Boolean(value);
   return [
+    ...(config.issues_format === "cccc_issue_format"
+      ? [{ label: "CCCC format", on: true, tone: "info" as const }] : []),
     // A style cannot be on unless `enabled` is, so an unlit style on an
     // enabled project means nobody switched it on.
     { label: "severity cadence", on: on(config.severity_cadence_chaser_enabled) },

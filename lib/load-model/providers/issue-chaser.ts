@@ -67,7 +67,7 @@ export const issueChaserLoadProvider: LoadProvider = {
       // this row supports.
       add(
         windowHours(config.severity_p1_window_start, config.severity_p1_window_end),
-        "P1 chase (≥1 per group)",
+        config.issues_format === "cccc_issue_format" ? "A1 chase (≥1 per group; 3h cooldown)" : "P1 chase (≥1 per group)",
         chaseGroups,
         "conditional",
       );

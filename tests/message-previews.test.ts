@@ -23,6 +23,7 @@ import { SERVICE_KEYS, type ServiceKey } from "../lib/services";
 
 /** Every formatter value the seven services accept, as of the schema behind this build. */
 const EXPECTED: Record<string, string[]> = {
+  "issueChaser:issues_format": ["wohhup_issue_format", "cccc_issue_format"],
   "noise:five_min_formatter": [
     "exceedance_only",
     "loc_name_exceedance_only",
@@ -72,6 +73,7 @@ const EXPECTED: Record<string, string[]> = {
 
 /** The value a blank column resolves to, from each service's own fallback table. */
 const BLANK_RESOLVES_TO: Record<string, string> = {
+  "issueChaser:issues_format": "wohhup_issue_format",
   "noise:five_min_formatter": "exceedance_only",
   "noise:half_hourly_formatter": "estimated_Leq1hr",
   "noise:hourly_formatter": "date_loc_name_12h_complete_list",

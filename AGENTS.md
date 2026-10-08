@@ -163,6 +163,7 @@ any of them plainly "enabled" would say the opposite of what is true:
 | Subcon | `enabled` | housekeeping intake and state processing; it gates scheduled outbound delivery |
 | Subcon | `enable_housekeeping` | both morning summaries; it gates intake, nightly report, sheet generation, and photo refresh |
 | WBGT | `water_parade_enabled` | cycles, roster snapshots, inbound events, photo decisions, reminder audits |
+| WBGT | `water_parade_reminders_enabled` | Water Parade Sheet projection and the separately enabled daily summary |
 | Ailytics | `forward_pending_to_whatsapp` | stores the PENDING activity and writes activity history |
 | Ailytics | `enabled` | lets existing issues still be closed over WhatsApp — it gates Telegram intake only |
 | Noise | `noise_meters_included` | scraping, calculations, Sheets, ops fail-safes keep every meter |
@@ -170,7 +171,9 @@ any of them plainly "enabled" would say the opposite of what is true:
 
 Each one's `help` text says what carries on regardless. `hasCadence` counts
 `water_parade_enabled`, because a project with no WBGT cadence but Water Parade
-on is still sending reminders and must not be scrimmed as idle.
+on still runs scheduled tracking and may send its daily summary even when its
+half-hour reminders are muted. The card and send estimate must not claim those
+reminders are sent when `water_parade_reminders_enabled = false`.
 
 **Subcon has no single switch that disables every operation.** `enabled` is the
 permission gate for scheduled outbound delivery; `enable_housekeeping` owns the

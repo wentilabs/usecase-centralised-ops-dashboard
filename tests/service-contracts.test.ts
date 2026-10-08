@@ -146,7 +146,7 @@ test("Noise pins all seventeen open routes and distinguishes scheduled from oper
 test("WBGT pins cron paths while separating HMAC ingress from intentionally open routes", () => {
   const routes = SERVICE_CONTRACTS.wbgt.routes;
   const byPath = Object.fromEntries(routes.map((route) => [route.path, route]));
-  assert.equal(routes.length, 17);
+  assert.equal(routes.length, 18);
   assert.equal(byPath["/api/wbgt-telegram-external-channels"].authentication, "required-hmac");
   // 7a32a66. The monthly report joins the cron surface rather than the operator
   // one: its production trigger is a schedule with an empty body, and HALO's

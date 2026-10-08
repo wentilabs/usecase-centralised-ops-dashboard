@@ -563,6 +563,24 @@ test("Water Parade reminders run twice an hour, and only from 11:00 to 19:00", (
   assert.ok(load.occurrences.every((entry) => entry.sends === 4));
 });
 
+test("muting Water Parade reminders removes only reminder sends from the load estimate", () => {
+  const load = LOAD_PROVIDERS.wbgt.forRow(row({
+    project_code: "MBS",
+    enabled: true,
+    enable_hourly: false,
+    site_hours_start: 11,
+    site_hours_end: 19,
+    water_parade_enabled: true,
+    water_parade_reminders_enabled: false,
+    water_parade_daily_summary_enabled: true,
+    water_parade_daily_summary_hour: 18,
+    water_parade_outbound_group_id: "tol2@g.us",
+  }));
+  assert.ok(!load.occurrences.some((entry) => entry.cadence === "Water Parade reminder"));
+  assert.deepEqual(load.occurrences.map((entry) => [entry.cadence, entry.hour, entry.sends]),
+    [["Water Parade daily summary", 18, 1]]);
+});
+
 
 test("the on-demand company backlog is named, never drawn", () => {
   const load = LOAD_PROVIDERS.issueChaser.forRow(

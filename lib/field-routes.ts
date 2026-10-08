@@ -80,7 +80,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
     },
     {
       routes: ["POST /api/water-parade-reminder"],
-      columns: ["water_parade_enabled", "water_parade_outbound_group_id", "water_parade_cooldown_enabled"],
+      columns: ["water_parade_enabled", "water_parade_reminders_enabled", "water_parade_outbound_group_id", "water_parade_cooldown_enabled"],
     },
     {
       routes: ["POST /api/water-parade-daily-summary"],

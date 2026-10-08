@@ -1401,6 +1401,25 @@ test("the Water Parade cooldown is described where it changes the cadence", () =
   assert.doesNotMatch(firesAt("wbgt", { water_parade_cooldown_enabled: true }), /Water Parade|hour bands/);
 });
 
+test("HALO distinguishes muted Water Parade reminders from tracking and summary", () => {
+  const config = {
+    water_parade_enabled: true,
+    water_parade_reminders_enabled: false,
+    water_parade_daily_summary_enabled: true,
+    water_parade_daily_summary_hour: 18,
+  };
+  const pills = pillsFor("wbgt", config);
+  assert.equal(pills.find((pill) => pill.label === "💧 Water Parade")?.on, true);
+  assert.equal(pills.find((pill) => pill.label === "reminders")?.on, false);
+  assert.equal(pills.find((pill) => pill.label === "daily summary 18:00")?.on, true);
+  assert.ok(pillsFor("wbgt", { ...config, water_parade_outbound_group_id: "a@g.us,b@g.us" })
+    .some((pill) => pill.label === "2 Water Parade groups"));
+  assert.match(firesAt("wbgt", config), /Water Parade tracking \(reminders off\)/);
+  assert.doesNotMatch(firesAt("wbgt", config), /Water Parade reminders,/);
+  assert.ok(!pillsFor("wbgt", { water_parade_enabled: true }).some((pill) => pill.label === "reminders"),
+    "pre-migration rows keep reminders on and do not show a muted pill");
+});
+
 test("Ailytics shows its switches and not its setup", () => {
   const pills = pillsFor("ailytics", { forward_pending_to_whatsapp: true, status_summary_enabled: true, yesterday_summary_enabled: true });
   assert.ok(pills.some((p) => p.label === "forward PENDING" && p.on));
@@ -3147,6 +3166,18 @@ test("the Water Parade daily summary is explained and nested under its feature",
       equals: true,
     }, `${column} should follow its switch`);
   }
+});
+
+test("HALO exposes the reminder-only switch in Water Parade settings", () => {
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: true };
+  const spec = buildFieldSpec("wbgt", {
+    water_parade_enabled: { ...bool, default: false },
+    water_parade_reminders_enabled: bool,
+  });
+  const field = spec.fields.water_parade_reminders_enabled;
+  assert.equal(field.label, "Send Water Parade reminders");
+  assert.match(field.help ?? "", /Sheet log and enabled daily summary still run/);
+  assert.equal(spec.groups.find((group) => group.fields.includes("water_parade_reminders_enabled"))?.title, "Water Parade");
 });
 
 test("the severity lookback is explained, nested and shown on the card", () => {

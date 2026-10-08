@@ -166,7 +166,11 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
 
     water_parade_enabled: {
       label: "Water Parade",
-      help: "Outbound only — off still records cycles, roster snapshots, inbound events, photo decisions and reminder audits. It just stops the reminders and the sheet projections.",
+      help: "Enables the Water Parade Sheet log and permits the separately controlled reminders and daily summary. Off still records cycles, roster snapshots, inbound events, photo decisions and reminder audits.",
+    },
+    water_parade_reminders_enabled: {
+      label: "Send Water Parade reminders",
+      help: "On by default. Off silences only the half-hour WhatsApp reminders; the Water Parade Sheet log and enabled daily summary still run. Requires Water Parade to be on.",
     },
     enable_monthly_wbgt_report: {
       label: "Monthly report",
@@ -189,9 +193,9 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       help: "Who receives the workbook. Separate from the alert groups above — the report reads only this list, so leaving it blank stops the report even with the switch on. Each group is tracked per month, so a re-run does not send twice.",
     },
     water_parade_outbound_group_id: {
-      label: "Water Parade reminder group",
+      label: "Water Parade group",
       widget: "groups",
-      help: "Where the Water Parade reminder goes. A comma-separated list: each group gets its own reminder and its own message, so quoted replies stay matched to the right group. Often not one of the alert groups.",
+      help: "Where Water Parade reminders and the daily summary go. A comma-separated list: each group receives its own enabled message. Keep this configured even if reminders are muted, so the daily summary still has a destination.",
     },
     water_parade_cooldown_enabled: {
       label: "Cooldown between cycles",
@@ -203,7 +207,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     // its own switch inside this group with its two settings under it.
     water_parade_daily_summary_enabled: {
       label: "Daily summary",
-      help: "One message at the end of the day naming the companies that did not conduct their water parade, as `Acme - 2/3`. A submission more than an hour after the alert counts as not conducted, and an exempted company is left out of the total. Nothing is sent on a day with no cycles. Goes to the Water Parade reminder group.",
+      help: "One message at the end of the day naming the companies that did not conduct their water parade, as `Acme - 2/3`. A submission more than an hour after the alert counts as not conducted, and an exempted company is left out of the total. Nothing is sent on a day with no cycles. Goes to the Water Parade group even when half-hour reminders are muted.",
     },
     // Plain number rather than the hhmm widget: the column is a smallint hour,
     // not a time, so 18 means 18:00 and there are no minutes to enter.
@@ -294,6 +298,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
       title: "Water Parade",
       fields: [
         "water_parade_enabled",
+        "water_parade_reminders_enabled",
         "water_parade_cooldown_enabled",
         "water_parade_outbound_group_id",
         "water_parade_daily_summary_enabled",

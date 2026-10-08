@@ -16,18 +16,19 @@ export const wbgtScheduleProvider: ScheduleProvider = {
         }
     if (config.enable_5min_alerts) parts.push(`5-min on ${fiveMinCrossings(config)} crossings`);
     if (config.water_parade_enabled) {
-          // The cooldown changes how often a site is asked, which is the part an
-          // operator is answering questions about — worth a clause, not just a pill.
-          parts.push(
-            config.water_parade_cooldown_enabled
-              // Phrased as the lookback the code performs — `cooldownHourBands`
-              // checks the two preceding hour bands of the same day — rather than
-              // "one per 3 bands", which is the same rule stated as arithmetic and
-              // reads as a contradiction next to the "cooldown 2h" pill.
-              ? "Water Parade reminders, skipped if a cycle ran in the previous 2 hour bands"
-              : "Water Parade reminders",
-          );
-        }
+      if (config.water_parade_reminders_enabled === false) {
+        parts.push("Water Parade tracking (reminders off)");
+      } else {
+        // The cooldown changes how often a site is asked, which is the part an
+        // operator is answering questions about — worth a clause, not just a pill.
+        parts.push(
+          config.water_parade_cooldown_enabled
+            // `cooldownHourBands` checks the preceding two same-day hours.
+            ? "Water Parade reminders, skipped if a cycle ran in the previous 2 hour bands"
+            : "Water Parade reminders",
+        );
+      }
+    }
     if (!parts.length) {
           return isManualIngestion("wbgt", config)
             ? "Manual photo ingestion — readings arrive as photos; no scheduled message"
@@ -42,7 +43,7 @@ export const wbgtScheduleProvider: ScheduleProvider = {
           config.enable_hourly ||
             config.enable_intermittent_reports ||
             config.enable_5min_alerts ||
-            // Water Parade sends its own reminders, so the project is not idle.
+            // Water Parade still runs its scheduled tracking check when sends are muted.
             config.water_parade_enabled,
         );
   },

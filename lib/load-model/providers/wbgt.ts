@@ -66,7 +66,7 @@ export const wbgtLoadProvider: LoadProvider = {
       // The reminder rule runs TWICE an hour and only between 11:00 and 19:59
       // Singapore — not across the whole site day, which is what this counted
       // before the console's rules were read.
-      for (const hour of within(hours, CRONS.wbgt.waterParadeReminder)) {
+      for (const hour of config.water_parade_reminders_enabled === false ? [] : within(hours, CRONS.wbgt.waterParadeReminder)) {
         // A cycle starts only when the top-of-hour band is hot, and the
         // cooldown suppresses one that follows within two hour bands — so the
         // sustained rate is well below this ceiling.

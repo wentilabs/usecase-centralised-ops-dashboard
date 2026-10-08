@@ -21,9 +21,11 @@
     { "id": "water-parade-photo-refresh", "file": "migrate_water_parade_photo_refresh.sql", "requires": ["water-parade"] },
     { "id": "water-parade-daily-summary", "file": "migrate_water_parade_daily_summary.sql", "requires": ["water-parade"] },
     { "id": "water-parade-summary-timings", "file": "migrate_water_parade_summary_timings.sql", "requires": ["water-parade-daily-summary"] },
+    { "id": "water-parade-reminder-toggle", "file": "migrate_water_parade_reminder_toggle.sql", "requires": ["water-parade"] },
     { "id": "mbs-sensor-delivery", "file": "migrate_mbs_sensor_delivery.sql", "requires": ["water-parade-multiple-groups"] },
     { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] },
-    { "id": "monthly-wbgt-report", "file": "migrate_monthly_wbgt_report.sql", "requires": [] }
+    { "id": "monthly-wbgt-report", "file": "migrate_monthly_wbgt_report.sql", "requires": [] },
+    { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] }
   ],
   "operationalUtilities": [
     { "file": "schedule_job_runs_cleanup.sql", "purpose": "Install the named pg_cron job that deletes WBGT job-run audit rows older than 30 days.", "targetSchemas": ["cron"] }

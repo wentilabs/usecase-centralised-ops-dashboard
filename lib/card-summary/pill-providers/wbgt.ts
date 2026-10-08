@@ -27,6 +27,9 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
     ...(config.water_parade_enabled
       ? [
           { label: "💧 Water Parade", on: true, tone: "info" as const },
+          ...(config.water_parade_reminders_enabled === false
+            ? [{ label: "reminders", on: false, tone: "info" as const }]
+            : []),
           // Only shown where Water Parade runs: on a project without it the
           // flag is inert, and a struck-through pill on 20 cards would be
           // noise. Lit or unlit here is a real difference in how often a
@@ -65,7 +68,7 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
     // rather than a problem.
     ...(splitList(config.water_parade_outbound_group_id).length > 1
       ? [{
-          label: `${splitList(config.water_parade_outbound_group_id).length} reminder groups`,
+          label: `${splitList(config.water_parade_outbound_group_id).length} ${config.water_parade_reminders_enabled === false ? "Water Parade groups" : "reminder groups"}`,
           on: true,
           tone: "info" as const,
         }]

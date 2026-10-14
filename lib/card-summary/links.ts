@@ -11,7 +11,7 @@ import type { ProjectConfigRow, ServiceKey } from "../services";
  * levels, which live in `noise_limits` and have no page of their own anywhere
  * else — the NoiseLynx equivalent is one meter at a time behind a login.
  */
-export type CardLink = { label: string; href: string; internal?: "lightning-map" | "noise-limits" };
+export type CardLink = { label: string; href: string; internal?: "lightning-map" | "noise-limits" | "mention-targets" };
 
 export function autoLinks(service: ServiceKey, config: ProjectConfigRow): CardLink[] {
   const sheet = (id: unknown) => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(id))}/edit`;
@@ -23,6 +23,9 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): CardLi
     // assessed against a limit" is the most important thing this view can say,
     // and hiding the link when there is nothing to show would hide exactly that.
     links.push({ label: "📏 Noise limits", href: "#", internal: "noise-limits" });
+  }
+  if (service === "ailytics" && Object.hasOwn(config, "mention_targets")) {
+    links.push({ label: "🎯 Mention targets", href: "#", internal: "mention-targets" });
   }
   if (config.spreadsheet_id) {
     // Same column, different documents: ailytics keeps its safety log there,

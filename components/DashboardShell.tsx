@@ -11,6 +11,7 @@ import { BatchProposal, type Batch } from "./BatchProposal";
 import { OnboardProposal, type OnboardPlanView } from "./OnboardProposal";
 import { LightningMap } from "./LightningMap";
 import { NoiseLimits } from "./NoiseLimits";
+import { MentionTargetsDialog } from "./MentionTargetsDialog";
 import { JobBatch, type JobPlan } from "./JobBatch";
 import { DeliveryLoad } from "./DeliveryLoad";
 import { JobDialog } from "./JobDialog";
@@ -137,6 +138,8 @@ export function DashboardShell({
   const [loadView, setLoadView] = useState(false);
   /** Permissible noise levels for one project. `null` is closed. */
   const [noiseLimits, setNoiseLimits] = useState<string | null>(null);
+  /** Dedicated, roomier editor for one Ailytics project's mention rules. */
+  const [mentionTargets, setMentionTargets] = useState<{ row: ProjectConfigRow; rowId: string } | null>(null);
   /**
    * project code → meters whose limits survive the refresh.
    *
@@ -637,6 +640,7 @@ export function DashboardShell({
               onOpen={() => setViewing({ service: active, row })}
               onOpenMap={() => setLightningMap(String(row.project_code ?? ""))}
               onOpenLimits={() => setNoiseLimits(String(row.project_code ?? ""))}
+              onOpenMentionTargets={() => setMentionTargets({ row, rowId })}
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
               health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
               groupNames={groupNames}
@@ -765,6 +769,22 @@ export function DashboardShell({
             // A save may have marked a meter, so the card badge is stale.
             setProtectedMeters(null);
           }}
+        />
+      ) : null}
+
+      {mentionTargets ? (
+        <MentionTargetsDialog
+          row={mentionTargets.row}
+          rowId={mentionTargets.rowId}
+          onClose={() => setMentionTargets(null)}
+          onSaved={(updated) =>
+            setRows((prev) => ({
+              ...prev,
+              ailytics: (prev.ailytics ?? []).map((row) =>
+                String(row.id ?? "") === mentionTargets.rowId ? updated : row,
+              ),
+            }))
+          }
         />
       ) : null}
 

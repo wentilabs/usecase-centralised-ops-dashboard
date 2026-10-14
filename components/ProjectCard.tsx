@@ -89,6 +89,7 @@ export function ProjectCard({
   visoUrl = null,
   onOpenMap,
   onOpenLimits,
+  onOpenMentionTargets,
   protectedMeters,
   health,
 }: {
@@ -107,6 +108,8 @@ export function ProjectCard({
   onOpenMap?: () => void;
   /** Opens the stored permissible noise levels for this project. */
   onOpenLimits?: () => void;
+  /** Opens the dedicated Ailytics mention-target editor. */
+  onOpenMentionTargets?: () => void;
   /**
    * Meters whose limits survive the limits refresh, for this project.
    *
@@ -124,7 +127,9 @@ export function ProjectCard({
   // an idle one and says so on the header row.
   const emphasis = cardEmphasis(service, config);
   const groups = deliveryGroups(service, config);
-  const links = autoLinks(service, config);
+  const links = autoLinks(service, config).filter(
+    (link) => link.internal !== "mention-targets" || canEdit,
+  );
   const wording = STATUS_WORDING[service] ?? { on: "● ENABLED", off: "○ DISABLED" };
 
   /**
@@ -356,6 +361,12 @@ export function ProjectCard({
                         event.stopPropagation();
                         onOpenLimits();
                       }
+                    : link.internal === "mention-targets" && onOpenMentionTargets
+                      ? (event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onOpenMentionTargets();
+                        }
                     : undefined
               }
               className="relative z-10 rounded-lg border border-primary/35 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"

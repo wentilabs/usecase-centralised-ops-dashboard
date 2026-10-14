@@ -9,7 +9,6 @@ import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
 import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
-import { MentionTargetsEditor } from "./MentionTargetsEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
@@ -93,10 +92,6 @@ function Control({
 
   if (field.widget === "sensor-groups") {
     return <SensorGroupPicker value={value} onChange={onChange} projectCode={projectCode} groupNames={groupNames} />;
-  }
-
-  if (field.widget === "mention-targets") {
-    return <MentionTargetsEditor value={value} onChange={onChange} />;
   }
 
   // Chat ids are unmemorable, so they are picked by group name. Stored form is
@@ -282,6 +277,8 @@ export function ConfigEditor({
     const out: Record<string, { from: unknown; to: unknown; label: string }> =
       {};
     for (const [name, value] of Object.entries(draft)) {
+      // Mention targets have a dedicated, roomier editor on the Ailytics card.
+      if (spec.fields[name]?.widget === "mention-targets") continue;
       const before = (current as Record<string, unknown>)[name] ?? null;
       const after = value ?? null;
       if (JSON.stringify(before) !== JSON.stringify(after)) {
@@ -609,7 +606,7 @@ export function ConfigEditor({
           ) : (
             spec.groups.map((group) => {
               const visible = group.fields.filter((name) =>
-                isVisible(spec.fields[name], values),
+                spec.fields[name]?.widget !== "mention-targets" && isVisible(spec.fields[name], values),
               );
               if (!visible.length) return null;
               return (

@@ -26,8 +26,8 @@ import { ISSUE_FORMAT_PREVIEWS } from "./issue-chaser-previews.generated";
  *    `legacySmsMessage` / `triStyleSmsMessage` in `usecases/lightning/sms.js`.
  *
  * Lightning also shows that a preview column need not be a formatter. `amber_enabled`
- * and `sms_lightning_format` are a toggle and a source declaration, and both decide
- * which message a site receives — which is the only thing this file is about.
+ * is a toggle, while `sms_lightning_format` chooses outbound SMS wording. Inbound
+ * SMS recognition is project-specific code and is documented in the source repo.
  *
  * Regenerate the noise half with `node scripts/build-message-previews.mjs`.
  */
@@ -406,6 +406,24 @@ _⚙️ Source: Lightning SMS_
 
 You can start outdoor work again.`;
 
+const LIGHTNING_SMS_IR2_ALERT = `🚨⚡️ LIGHTNING ALERT for IR2 11 Oct 26 13:56
+_⚙️ Source: Lightning SMS_
+
+🌩🔴 STOP WORK NOW 🔴🌩
+
+DO THIS NOW:
+-Stop all outdoor work
+-Go inside a building or a vehicle
+-Keep away from cranes, scaffolding, metal and water
+-Wait for the green SAFE TO RESUME WORK message`;
+
+const LIGHTNING_SMS_IR2_ALL_CLEAR = `🚨⚡️ NO LIGHTNING ALERT for IR2 11 Oct 26 16:31
+_⚙️ Source: Lightning SMS_
+
+🌩️🟢 SAFE TO RESUME WORK 🟢🌩️
+
+You can start outdoor work again.`;
+
 const LIGHTNING_PREVIEWS: FormatterPreview[] = [
   {
     service: "lightning",
@@ -448,11 +466,13 @@ const LIGHTNING_PREVIEWS: FormatterPreview[] = [
     service: "lightning",
     column: "sms_lightning_format",
     value: "TRI-style",
-    summary: "Recognises that gateway's alert AND its all-clear, and adds the matching instructions under each. This is the only way the site hears the alert lift.",
+    summary: "Applies the same STOP and SAFE wording to any project's recognized SMS body. Project-specific recognition is maintained in Lightning code.",
     kind: "message",
     bubbles: [
       { caption: "Alert", text: LIGHTNING_SMS_TRI_ALERT },
-      { caption: "All-clear — sent only in this format", text: LIGHTNING_SMS_TRI_ALL_CLEAR },
+      { caption: "All-clear", text: LIGHTNING_SMS_TRI_ALL_CLEAR },
+      { caption: "IR2 alert — same outbound format", text: LIGHTNING_SMS_IR2_ALERT },
+      { caption: "IR2 all-clear — same outbound format", text: LIGHTNING_SMS_IR2_ALL_CLEAR },
     ],
     source: "lightning usecases/lightning/sms.js — triStyleSmsMessage",
   },
@@ -632,7 +652,7 @@ const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
   },
   "lightning:sms_lightning_format": {
     intro:
-      "This is the signed SMS Gateway relay, not NEA. It forwards what the gateway sent, so the column decides which forms are recognised and what instructions are added underneath.",
+      "This is the signed SMS Gateway relay, not NEA. Project-specific code recognises and routes each incoming body. This column only chooses whether the shared STOP/SAFE instructions are added underneath.",
   },
   "noise:five_min_formatter": {
     intro:

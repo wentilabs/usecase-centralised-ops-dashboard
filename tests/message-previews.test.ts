@@ -247,10 +247,9 @@ const KNOWN_WITHOUT_PREVIEW: Record<string, string> = {
   // Empty again, and worth keeping that way: an entry here is a formatter
   // whose real message nobody can produce.
   //
-  // `lightning:sms_lightning_format` sat here on the reasoning that it names
-  // an INBOUND format. That was half right and therefore wrong — the column
-  // also decides what is forwarded, and only one of its values forwards an
-  // all-clear at all. It has a real preview now.
+  // `lightning:sms_lightning_format` selects outbound wording. Input body
+  // recognition is project-specific code; TRI and IR2 examples appear in the
+  // shared TRI-style output preview.
 };
 
 test("every formatter field in the spec has a preview, or a recorded reason", () => {
@@ -319,7 +318,7 @@ test("lightning shows what a site is actually told, on both columns that change 
   assert.ok(amber[1].cadence?.some((row) => /nothing/.test(row.fires)));
 });
 
-test("the SMS relay preview shows the all-clear only where it exists", () => {
+test("the SMS outbound preview applies shared STOP/SAFE wording to every recognized project shape", () => {
   const sms = previewsFor("lightning", "sms_lightning_format");
   assert.deepEqual(sms.map((preview) => preview.value), ["", "TRI-style"]);
   // Blank is the legacy relay: one bubble, no source line, no instructions.
@@ -328,12 +327,16 @@ test("the SMS relay preview shows the all-clear only where it exists", () => {
   assert.doesNotMatch(sms[0].bubbles[0].text, /SAFE TO RESUME/);
   assert.equal(fallbackValue("lightning", "sms_lightning_format"), "");
 
-  // TRI-style is the only value that forwards an all-clear, which is the whole
-  // reason to set it — a project without it never hears the alert lift.
-  assert.equal(sms[1].bubbles.length, 2);
+  // TRI-style is outbound wording applied after each project's own hardcoded
+  // incoming message recognition.
+  assert.equal(sms[1].bubbles.length, 4);
   assert.match(sms[1].bubbles[1].text, /SAFE TO RESUME WORK/);
   assert.ok(sms[1].bubbles.every((bubble) => /Source: Lightning SMS/.test(bubble.text)));
   assert.ok(sms[1].bubbles.every((bubble) => bubble.text.startsWith("🚨⚡️ ")), "the received SMS is preserved above the instructions");
+  assert.match(sms[1].bubbles[2].text, /LIGHTNING ALERT for IR2/);
+  assert.match(sms[1].bubbles[2].text, /STOP WORK NOW/);
+  assert.match(sms[1].bubbles[3].text, /NO LIGHTNING ALERT for IR2/);
+  assert.match(sms[1].bubbles[3].text, /SAFE TO RESUME WORK/);
 });
 
 test("every lightning preview names the file it came from", () => {

@@ -8,7 +8,7 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     red_detection_types: ["G", "C"],
     amber_detection_types: ["G", "C"],
-    // lightning_sms_lightning_format_check: null, or this one value. The
+    // lightning_sms_lightning_format_check: null, or one declared format. The
     // select renders "— not set —" as null, which is the legacy behaviour.
     sms_lightning_format: ["TRI-style"],
   },
@@ -81,12 +81,12 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     remove_ph_notifications: { label: "Mute public holidays", row: "mutes" },
     enable_sms_lightning_alerts: {
       label: "Forward SMS lightning alerts",
-      help: "Controls signed SMS Gateway thunderstorm alerts only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
+      help: "Controls signed SMS Gateway lightning alerts and all-clears only. SMS is still parsed and retained when off; this does not affect normal NEA lightning alerts or the project enabled switch (INV-LTG-23).",
       row: "sms",
     },
     sms_lightning_format: {
-      label: "SMS source format",
-      help: "Leave unset for the legacy alert-only forwarding. TRI-style also recognises that gateway's All-Clear message, so the site is told when the alert lifts rather than left waiting.",
+      label: "SMS outbound format",
+      help: "Inbound SMS recognition is hardcoded per project. TRI-style applies shared STOP and SAFE wording to that project's recognized alert and all-clear messages; leave unset for the legacy relay without those instructions.",
       row: "sms",
     },
     sms_whatsapp_group_id: {

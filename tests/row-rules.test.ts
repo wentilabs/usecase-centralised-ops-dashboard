@@ -71,7 +71,7 @@ test("the red-mentions rule names the empty list, not the constraint", () => {
   );
 });
 
-test("the SMS source format is TRI-style or unset, and nothing else", () => {
+test("the SMS outbound format is a declared format or unset", () => {
   const label = (column: string) => column;
 
   // Unset is the legacy alert-only forwarding, and is the common case.

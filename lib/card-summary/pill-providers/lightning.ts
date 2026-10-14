@@ -37,9 +37,8 @@ export function lightningPills(config: ProjectConfigRow): Pill[] {
         String(config.poc_phone_numbers ?? "").trim() === "manpower-sheet",
     },
     {
-      // Only the declared format understands the gateway's All-Clear message,
-      // so a project without it is one that never hears the alert lift.
-      label: "TRI SMS format",
+      // This represents outbound wording. Input message recognition is per-project code.
+      label: "SMS STOP/SAFE wording",
       on: String(config.sms_lightning_format ?? "").trim() === "TRI-style",
     },
   ];

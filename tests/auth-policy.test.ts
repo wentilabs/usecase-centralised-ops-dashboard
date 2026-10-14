@@ -470,12 +470,11 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
     ),
   );
 
-  // Only a declared format understands the gateway's All-Clear, so a project
-  // without one never hears the alert lift.
-  assert.ok(pillsFor("lightning", {}).some((p) => p.label === "TRI SMS format" && !p.on));
+  // The setting controls shared outbound wording, independently of input recognition.
+  assert.ok(pillsFor("lightning", {}).some((p) => p.label === "SMS STOP/SAFE wording" && !p.on));
   assert.ok(
     pillsFor("lightning", { sms_lightning_format: "TRI-style" }).some(
-      (p) => p.label === "TRI SMS format" && p.on,
+      (p) => p.label === "SMS STOP/SAFE wording" && p.on,
     ),
   );
 
@@ -775,8 +774,8 @@ test("the manpower sheet is visible before the switch that reads it", () => {
   }
 });
 
-test("the SMS source format is a choice, not a box to type a typo into", () => {
-  // `lightning_sms_lightning_format_check` accepts exactly one value or null.
+test("the SMS outbound format is a choice, not a box to type a typo into", () => {
+  // `lightning_sms_lightning_format_check` accepts declared format values or null.
   // Without the options the column renders as free text, and the operator
   // finds that out from a rejected save instead of from the dropdown.
   const spec = buildFieldSpec("lightning", {

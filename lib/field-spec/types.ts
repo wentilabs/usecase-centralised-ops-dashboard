@@ -11,7 +11,8 @@ export type FieldWidget =
   | "multi"
   | "groups"
   | "meters"
-  | "sensor-groups";
+  | "sensor-groups"
+  | "mention-targets";
 
 export type ShowIf =
   | { field: string; equals: unknown }

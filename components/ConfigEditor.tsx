@@ -9,6 +9,7 @@ import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { SensorGroupPicker } from "./SensorGroupPicker";
 import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
+import { MentionTargetsEditor } from "./MentionTargetsEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
 import type { FieldSpec, ServiceFieldSpec } from "@/lib/field-spec";
 import { HelpText } from "./HelpText";
@@ -92,6 +93,10 @@ function Control({
 
   if (field.widget === "sensor-groups") {
     return <SensorGroupPicker value={value} onChange={onChange} projectCode={projectCode} groupNames={groupNames} />;
+  }
+
+  if (field.widget === "mention-targets") {
+    return <MentionTargetsEditor value={value} onChange={onChange} />;
   }
 
   // Chat ids are unmemorable, so they are picked by group name. Stored form is
@@ -346,6 +351,15 @@ export function ConfigEditor({
     // "[object Object] → [object Object]" — a review step showing nothing to
     // review, on the field where the wrong group sends a site's alerts to
     // strangers.
+    if (spec.fields[column]?.widget === "mention-targets") {
+      const format = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
+      return (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 text-[10px]">{format(from)}</pre>
+          <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 text-[10px]">{format(to)}</pre>
+        </div>
+      );
+    }
     if (spec.fields[column]?.widget === "sensor-groups") {
       const entries = sensorGroupDelta(from, to, groupNames).filter((entry) => entry.state !== "kept");
       if (!entries.length) return <span className="text-muted-foreground">— no sensor mapped —</span>;

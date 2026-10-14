@@ -39,7 +39,7 @@ export function withSchemaFields(
   const extra: OnboardField[] = [];
   for (const column of Object.keys(spec.fields)) {
     const field = spec.fields[column];
-    if (named.has(column) || field.readonly || field.hidden || column === "enabled") continue;
+    if (named.has(column) || field.readonly || field.hidden || column === "enabled" || field.widget === "mention-targets") continue;
     extra.push({
       column,
       label: field.label,
@@ -78,6 +78,7 @@ function kindForWidget(widget: FieldWidget): OnboardFieldKind {
     case "csv":
     case "meters":
     case "sensor-groups":
+    case "mention-targets":
     case "text":
       return "text";
   }

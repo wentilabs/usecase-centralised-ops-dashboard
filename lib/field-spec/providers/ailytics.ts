@@ -51,6 +51,11 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
       widget: "groups",
       help: "Dedicated Safety Inspection Summary destinations; does not reuse the general WhatsApp groups.",
     },
+    mention_targets: {
+      label: "Mention targets",
+      widget: "mention-targets",
+      help: "Adds WhatsApp mentions to configured Pending and non-compliant image captions. Exact camera targets take priority over `any`; time windows use this project's timezone.",
+    },
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
     lambda_url: { label: "Send-message proxy URL" },
@@ -73,6 +78,7 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
       title: "What gets sent",
       fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "yesterday_summary_enabled", "yesterday_summary_hour", "whatsapp_group_ids", "yesterday_summary_group_ids"],
     },
+    { title: "Mention targets", fields: ["mention_targets"] },
     {
       title: "Delivery",
       fields: [

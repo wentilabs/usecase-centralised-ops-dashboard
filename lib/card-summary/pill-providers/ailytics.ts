@@ -23,5 +23,9 @@ export function ailyticsPills(config: ProjectConfigRow): Pill[] {
     // Previous-local-day findings sent to the dedicated Safety Inspection
     // Summary groups at the configured local hour.
     { label: "yesterday summary", on: on(config.yesterday_summary_enabled) },
+    {
+      label: "mention targets",
+      on: Boolean(config.mention_targets && typeof config.mention_targets === "object" && (config.mention_targets as Record<string, unknown>).enabled === true),
+    },
   ];
 }

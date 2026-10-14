@@ -19,7 +19,8 @@
     { "id": "activity-message-refs", "file": "migrate_activity_message_refs.sql", "requires": ["pending-whatsapp", "activity-event-idempotency"] },
     { "id": "telegram-group-discovery", "file": "migrate_telegram_group_discovery.sql", "requires": [] },
     { "id": "telegram-group-bot-observations", "file": "migrate_telegram_group_bot_observations.sql", "requires": ["telegram-group-discovery"] },
-    { "id": "yesterday-24h-summary", "file": "migrate_yesterday_24h_summary.sql", "requires": ["telegram-group-bot-observations"] }
+    { "id": "yesterday-24h-summary", "file": "migrate_yesterday_24h_summary.sql", "requires": ["telegram-group-bot-observations"] },
+    { "id": "mention-targets", "file": "migrate_mention_targets.sql", "requires": [] }
   ],
   "destructiveUtilities": [
     { "file": "ailytics_safety_reset.sql", "purpose": "Empty-environment reset only; never part of an upgrade." }

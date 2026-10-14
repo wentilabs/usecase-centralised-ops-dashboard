@@ -14,6 +14,43 @@ const LIST_WIDGETS = new Set<FieldSpec["widget"]>(["csv", "groups", "meters"]);
  * anything the live schema cannot accept. Pure, so it is unit-tested.
  */
 export function coerceValue(field: FieldSpec, raw: unknown): unknown {
+  if (field.widget === "mention-targets") {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error(`${field.name}: expected a mention-target configuration object`);
+    }
+    const value = raw as Record<string, unknown>;
+    const normalizeShift = (input: unknown, name: string) => {
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        throw new Error(`${field.name}: ${name} shift must be an object`);
+      }
+      const shift = input as Record<string, unknown>;
+      const start = String(shift.start_time ?? "");
+      const end = String(shift.end_time ?? "");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start === end) {
+        throw new Error(`${field.name}: ${name} shift needs different HH:MM start and end times`);
+      }
+      const targets = shift.camera_targets;
+      if (!targets || typeof targets !== "object" || Array.isArray(targets)) {
+        throw new Error(`${field.name}: ${name} camera targets must be a label map`);
+      }
+      const normalized: Record<string, string> = {};
+      for (const [label, rawNumbers] of Object.entries(targets as Record<string, unknown>)) {
+        const key = label.trim();
+        if (!key || typeof rawNumbers !== "string") throw new Error(`${field.name}: target labels and contact lists must be text`);
+        const phones = [...new Set(rawNumbers.split(/[,;\r\n]+/).map((phone) => phone.replace(/\D+/g, "")).filter((phone) => phone.length >= 8))];
+        normalized[key.toLowerCase() === "any" ? "any" : key] = phones.join(",");
+      }
+      return { start_time: start, end_time: end, camera_targets: normalized };
+    };
+    return {
+      enabled: value.enabled === true,
+      pending_enabled: value.pending_enabled !== false,
+      non_compliant_enabled: value.non_compliant_enabled !== false,
+      day_shift: normalizeShift(value.day_shift, "day"),
+      night_shift: normalizeShift(value.night_shift, "night"),
+    };
+  }
+
   // Sensor-group mappings are stored as JSONB, not as a comma-separated text
   // list. Keep the object shape the picker submits and reject arrays or scalar
   // values before they can become the literal string "[object Object]".

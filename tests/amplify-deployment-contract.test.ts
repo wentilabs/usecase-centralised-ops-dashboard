@@ -115,3 +115,35 @@ test("production cannot be reached without an allow-list", async () => {
   const policy = await source("lib/auth-policy.ts");
   assert.match(policy, /nodeEnv === "production"/);
 });
+
+test("every service base URL the job registry names is carried into the deployed env", async () => {
+  /**
+   * The hand-written list above is the trap this closes.
+   *
+   * `ISSUE_CHASER_API_URL` was set in the Amplify console and the deployed app
+   * still reported "HALO does not know where the issueChaser service lives",
+   * because amplify.yml's grep is an allow-list and nobody added it when Issue
+   * Chaser's actions landed. The variable is read indirectly, as
+   * `process.env[job.baseUrlEnv]`, so no search for `process.env.ISSUE_CHASER_API_URL`
+   * would ever have found the gap either.
+   *
+   * Derived from the registry rather than typed again, so the next service to
+   * gain an action cannot repeat it: adding a job with a new `baseUrlEnv` fails
+   * here until the deployment carries it.
+   */
+  const amplify = await source("amplify.yml");
+  const { JOBS, JOB_KEYS, EXPORTS } = await import("../lib/jobs");
+
+  const required = new Set<string>([
+    ...JOB_KEYS.map((key) => JOBS[key].baseUrlEnv),
+    ...Object.values(EXPORTS).map((entry) => entry.baseUrlEnv),
+  ]);
+  assert.ok(required.size >= 3, `only ${required.size} base URLs — the registry emptied out`);
+
+  for (const name of required) {
+    assert.ok(
+      amplify.includes(name),
+      `${name} is read as a service base URL but amplify.yml does not carry it, so the deployed app cannot see it however it is set in the console`,
+    );
+  }
+});

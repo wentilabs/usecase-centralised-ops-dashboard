@@ -94,6 +94,33 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       showIf: { field: "enable_hourly", equals: true },
     },
 
+    // Separate hourly image delivery: it follows its own external cron and
+    // recipient list, independently of the ordinary hourly text message.
+    noise_hourly_app_screenshot: {
+      label: "Hourly app screenshot",
+      help: "Opt-in PNG of the Noise Readings cards, sent by the external hourly :05 schedule using readings completed through the previous hour's :55 slot. It has its own recipient list and follows Sunday and public-holiday suppression.",
+    },
+    start_time_app_screenshot: {
+      label: "Screenshot window start",
+      widget: "hhmm",
+      row: "app_screenshot_window",
+      help: "Optional inclusive Singapore-time start for screenshot delivery. Leave blank for no start limit; an end at or before the start wraps overnight.",
+      showIf: { field: "noise_hourly_app_screenshot", equals: true },
+    },
+    end_time_app_screenshot: {
+      label: "Screenshot window end",
+      widget: "hhmm",
+      row: "app_screenshot_window",
+      help: "Optional exclusive Singapore-time end for screenshot delivery. Leave blank for no end limit; an end at or before the start wraps overnight.",
+      showIf: { field: "noise_hourly_app_screenshot", equals: true },
+    },
+    wa_groups_app_screenshot: {
+      label: "App screenshot groups",
+      widget: "groups",
+      help: "WhatsApp recipients for the PNG screenshot only, independent of the regular alert groups.",
+      showIf: { field: "noise_hourly_app_screenshot", equals: true },
+    },
+
     // --- Unique configs. Each of these is its own endpoint and cron family in
     // the noise repo, opt-in per project (default false) — unlike the three
     // cadences above, which default on.
@@ -222,6 +249,14 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       title: "Hourly messages",
       fields: ["enable_hourly", "hourly_formatter", "hourly_start_hhmm", "hourly_end_hhmm", "hourly_exceedance_only", "hourly_exceeded_meters_only"],
     },
+    {
+      title: "Hourly app screenshot",
+      fields: [
+        "noise_hourly_app_screenshot",
+        "start_time_app_screenshot",
+        "end_time_app_screenshot",
+      ],
+    },
     // Was one section called "Unique configs", which named nothing and held
     // five separate cadences — while the 5-minute, half-hourly and hourly ones
     // each had a section of their own. Split the way they actually differ:
@@ -247,7 +282,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     // Titled for the decision, not repeated from the field: a section and a
     // control with the same words read as a rendering mistake.
     { title: "Meters", fields: ["noise_meters_included"] },
-    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "wa_groups_app_screenshot", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },
     // Its own section, as on WBGT: the analysis workbook is written all month

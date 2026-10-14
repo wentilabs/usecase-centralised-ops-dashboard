@@ -8,7 +8,9 @@
     { "id": "half-hourly-exceedance-routing", "file": "migrate_half_hourly_exceedance_routing.sql", "requires": [] },
     { "id": "hourly-exceeded-meters-only", "file": "migrate_hourly_exceeded_meters_only.sql", "requires": [] },
     { "id": "15min-average-exceedance", "file": "migrate_15min_average_exceedance.sql", "requires": [] },
-    { "id": "monthly-noise-report", "file": "migrate_monthly_noise_report.sql", "requires": [] }
+    { "id": "monthly-noise-report", "file": "migrate_monthly_noise_report.sql", "requires": [] },
+    { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] },
+    { "id": "hourly-app-screenshot", "file": "migrate_hourly_app_screenshot.sql", "requires": [] }
   ],
   "destructiveUtilities": []
 }

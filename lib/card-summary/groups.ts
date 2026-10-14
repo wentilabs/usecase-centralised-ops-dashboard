@@ -50,6 +50,9 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
     // unlabelled chip would read as another recipient of every noise message,
     // which is the opposite of what this list is.
     { column: "monthly_noise_report_whatsapp_group_ids", role: "monthly report" },
+    // Its own audience, separate from both regular alerts and the monthly
+    // workbook; the role keeps that distinction visible on the project card.
+    { column: "wa_groups_app_screenshot", role: "hourly app screenshot" },
   ],
   haze: [{ column: "wa_group_ids" }],
   lightning: [

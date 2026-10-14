@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "main",
-      "commit": "80514388f01c1cd2bbbdd8d016f00edc1ab24cec",
+      "commit": "5a89d71d6bef83418e7f6ef5646d2d639aa45558",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",

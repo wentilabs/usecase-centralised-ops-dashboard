@@ -255,6 +255,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
         "noise_hourly_app_screenshot",
         "start_time_app_screenshot",
         "end_time_app_screenshot",
+        "wa_groups_app_screenshot",
       ],
     },
     // Was one section called "Unique configs", which named nothing and held
@@ -282,7 +283,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     // Titled for the decision, not repeated from the field: a section and a
     // control with the same words read as a rendering mistake.
     { title: "Meters", fields: ["noise_meters_included"] },
-    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "wa_groups_app_screenshot", "instance_name", "client_id", "lambda_url"] },
+    { title: "Delivery", fields: ["whatsapp_group_id", "data_health_group_ids", "data_health_message_template", "instance_name", "client_id", "lambda_url"] },
     { title: "Meter expiry alerts", fields: ["allow_expiry_alert", "days_left_before_alerting", "alert_whatsapp_gid"] },
     { title: "Sheets", fields: ["google_sheet_id"] },
     // Its own section, as on WBGT: the analysis workbook is written all month

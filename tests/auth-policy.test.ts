@@ -1444,7 +1444,25 @@ test("Ailytics shows its switches and not its setup", () => {
   for (const gone of ["telegram source", "sheet", "whatsapp relay"]) {
     assert.ok(!configured.some((p) => p.label === gone), `${gone} should no longer be a pill`);
   }
-  assert.equal(configured.length, 3, "exactly the three switches");
+  // Four since ec8e843: mention targets is a real per-project choice, off by
+  // default, so it belongs beside the other switches rather than among setup.
+  assert.ok(configured.some((p) => p.label === "mention targets" && !p.on));
+  assert.ok(
+    pillsFor("ailytics", { mention_targets: { enabled: true } } as never).some(
+      (p) => p.label === "mention targets" && p.on,
+    ),
+  );
+  // The case that separates "switched on" from "column present": a project
+  // that has configured targets and then turned the feature off must read as
+  // off. A truthiness check on the column alone would light it, and the card
+  // would report mentions firing on a project that has disabled them.
+  assert.ok(
+    pillsFor("ailytics", { mention_targets: { enabled: false, targets: [{ camera: "any" }] } } as never).some(
+      (p) => p.label === "mention targets" && !p.on,
+    ),
+    "a configured-but-disabled feature must read as off",
+  );
+  assert.equal(configured.length, 4, "exactly the four switches");
 });
 
 // ---------------------------------------------------------------------------

@@ -78,7 +78,11 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
       title: "What gets sent",
       fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "yesterday_summary_enabled", "yesterday_summary_hour", "whatsapp_group_ids", "yesterday_summary_group_ids"],
     },
-    { title: "Mention targets", fields: ["mention_targets"] },
+    // The section names the feature, the field names the control. Titling both
+    // "Mention targets" made the heading read as a rendering fault — a section
+    // and its only field repeating one label, which `sections group what
+    // belongs together` refuses for exactly that reason.
+    { title: "WhatsApp mentions", fields: ["mention_targets"] },
     {
       title: "Delivery",
       fields: [

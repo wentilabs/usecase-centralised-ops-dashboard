@@ -10,8 +10,8 @@ import type { HealthColour } from "./health-status";
  * broken service rather than a quiet one, and the gaps crowd out the runs that
  * actually happened.
  *
- * So a bar is a PROCESS — one run, or one delivery attempt — and fifty bars are
- * the last fifty of them however long they took. Every bar is then a real
+ * So a bar is a PROCESS — one run, or one delivery attempt — and a hundred bars
+ * are the last hundred of them however long they took. Every bar is then a real
  * event, which is also what makes the strip clickable: there is something
  * behind each one.
  *
@@ -25,6 +25,15 @@ export type Sample = {
   colour: HealthColour;
   /** The service's own word, kept for the expanded view. */
   status: string;
+  /**
+   * What the service wrote about it — one line per problem it recorded.
+   *
+   * Empty for a clean process, and often empty for a failed one too: not every
+   * service records a reason. Kept as a list rather than joined, because
+   * `wbgt_job_runs.errors` is already one entry per affected sensor and those
+   * read as separate findings.
+   */
+  log: string[];
 };
 
 export type Bar = Sample;
@@ -34,7 +43,20 @@ export type KeyedSample = Sample & {
   key: string;
 };
 
-export const BAR_COUNT = 50;
+export const BAR_COUNT = 100;
+
+/**
+ * How far back a strip will look, in hours.
+ *
+ * A floor as well as a count. Without it the keyset walk has no reason to stop
+ * early on a quiet project and the database has no time index to lean on; with
+ * it, every page is bounded and Postgres can seek instead of scan.
+ *
+ * It also changes what a short strip MEANS, for the better: fewer than a hundred
+ * bars now says "this is all that ran in two days", which is itself worth
+ * seeing, rather than "this is all we bothered to fetch".
+ */
+export const WINDOW_HOURS = 48;
 
 /**
  * The newest `bars` samples for one project, oldest first.
@@ -44,7 +66,14 @@ export const BAR_COUNT = 50;
  * ordering is this function's job, not its caller's.
  */
 export function stripFrom(samples: Sample[], bars = BAR_COUNT): Bar[] {
-  return [...samples]
+  return samples
+    // A sample with no timestamp cannot be ordered or labelled, and reaching the
+    // bars it crashes the card on `formatSgt(undefined)`. The readers already
+    // drop these, so the guard is for the shape changing underneath a live
+    // cache — which is exactly what happened when these bars stopped being
+    // hourly buckets and the five-minute cache still held the old objects.
+    .filter((sample) => typeof sample?.at === "string" && sample.at)
+    .slice()
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, bars)
     .reverse();
@@ -54,6 +83,7 @@ export function stripFrom(samples: Sample[], bars = BAR_COUNT): Bar[] {
 export function stripsFrom(samples: KeyedSample[], bars = BAR_COUNT): Map<string, Bar[]> {
   const grouped = new Map<string, Sample[]>();
   for (const { key, ...sample } of samples) {
+    if (!key) continue;
     const existing = grouped.get(key);
     if (existing) existing.push(sample);
     else grouped.set(key, [sample]);
@@ -74,48 +104,12 @@ export function stripsFrom(samples: KeyedSample[], bars = BAR_COUNT): Map<string
  * and lists it on click, and there is no score to interpret.
  */
 
-export type TroubleGroup = {
-  status: string;
-  colour: HealthColour;
-  count: number;
-  /** Oldest and newest occurrence, so a chronic fault reads as a span. */
-  from: string;
-  to: string;
-};
-
-/**
- * The amber and red processes, grouped by what they said.
- *
- * Listing them one per line reproduces the alarm fatigue the colours were
- * introduced to fix, one layer down: C991's expanded strip was twenty-six
- * identical `completed_with_issues` lines, which is one chronic fault rendered
- * as twenty-six events. Grouped, it reads as "26 times, since 15:58" — the
- * repetition becomes the finding instead of burying it.
- *
- * Ordered by count, because on one project's own card the question is which
- * fault dominates, not which arrived last; the span says when.
- */
-export function troubleIn(bars: Bar[]): TroubleGroup[] {
-  const groups = new Map<string, TroubleGroup>();
-  for (const bar of bars) {
-    if (bar.colour === "green") continue;
-    const existing = groups.get(bar.status);
-    if (existing) {
-      existing.count += 1;
-      if (bar.at < existing.from) existing.from = bar.at;
-      if (bar.at > existing.to) existing.to = bar.at;
-      continue;
-    }
-    groups.set(bar.status, { status: bar.status, colour: bar.colour, count: 1, from: bar.at, to: bar.at });
-  }
-
-  return [...groups.values()].sort((a, b) => {
-    if (a.colour !== b.colour) return a.colour === "red" ? -1 : 1;
-    return b.count - a.count;
-  });
+/** Every amber and red process, newest first — one row each, for the modal. */
+export function troubleIn(bars: Bar[]): Bar[] {
+  return bars.filter((bar) => bar.colour !== "green").reverse();
 }
 
-/** How many processes are covered by these groups — what the strip counts. */
+/** How many processes need looking at — what the strip counts. */
 export function troubleCount(bars: Bar[]): number {
   return bars.filter((bar) => bar.colour !== "green").length;
 }

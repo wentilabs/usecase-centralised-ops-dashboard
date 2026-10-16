@@ -2,22 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BAR_COUNT, stripFrom, stripsFrom, troubleCount, troubleIn } from "../lib/health-timeline";
-import { everyProjectHasEnough } from "../lib/enough-per-project";
-import { readDeliveryWindow } from "../lib/delivery-reader";
+import { readDeliveryWindow, servicesWithLedger } from "../lib/delivery-reader";
 import { readRunWindow, servicesWithRunLog } from "../lib/run-reader";
 
-const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour) => ({ at, colour, status });
+const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour, log: string[] = []) =>
+  ({ at, colour, status, log });
 
-test("a bar is a process, so a slow cadence is fifty bars and not forty-eight blanks", () => {
+test("a bar is a process, so a slow cadence fills the strip instead of leaving blanks", () => {
   // The reason this is ordinal. Subcon reports twice a day: on an hourly axis
-  // its card was forty-eight grey gaps and two coloured bars, which reads as a
+  // its card was ninety-eight grey gaps and two coloured bars, which reads as a
   // broken service rather than a quiet one.
-  const twiceDaily = Array.from({ length: 60 }, (_, index) =>
-    sample(`2026-09-${String(10 + Math.floor(index / 2)).padStart(2, "0")}T${index % 2 ? "18" : "06"}:00:00Z`, "green"),
+  const twiceDaily = Array.from({ length: BAR_COUNT + 20 }, (_, index) =>
+    sample(
+      `2026-0${6 + Math.floor(index / 60)}-${String(1 + (Math.floor(index / 2) % 28)).padStart(2, "0")}` +
+        `T${index % 2 ? "18" : "06"}:00:00Z`,
+      "green",
+    ),
   );
 
   const bars = stripFrom(twiceDaily);
-  assert.equal(bars.length, BAR_COUNT, "fifty processes, however long they took");
+  assert.equal(bars.length, BAR_COUNT, "a hundred processes, however long they took");
+  assert.ok(bars.every((bar) => bar.at), "and every one of them is a real event, with a time");
   assert.ok(bars.every((bar) => bar.colour === "green"), "and no blanks among them");
 });
 
@@ -60,46 +65,30 @@ test("the expanded view lists only the trouble, newest first, in the service's o
   ]);
 
   const trouble = troubleIn(bars);
-  assert.deepEqual(trouble.map((group) => group.status), ["failed_config_validation", "completed_with_issues"]);
-  assert.ok(!trouble.some((group) => group.colour === "green"), "a clean process is not an exception");
-  assert.equal(troubleCount(bars), 2, "the strip counts processes, the list groups them");
+  // One row per occurrence, newest first, NOT grouped. Grouping answers "how
+  // often", which is the wrong question once somebody has decided to look:
+  // what they need is when each happened and what the service said, because
+  // that distinguishes one sensor failing all day from a different one each
+  // hour. The count is already on the strip that opened the modal.
+  assert.deepEqual(trouble.map((bar) => bar.status), ["failed_config_validation", "completed_with_issues"]);
+  assert.ok(!trouble.some((bar) => bar.colour === "green"), "a clean process is not an exception");
+  assert.equal(troubleCount(bars), 2);
 });
 
-test("the same fault repeated is one grouped line, with a span", () => {
-  // Twenty-six identical `completed_with_issues` lines is one chronic fault
-  // rendered as twenty-six events — the alarm fatigue the colours exist to fix,
-  // reappearing one layer down.
+test("repeated faults stay separate rows, each with its own time and log", () => {
   const bars = stripFrom([
-    sample("2026-10-16T15:58:00Z", "amber", "completed_with_issues"),
-    sample("2026-10-16T16:58:00Z", "amber", "completed_with_issues"),
-    sample("2026-10-16T19:58:00Z", "amber", "completed_with_issues"),
-    sample("2026-10-16T18:00:00Z", "red", "failed_config_validation"),
-    sample("2026-10-16T17:00:00Z", "green", "completed"),
+    sample("2026-10-16T19:58:00Z", "amber", "completed_with_issues", ["WC-55: reading 38 minutes old"]),
+    sample("2026-10-16T18:58:00Z", "amber", "completed_with_issues", ["WC-56: reading 33 minutes old"]),
+    sample("2026-10-16T17:58:00Z", "green", "completed"),
   ]);
 
-  const [worst, chronic] = troubleIn(bars);
-  assert.equal(worst.status, "failed_config_validation", "red leads whatever the counts are");
-  assert.equal(worst.count, 1);
-  assert.equal(chronic.count, 3, "three occurrences, one line");
-  assert.equal(chronic.from, "2026-10-16T15:58:00Z", "and the span says how long it has been going on");
-  assert.equal(chronic.to, "2026-10-16T19:58:00Z");
-  assert.equal(troubleCount(bars), 4, "while the count on the strip is still every process");
-});
-
-test("paging stops once every project in hand has its quota", () => {
-  // This is what made the page slow: the strips need the newest fifty per
-  // project, and paging a whole time window to find that out cost up to ten
-  // round trips per service.
-  const rows = (counts: Record<string, number>) =>
-    Object.entries(counts).flatMap(([code, n]) => Array.from({ length: n }, () => ({ project_code: code })));
-  const key = (row: Record<string, unknown>) => String(row.project_code ?? "");
-
-  assert.equal(everyProjectHasEnough(rows({ A: 50, B: 50 }), key, 50), true);
-  assert.equal(everyProjectHasEnough(rows({ A: 50, B: 49 }), key, 50), false, "one short project keeps it paging");
-  // Nothing in hand is not "enough" — that would stop before the first page
-  // could have told us anything.
-  assert.equal(everyProjectHasEnough([], key, 50), false);
-  assert.equal(everyProjectHasEnough([{ project_code: "" }], key, 1), false, "a blank code is not a project");
+  const trouble = troubleIn(bars);
+  assert.equal(trouble.length, 2, "two occurrences, two rows");
+  // The whole point of not grouping: these two say the same STATUS and a
+  // different thing went wrong each time.
+  assert.deepEqual(trouble[0].log, ["WC-55: reading 38 minutes old"]);
+  assert.deepEqual(trouble[1].log, ["WC-56: reading 33 minutes old"]);
+  assert.equal(trouble[0].at, "2026-10-16T19:58:00Z", "newest first");
 });
 
 test("both readers are bounded per project rather than by time, and carry the service's own status", async () => {
@@ -110,32 +99,64 @@ test("both readers are bounded per project rather than by time, and carry the se
       path = requested;
       return {
         ok: true,
-        body: [{ project_code: "JCU", delivery_status: "UNCONFIRMED", created_at: "2026-10-16T11:00:39+00:00" }],
+        body: [{
+          project_code: "JCU",
+          delivery_status: "UNCONFIRMED",
+          created_at: "2026-10-16T11:00:39+00:00",
+          last_error: "Listener response did not confirm the requested recipient",
+        }],
       };
     },
-    50,
+    100,
+    "2026-10-14T11:00:00.000Z",
   );
 
-  assert.doesNotMatch(path, /gte\./, "no time filter: the window is a count per project now");
+  // A count AND a floor. The count is what makes the strip ordinal; the floor is
+  // what lets the time index bound the keyset walk, and it changes what a short
+  // strip means — "this is all that ran in two days" rather than "this is all we
+  // fetched".
+  assert.match(path, /created_at=gte\.2026-10-14T11:00:00\.000Z/, "bounded by the window floor");
+  assert.ok(!path.includes("offset="), "and cut by a keyset, never a row offset");
+  assert.match(path, /limit=1000/, "a full page, since the server caps at 1000 whatever is asked");
   assert.match(path, /order=created_at\.desc/, "newest first, so the quota is the newest fifty");
-  assert.equal(delivered[0].status, "UNCONFIRMED", "kept verbatim, for the expanded view and for grepping");
+  assert.equal(delivered[0].status, "UNCONFIRMED", "kept verbatim, for the modal and for grepping");
+  assert.match(path, /last_error/, "and the service's own reason comes with it");
+  assert.deepEqual(delivered[0].log, ["Listener response did not confirm the requested recipient"]);
   assert.equal(delivered[0].colour, "amber", "coloured by haze's own contract");
 
+  // Only the two services whose scrape is per-site. Haze and Lightning read one
+  // public NEA feed for the whole estate, so a failed fetch is the same fact
+  // about all thirty-one projects rather than a fact about any one of them —
+  // they are tracked on DELIVERY alone, which is the part that differs per
+  // project.
   assert.deepEqual(servicesWithRunLog().sort(), ["noise", "wbgt"]);
+  for (const publicFeed of ["haze", "lightning"] as const) {
+    assert.ok(!servicesWithRunLog().includes(publicFeed), `${publicFeed} must not contribute run bars`);
+    assert.ok(servicesWithLedger().includes(publicFeed), `${publicFeed} is tracked on delivery instead`);
+  }
   const ran = await readRunWindow(
     "wbgt",
     async () => ({
       ok: true,
       body: [
-        { project_code: "C991", status: "completed_with_issues", started_at: "2026-10-16T09:00:00+00:00" },
-        { project_code: "", status: "completed", started_at: "2026-10-16T09:00:00+00:00" },
+        {
+          project_code: "C991",
+          status: "completed_with_issues",
+          started_at: "2026-10-16T09:00:00+00:00",
+          // An array, one entry per affected sensor — the shape WBGT and Noise
+          // actually write, and the reason logs are kept as a list.
+          errors: ["WC-55: reading 38 minutes old", "WC-56: reading 33 minutes old"],
+        },
+        { project_code: "", status: "completed", started_at: "2026-10-16T09:00:00+00:00", errors: null },
       ],
     }),
-    50,
+    100,
+    "2026-10-14T11:00:00.000Z",
   );
 
   assert.equal(ran.length, 1, "a row with no project code belongs to no strip");
   assert.equal(ran[0].status, "completed_with_issues");
+  assert.deepEqual(ran[0].log, ["WC-55: reading 38 minutes old", "WC-56: reading 33 minutes old"]);
   assert.equal(ran[0].colour, "amber", "completed_with_ is the in-between state, not a pass");
 });
 
@@ -152,4 +173,19 @@ test("the strip reports what to look at, never a score", async () => {
   assert.doesNotMatch(code, /%|uptime|shareText|healthyShare/i, "no score on the strip");
   assert.match(code, /to look at/, "the count of what needs attention takes its place");
   assert.match(code, /nothing to action/, "and a clean strip says so without claiming a figure");
+});
+
+test("a sample with no timestamp is dropped rather than crashing the card", () => {
+  // Not hypothetical. These bars used to be hourly buckets keyed `hour`, with no
+  // `at` at all, and the five-minute cache went on serving those objects after
+  // the shape changed — `formatSgt(undefined).replace` took the card down. The
+  // readers drop these, so this guards the cache outliving a shape change.
+  const bars = stripFrom([
+    { at: "2026-10-16T11:00:00Z", colour: "green", status: "completed", log: [] },
+    { colour: "amber", status: "stale", log: [] } as never,
+    { at: "", colour: "red", status: "blank", log: [] },
+  ]);
+
+  assert.equal(bars.length, 1, "only the sample that can be ordered and labelled");
+  assert.equal(bars[0].status, "completed");
 });

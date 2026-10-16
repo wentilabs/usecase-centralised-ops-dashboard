@@ -18,7 +18,10 @@ test("the dashboard composes server health into the matching source card below i
   assert.match(shell, /projectHealth\s*=\s*\[\]/, "the shell must preserve neutral cards when a stale client render lacks health");
   assert.match(shell, /health=\{/, "the shell must supply the card's health result");
   assert.match(card, /health\?: ProjectHealth/, "the card must accept its own health result");
-  assert.match(card, /<DataHealthRow health=\{health\}/, "the card must render the supplied result");
+  assert.match(card, /<DataHealthRow[\s\S]{0,80}health=\{health\}/, "the card must render the supplied result");
+  // The strip needs the code to title its modal, which is the only place a
+  // reader sees which project a list of failures belongs to.
+  assert.match(card, /<DataHealthRow projectCode=/, "and must name the project it belongs to");
   assert.ok(card.indexOf("<DataHealthRow") > card.indexOf("{links.length"), "health stays below sheet/action links");
 });
 

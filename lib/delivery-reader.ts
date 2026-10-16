@@ -1,5 +1,5 @@
 import { colourForStatus, type HealthColour } from "./health-status";
-import { everyProjectHasEnough } from "./enough-per-project";
+import { logLines } from "./log-lines";
 import { readPaged } from "./paged-read";
 import type { ServiceKey } from "./services";
 
@@ -35,6 +35,8 @@ type Ledger = {
   projectColumn: string;
   /** Newest-first ordering key. */
   timeColumn: string;
+  /** What the service wrote about a failure, if it writes anything. */
+  errorColumn: string;
 };
 
 /**
@@ -61,6 +63,7 @@ const LEDGERS: Partial<Record<ServiceKey, Ledger>> = {
     statusColumn: "delivery_status",
     projectColumn: "project_code",
     timeColumn: "created_at",
+    errorColumn: "last_error",
   },
   lightning: {
     schema: "lightning",
@@ -68,6 +71,7 @@ const LEDGERS: Partial<Record<ServiceKey, Ledger>> = {
     statusColumn: "delivery_status",
     projectColumn: "project_code",
     timeColumn: "created_at",
+    errorColumn: "last_delivery_error",
   },
   issueChaser: {
     schema: "issue_chaser",
@@ -75,6 +79,7 @@ const LEDGERS: Partial<Record<ServiceKey, Ledger>> = {
     statusColumn: "status",
     projectColumn: "project_code",
     timeColumn: "submitted_at",
+    errorColumn: "error",
   },
 };
 
@@ -142,28 +147,38 @@ export async function readDelivery(
  * bar is one delivery attempt, whatever cadence the service runs at. Paged,
  * because PostgREST caps every response at 1000 rows without saying so, and
  * stopped as soon as every project in hand has its quota — see
- * `lib/paged-read.ts` and `lib/enough-per-project.ts`.
+ * `lib/paged-read.ts`.
  */
 export async function readDeliveryWindow(
   service: ServiceKey,
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
   perProject: number,
-  maxPages = 4,
-): Promise<{ projectCode: string; at: string; colour: HealthColour; status: string }[]> {
+  sinceIso: string,
+): Promise<{ projectCode: string; at: string; colour: HealthColour; status: string; log: string[] }[]> {
   const ledger = LEDGERS[service];
   if (!ledger) return [];
 
-  const { schema, table, statusColumn, projectColumn, timeColumn } = ledger;
+  const { schema, table, statusColumn, projectColumn, timeColumn, errorColumn } = ledger;
   const rows = await readPaged(
     request,
-    (offset, limit) =>
-      `${table}?select=${projectColumn},${statusColumn},${timeColumn}` +
-      `&order=${timeColumn}.desc&limit=${limit}&offset=${offset}`,
+    (before, limit) =>
+      `${table}?select=${projectColumn},${statusColumn},${timeColumn},${errorColumn}` +
+      `&${timeColumn}=gte.${sinceIso}` +
+      `&order=${timeColumn}.desc&limit=${limit}` +
+      // Encoded: PostgREST returns timestamps as `2026-10-16T20:13:34.12+08:00`,
+      // and a raw `+` in a query string decodes to a space — the next page comes
+      // back `22007 invalid input syntax`, and since a failed page discards the
+      // window that empties every strip on the dashboard.
+      (before ? `&${timeColumn}=lt.${encodeURIComponent(before)}` : ""),
     {
       schema,
-      maxPages,
-      enough: (seen) =>
-        everyProjectHasEnough(seen, (row) => String(row[projectColumn] ?? "").trim(), perProject),
+      // Derived from the quota rather than fixed: a hundred processes for each
+      // of roughly forty projects is four 1000-row pages. It is a BUDGET, not a
+      // target — the forty-eight-hour floor usually ends the walk first, and on
+      // a high-volume service a sparse project may show fewer bars than the
+      // window holds rather than hold the read open for them.
+      maxPages: Math.ceil((perProject * 40) / 1000),
+      cursorOf: (row) => String(row[timeColumn] ?? ""),
     },
   );
 
@@ -172,6 +187,12 @@ export async function readDeliveryWindow(
     const at = String(row[timeColumn] ?? "");
     if (!projectCode || !at) return [];
     const status = String(row[statusColumn] ?? "").trim();
-    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status }];
+    return [{
+      projectCode,
+      at,
+      colour: colourForStatus(service, status).colour,
+      status,
+      log: logLines(row[errorColumn]),
+    }];
   });
 }

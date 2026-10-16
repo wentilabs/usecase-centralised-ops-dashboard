@@ -71,7 +71,6 @@ export function DashboardShell({
   services,
   projectHealth = [],
   deliveryVerdicts = [],
-  projectStrips = {},
   fetchedAt,
   session,
   initialGroupNames,
@@ -85,7 +84,6 @@ export function DashboardShell({
   projectHealth: ProjectHealth[];
   /** Newest delivery attempt per project, for services that record one. */
   deliveryVerdicts?: DeliveryVerdict[];
-  projectStrips?: Record<string, Bar[]>;
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -115,6 +113,24 @@ export function DashboardShell({
   const [rows, setRows] = useState<Record<string, ProjectConfigRow[]>>(() =>
     Object.fromEntries(services.map((service) => [service.key, service.rows])),
   );
+  // Loaded after first paint, not server-rendered — see
+  // app/api/project-strips/route.ts for why the cost is irreducible. A failure
+  // leaves the strips absent, which the cards already render as "no history"
+  // rather than as a healthy project.
+  const [projectStrips, setProjectStrips] = useState<Record<string, Bar[]>>({});
+  useEffect(() => {
+    let live = true;
+    void fetch("/api/project-strips")
+      .then((response) => (response.ok ? response.json() : { strips: {} }))
+      .then((body) => {
+        if (live) setProjectStrips(body?.strips ?? {});
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const healthByProject = useMemo(
     () => new Map(projectHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
     [projectHealth],

@@ -17,7 +17,7 @@ import {
   servicesWithLedger,
   type DeliveryVerdict,
 } from "./delivery-reader";
-import { BAR_COUNT, stripsFrom, type Bar } from "./health-timeline";
+import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline";
 import { readRunWindow, servicesWithRunLog } from "./run-reader";
 import { healthKey } from "./data-health";
 import { describePostgrestError } from "./postgrest-error";
@@ -950,7 +950,7 @@ export async function listDeliveryVerdicts(): Promise<DeliveryVerdict[]> {
 }
 
 /**
- * The last 50 processes, per project, as bars for the cards.
+ * The last 100 processes per project, within the last 48 hours, as card bars.
  *
  * Two sources, because no single one covers the estate: the three services with
  * a per-project delivery ledger, and the two that instead keep a per-project
@@ -967,21 +967,27 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
   if (cached) return cached;
 
   const read = (path: string, init: { schema: string }) => request(path, { schema: init.schema });
+  // A floor as well as a quota: it bounds the keyset walk and lets the time
+  // index do the work. `toISOString` is deliberate — its `Z` form survives a
+  // query string, where a `+00:00` offset would be read as a space.
+  const since = new Date(Date.now() - WINDOW_HOURS * 3_600_000).toISOString();
   const settled = await Promise.allSettled([
     ...servicesWithLedger().map(async (service) =>
-      (await readDeliveryWindow(service, read, BAR_COUNT)).map((sample) => ({
+      (await readDeliveryWindow(service, read, BAR_COUNT, since)).map((sample) => ({
         key: healthKey(service, sample.projectCode),
         at: sample.at,
         colour: sample.colour,
         status: sample.status,
+        log: sample.log,
       })),
     ),
     ...servicesWithRunLog().map(async (service) =>
-      (await readRunWindow(service, read, BAR_COUNT)).map((sample) => ({
+      (await readRunWindow(service, read, BAR_COUNT, since)).map((sample) => ({
         key: healthKey(service, sample.projectCode),
         at: sample.at,
         colour: sample.colour,
         status: sample.status,
+        log: sample.log,
       })),
     ),
   ]);

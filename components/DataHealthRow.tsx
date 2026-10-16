@@ -24,7 +24,15 @@ import type { ProjectHealth } from "@/lib/data-health";
  * every card in the estate, and a section that is mostly noise is a section
  * people stop reading. It returns when there is a delivery outcome to put in it.
  */
-export function DataHealthRow({ health, bars = [] }: { health?: ProjectHealth; bars?: Bar[] }) {
+export function DataHealthRow({
+  projectCode,
+  health,
+  bars = [],
+}: {
+  projectCode: string;
+  health?: ProjectHealth;
+  bars?: Bar[];
+}) {
   // No reading at all is not the same as a healthy reading, and must not be
   // dressed as one. Every service declares delivery, so this is not about what
   // they would report — it is that nothing reads it yet.
@@ -32,7 +40,7 @@ export function DataHealthRow({ health, bars = [] }: { health?: ProjectHealth; b
     return (
       <section className="relative z-10 border-t border-border pt-2.5" aria-label="Data health">
         <p className="text-[11px] text-muted-foreground">Data health — nothing reads this service yet.</p>
-        <HealthBars bars={bars} />
+        <HealthBars projectCode={projectCode} bars={bars} />
       </section>
     );
   }
@@ -57,7 +65,7 @@ export function DataHealthRow({ health, bars = [] }: { health?: ProjectHealth; b
       </div>
       {/* The shape, under the words: the pill says what is true now, the bars
           say whether it has been true all week or since an hour ago. */}
-      <HealthBars bars={bars} />
+      <HealthBars projectCode={projectCode} bars={bars} />
     </section>
   );
 }

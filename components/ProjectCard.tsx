@@ -385,7 +385,7 @@ export function ProjectCard({
         </div>
       ) : null}
 
-      <DataHealthRow health={health} bars={healthBars} />
+      <DataHealthRow projectCode={String(config.project_code ?? "")} health={health} bars={healthBars} />
 
       <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
         <span className="hidden md:inline">

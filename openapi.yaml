@@ -742,6 +742,22 @@ paths:
                 type: object
                 additionalProperties: true
         "401": *a1
+  /api/project-strips:
+    get:
+      operationId: listHealthStrips
+      tags:
+        - discovery
+      summary: Recent process history per project, for the health strips
+      description: The last 100 processes per project within the past 48 hours, keyed by service and project code. A process is one run or one delivery attempt, each carrying the service's own status word and whatever it logged about a failure. Noise and WBGT answer from their per-project run logs; Haze, Lightning and Issue Chaser from their delivery ledgers — for Haze and Lightning that is deliveries only, since their NEA source is one public feed for the whole estate rather than a per-project scrape. Services with neither are absent rather than reported healthy.
+      responses:
+        "200":
+          description: Bars per project, oldest first within each strip.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
   /api/wbgt-sensors:
     get:
       operationId: listWbgtSensors

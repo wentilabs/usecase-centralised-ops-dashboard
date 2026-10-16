@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { formatSgt } from "@/lib/card-summary";
 import { troubleCount, troubleIn, type Bar } from "@/lib/health-timeline";
@@ -12,7 +13,7 @@ const FILL: Record<string, string> = {
 };
 
 /**
- * One site's last fifty processes, on its own card.
+ * One site's last hundred processes, on its own card.
  *
  * A pill says what is true now. It cannot say whether this has been happening
  * all week or started an hour ago — and that is usually the question that
@@ -22,43 +23,54 @@ const FILL: Record<string, string> = {
  *
  * A bar is one PROCESS — a run or a delivery attempt — not an hour, because the
  * estate has no shared cadence: Noise assesses every few minutes and Subcon
- * reports twice a day, and on an hourly axis the twice-daily project is
- * forty-eight blanks and two bars. Ordinal bars also mean every bar is a real
- * event, which is what makes the strip worth clicking.
+ * reports twice a day, and on an hourly axis the twice-daily project would be
+ * ninety-eight blanks and two bars.
  *
- * Collapsed it is deliberately small and quiet — it is drawn on 196 cards and
- * borrows the section's heading. Clicking lists the amber and red ones, which
- * is the only part anybody needs the detail of.
+ * **Every bar is the same width**, so the strips are comparable across cards and
+ * a project with four processes is four thin marks rather than four fat ones
+ * stretched over the card. A stretched bar reads as a long-running thing, which
+ * is the opposite of what one short history means. Older bars clip off the left
+ * when a card is too narrow for all hundred, which is the right end to lose.
  */
-export function HealthBars({ bars }: { bars: Bar[] }) {
+export function HealthBars({ projectCode, bars }: { projectCode: string; bars: Bar[] }) {
   const [open, setOpen] = useState(false);
-  if (!bars.length) return null;
-
   const trouble = troubleIn(bars);
   const troubled = troubleCount(bars);
-  const worst = trouble.some((group) => group.colour === "red") ? "red" : "amber";
+  const worst = trouble.some((bar) => bar.colour === "red") ? "red" : "amber";
+
+  // Escape closes it, like every other dialog here.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  if (!bars.length) return null;
 
   return (
     <div className="mt-2">
       <button
         type="button"
-        onClick={() => setOpen((wasOpen) => !wasOpen)}
-        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        disabled={!troubled}
         aria-label={
           troubled
-            ? `Last ${bars.length} processes. Show the ${troubled} that need looking at.`
-            : `Last ${bars.length} processes, nothing to action.`
+            ? `Last ${bars.length} processes for ${projectCode}. Show the ${troubled} that need looking at.`
+            : `Last ${bars.length} processes for ${projectCode}, nothing to action.`
         }
-        className="group block w-full text-left"
+        className="group block w-full text-left disabled:cursor-default"
       >
-        {/* `gap-px`: at fifty bars in a card this wide each is about 4px, and
-            anything more spends the width on gaps. */}
-        <span className="flex h-5 items-stretch gap-px">
+        {/* Fixed-width bars, right-aligned so the newest is always at the same
+            place and a short history does not stretch to fill the card. */}
+        <span className="flex h-5 items-stretch justify-end gap-px overflow-hidden">
           {bars.map((bar, index) => (
             <span
               key={`${bar.at}-${index}`}
               title={`${formatSgt(bar.at)} SGT — ${bar.status}`}
-              className={`flex-1 rounded-[1px] ${FILL[bar.colour]}`}
+              className={`w-0.5 shrink-0 rounded-[1px] ${FILL[bar.colour]}`}
             />
           ))}
         </span>
@@ -74,7 +86,7 @@ export function HealthBars({ bars }: { bars: Bar[] }) {
                 worst === "red" ? "text-danger" : "text-warn"
               }`}
             >
-              {open ? "hide" : `${troubled} to look at`}
+              {troubled} to look at
             </span>
           ) : (
             <span className="whitespace-nowrap">nothing to action</span>
@@ -84,26 +96,105 @@ export function HealthBars({ bars }: { bars: Bar[] }) {
         </span>
       </button>
 
-      {/* Grouped, not one line per process: twenty-six identical
-          `completed_with_issues` lines is one chronic fault rendered as
-          twenty-six events. The status is the service's own word, so it can be
-          grepped, and the span says how long it has been going on. */}
-      {open && trouble.length ? (
-        <ul className="mt-1.5 flex flex-col gap-1 border-t border-border pt-1.5">
-          {trouble.map((group) => (
-            <li key={group.status} className="flex flex-wrap items-baseline gap-x-1.5 text-[10px]">
-              <span className={group.colour === "red" ? "text-danger" : "text-warn"}>●</span>
-              <span className="font-mono">{group.status}</span>
-              {group.count > 1 ? <span className="font-medium tabular-nums">×{group.count}</span> : null}
-              <span className="ml-auto whitespace-nowrap text-muted-foreground">
-                {group.count > 1 && group.from !== group.to
-                  ? `${formatSgt(group.from)} → ${formatSgt(group.to)}`
-                  : formatSgt(group.to)}
-              </span>
+      {open ? <TroubleDialog projectCode={projectCode} trouble={trouble} onClose={() => setOpen(false)} /> : null}
+
+    </div>
+  );
+}
+
+/**
+ * Every amber and red process, one row each, newest first.
+ *
+ * Not grouped. A grouped line — "completed_with_issues ×26" — answers how often,
+ * which is the wrong question once somebody has decided to look: what they need
+ * is when each one happened and what the service said about it, because that is
+ * what distinguishes one sensor failing all day from a different sensor each
+ * hour. The count is already on the strip that opened this.
+ *
+ * The status stays the service's own word and the log lines are reproduced
+ * verbatim, so both can be grepped against the service's own logs.
+ */
+function TroubleDialog({
+  projectCode,
+  trouble,
+  onClose,
+}: {
+  projectCode: string;
+  trouble: Bar[];
+  onClose: () => void;
+}) {
+  // Portalled to the body, not left in the card.
+  //
+  // `fixed inset-0 z-50` is not enough from inside a project card: the card's
+  // own `relative z-10` sections create a stacking context, so the dialog's
+  // z-index is scoped to that card and the NEXT card paints straight over it.
+  // On screen the delivery chips of the neighbouring project showed through the
+  // list of failures. A portal takes the dialog out of that context entirely.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 bg-black/80 p-3 md:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Data health for ${projectCode}`}
+      onClick={onClose}
+    >
+      <section
+        className="mx-auto flex max-h-full max-w-2xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start gap-3 border-b border-border p-5">
+          <div>
+            <h2 className="font-mono text-lg font-semibold">{projectCode}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {trouble.length} process{trouble.length === 1 ? "" : "es"} needing attention, newest first.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto rounded-lg border border-border px-3 py-2 text-xs hover:border-primary"
+          >
+            Close
+          </button>
+        </header>
+
+        <ul className="flex flex-col divide-y divide-border overflow-y-auto">
+          {trouble.map((bar, index) => (
+            <li key={`${bar.at}-${index}`} className="px-5 py-2.5">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className={bar.colour === "red" ? "text-danger" : "text-warn"}>●</span>
+                <span className="font-mono text-[13px] font-medium">{bar.status}</span>
+                <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-muted-foreground">
+                  {formatSgt(bar.at)} SGT
+                </span>
+              </div>
+              {/* One line per thing the service complained about — WBGT writes
+                  one per affected sensor, so these read as separate findings
+                  rather than one run-on error. */}
+              {bar.log.length ? (
+                <ul className="mt-1 flex flex-col gap-0.5 pl-4">
+                  {bar.log.map((line, lineIndex) => (
+                    <li key={lineIndex} className="break-words font-mono text-[11px] leading-snug text-muted-foreground">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                // Said rather than left blank: "no reason recorded" is itself a
+                // finding about the service, and several of them record none.
+                <p className="mt-1 pl-4 text-[11px] italic text-muted-foreground opacity-70">
+                  no reason recorded
+                </p>
+              )}
             </li>
           ))}
         </ul>
-      ) : null}
-    </div>
+      </section>
+    </div>,
+    document.body,
   );
 }

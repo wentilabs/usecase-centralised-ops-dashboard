@@ -65,31 +65,14 @@ export function stripsFrom(samples: KeyedSample[], bars = BAR_COUNT): Map<string
 }
 
 /**
- * The share of these processes that passed.
+ * No uptime figure, deliberately.
  *
- * Every bar is a process that really ran, so this divides by what is on screen
- * and the number cannot disagree with the bars — which was the failure mode of
- * the hourly version, where idle hours had to be excluded from both halves and
- * the arithmetic stopped being visible.
+ * A percentage answers "how available were we", which is a status-page question
+ * and not this estate's. A strip reading "48 % clean" invites "is that bad?",
+ * which nobody can answer without knowing the service — whereas the faults
+ * themselves are always actionable. So the strip counts what needs looking at
+ * and lists it on click, and there is no score to interpret.
  */
-export function healthyShare(bars: Bar[]): number | null {
-  if (!bars.length) return null;
-  return bars.filter((bar) => bar.colour === "green").length / bars.length;
-}
-
-/** `99.82 %`, or a dash when nothing has run. */
-export function shareText(share: number | null): string {
-  if (share === null) return "—";
-  const percent = share * 100;
-  // Never rounded up to a clean 100 while a failure is still on the strip: that
-  // reads as a contradiction and costs the strip its credibility.
-  if (percent < 100 && percent > 99.99) return "99.99 %";
-  // Rounded BEFORE deciding whether it is whole: 0.56 * 100 is
-  // 56.00000000000001 in binary floating point, so testing the raw product
-  // printed "56.0 %" for twenty-eight clean processes out of fifty.
-  const tenths = Math.round(percent * 10) / 10;
-  return `${Number.isInteger(tenths) ? tenths.toFixed(0) : tenths.toFixed(1)} %`;
-}
 
 export type TroubleGroup = {
   status: string;

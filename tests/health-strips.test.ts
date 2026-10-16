@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  BAR_COUNT,
-  healthyShare,
-  shareText,
-  stripFrom,
-  stripsFrom,
-  troubleCount,
-  troubleIn,
-} from "../lib/health-timeline";
+import { BAR_COUNT, stripFrom, stripsFrom, troubleCount, troubleIn } from "../lib/health-timeline";
 import { everyProjectHasEnough } from "../lib/enough-per-project";
 import { readDeliveryWindow } from "../lib/delivery-reader";
 import { readRunWindow, servicesWithRunLog } from "../lib/run-reader";
@@ -57,21 +49,6 @@ test("each project gets its own strip, and a project with no processes gets none
   // Fifty blank bars on a card read as a broken system rather than a quiet one.
   assert.equal(strips.get("C"), undefined);
   assert.deepEqual(strips.get("A")?.map((bar) => bar.colour), ["amber", "green"]);
-});
-
-test("the clean share divides by what is on screen, so it cannot disagree with the bars", () => {
-  assert.equal(healthyShare([sample("a", "green"), sample("b", "amber")]), 0.5);
-  assert.equal(healthyShare([]), null);
-  // Rounded before deciding whether it is whole: 0.56 * 100 is
-  // 56.00000000000001 in binary floating point, which printed "56.0 %".
-  assert.equal(shareText(0.56), "56 %", "a whole number stays whole through the float");
-  assert.equal(shareText(0.5), "50 %");
-  assert.equal(shareText(0.908), "90.8 %");
-  assert.equal(shareText(1), "100 %");
-  // Never rounded up to a clean hundred while a failure is still on the strip:
-  // that reads as a contradiction and costs the strip its credibility.
-  assert.equal(shareText(0.999999), "99.99 %");
-  assert.equal(shareText(null), "—");
 });
 
 test("the expanded view lists only the trouble, newest first, in the service's own words", () => {
@@ -160,4 +137,19 @@ test("both readers are bounded per project rather than by time, and carry the se
   assert.equal(ran.length, 1, "a row with no project code belongs to no strip");
   assert.equal(ran[0].status, "completed_with_issues");
   assert.equal(ran[0].colour, "amber", "completed_with_ is the in-between state, not a pass");
+});
+
+test("the strip reports what to look at, never a score", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const bars = await readFile(resolve("components/HealthBars.tsx"), "utf8");
+  const code = bars.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  // A percentage answers "how available were we", which is a status-page
+  // question and not this estate's: "48 % clean" invites "is that bad?", which
+  // nobody can answer without knowing the service. The faults themselves always
+  // say what to do.
+  assert.doesNotMatch(code, /%|uptime|shareText|healthyShare/i, "no score on the strip");
+  assert.match(code, /to look at/, "the count of what needs attention takes its place");
+  assert.match(code, /nothing to action/, "and a clean strip says so without claiming a figure");
 });

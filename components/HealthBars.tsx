@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { formatSgt } from "@/lib/card-summary";
-import { healthyShare, shareText, troubleCount, troubleIn, type Bar } from "@/lib/health-timeline";
+import { troubleCount, troubleIn, type Bar } from "@/lib/health-timeline";
 
 const FILL: Record<string, string> = {
   red: "bg-danger",
@@ -36,7 +36,7 @@ export function HealthBars({ bars }: { bars: Bar[] }) {
 
   const trouble = troubleIn(bars);
   const troubled = troubleCount(bars);
-  const share = healthyShare(bars);
+  const worst = trouble.some((group) => group.colour === "red") ? "red" : "amber";
 
   return (
     <div className="mt-2">
@@ -44,9 +44,11 @@ export function HealthBars({ bars }: { bars: Bar[] }) {
         type="button"
         onClick={() => setOpen((wasOpen) => !wasOpen)}
         aria-expanded={open}
-        aria-label={`Last ${bars.length} processes, ${shareText(share)} clean. ${
-          troubled ? `Show the ${troubled} that were not.` : "Nothing to show."
-        }`}
+        aria-label={
+          troubled
+            ? `Last ${bars.length} processes. Show the ${troubled} that need looking at.`
+            : `Last ${bars.length} processes, nothing to action.`
+        }
         className="group block w-full text-left"
       >
         {/* `gap-px`: at fifty bars in a card this wide each is about 4px, and
@@ -60,20 +62,25 @@ export function HealthBars({ bars }: { bars: Bar[] }) {
             />
           ))}
         </span>
+        {/* The middle slot carries what to DO, not how well it went — a score
+            there invites "is that bad?", which nobody can answer without
+            knowing the service. */}
         <span className="mt-1 flex items-center gap-1.5 text-[9px] text-muted-foreground">
           <span className="whitespace-nowrap">{bars.length} ago</span>
           <span className="h-px flex-1 bg-border" />
-          <span className="whitespace-nowrap tabular-nums">{shareText(share)} clean</span>
+          {troubled ? (
+            <span
+              className={`whitespace-nowrap font-medium underline decoration-dotted group-hover:text-foreground ${
+                worst === "red" ? "text-danger" : "text-warn"
+              }`}
+            >
+              {open ? "hide" : `${troubled} to look at`}
+            </span>
+          ) : (
+            <span className="whitespace-nowrap">nothing to action</span>
+          )}
           <span className="h-px flex-1 bg-border" />
-          <span className="whitespace-nowrap">
-            {troubled ? (
-              <span className="underline decoration-dotted group-hover:text-foreground">
-                {open ? "hide" : `${troubled} to see`}
-              </span>
-            ) : (
-              "now"
-            )}
-          </span>
+          <span className="whitespace-nowrap">now</span>
         </span>
       </button>
 

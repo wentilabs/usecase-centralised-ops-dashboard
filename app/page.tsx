@@ -5,7 +5,7 @@ import { chatIdsIn } from "@/lib/card-summary";
 import { getCanonicalProject, getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { getGroupNames } from "@/lib/group-names";
 import { listProjectHealth } from "@/lib/data-health-repository";
-import { listDeliveryTimeline, listDeliveryVerdicts } from "@/lib/config-repository";
+import { listDeliveryVerdicts, listProjectTimelines } from "@/lib/config-repository";
 import { SERVICES, SERVICE_KEYS, isServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
@@ -62,12 +62,12 @@ export default async function DashboardPage({
   });
   // Both signals, together rather than in sequence: neither waits on the other,
   // and a failure in one must not cost the page the other's answer.
-  const [projectHealth, deliveryVerdicts, deliveryTimeline] = await Promise.all([
+  const [projectHealth, deliveryVerdicts, projectTimelines] = await Promise.all([
     listProjectHealth(
       Object.fromEntries(services.map((service) => [service.key, service.rows])),
     ).catch(() => new Map()),
     listDeliveryVerdicts().catch(() => []),
-    listDeliveryTimeline().catch(() => []),
+    listProjectTimelines().catch(() => ({})),
   ]);
 
   return (
@@ -75,7 +75,7 @@ export default async function DashboardPage({
       services={services}
       projectHealth={Array.from(projectHealth.values())}
       deliveryVerdicts={deliveryVerdicts}
-      deliveryTimeline={deliveryTimeline}
+      projectTimelines={projectTimelines}
       fetchedAt={new Date().toISOString()}
       initialGroupNames={groupNames.map}
       visoUrl={visoUrl}

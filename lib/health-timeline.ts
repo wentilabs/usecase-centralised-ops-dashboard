@@ -1,7 +1,7 @@
 import { worstColour, type HealthColour } from "./health-status";
 
 /**
- * The estate's recent history, as one bar per cycle.
+ * One project's recent history, as one bar per cycle.
  *
  * The board answers "what is wrong now". It cannot answer "has this been
  * happening all week, or did it start an hour ago" — and that second question
@@ -11,9 +11,14 @@ import { worstColour, type HealthColour } from "./health-status";
  * bars with forty-two green and two amber at the right-hand end shows it at a
  * glance, and points straight at what changed at 10:00.
  *
- * One bar is one CYCLE — an hour, because every service here that records
- * deliveries records them hourly. Newest on the right, so the strip reads as
- * time and new cycles append where the eye already is.
+ * One bar is one CYCLE — an hour, because every service here records its runs
+ * and deliveries hourly. Newest on the right, so the strip reads as time and
+ * new cycles append where the eye already is.
+ *
+ * Per PROJECT, not per estate. A single rolled-up strip averages seven services
+ * on different cadences into a shape nobody can act on; the question a reader
+ * actually has is "is THIS site being delivered to", and that is answered on the
+ * site's own card.
  */
 
 export type Sample = {
@@ -97,4 +102,33 @@ export function shareText(share: number | null): string {
   const percent = share * 100;
   const text = percent < 100 && percent > 99.99 ? "99.99" : percent.toFixed(2);
   return `${text} %`;
+}
+
+export type KeyedSample = Sample & {
+  /** Which strip this attempt belongs to — `healthKey(service, projectCode)`. */
+  key: string;
+};
+
+/**
+ * One timeline per key, for the cards.
+ *
+ * Only keys that appear in `samples` get a timeline. A project nobody recorded
+ * an attempt for has no strip at all rather than fifty grey bars, because fifty
+ * grey bars on a card look like a system that is broken rather than one that
+ * has nothing to say.
+ */
+export function timelinesFrom(
+  samples: KeyedSample[],
+  options: { now?: Date; bars?: number } = {},
+): Map<string, Bar[]> {
+  const grouped = new Map<string, Sample[]>();
+  for (const sample of samples) {
+    const existing = grouped.get(sample.key);
+    if (existing) existing.push(sample);
+    else grouped.set(sample.key, [sample]);
+  }
+
+  const timelines = new Map<string, Bar[]>();
+  for (const [key, group] of grouped) timelines.set(key, timelineFrom(group, options));
+  return timelines;
 }

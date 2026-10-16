@@ -1,5 +1,6 @@
 "use client";
 
+import type { Bar } from "@/lib/health-timeline";
 import { autoLinks, cardEmphasis, deliveryGroups, firesAt, formatSgt, pillsFor } from "@/lib/card-summary";
 import { ServiceTag } from "./ServiceTag";
 import { CompanyMark } from "./CompanyMark";
@@ -92,6 +93,7 @@ export function ProjectCard({
   onOpenMentionTargets,
   protectedMeters,
   health,
+  healthBars,
 }: {
   service: ServiceKey;
   config: ProjectConfigRow;
@@ -120,6 +122,8 @@ export function ProjectCard({
   protectedMeters?: string[];
   /** Automatic source-table health for this service/project pair. */
   health?: ProjectHealth;
+  /** The site's recent cycles, newest last. */
+  healthBars?: Bar[];
 }) {
   const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
@@ -381,7 +385,7 @@ export function ProjectCard({
         </div>
       ) : null}
 
-      <DataHealthRow health={health} />
+      <DataHealthRow health={health} bars={healthBars} />
 
       <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
         <span className="hidden md:inline">

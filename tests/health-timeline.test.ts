@@ -103,7 +103,9 @@ test("the window query is bounded by time, and an unreadable ledger yields no ba
       path = requested;
       return {
         ok: true,
-        body: [{ delivery_status: "UNCONFIRMED", created_at: "2026-10-16T11:00:39+00:00" }],
+        body: [
+          { project_code: "JCU", delivery_status: "UNCONFIRMED", created_at: "2026-10-16T11:00:39+00:00" },
+        ],
       };
     },
     "2026-10-14T10:00:00.000Z",
@@ -112,7 +114,10 @@ test("the window query is bounded by time, and an unreadable ledger yields no ba
   // Bounded by time, not by count: a `limit` alone truncates the busiest
   // service's older hours, and those would then render as missed cycles.
   assert.match(path, /created_at=gte\.2026-10-14T10:00:00\.000Z/, "the window is a time filter");
-  assert.match(path, /select=delivery_status,created_at/, "and only the two columns it needs");
+  // Three columns, not the whole row: the project code is what assigns an
+  // attempt to a card's strip, and the other two are the bar itself.
+  assert.match(path, /select=project_code,delivery_status,created_at/, "only the columns a bar needs");
+  assert.equal(rows[0].projectCode, "JCU");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].colour, "amber", "coloured by haze's own contract");
 
@@ -123,7 +128,7 @@ test("the window query is bounded by time, and an unreadable ledger yields no ba
     "haze",
     async () => ({
       ok: false,
-      body: [{ delivery_status: "SENT", created_at: "2026-10-16T11:00:00+00:00" }],
+      body: [{ project_code: "JCU", delivery_status: "SENT", created_at: "2026-10-16T11:00:00+00:00" }],
     }),
     "2026-10-14T10:00:00.000Z",
   );

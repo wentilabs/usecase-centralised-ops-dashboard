@@ -20,7 +20,7 @@ import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
-import { HealthTimeline } from "./HealthTimeline";
+import { HealthStrip } from "./HealthStrip";
 import { boardEntries, deliveryEntries, summarise } from "@/lib/health-board";
 import type { DeliveryVerdict } from "@/lib/delivery-reader";
 import type { Bar } from "@/lib/health-timeline";
@@ -71,7 +71,7 @@ export function DashboardShell({
   services,
   projectHealth = [],
   deliveryVerdicts = [],
-  deliveryTimeline = [],
+  projectTimelines = {},
   fetchedAt,
   session,
   initialGroupNames,
@@ -85,7 +85,7 @@ export function DashboardShell({
   projectHealth: ProjectHealth[];
   /** Newest delivery attempt per project, for services that record one. */
   deliveryVerdicts?: DeliveryVerdict[];
-  deliveryTimeline?: Bar[];
+  projectTimelines?: Record<string, Bar[]>;
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -451,6 +451,8 @@ export function DashboardShell({
             </button>
           ))}
         </nav>
+        <HealthStrip summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
+
         {/* Not a service tab: a whole-estate view that cuts across all of them.
             Kept visually apart from the tabs for that reason. */}
         <a
@@ -573,13 +575,6 @@ export function DashboardShell({
         </div>
       </header>
 
-      {/* Directly under the header and full width, because a change in shape —
-          clean for two days, then every cycle amber — is what a reader needs to
-          see first, and a chip in the tab row cannot show it. */}
-      <div className="mb-3">
-        <HealthTimeline bars={deliveryTimeline} summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
-      </div>
-
       {/* One scrolling rail on a phone, a wrapping row on a desktop. Wrapping
           five thumb-sized buttons at 375px took three lines and pushed the first
           card most of the way off the screen; a rail keeps the actions one swipe
@@ -672,6 +667,7 @@ export function DashboardShell({
               onOpenMentionTargets={() => setMentionTargets({ row, rowId })}
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
               health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
+              healthBars={projectTimelines[healthKey(active.key, String(row.project_code ?? ""))]}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />

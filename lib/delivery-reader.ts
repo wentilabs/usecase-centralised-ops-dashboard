@@ -1,4 +1,5 @@
 import { colourForStatus, type HealthColour } from "./health-status";
+import { readPaged } from "./paged-read";
 import type { ServiceKey } from "./services";
 
 /**
@@ -136,31 +137,37 @@ export async function readDelivery(
  * whole row keeps a two-day window for a service sending to sixty-four groups
  * an hour down to a few hundred kilobytes, and the repository caches it.
  *
- * Bounded by time rather than by count. A `limit` alone silently truncates the
- * window for the busiest service — exactly the one worth watching — and the
- * strip would then show its older hours as empty gaps, which reads as missed
- * cycles. `limit` stays only as a ceiling against a runaway table.
+ * Bounded by time, and PAGED. A single request silently truncates the window
+ * for the busiest service — exactly the one worth watching — because PostgREST
+ * caps every response at 1000 rows; its older hours would then render as empty
+ * gaps, which reads as missed cycles. See `lib/paged-read.ts`.
  */
 export async function readDeliveryWindow(
   service: ServiceKey,
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
   sinceIso: string,
-  limit = 6000,
-): Promise<{ at: string; colour: HealthColour }[]> {
+  maxPages = 10,
+): Promise<{ projectCode: string; at: string; colour: HealthColour }[]> {
   const ledger = LEDGERS[service];
   if (!ledger) return [];
 
-  const { schema, table, statusColumn, timeColumn } = ledger;
-  const res = await request(
-    `${table}?select=${statusColumn},${timeColumn}&${timeColumn}=gte.${sinceIso}` +
-      `&order=${timeColumn}.desc&limit=${limit}`,
-    { schema },
+  const { schema, table, statusColumn, projectColumn, timeColumn } = ledger;
+  const rows = await readPaged(
+    request,
+    (offset, limit) =>
+      `${table}?select=${projectColumn},${statusColumn},${timeColumn}&${timeColumn}=gte.${sinceIso}` +
+      `&order=${timeColumn}.desc&limit=${limit}&offset=${offset}`,
+    { schema, maxPages },
   );
-  if (!res.ok || !Array.isArray(res.body)) return [];
 
-  return (res.body as Record<string, unknown>[]).flatMap((row) => {
+  return rows.flatMap((row) => {
+    const projectCode = String(row[projectColumn] ?? "").trim();
     const at = String(row[timeColumn] ?? "");
-    if (!at) return [];
-    return [{ at, colour: colourForStatus(service, String(row[statusColumn] ?? "").trim()).colour }];
+    if (!projectCode || !at) return [];
+    return [{
+      projectCode,
+      at,
+      colour: colourForStatus(service, String(row[statusColumn] ?? "").trim()).colour,
+    }];
   });
 }

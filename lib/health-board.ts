@@ -20,6 +20,15 @@ import { SERVICE_KEYS, type ServiceKey } from "./services";
 export type BoardEntry = {
   service: ServiceKey;
   projectCode: string;
+  /**
+   * Which question this entry answers.
+   *
+   * Kept apart rather than merged into one verdict per project, because they
+   * fail differently and point at different people: a stale readings table is
+   * the vendor or the scraper, a failed send is the listener or the group. A
+   * project may appear once for each, which is honest — they are two problems.
+   */
+  signal: "ingestion" | "delivery";
   colour: HealthColour;
   /** Short for green, the service's own words for amber and red. */
   label: string;
@@ -86,6 +95,7 @@ export function boardEntries(
       entries.push({
         service,
         projectCode,
+        signal: "ingestion",
         colour,
         label,
         detail: found.newestReceivedAt,
@@ -94,6 +104,25 @@ export function boardEntries(
     }
   }
   return entries;
+}
+
+/** Delivery verdicts, as board entries. */
+export function deliveryEntries(
+  verdicts: { service: ServiceKey; projectCode: string; colour: HealthColour; status: string; at: string }[],
+): BoardEntry[] {
+  return verdicts.map((verdict) => ({
+    service: verdict.service,
+    projectCode: verdict.projectCode,
+    signal: "delivery" as const,
+    colour: verdict.colour,
+    // The service's own word. A reader's next move is to search the logs for
+    // this exact string, so rewording it would cost them the search.
+    label: verdict.status,
+    detail: verdict.at || null,
+    // A delivery that was not due is a skip the service already named; nothing
+    // here is inferred to be idle.
+    idle: false,
+  }));
 }
 
 export type BoardSummary = {
@@ -105,6 +134,8 @@ export type BoardSummary = {
   uncovered: ServiceKey[];
   /** Only what needs acting on, worst first. */
   exceptions: BoardEntry[];
+  /** The same exceptions, with one row per distinct failure. */
+  incidents: Incident[];
 };
 
 export function summarise(entries: BoardEntry[]): BoardSummary {
@@ -114,7 +145,7 @@ export function summarise(entries: BoardEntry[]): BoardSummary {
     // renders — a list that reshuffles is a list nobody trusts.
     .sort((a, b) => {
       if (a.colour !== b.colour) return a.colour === "red" ? -1 : 1;
-      return `${a.service}${a.projectCode}`.localeCompare(`${b.service}${b.projectCode}`);
+      return `${a.service}${a.projectCode}${a.signal}`.localeCompare(`${b.service}${b.projectCode}${b.signal}`);
     });
 
   return {
@@ -127,6 +158,7 @@ export function summarise(entries: BoardEntry[]): BoardSummary {
     // its contract declares it would report.
     uncovered: SERVICE_KEYS.filter((service) => !entries.some((entry) => entry.service === service)),
     exceptions,
+    incidents: incidentsFrom(entries),
   };
 }
 
@@ -141,4 +173,66 @@ export function summaryLine(summary: BoardSummary): string {
   // day, and claiming health for a project nothing asked of would be the same
   // overstatement the colours were fixed to avoid.
   return summary.green ? "nothing to action" : "idle";
+}
+
+export type Incident = {
+  service: ServiceKey;
+  signal: BoardEntry["signal"];
+  colour: HealthColour;
+  /** The service's own status word, shared by every project in the group. */
+  label: string;
+  projects: string[];
+  /** Oldest and newest timestamps in the group, for "since when". */
+  from: string | null;
+  to: string | null;
+};
+
+/**
+ * The same failure across many projects is one incident, not many problems.
+ *
+ * Haze posts hourly to every project through one listener. When that listener
+ * stopped confirming recipients, the ledger recorded UNCONFIRMED for all 64
+ * rows of the 10:00 run — and the board listed thirty-odd identical rows, each
+ * saying the same word at the same minute. That is the alarm fatigue this view
+ * exists to avoid, reintroduced one layer up: a reader scrolling thirty copies
+ * of one sentence learns less than one that says "thirty projects, since 10:00".
+ *
+ * Grouped on service, signal and the status text, because those three are what
+ * make two rows the same event. Time is reported as a range rather than a key,
+ * so a run that spans two hours stays one incident instead of splitting.
+ */
+export function incidentsFrom(entries: BoardEntry[]): Incident[] {
+  const groups = new Map<string, Incident>();
+  for (const entry of entries) {
+    if (entry.colour === "green") continue;
+    const key = `${entry.service}|${entry.signal}|${entry.label}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.projects.push(entry.projectCode);
+      if (entry.detail) {
+        if (!existing.from || entry.detail < existing.from) existing.from = entry.detail;
+        if (!existing.to || entry.detail > existing.to) existing.to = entry.detail;
+      }
+      continue;
+    }
+    groups.set(key, {
+      service: entry.service,
+      signal: entry.signal,
+      colour: entry.colour,
+      label: entry.label,
+      projects: [entry.projectCode],
+      from: entry.detail,
+      to: entry.detail,
+    });
+  }
+
+  return [...groups.values()]
+    .map((incident) => ({ ...incident, projects: incident.projects.sort() }))
+    // Red first, then the widest blast radius: thirty projects failing one way
+    // is more urgent than one project failing another.
+    .sort((a, b) => {
+      if (a.colour !== b.colour) return a.colour === "red" ? -1 : 1;
+      if (a.projects.length !== b.projects.length) return b.projects.length - a.projects.length;
+      return `${a.service}${a.signal}`.localeCompare(`${b.service}${b.signal}`);
+    });
 }

@@ -5,6 +5,7 @@ import { chatIdsIn } from "@/lib/card-summary";
 import { getCanonicalProject, getFieldSpec, listConfigs } from "@/lib/config-repository";
 import { getGroupNames } from "@/lib/group-names";
 import { listProjectHealth } from "@/lib/data-health-repository";
+import { listDeliveryVerdicts } from "@/lib/config-repository";
 import { SERVICES, SERVICE_KEYS, isServiceKey } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
@@ -59,14 +60,20 @@ export default async function DashboardPage({
       spec: specResult.status === "fulfilled" ? specResult.value : null,
     };
   });
-  const projectHealth = await listProjectHealth(
-    Object.fromEntries(services.map((service) => [service.key, service.rows])),
-  ).catch(() => new Map());
+  // Both signals, together rather than in sequence: neither waits on the other,
+  // and a failure in one must not cost the page the other's answer.
+  const [projectHealth, deliveryVerdicts] = await Promise.all([
+    listProjectHealth(
+      Object.fromEntries(services.map((service) => [service.key, service.rows])),
+    ).catch(() => new Map()),
+    listDeliveryVerdicts().catch(() => []),
+  ]);
 
   return (
     <DashboardShell
       services={services}
       projectHealth={Array.from(projectHealth.values())}
+      deliveryVerdicts={deliveryVerdicts}
       fetchedAt={new Date().toISOString()}
       initialGroupNames={groupNames.map}
       visoUrl={visoUrl}

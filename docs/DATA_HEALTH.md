@@ -174,14 +174,58 @@ So two services can answer all three questions today. HALO must show the rest as
 **not covered**, never as green: a service with no evidence is not a healthy
 service, and colouring it green is the one failure this page cannot afford.
 
-## Delivery is not yet queryable
+## Delivery: what HALO can read today
 
-Both services already decide a per-message delivery outcome — `partial`,
-`read_failed`, `stale_telegram_message`, `test_stale_reading_suppressed` — but
-these are **console-logged only**, not written to a table. Question 2 is
-therefore answered today only at run granularity: `completed` implies a send,
-`completed_with_…` implies a partial one. Recording delivery outcomes beside the
-run row is what would answer it properly.
+Three services write a per-project outbound ledger, and HALO reads the newest
+row per project from each (`lib/delivery-reader.ts`):
+
+| Service | Ledger | Status column | Keyed by |
+| --- | --- | --- | --- |
+| Haze | `haze.haze_notification_events` | `delivery_status` | `project_code` |
+| Lightning | `lightning.lightning_events` | `delivery_status` | `project_code` |
+| Issue Chaser | `issue_chaser.outbound_submissions` | `status` | `project_code` |
+
+The other four are deliberately absent rather than guessed at, so the board says
+*not covered* instead of showing a green it has not earned:
+
+| Service | Why not |
+| --- | --- |
+| WBGT | `wbgt_notification_outbox` exists but is empty |
+| Subcon | `outbound_message_submissions` exists but is empty |
+| Ailytics | keys deliveries by `project_config_id` (a uuid), not `project_code` |
+| Noise | no general delivery ledger — only the monthly report |
+
+Noise and WBGT do decide a per-message outcome — `partial`, `read_failed`,
+`stale_telegram_message`, `test_stale_reading_suppressed` — but these are
+**console-logged only**. For those two, question 2 is still answered at run
+granularity: `completed` implies a send, `completed_with_…` a partial one.
+Writing those outcomes to a table beside the run row is what would close it.
+
+**Which table is an integration detail, what the statuses mean is not.** The
+mapping above lives in HALO because only HALO needs it; the colour of
+`UNCONFIRMED` lives in haze's own contract, and HALO reads it from there. A
+reader that classified statuses itself would drift the first time a service
+added one.
+
+### What `queued` proves, and what it does not
+
+Since the listener queue landed, a service can confirm the listener **accepted**
+a message and no more. Whether WhatsApp sent it is resolved later in the
+listener's own `internal.whatsapp_outbound_queue` (`sent` / `dropped` /
+`failed`), and **nothing reconciles the two** — no service joins its `queue_id`
+back to that outcome. So `queued` is green because acceptance is the furthest
+this side can honestly see. The gap is recorded here rather than hidden behind a
+colour.
+
+### One failure, one row
+
+Delivery failures arrive in bulk, because a service posts to every project
+through one listener. The first live run of this reader found Haze reporting
+`UNCONFIRMED` for all 64 projects of its 10:00 run after six clean hours of
+`SENT` — one listener-side event, which an ungrouped list renders as sixty-four
+problems. `incidentsFrom` therefore groups on **service + signal + status text**
+and reports a project count and a time range. Thirty identical rows is the same
+alarm fatigue the colours were introduced to fix, one layer up.
 
 ## Staleness: the third signal
 

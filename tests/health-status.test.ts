@@ -319,7 +319,7 @@ test("a service HALO cannot read is reported, never counted as healthy", () => {
 });
 
 test("the quiet line never overstates health", () => {
-  const quiet = { red: 0, amber: 0, green: 0, idle: 12, uncovered: [], exceptions: [] };
+  const quiet = { red: 0, amber: 0, green: 0, idle: 12, uncovered: [], exceptions: [], incidents: [] };
   // Not "all healthy": most of the estate is outside its cadence hours for most
   // of the day, and claiming health for a project nothing asked of is the same
   // overstatement the colours were fixed to avoid.

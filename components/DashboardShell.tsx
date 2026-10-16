@@ -21,7 +21,8 @@ import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
-import { boardEntries, summarise } from "@/lib/health-board";
+import { boardEntries, deliveryEntries, summarise } from "@/lib/health-board";
+import type { DeliveryVerdict } from "@/lib/delivery-reader";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
@@ -68,6 +69,7 @@ function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null 
 export function DashboardShell({
   services,
   projectHealth = [],
+  deliveryVerdicts = [],
   fetchedAt,
   session,
   initialGroupNames,
@@ -79,6 +81,8 @@ export function DashboardShell({
 }: {
   services: ServiceData[];
   projectHealth: ProjectHealth[];
+  /** Newest delivery attempt per project, for services that record one. */
+  deliveryVerdicts?: DeliveryVerdict[];
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -124,8 +128,8 @@ export function DashboardShell({
     // `rows`, not `services[].rows`: the shell keeps edited rows in state, so
     // reading the props instead would leave the strip describing the estate as
     // it was when the page loaded.
-    () => summarise(boardEntries(rows, healthByProject)),
-    [rows, healthByProject],
+    () => summarise([...boardEntries(rows, healthByProject), ...deliveryEntries(deliveryVerdicts)]),
+    [rows, healthByProject, deliveryVerdicts],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;

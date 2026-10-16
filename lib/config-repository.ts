@@ -11,6 +11,7 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
+import { readDelivery, servicesWithLedger, type DeliveryVerdict } from "./delivery-reader";
 import { describePostgrestError } from "./postgrest-error";
 import {
   MANUAL_SOURCE_MARKER,
@@ -916,4 +917,26 @@ export async function attachCanonicalServiceAlias(
   if (existing === alias) return current;
   const { id: _id, created_at: _created, updated_at: _updated, ...draft } = current;
   return updateCanonicalProject(id, { ...draft, service_aliases: { ...draft.service_aliases, [service]: alias } }, current.updated_at);
+}
+
+// ---------------------------------------------------------------------------
+// Delivery verdicts — "did this project's last message reach the listener?"
+// ---------------------------------------------------------------------------
+
+/**
+ * The newest delivery attempt per project, for every service that records one.
+ *
+ * One query per service rather than per project, and `allSettled` so a service
+ * whose ledger is unreadable reports nothing instead of costing the page every
+ * other service's answer — the ledger most likely to fail is the one being
+ * asked about.
+ */
+export async function listDeliveryVerdicts(): Promise<DeliveryVerdict[]> {
+  const services = servicesWithLedger();
+  const settled = await Promise.allSettled(
+    services.map((service) =>
+      readDelivery(service, (path, init) => request(path, { schema: init.schema })),
+    ),
+  );
+  return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
 }

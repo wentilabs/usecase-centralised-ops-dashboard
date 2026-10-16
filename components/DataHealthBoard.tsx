@@ -1,7 +1,15 @@
 "use client";
 
 import { SERVICES, type ServiceKey } from "@/lib/services";
-import type { BoardSummary } from "@/lib/health-board";
+import type { BoardSummary, Incident } from "@/lib/health-board";
+
+/** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
+function when(incident: Incident): string | null {
+  const short = (iso: string) => iso.slice(5, 16).replace("T", " ");
+  if (!incident.from) return null;
+  if (!incident.to || incident.to.slice(0, 16) === incident.from.slice(0, 16)) return short(incident.from);
+  return `${short(incident.from)} → ${short(incident.to)}`;
+}
 
 /**
  * What is wrong right now, named — not how many things are fine.
@@ -11,8 +19,14 @@ import type { BoardSummary } from "@/lib/health-board";
  * reassuring and unactionable; the one thing a reader came for — WHICH project,
  * and what did it say — was the part left out.
  *
- * So the exceptions are the content and the healthy majority is a footnote. A
- * row carries the service's own status text rather than a rewording of it,
+ * So the exceptions are the content and the healthy majority is a footnote, and
+ * they are grouped: one failure that hit thirty projects is ONE row naming
+ * thirty projects, not thirty rows saying the same word at the same minute. The
+ * first live run of the delivery reader produced exactly that — Haze's listener
+ * stopped confirming recipients and every project in the estate reported
+ * UNCONFIRMED — which reads as thirty problems and is one.
+ *
+ * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
 export function DataHealthBoard({ summary, onClose, onOpenProject }: {
@@ -21,6 +35,8 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
   /** Jump to that project's editor — the row is the start of a fix, not a report. */
   onOpenProject?: (service: ServiceKey, projectCode: string) => void;
 }) {
+  const affected = summary.red + summary.amber;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health">
       <section className="mx-auto flex max-h-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
@@ -28,8 +44,8 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
           <div>
             <h2 className="text-xl font-semibold">Data Health</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {summary.exceptions.length
-                ? `${summary.exceptions.length} project${summary.exceptions.length === 1 ? " needs" : "s need"} attention.`
+              {summary.incidents.length
+                ? `${summary.incidents.length} issue${summary.incidents.length === 1 ? "" : "s"} across ${affected} project${affected === 1 ? "" : "s"}.`
                 : "Nothing needs attention."}{" "}
               {/* Said once, here, rather than on every card: there is nothing to
                   switch on, so a reader seeing a quiet board knows the check ran
@@ -47,33 +63,55 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
         </header>
 
         <div className="overflow-y-auto p-5">
-          {summary.exceptions.length ? (
-            <ul className="flex flex-col gap-1.5">
-              {summary.exceptions.map((entry) => (
-                <li key={`${entry.service}:${entry.projectCode}`}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenProject?.(entry.service, entry.projectCode)}
-                    className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 rounded-lg border px-3 py-2 text-left transition-colors hover:border-primary ${
-                      entry.colour === "red" ? "border-danger/40 bg-danger/5" : "border-warn/40 bg-warn/5"
-                    }`}
+          {summary.incidents.length ? (
+            <ul className="flex flex-col gap-2">
+              {summary.incidents.map((incident) => {
+                const red = incident.colour === "red";
+                const stamp = when(incident);
+                return (
+                  <li
+                    key={`${incident.service}|${incident.signal}|${incident.label}`}
+                    className={`rounded-lg border px-3 py-2.5 ${red ? "border-danger/40 bg-danger/5" : "border-warn/40 bg-warn/5"}`}
                   >
-                    <span className={`text-sm font-semibold ${entry.colour === "red" ? "text-danger" : "text-warn"}`}>
-                      ●
-                    </span>
-                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                      {SERVICES[entry.service].label}
-                    </span>
-                    <span className="font-mono text-sm font-medium">{entry.projectCode}</span>
-                    {/* The service's own words, unrewritten — this is the string
-                        a reader will grep the logs for. */}
-                    <span className="font-mono text-[12px] text-muted-foreground">{entry.label}</span>
-                    {entry.detail ? (
-                      <span className="ml-auto text-[11px] text-muted-foreground">{entry.detail.slice(0, 16).replace("T", " ")}</span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
+                    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                      <span className={`text-sm font-semibold ${red ? "text-danger" : "text-warn"}`}>●</span>
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        {SERVICES[incident.service].label}
+                      </span>
+                      {/* Which question failed. A project can be receiving data
+                          and failing to send it, and those are two different
+                          people's problems. */}
+                      <span className="rounded border border-border px-1 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {incident.signal}
+                      </span>
+                      {/* The service's own words, unrewritten — this is the
+                          string a reader will grep the logs for. */}
+                      <span className="font-mono text-[12px] font-medium">{incident.label}</span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {incident.projects.length} project{incident.projects.length === 1 ? "" : "s"}
+                      </span>
+                      {stamp ? <span className="ml-auto font-mono text-[11px] text-muted-foreground">{stamp}</span> : null}
+                    </div>
+
+                    {/* The codes stay visible rather than hidden behind a
+                        disclosure: "thirty projects" is the shape of the
+                        problem, but WHICH thirty is what tells a reader whether
+                        it is the whole estate or one client. */}
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {incident.projects.map((projectCode) => (
+                        <button
+                          key={projectCode}
+                          type="button"
+                          onClick={() => onOpenProject?.(incident.service, projectCode)}
+                          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
+                        >
+                          {projectCode}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">

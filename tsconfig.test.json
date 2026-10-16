@@ -51,6 +51,7 @@
     "lib/delivery-reader.ts",
     "lib/health-timeline.ts",
     "lib/paged-read.ts",
+    "lib/enough-per-project.ts",
     "lib/run-reader.ts",
     "lib/health-board.ts",
     "tests/**/*.ts"

@@ -17,7 +17,7 @@ import {
   servicesWithLedger,
   type DeliveryVerdict,
 } from "./delivery-reader";
-import { BAR_COUNT, timelinesFrom, type Bar } from "./health-timeline";
+import { BAR_COUNT, stripsFrom, type Bar } from "./health-timeline";
 import { readRunWindow, servicesWithRunLog } from "./run-reader";
 import { healthKey } from "./data-health";
 import { describePostgrestError } from "./postgrest-error";
@@ -950,44 +950,44 @@ export async function listDeliveryVerdicts(): Promise<DeliveryVerdict[]> {
 }
 
 /**
- * The last 50 hours, per project, as bars for the cards.
+ * The last 50 processes, per project, as bars for the cards.
  *
  * Two sources, because no single one covers the estate: the three services with
  * a per-project delivery ledger, and the two that instead keep a per-project
  * run log. A project appearing in neither simply has no strip.
  *
- * Cached: this reads far more rows than anything else on the page and the answer
- * only changes once an hour. Five minutes keeps a newly-broken cycle visible
- * quickly while a reload costs nothing.
+ * Cached for five minutes. The readers stop paging as soon as every project has
+ * its fifty, so a cold load is a couple of requests per service rather than the
+ * ten-page time window this replaced.
  */
-const timelineCache = createTtlCache<"estate", Record<string, Bar[]>>(5 * 60_000);
+const stripCache = createTtlCache<"estate", Record<string, Bar[]>>(5 * 60_000);
 
-export async function listProjectTimelines(): Promise<Record<string, Bar[]>> {
-  const cached = timelineCache.get("estate");
+export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
+  const cached = stripCache.get("estate");
   if (cached) return cached;
 
-  const since = new Date(Date.now() - BAR_COUNT * 3_600_000).toISOString();
   const read = (path: string, init: { schema: string }) => request(path, { schema: init.schema });
-
   const settled = await Promise.allSettled([
     ...servicesWithLedger().map(async (service) =>
-      (await readDeliveryWindow(service, read, since)).map((sample) => ({
+      (await readDeliveryWindow(service, read, BAR_COUNT)).map((sample) => ({
         key: healthKey(service, sample.projectCode),
         at: sample.at,
         colour: sample.colour,
+        status: sample.status,
       })),
     ),
     ...servicesWithRunLog().map(async (service) =>
-      (await readRunWindow(service, read, since)).map((sample) => ({
+      (await readRunWindow(service, read, BAR_COUNT)).map((sample) => ({
         key: healthKey(service, sample.projectCode),
         at: sample.at,
         colour: sample.colour,
+        status: sample.status,
       })),
     ),
   ]);
 
   const samples = settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
-  const timelines = Object.fromEntries(timelinesFrom(samples));
-  timelineCache.set("estate", timelines);
-  return timelines;
+  const strips = Object.fromEntries(stripsFrom(samples));
+  stripCache.set("estate", strips);
+  return strips;
 }

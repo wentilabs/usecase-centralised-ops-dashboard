@@ -71,7 +71,7 @@ export function DashboardShell({
   services,
   projectHealth = [],
   deliveryVerdicts = [],
-  projectTimelines = {},
+  projectStrips = {},
   fetchedAt,
   session,
   initialGroupNames,
@@ -85,7 +85,7 @@ export function DashboardShell({
   projectHealth: ProjectHealth[];
   /** Newest delivery attempt per project, for services that record one. */
   deliveryVerdicts?: DeliveryVerdict[];
-  projectTimelines?: Record<string, Bar[]>;
+  projectStrips?: Record<string, Bar[]>;
   fetchedAt: string;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
@@ -667,7 +667,7 @@ export function DashboardShell({
               onOpenMentionTargets={() => setMentionTargets({ row, rowId })}
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
               health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
-              healthBars={projectTimelines[healthKey(active.key, String(row.project_code ?? ""))]}
+              healthBars={projectStrips[healthKey(active.key, String(row.project_code ?? ""))]}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />

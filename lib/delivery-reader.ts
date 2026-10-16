@@ -1,4 +1,5 @@
 import { colourForStatus, type HealthColour } from "./health-status";
+import { everyProjectHasEnough } from "./enough-per-project";
 import { readPaged } from "./paged-read";
 import type { ServiceKey } from "./services";
 
@@ -137,17 +138,18 @@ export async function readDelivery(
  * whole row keeps a two-day window for a service sending to sixty-four groups
  * an hour down to a few hundred kilobytes, and the repository caches it.
  *
- * Bounded by time, and PAGED. A single request silently truncates the window
- * for the busiest service — exactly the one worth watching — because PostgREST
- * caps every response at 1000 rows; its older hours would then render as empty
- * gaps, which reads as missed cycles. See `lib/paged-read.ts`.
+ * Bounded by COUNT per project, not by time, because the strips are ordinal: a
+ * bar is one delivery attempt, whatever cadence the service runs at. Paged,
+ * because PostgREST caps every response at 1000 rows without saying so, and
+ * stopped as soon as every project in hand has its quota — see
+ * `lib/paged-read.ts` and `lib/enough-per-project.ts`.
  */
 export async function readDeliveryWindow(
   service: ServiceKey,
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
-  sinceIso: string,
-  maxPages = 10,
-): Promise<{ projectCode: string; at: string; colour: HealthColour }[]> {
+  perProject: number,
+  maxPages = 4,
+): Promise<{ projectCode: string; at: string; colour: HealthColour; status: string }[]> {
   const ledger = LEDGERS[service];
   if (!ledger) return [];
 
@@ -155,19 +157,21 @@ export async function readDeliveryWindow(
   const rows = await readPaged(
     request,
     (offset, limit) =>
-      `${table}?select=${projectColumn},${statusColumn},${timeColumn}&${timeColumn}=gte.${sinceIso}` +
+      `${table}?select=${projectColumn},${statusColumn},${timeColumn}` +
       `&order=${timeColumn}.desc&limit=${limit}&offset=${offset}`,
-    { schema, maxPages },
+    {
+      schema,
+      maxPages,
+      enough: (seen) =>
+        everyProjectHasEnough(seen, (row) => String(row[projectColumn] ?? "").trim(), perProject),
+    },
   );
 
   return rows.flatMap((row) => {
     const projectCode = String(row[projectColumn] ?? "").trim();
     const at = String(row[timeColumn] ?? "");
     if (!projectCode || !at) return [];
-    return [{
-      projectCode,
-      at,
-      colour: colourForStatus(service, String(row[statusColumn] ?? "").trim()).colour,
-    }];
+    const status = String(row[statusColumn] ?? "").trim();
+    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status }];
   });
 }

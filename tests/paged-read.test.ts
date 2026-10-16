@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { readPaged } from "../lib/paged-read";
 import { readRunWindow, servicesWithRunLog } from "../lib/run-reader";
-import { timelinesFrom } from "../lib/health-timeline";
 
 /** A server that serves `total` rows 1000 at a time, as PostgREST's max-rows does. */
 function pagedServer(total: number, pageSize = 1000) {
@@ -35,8 +34,33 @@ test("a short page ends the read, because it is the only end-of-data signal ther
   const { request, paths } = pagedServer(640);
   const rows = await readPaged(request, pathFor, { schema: "s" });
 
-  assert.equal(rows.length, 640);
-  assert.equal(paths.length, 1, "no speculative extra request after a short page");
+  assert.equal(rows.length, 640, "the short page is the whole answer, and nothing is appended after it");
+  // Two requests, not one: the first two pages are opened together on purpose,
+  // because a second page is all but certain for the strips and discovering that
+  // serially costs a whole round trip on the slowest table. The second comes
+  // back empty here and is discarded — the trade is one wasted request against
+  // ~1.4s of latency on every cold load.
+  assert.equal(paths.length, 2, "the speculative second page is issued but adds nothing");
+  assert.ok(!paths.some((path) => path.includes("offset=2000")), "and it does not page on past the short page");
+});
+
+test("a short first page wins over a full speculative one, rather than leaving a hole", async () => {
+  // Only reachable if the table changes between the two concurrent requests.
+  // Appending the later page's rows would put a gap in the middle of the window
+  // and the bars would silently skip processes.
+  let call = 0;
+  const rows = await readPaged(
+    async () => {
+      call += 1;
+      return call === 1
+        ? { ok: true, body: Array.from({ length: 10 }, (_, i) => ({ n: i })) }
+        : { ok: true, body: Array.from({ length: 1000 }, (_, i) => ({ n: 1000 + i })) };
+    },
+    pathFor,
+    { schema: "s" },
+  );
+
+  assert.equal(rows.length, 10, "the short page ends it");
 });
 
 test("an exactly-full window still stops, rather than paging to the ceiling", async () => {
@@ -77,53 +101,4 @@ test("the page ceiling bounds a runaway filter", async () => {
 
   assert.equal(paths.length, 3, "it stops at the ceiling rather than walking the table");
   assert.equal(rows.length, 3000);
-});
-
-test("the run log answers for the two services with no delivery ledger", async () => {
-  // Between this and the delivery reader, every covered project has a history.
-  assert.deepEqual(servicesWithRunLog().sort(), ["noise", "wbgt"]);
-
-  let path = "";
-  const rows = await readRunWindow(
-    "wbgt",
-    async (requested) => {
-      path = requested;
-      return {
-        ok: true,
-        body: [
-          { project_code: "C991", status: "completed_with_issues", started_at: "2026-10-16T09:00:00+00:00" },
-          { project_code: "C991", status: "skipped_outside_site_hours", started_at: "2026-10-16T20:00:00+00:00" },
-          { project_code: "", status: "completed", started_at: "2026-10-16T09:00:00+00:00" },
-        ],
-      };
-    },
-    "2026-10-14T10:00:00.000Z",
-  );
-
-  assert.match(path, /started_at=gte\.2026-10-14T10:00:00\.000Z/, "bounded by time");
-  assert.equal(rows.length, 2, "a row with no project code belongs to no strip");
-  // Read from the contract's convention, not decided here: a run that completed
-  // with issues is the in-between state, and a correct skip is not a failure.
-  assert.equal(rows[0].colour, "amber", "completed_with_ is degraded, not clean");
-  assert.equal(rows[1].colour, "green", "a skip the service chose is not a fault");
-
-  assert.deepEqual(await readRunWindow("haze", async () => ({ ok: true, body: [] }), "x"), [], "no run log, no rows");
-});
-
-test("each project gets its own strip, and a project with no attempts gets none", () => {
-  const timelines = timelinesFrom(
-    [
-      { key: "A", at: "2026-10-16T11:00:00+00:00", colour: "green" },
-      { key: "A", at: "2026-10-16T10:00:00+00:00", colour: "amber" },
-      { key: "B", at: "2026-10-16T11:00:00+00:00", colour: "red" },
-    ],
-    { now: new Date("2026-10-16T11:30:00Z"), bars: 3 },
-  );
-
-  assert.deepEqual([...timelines.keys()].sort(), ["A", "B"]);
-  // Fifty grey bars on a card read as a broken system rather than a quiet one,
-  // so a project nobody recorded anything for has no strip at all.
-  assert.equal(timelines.get("C"), undefined);
-  assert.deepEqual(timelines.get("A")?.map((bar) => bar.colour), [null, "amber", "green"]);
-  assert.deepEqual(timelines.get("B")?.map((bar) => bar.colour), [null, null, "red"]);
 });

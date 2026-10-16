@@ -1,4 +1,5 @@
 import { colourForStatus, type HealthColour } from "./health-status";
+import { everyProjectHasEnough } from "./enough-per-project";
 import { readPaged } from "./paged-read";
 import type { ServiceKey } from "./services";
 
@@ -31,27 +32,34 @@ export function servicesWithRunLog(): ServiceKey[] {
 export async function readRunWindow(
   service: ServiceKey,
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
-  sinceIso: string,
-  maxPages = 10,
-): Promise<{ projectCode: string; at: string; colour: HealthColour }[]> {
+  perProject: number,
+  maxPages = 4,
+): Promise<{ projectCode: string; at: string; colour: HealthColour; status: string }[]> {
   const log = RUN_LOGS[service];
   if (!log) return [];
 
   const { schema, table, timeColumn } = log;
-  // Paged, like the delivery window: Noise writes several run rows per project
-  // per hour, so one 1000-row page covers only a few hours of the window.
+  // Paged, but stopped as soon as every project in hand has its quota. Noise
+  // writes several run rows per project per hour, so one 1000-row page holds
+  // only a few hours — and paging the rest of a time window was pure latency,
+  // because everything past the newest fifty per project is sliced off anyway.
   const rows = await readPaged(
     request,
     (offset, limit) =>
-      `${table}?select=project_code,status,${timeColumn}&${timeColumn}=gte.${sinceIso}` +
+      `${table}?select=project_code,status,${timeColumn}` +
       `&order=${timeColumn}.desc&limit=${limit}&offset=${offset}`,
-    { schema, maxPages },
+    {
+      schema,
+      maxPages,
+      enough: (seen) => everyProjectHasEnough(seen, (row) => String(row.project_code ?? "").trim(), perProject),
+    },
   );
 
   return rows.flatMap((row) => {
     const projectCode = String(row.project_code ?? "").trim();
     const at = String(row[timeColumn] ?? "");
     if (!projectCode || !at) return [];
-    return [{ projectCode, at, colour: colourForStatus(service, String(row.status ?? "").trim()).colour }];
+    const status = String(row.status ?? "").trim();
+    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status }];
   });
 }

@@ -1,134 +1,138 @@
-import { worstColour, type HealthColour } from "./health-status";
+import type { HealthColour } from "./health-status";
 
 /**
- * One project's recent history, as one bar per cycle.
+ * One project's last N processes, one bar each.
  *
- * The board answers "what is wrong now". It cannot answer "has this been
- * happening all week, or did it start an hour ago" — and that second question
- * is usually the one that locates the cause. Haze is the case in point: it ran
- * clean every hour for two days and then every project went amber at once, at
- * 10:00. A list of thirty-one amber projects does not show that shape; a row of
- * bars with forty-two green and two amber at the right-hand end shows it at a
- * glance, and points straight at what changed at 10:00.
+ * Ordinal, not hourly. An hourly axis forces every service onto one cadence,
+ * and the estate does not have one: Noise assesses every few minutes, WBGT runs
+ * hourly inside site hours, Subcon reports twice a day. On that axis a
+ * twice-daily project is 48 grey gaps and two coloured bars, which reads as a
+ * broken service rather than a quiet one, and the gaps crowd out the runs that
+ * actually happened.
  *
- * One bar is one CYCLE — an hour, because every service here records its runs
- * and deliveries hourly. Newest on the right, so the strip reads as time and
- * new cycles append where the eye already is.
+ * So a bar is a PROCESS — one run, or one delivery attempt — and fifty bars are
+ * the last fifty of them however long they took. Every bar is then a real
+ * event, which is also what makes the strip clickable: there is something
+ * behind each one.
  *
- * Per PROJECT, not per estate. A single rolled-up strip averages seven services
- * on different cadences into a shape nobody can act on; the question a reader
- * actually has is "is THIS site being delivered to", and that is answered on the
- * site's own card.
+ * Newest on the right, so the strip reads as time and new processes append
+ * where the eye already is.
  */
 
 export type Sample = {
-  /** When the attempt was recorded. */
+  /** When it ran. Used only to order and to label, never to bucket. */
   at: string;
   colour: HealthColour;
+  /** The service's own word, kept for the expanded view. */
+  status: string;
 };
 
-export type Bar = {
-  /** The bucket's hour, as `2026-10-16T10`. */
-  hour: string;
-  /**
-   * `null` for an hour with no attempt at all.
-   *
-   * Not green: an hour where nothing was recorded is either a cadence the
-   * service was not due for or a cycle that never ran, and painting it as a
-   * success would be the one lie this strip exists to avoid. It renders as a
-   * gap, which is visibly different from both a pass and a failure.
-   */
-  colour: HealthColour | null;
-  count: number;
+export type Bar = Sample;
+
+export type KeyedSample = Sample & {
+  /** Which strip this belongs to — `healthKey(service, projectCode)`. */
+  key: string;
 };
 
 export const BAR_COUNT = 50;
 
-/** `2026-10-16T10:04:33+00:00` → `2026-10-16T10`. */
-function hourOf(iso: string): string {
-  return iso.slice(0, 13);
-}
-
-/** The hour `n` hours before `from`, as a bucket key. */
-function hourKey(from: Date, hoursBack: number): string {
-  return new Date(from.getTime() - hoursBack * 3_600_000).toISOString().slice(0, 13);
-}
-
 /**
- * Bucket samples into the last `bars` hours, oldest first.
+ * The newest `bars` samples for one project, oldest first.
  *
- * Every hour in the window gets a bar whether or not anything landed in it, so
- * the strip has a fixed width and a missing cycle leaves a visible hole rather
- * than silently shortening the row.
+ * Sorted here rather than trusted from the query: the samples arrive newest
+ * first and are concatenated across several pages and two different readers, so
+ * ordering is this function's job, not its caller's.
  */
-export function timelineFrom(
-  samples: Sample[],
-  { now = new Date(), bars = BAR_COUNT }: { now?: Date; bars?: number } = {},
-): Bar[] {
-  const buckets = new Map<string, { colour: HealthColour | null; count: number }>();
-  for (let index = bars - 1; index >= 0; index -= 1) {
-    buckets.set(hourKey(now, index), { colour: null, count: 0 });
+export function stripFrom(samples: Sample[], bars = BAR_COUNT): Bar[] {
+  return [...samples]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, bars)
+    .reverse();
+}
+
+/** One strip per key. A key with no samples gets none, not a row of blanks. */
+export function stripsFrom(samples: KeyedSample[], bars = BAR_COUNT): Map<string, Bar[]> {
+  const grouped = new Map<string, Sample[]>();
+  for (const { key, ...sample } of samples) {
+    const existing = grouped.get(key);
+    if (existing) existing.push(sample);
+    else grouped.set(key, [sample]);
   }
 
-  for (const sample of samples) {
-    const bucket = buckets.get(hourOf(sample.at));
-    if (!bucket) continue; // outside the window
-    bucket.colour = bucket.colour ? worstColour([bucket.colour, sample.colour]) : sample.colour;
-    bucket.count += 1;
-  }
-
-  return [...buckets.entries()].map(([hour, bucket]) => ({ hour, ...bucket }));
+  const strips = new Map<string, Bar[]>();
+  for (const [key, group] of grouped) strips.set(key, stripFrom(group, bars));
+  return strips;
 }
 
 /**
- * The share of cycles that passed, over the cycles that ran.
+ * The share of these processes that passed.
  *
- * Hours with no attempt are excluded from both halves rather than counted as
- * successes. Most of the estate is idle overnight, and dividing by a fixed 50
- * would report a quiet night as an outage.
+ * Every bar is a process that really ran, so this divides by what is on screen
+ * and the number cannot disagree with the bars — which was the failure mode of
+ * the hourly version, where idle hours had to be excluded from both halves and
+ * the arithmetic stopped being visible.
  */
 export function healthyShare(bars: Bar[]): number | null {
-  const ran = bars.filter((bar) => bar.colour !== null);
-  if (!ran.length) return null;
-  return ran.filter((bar) => bar.colour === "green").length / ran.length;
+  if (!bars.length) return null;
+  return bars.filter((bar) => bar.colour === "green").length / bars.length;
 }
 
-/** `99.82 %`, or a dash when nothing ran. */
+/** `99.82 %`, or a dash when nothing has run. */
 export function shareText(share: number | null): string {
-  if (share === null) return "— no cycles";
-  // Two decimals like a status page, but never rounded UP to a clean 100 while
-  // a failure is still in the window: "100.00 %" beside an amber bar reads as a
-  // contradiction and costs the strip its credibility.
+  if (share === null) return "—";
   const percent = share * 100;
-  const text = percent < 100 && percent > 99.99 ? "99.99" : percent.toFixed(2);
-  return `${text} %`;
+  // Never rounded up to a clean 100 while a failure is still on the strip: that
+  // reads as a contradiction and costs the strip its credibility.
+  if (percent < 100 && percent > 99.99) return "99.99 %";
+  // Rounded BEFORE deciding whether it is whole: 0.56 * 100 is
+  // 56.00000000000001 in binary floating point, so testing the raw product
+  // printed "56.0 %" for twenty-eight clean processes out of fifty.
+  const tenths = Math.round(percent * 10) / 10;
+  return `${Number.isInteger(tenths) ? tenths.toFixed(0) : tenths.toFixed(1)} %`;
 }
 
-export type KeyedSample = Sample & {
-  /** Which strip this attempt belongs to — `healthKey(service, projectCode)`. */
-  key: string;
+export type TroubleGroup = {
+  status: string;
+  colour: HealthColour;
+  count: number;
+  /** Oldest and newest occurrence, so a chronic fault reads as a span. */
+  from: string;
+  to: string;
 };
 
 /**
- * One timeline per key, for the cards.
+ * The amber and red processes, grouped by what they said.
  *
- * Only keys that appear in `samples` get a timeline. A project nobody recorded
- * an attempt for has no strip at all rather than fifty grey bars, because fifty
- * grey bars on a card look like a system that is broken rather than one that
- * has nothing to say.
+ * Listing them one per line reproduces the alarm fatigue the colours were
+ * introduced to fix, one layer down: C991's expanded strip was twenty-six
+ * identical `completed_with_issues` lines, which is one chronic fault rendered
+ * as twenty-six events. Grouped, it reads as "26 times, since 15:58" — the
+ * repetition becomes the finding instead of burying it.
+ *
+ * Ordered by count, because on one project's own card the question is which
+ * fault dominates, not which arrived last; the span says when.
  */
-export function timelinesFrom(
-  samples: KeyedSample[],
-  options: { now?: Date; bars?: number } = {},
-): Map<string, Bar[]> {
-  const grouped = new Map<string, Sample[]>();
-  for (const sample of samples) {
-    const existing = grouped.get(sample.key);
-    if (existing) existing.push(sample);
-    else grouped.set(sample.key, [sample]);
+export function troubleIn(bars: Bar[]): TroubleGroup[] {
+  const groups = new Map<string, TroubleGroup>();
+  for (const bar of bars) {
+    if (bar.colour === "green") continue;
+    const existing = groups.get(bar.status);
+    if (existing) {
+      existing.count += 1;
+      if (bar.at < existing.from) existing.from = bar.at;
+      if (bar.at > existing.to) existing.to = bar.at;
+      continue;
+    }
+    groups.set(bar.status, { status: bar.status, colour: bar.colour, count: 1, from: bar.at, to: bar.at });
   }
 
-  const timelines = new Map<string, Bar[]>();
-  for (const [key, group] of grouped) timelines.set(key, timelineFrom(group, options));
-  return timelines;
+  return [...groups.values()].sort((a, b) => {
+    if (a.colour !== b.colour) return a.colour === "red" ? -1 : 1;
+    return b.count - a.count;
+  });
+}
+
+/** How many processes are covered by these groups — what the strip counts. */
+export function troubleCount(bars: Bar[]): number {
+  return bars.filter((bar) => bar.colour !== "green").length;
 }

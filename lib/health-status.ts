@@ -16,23 +16,25 @@
  *   completed…      the run did its job                        green
  *   skipped…        the run was not due                        green
  *   suppressed…     the run chose not to send, correctly       green
- *   completed_with… it ran and sent, but something was missing orange
+ *   completed_with… it ran and sent, but something was missing amber
  *   failed…         it did not do its job                      red
  *
  * The three colours are the ones an operator asked for, and they mean:
  *
  *   green   expected behaviour, including deliberately doing nothing
- *   orange  it worked, but a value was missing or something non-critical broke
+ *   amber  it worked, but a value was missing or something non-critical broke
  *   red     it did not run, did not send, or ended unsuccessfully
  *
- * **An unrecognised status is orange, never green.** Green would hide a status
+ * **An unrecognised status is amber, never green.** Green would hide a status
  * nobody has classified yet, which is the one case where silence is most likely
- * to be wrong; red would cry wolf on every harmless addition upstream. Orange
+ * to be wrong; red would cry wolf on every harmless addition upstream. Amber
  * says "look at this" without claiming to know what it is, and the UI names the
  * raw status so the reader can judge.
  */
 
-export type HealthColour = "green" | "orange" | "red";
+import { contractHealthColour } from "./service-contracts";
+
+export type HealthColour = "green" | "amber" | "red";
 
 /**
  * Statuses whose name does not predict their colour.
@@ -46,22 +48,22 @@ const EXCEPTIONS: Record<string, { colour: HealthColour; because: string }> = {
   // configuration gap wearing a skip's name: the run WAS due and could not
   // proceed, which is exactly the "missing value" case.
   skipped_google_sheet_not_configured: {
-    colour: "orange",
+    colour: "amber",
     because: "the run was due and could not proceed — a sheet is missing, not a cadence",
   },
   skipped_unsupported_invocation_minute: {
-    colour: "orange",
+    colour: "amber",
     because: "the scheduler invoked a minute the job does not handle, which is a wiring mistake rather than a quiet hour",
   },
   // `suppressed…` normally means a correct decision not to send. This one
   // suppressed because there was nothing to send, which is the data being
   // absent rather than the service deciding.
   suppressed_all_unavailable: {
-    colour: "orange",
+    colour: "amber",
     because: "nothing was sent because no reading was available — absence of data, not a decision",
   },
   suppressed_all_unavailable_with_errors: {
-    colour: "orange",
+    colour: "amber",
     because: "as above, and the run also recorded errors",
   },
 };
@@ -74,7 +76,7 @@ const EXCEPTIONS: Record<string, { colour: HealthColour; because: string }> = {
  * completed.
  */
 const PREFIXES: { prefix: string; colour: HealthColour }[] = [
-  { prefix: "completed_with_", colour: "orange" },
+  { prefix: "completed_with_", colour: "amber" },
   { prefix: "completed", colour: "green" },
   { prefix: "skipped", colour: "green" },
   { prefix: "suppressed", colour: "green" },
@@ -89,8 +91,13 @@ export type Classification = {
   colour: HealthColour;
   /** The status as the service wrote it, never rewritten. */
   status: string;
-  /** How the colour was decided, for the UI to explain itself. */
-  basis: "exception" | "prefix" | "unrecognised";
+  /**
+   * How the colour was decided, for the UI to explain itself.
+   *
+   * `declared` is the service's own answer from its contract and outranks the
+   * rest; the others are HALO reading a name it was never told about.
+   */
+  basis: "declared" | "exception" | "prefix" | "unrecognised";
   because?: string;
 };
 
@@ -98,7 +105,7 @@ export function classifyRunStatus(status: unknown): Classification {
   const raw = String(status ?? "").trim().toLowerCase();
   if (!raw) {
     return {
-      colour: "orange",
+      colour: "amber",
       status: "",
       basis: "unrecognised",
       because: "the run recorded no status at all",
@@ -113,7 +120,7 @@ export function classifyRunStatus(status: unknown): Classification {
   }
 
   return {
-    colour: "orange",
+    colour: "amber",
     status: raw,
     basis: "unrecognised",
     because: "no rule covers this status yet — it is shown so it can be classified, not hidden",
@@ -123,7 +130,7 @@ export function classifyRunStatus(status: unknown): Classification {
 /** The worst of several colours, for rolling a project's cadences into one pill. */
 export function worstColour(colours: HealthColour[]): HealthColour {
   if (colours.includes("red")) return "red";
-  if (colours.includes("orange")) return "orange";
+  if (colours.includes("amber")) return "amber";
   return "green";
 }
 
@@ -137,4 +144,48 @@ export function worstColour(colours: HealthColour[]): HealthColour {
 export function isIdleStatus(status: unknown): boolean {
   const raw = String(status ?? "").trim().toLowerCase();
   return raw.startsWith("skipped") && !EXCEPTIONS[raw];
+}
+
+/**
+ * The colour for one status, preferring what the service said about itself.
+ *
+ * Order matters and is the whole design:
+ *
+ *   1. the service's own declaration, from its contract
+ *   2. the name convention above
+ *   3. amber, because an unclassified status must be visible
+ *
+ * HALO owns the scale — three colours and what each means — and each service
+ * owns the mapping onto it. Only the service knows whether its `partial` means
+ * "some recipients failed" or "partial by configuration", and two services are
+ * allowed to answer differently for the same word; a rule written here could
+ * only ever guess, and would guess silently.
+ *
+ * The convention stays as the fallback rather than being replaced, because a
+ * service that has declared nothing — which is all seven today — still has to
+ * be read correctly, and so does a status added tomorrow by someone who never
+ * opened the contract.
+ */
+export function colourForStatus(
+  service: string,
+  status: unknown,
+  /**
+   * Where a service's own declaration is read from.
+   *
+   * Injectable only so the precedence can be tested: no contract declares a
+   * health block yet, so the declared branch is otherwise unreachable, and an
+   * assertion that cannot reach the code it describes is worse than none.
+   */
+  declaredBy: (service: string, status: unknown) => HealthColour | null = contractHealthColour,
+): Classification {
+  const declared = declaredBy(service, status);
+  if (declared) {
+    return {
+      colour: declared,
+      status: String(status ?? "").trim().toLowerCase(),
+      basis: "declared",
+      because: `${service} declares this status as ${declared} in its contract`,
+    };
+  }
+  return classifyRunStatus(status);
 }

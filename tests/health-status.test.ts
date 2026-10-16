@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { classifyRunStatus, isIdleStatus, worstColour } from "../lib/health-status";
+import { classifyRunStatus, colourForStatus, isIdleStatus, worstColour } from "../lib/health-status";
+import { contractHealthColour, contractHealthGranularity } from "../lib/service-contracts";
+import { SERVICE_KEYS } from "../lib/services";
 
 const source = (path: string) => readFile(resolve(path), "utf8");
 
@@ -29,7 +31,7 @@ test("every status the services can write gets a colour", () => {
   // The point of a rule rather than a lookup: none of these may fall through.
   for (const status of [...NOISE, ...WBGT]) {
     const { colour } = classifyRunStatus(status);
-    assert.ok(["green", "orange", "red"].includes(colour), `${status} -> ${colour}`);
+    assert.ok(["green", "amber", "red"].includes(colour), `${status} -> ${colour}`);
   }
 });
 
@@ -40,12 +42,12 @@ test("the convention carries the meaning, so a new status needs no change here",
   assert.equal(classifyRunStatus("completed").colour, "green");
   assert.equal(classifyRunStatus("skipped_outside_project_cadence_window").colour, "green");
   assert.equal(classifyRunStatus("suppressed_all_clear").colour, "green");
-  assert.equal(classifyRunStatus("completed_with_issues").colour, "orange");
+  assert.equal(classifyRunStatus("completed_with_issues").colour, "amber");
   assert.equal(classifyRunStatus("failed_config_validation").colour, "red");
 
   // Invented names no service writes today, to prove the rule and not a list:
   assert.equal(classifyRunStatus("failed_some_future_way").colour, "red");
-  assert.equal(classifyRunStatus("completed_with_a_new_caveat").colour, "orange");
+  assert.equal(classifyRunStatus("completed_with_a_new_caveat").colour, "amber");
   assert.equal(classifyRunStatus("skipped_for_a_new_reason").colour, "green");
   for (const invented of ["failed_some_future_way", "completed_with_a_new_caveat"]) {
     assert.equal(classifyRunStatus(invented).basis, "prefix", `${invented} must be decided by the rule`);
@@ -55,16 +57,16 @@ test("the convention carries the meaning, so a new status needs no change here",
 test("`completed_with_` beats `completed`, because the longer claim is the truer one", () => {
   // Order-dependent: a run that completed WITH issues is not a run that
   // completed, and checking the shorter prefix first would call it green.
-  assert.equal(classifyRunStatus("completed_with_meter_issues").colour, "orange");
+  assert.equal(classifyRunStatus("completed_with_meter_issues").colour, "amber");
   assert.notEqual(classifyRunStatus("completed_with_meter_issues").colour, classifyRunStatus("completed").colour);
 });
 
-test("an unrecognised status is orange — not hidden, not alarming", () => {
+test("an unrecognised status is amber — not hidden, not alarming", () => {
   // Green would hide a status nobody has classified yet, which is where silence
   // is most likely to be wrong. Red would cry wolf on every addition upstream.
   for (const unknown of ["weird_new_thing", "aborted", "", "   ", null, undefined, 42]) {
     const result = classifyRunStatus(unknown as never);
-    assert.equal(result.colour, "orange", JSON.stringify(unknown));
+    assert.equal(result.colour, "amber", JSON.stringify(unknown));
     assert.equal(result.basis, "unrecognised");
     assert.ok(result.because, "an unrecognised status must explain itself to the reader");
   }
@@ -82,7 +84,7 @@ test("the four exceptions are the statuses whose name mispredicts them", async (
     "suppressed_all_unavailable_with_errors",
   ]) {
     const result = classifyRunStatus(status);
-    assert.equal(result.colour, "orange", status);
+    assert.equal(result.colour, "amber", status);
     assert.equal(result.basis, "exception", `${status} must be a named exception, not a prefix match`);
     assert.ok(result.because, `${status} must say why the prefix lies`);
   }
@@ -107,8 +109,8 @@ test("idle is told apart from succeeded, though both are green", () => {
 
 test("a project's pill takes the worst of its cadences", () => {
   assert.equal(worstColour(["green", "green"]), "green");
-  assert.equal(worstColour(["green", "orange"]), "orange");
-  assert.equal(worstColour(["orange", "red", "green"]), "red");
+  assert.equal(worstColour(["green", "amber"]), "amber");
+  assert.equal(worstColour(["amber", "red", "green"]), "red");
   assert.equal(worstColour([]), "green", "nothing wrong is green");
 });
 
@@ -119,7 +121,7 @@ test("the documentation and the rule say the same thing", async () => {
   for (const prefix of ["completed_with_", "skipped", "suppressed", "failed", "running"]) {
     assert.ok(doc.includes(prefix), `the convention table must document "${prefix}"`);
   }
-  assert.match(doc, /unrecognised status is orange, never green/i);
+  assert.match(doc, /unrecognised status is amber, never green/i);
   // Every exception in the code appears in the doc's table, so a reader is
   // never surprised by a colour the convention does not explain.
   const model = await source("lib/health-status.ts");
@@ -135,4 +137,81 @@ test("the documentation and the rule say the same thing", async () => {
       `${name} is an exception in code but has no row of its own in the doc`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// HALO owns the scale; each service owns the mapping onto it.
+// ---------------------------------------------------------------------------
+
+test("a service's own declaration outranks the naming convention", () => {
+  // The point of the whole arrangement: `partial` means different things to
+  // different services, so HALO must not decide it. Injected, because no
+  // contract declares a health block yet and an assertion that cannot reach
+  // the branch it describes proves nothing — this one passed against the
+  // convention-only implementation before the seam existed.
+  const declares = (_service: string, status: unknown) =>
+    String(status) === "completed" ? ("red" as const) : null;
+
+  // Convention alone calls `completed` green.
+  assert.equal(classifyRunStatus("completed").colour, "green");
+  // A service saying otherwise about its own word wins.
+  const resolved = colourForStatus("noise", "completed", declares);
+  assert.equal(resolved.colour, "red");
+  assert.equal(resolved.basis, "declared");
+  assert.match(resolved.because ?? "", /declares this status/);
+
+  // And a status the service did NOT declare still falls to the convention.
+  const fell = colourForStatus("noise", "failed_setup", declares);
+  assert.equal(fell.colour, "red");
+  assert.equal(fell.basis, "prefix");
+});
+
+test("no service declares a health block yet, and everything still works", () => {
+  // All seven are undeclared at the time of writing. That is the case the
+  // fallback exists for: HALO must be correct before any service adopts this,
+  // and for one that never does.
+  for (const service of SERVICE_KEYS) {
+    assert.equal(contractHealthColour(service, "completed"), null, `${service} should declare nothing yet`);
+    // And the resolver then falls through to the convention rather than failing.
+    assert.equal(colourForStatus(service, "completed").colour, "green");
+    assert.equal(colourForStatus(service, "failed_setup").colour, "red");
+    assert.equal(colourForStatus(service, "nonesuch").colour, "amber");
+    assert.equal(colourForStatus(service, "completed").basis, "prefix");
+  }
+});
+
+test("an undeclared signal is not covered, never healthy", () => {
+  // The one mistake this page cannot afford: a service that has not said it
+  // reports a signal must not read as green.
+  for (const service of SERVICE_KEYS) {
+    for (const signal of ["ingestion", "run", "delivery"] as const) {
+      assert.equal(contractHealthGranularity(service, signal), "none", `${service}.${signal}`);
+    }
+  }
+});
+
+test("a contract cannot smuggle a colour the UI does not have", () => {
+  // Contracts are vendored from other repositories, so a typo or a fourth
+  // colour is possible. It must not reach the UI as a class name; falling back
+  // to the convention is the safe answer.
+  const stray = contractHealthColour("noise", "completed");
+  assert.equal(stray, null, "nothing is declared, so nothing is returned");
+  // The declared path is only taken for exactly the three colours — asserted on
+  // the reader's own source, since no contract exercises it yet.
+  const reader = "lib/service-contracts.ts";
+  return readFile(resolve(reader), "utf8").then((text) => {
+    assert.match(text, /colour === "green" \|\| colour === "amber" \|\| colour === "red" \? colour : null/);
+  });
+});
+
+test("the doc states the resolution order and the granularity rule", async () => {
+  const doc = await source("docs/DATA_HEALTH.md");
+  assert.match(doc, /HALO owns the scale/i);
+  assert.match(doc, /fallback, not a replacement/i);
+  assert.match(doc, /undeclared\*{0,2} signal is `?none`?, never `?project`?/i);
+  // The block a service author copies must actually appear.
+  assert.match(doc, /"granularity"/);
+  assert.match(doc, /"statuses"/);
+  // Amber, not orange: WBGT already ships check (status in ('green','amber','red')).
+  assert.doesNotMatch(doc, /\borange\b/i, "the scale is green/amber/red, matching the live constraint");
 });

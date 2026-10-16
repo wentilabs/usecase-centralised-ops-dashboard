@@ -15,6 +15,34 @@ export type ContractField = {
   options?: string[];
 };
 
+/**
+ * What a service says about its own health reporting.
+ *
+ * Optional, and absent on every contract today. A service that declares nothing
+ * is read by the name convention in `lib/health-status.ts` instead, so HALO
+ * works before any service adopts this and keeps working for one that never
+ * does.
+ *
+ * It lives in the service's contract rather than in HALO because only the
+ * service knows what its own words mean: whether `partial` is "some recipients
+ * failed" or "partial by configuration" is not something HALO can infer, and
+ * two services are allowed to answer differently for the same word.
+ */
+export type ContractHealth = {
+  /**
+   * Which signals this service reports, and at what granularity.
+   *
+   * `service` means one answer for the whole estate — Haze and Lightning fetch
+   * one public feed, so "did ingestion work" has no per-project answer.
+   * `project` means one answer per project code. `none` means this service does
+   * not report that signal at all, which must read as "not covered" rather than
+   * as healthy.
+   */
+  granularity?: Partial<Record<"ingestion" | "run" | "delivery", "service" | "project" | "none">>;
+  /** This service's own status values, mapped to the shared three colours. */
+  statuses?: Record<string, "green" | "amber" | "red">;
+};
+
 export type ServiceContract = {
   schemaVersion: 1;
   service: { key: string; displayName: string };
@@ -32,6 +60,8 @@ export type ServiceContract = {
     fields: Record<string, ContractField>;
     constraints: Array<{ name: string; help: string }>;
   };
+  /** Optional; see ContractHealth. Absent on every contract at the time of writing. */
+  health?: ContractHealth;
 };
 
 function validateContract(value: unknown, expectedKey: string): ServiceContract {
@@ -63,6 +93,43 @@ export const SERVICE_CONTRACTS: Readonly<Record<string, ServiceContract>> = Obje
 
 export function serviceContractFor(service: string): ServiceContract | null {
   return SERVICE_CONTRACTS[service] ?? null;
+}
+
+/**
+ * The colour this service declares for one of its own statuses, or null.
+ *
+ * Case-insensitive, because Haze and Lightning write their statuses in upper
+ * case and the rest in lower, and that difference carries no meaning.
+ *
+ * Returns null rather than guessing when the service has declared nothing —
+ * the caller then falls back to the name convention, which is the whole reason
+ * this is allowed to be absent.
+ */
+export function contractHealthColour(service: string, status: unknown): "green" | "amber" | "red" | null {
+  const declared = serviceContractFor(service)?.health?.statuses;
+  if (!declared) return null;
+  const key = String(status ?? "").trim().toLowerCase();
+  if (!key) return null;
+  for (const [name, colour] of Object.entries(declared)) {
+    if (name.trim().toLowerCase() === key) {
+      // A contract is vendored from another repository, so a value outside the
+      // three colours is possible and must not reach the UI as a class name.
+      return colour === "green" || colour === "amber" || colour === "red" ? colour : null;
+    }
+  }
+  return null;
+}
+
+/** What this service reports for one signal, defaulting to "not covered". */
+export function contractHealthGranularity(
+  service: string,
+  signal: "ingestion" | "run" | "delivery",
+): "service" | "project" | "none" {
+  const declared = serviceContractFor(service)?.health?.granularity?.[signal];
+  // Undeclared is "none", never "project": a service that has not said it
+  // reports a signal must show as not covered rather than as healthy, which is
+  // the one mistake this page cannot afford.
+  return declared === "service" || declared === "project" ? declared : "none";
 }
 
 export function contractFieldFor(service: string, field: string): ContractField | null {

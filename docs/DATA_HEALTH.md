@@ -60,7 +60,7 @@ correctly without being changed:
 | Prefix | Means | Colour |
 | --- | --- | --- |
 | `completed` | the run did its job | 🟢 green |
-| `completed_with_…` | it ran and sent, but something was missing or broke | 🟠 orange |
+| `completed_with_…` | it ran and sent, but something was missing or broke | 🟠 amber |
 | `skipped…` | the run was not due — an hour outside the cadence, a muted Sunday | 🟢 green |
 | `suppressed…` | it ran and correctly chose not to send | 🟢 green |
 | `failed…` | it did not run, did not send, or ended unsuccessfully | 🔴 red |
@@ -69,15 +69,15 @@ correctly without being changed:
 The three colours mean:
 
 - **🟢 green** — expected behaviour, *including deliberately doing nothing*.
-- **🟠 orange** — it worked, but a value was missing or something non-critical
+- **🟠 amber** — it worked, but a value was missing or something non-critical
   broke. Worth reading, not worth waking anyone.
 - **🔴 red** — it did not run, did not send, or ended unsuccessfully.
 
-### An unrecognised status is orange, never green
+### An unrecognised status is amber, never green
 
 Green would hide a status nobody has classified yet, which is the case where
 silence is most likely to be wrong. Red would cry wolf on every harmless
-addition upstream. Orange says *look at this* without claiming to know what it
+addition upstream. Amber says *look at this* without claiming to know what it
 is, and the interface prints the raw status so a reader can judge.
 
 ### Exceptions, and why there are four
@@ -95,6 +95,66 @@ a `skipped…`/`suppressed…` that is really a missing value:
 
 **A long exception list means the convention is not being followed.** The fix is
 then the status name in the service, not another entry here.
+
+## Who decides a colour
+
+**HALO owns the scale. Each service owns the mapping onto it.**
+
+HALO defines three colours and what each means — that is a presentation concern
+and belongs here. What a service's own words *mean* belongs to the service:
+whether `partial` is "some recipients failed" or "partial by configuration" is
+not something HALO can infer, and two services are allowed to answer
+differently for the same word.
+
+So a service declares its own mapping, in its own
+`contracts/service.contract.json`, which HALO already vendors, pins by commit
+and fails the build on drift. The block is additive — HALO's reader requires
+only `schemaVersion`, `service.key`, `routes` and `configuration.fields`, and
+`contracts:refresh` copies the file verbatim — so adding it changes nothing
+else:
+
+```json
+"health": {
+  "granularity": { "ingestion": "service", "delivery": "project" },
+  "statuses": {
+    "SENT": "green", "QUEUED": "green",
+    "UNCONFIRMED": "amber", "PARTIAL": "amber", "SUPPRESSED_STALE": "amber",
+    "FAILED": "red"
+  }
+}
+```
+
+Nothing has to be renamed. A service declares what its statuses **already**
+mean — no migration, no CHECK constraint touched, no historical row
+invalidated. Status names are matched case-insensitively, because Haze and
+Lightning write theirs in upper case and the rest in lower, and that difference
+carries no meaning.
+
+### Resolution order
+
+1. the service's own declaration, from its contract
+2. the naming convention above
+3. amber — an unclassified status must be visible
+
+The convention is a **fallback, not a replacement**. It is what reads a service
+that has declared nothing — which is all seven today — and a status added
+tomorrow by someone who never opened the contract.
+
+### `granularity`: what "per project" means per service
+
+`ingestion`, `run` and `delivery` are declared separately, because they do not
+share a granularity:
+
+| Service | Ingestion | Run | Delivery |
+| --- | --- | --- | --- |
+| Noise, WBGT | per project | per project | per project |
+| Haze, Lightning | **service** — one public feed fetched once | per project | per project |
+| Ailytics | **service** — events are pushed in, nothing is fetched | per project | per project |
+| Subcon, Issue Chaser | per project — one workbook each | per project | per project |
+
+An **undeclared** signal is `none`, never `project`. A service that has not said
+it reports a signal must read as *not covered*; showing it green is the one
+mistake this page cannot afford.
 
 ## Current coverage
 

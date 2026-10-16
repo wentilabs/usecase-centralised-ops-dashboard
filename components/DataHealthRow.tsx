@@ -34,12 +34,21 @@ export function DataHealthRow({
   bars?: Bar[];
 }) {
   // No reading at all is not the same as a healthy reading, and must not be
-  // dressed as one. Every service declares delivery, so this is not about what
-  // they would report — it is that nothing reads it yet.
+  // dressed as one.
   if (!health) {
     return (
       <section className="relative z-10 border-t border-border pt-2.5" aria-label="Data health">
-        <p className="text-[11px] text-muted-foreground">Data health — nothing reads this service yet.</p>
+        {bars.length ? (
+          // Haze and Lightning land here: no per-project ingestion to speak of,
+          // because their NEA source is one public feed for the whole estate, but
+          // a real per-project delivery history underneath. Saying "nothing reads
+          // this service" above a strip full of bars contradicts itself, and the
+          // strip is the more credible of the two — so the section says which
+          // question it is answering and lets the bars answer it.
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Data health — delivery</div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">Data health — nothing reads this service yet.</p>
+        )}
         <HealthBars projectCode={projectCode} bars={bars} />
       </section>
     );

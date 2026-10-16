@@ -67,7 +67,14 @@ test("a covered project shows its receipt, and never a receipt plus an explanati
   // as one — these are the services declaring `none` for every signal.
   // Wording follows the semantics: coverage is about what HALO can READ, not
   // what the service declares — all seven declare delivery, and nothing reads it.
+  // Still said — but only where it is true. Haze and Lightning have no
+  // per-project ingestion, because their NEA source is one public feed for the
+  // whole estate, yet they do have a real per-project delivery history. The
+  // sentence was appearing directly above a strip full of bars and contradicting
+  // it, and the strip is the more credible of the two.
   assert.match(row, /nothing reads this service yet/i);
+  assert.match(row, /bars\.length \?/, "and only when there is no history either");
+  assert.match(row, /Data health — delivery/, "a delivery-only project says which question it answers");
 });
 
 test("WBGT and Noise expose a dedicated ungated Data Health group picker", async () => {

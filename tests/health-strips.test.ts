@@ -189,3 +189,25 @@ test("a sample with no timestamp is dropped rather than crashing the card", () =
   assert.equal(bars.length, 1, "only the sample that can be ordered and labelled");
   assert.equal(bars[0].status, "completed");
 });
+
+test("a short strip is padded to a full width, and the padding is never counted", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const source = await readFile(resolve("components/HealthBars.tsx"), "utf8");
+
+  // Drawn so the newest process sits at the same place on every card, which is
+  // what makes two strips comparable at a glance.
+  assert.match(source, /BAR_COUNT - bars\.length/, "the empty slots are filled");
+  assert.match(source, /bg-muted-foreground\/15/, "faintly, so they read as absent rather than as a state");
+
+  // Counted nowhere. The padding is not a process and must not reach the
+  // trouble count, the modal, or the label — a strip of 81 real processes says
+  // 81, not 100.
+  const bars = stripFrom([
+    sample("2026-10-16T11:00:00Z", "amber", "completed_with_issues"),
+    sample("2026-10-16T10:00:00Z", "green", "completed"),
+  ]);
+  assert.equal(bars.length, 2, "the data stays the real processes");
+  assert.equal(troubleCount(bars), 1);
+  assert.equal(troubleIn(bars).length, 1, "and the modal lists only what happened");
+});

@@ -26,12 +26,12 @@ const FILL: Record<string, string> = {
  * reports twice a day, and on an hourly axis the twice-daily project would be
  * ninety-eight blanks and two bars.
  *
- * **Every bar is the same width and every strip the same length**, so the cards
- * are comparable at a glance. A project with four processes is four thin marks
- * rather than four fat ones stretched over the card — a stretched bar reads as
- * a long-running thing, which is the opposite of what one short history means —
- * and the slots it has not filled are padded with faint placeholders so the
- * newest process sits at the same place on every card.
+ * **Every bar is the same width and every strip the same length.** The strip is
+ * always padded to `BAR_COUNT` slots and the width is divided equally between
+ * them, so the bars are the same size on every card AND fill it. Both halves
+ * matter: a strip of four stretched bars reads as four long-running things,
+ * which is the opposite of what a short history means, while a fixed-width bar
+ * left a third of the card empty and the strip read as shoved to the right.
  *
  * The padding is drawn, never counted: it is not a process, not a colour, and
  * not part of anything the strip reports. It says "there is nothing older
@@ -70,21 +70,21 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
       >
         {/* Fixed-width bars, right-aligned so the newest is always at the same
             place and a short history does not stretch to fill the card. */}
-        <span className="flex h-5 items-stretch justify-end gap-px overflow-hidden">
+        <span className="flex h-5 items-stretch gap-px">
           {/* Empty slots first, so the newest process is always hard against
               the right edge whatever this project's history looks like. */}
           {Array.from({ length: Math.max(0, BAR_COUNT - bars.length) }, (_, index) => (
             <span
               key={`pad-${index}`}
               title="no process in the last 48 hours"
-              className="w-0.5 shrink-0 rounded-[1px] bg-muted-foreground/15"
+              className="min-w-0 flex-1 rounded-[1px] bg-muted-foreground/15"
             />
           ))}
           {bars.map((bar, index) => (
             <span
               key={`${bar.at}-${index}`}
               title={`${formatSgt(bar.at)} SGT — ${bar.status}`}
-              className={`w-0.5 shrink-0 rounded-[1px] ${FILL[bar.colour]}`}
+              className={`min-w-0 flex-1 rounded-[1px] ${FILL[bar.colour]}`}
             />
           ))}
         </span>

@@ -28,7 +28,7 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
       ? [
           { label: "💧 Water Parade", on: true, tone: "info" as const },
           ...(config.water_parade_reminders_enabled === false
-            ? [{ label: "reminders", on: false, tone: "info" as const }]
+            ? [{ label: "no reminders", on: true, tone: "info" as const }]
             : []),
           // Only shown where Water Parade runs: on a project without it the
           // flag is inert, and a struck-through pill on 20 cards would be
@@ -93,9 +93,9 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
         ]
       : []),
     { label: "scrape", on: config.enable_scrape !== false },
-    { label: "skip lunch", on: on(config.skip_lunch_hour) },
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "lunch", on: !on(config.skip_lunch_hour) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
     // Where the numbers come from matters: the sentinel resolves them from
     // the Manpower sheet each day, so an empty list is not a misconfiguration.
     ...(usesManpowerSheetPocs(config)
@@ -106,14 +106,9 @@ export function wbgtPills(config: ProjectConfigRow): Pill[] {
     // pill on every card would say nothing. Lit is the default (Woh Hup
     // filtered out as the main contractor); struck means a project counts
     // it as a participant, which today is MBS alone.
-    ...(config.water_parade_enabled || usesManpowerSheetPocs(config)
-      ? [
-          {
-            label: "excl. Woh Hup",
-            on: config.exclude_wohhup_from_manpower !== false,
-            tone: "info" as const,
-          },
-        ]
+    ...((config.water_parade_enabled || usesManpowerSheetPocs(config)) &&
+    config.exclude_wohhup_from_manpower === false
+      ? [{ label: "incl. Woh Hup", on: true, tone: "info" as const }]
       : []),
   ];
 }

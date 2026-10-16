@@ -6,14 +6,15 @@ import type { Pill } from "../pill-types";
 export function lightningPills(config: ProjectConfigRow): Pill[] {
   const on = (value: unknown) => Boolean(value);
   return [
-    { label: `red ${config.red_radius_m ?? "?"}m`, on: on(config.red_radius_m) },
+    { label: `red ${config.red_radius_m ?? "?"}m`, on: true, ...(on(config.red_radius_m) ? {} : { tone: "warn" as const }) },
     {
       label: config.amber_enabled === false ? "amber off" : `amber ${config.amber_radius_m ?? "?"}m`,
-      on: config.amber_enabled !== false && on(config.amber_radius_m),
+      on: true,
+      ...(config.amber_enabled !== false && !on(config.amber_radius_m) ? { tone: "warn" as const } : {}),
     },
     { label: `v${config.config_version ?? 1}`, on: true },
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
     {
       // Amber, and then the signed SMS alerts. The column is still named for
       // red only, and a card that kept saying so would understate how often

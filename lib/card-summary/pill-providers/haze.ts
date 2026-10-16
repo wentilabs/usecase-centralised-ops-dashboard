@@ -6,7 +6,11 @@ import type { Pill } from "../pill-types";
 export function hazePills(config: ProjectConfigRow): Pill[] {
   const on = (value: unknown) => Boolean(value);
   return [
-    { label: String(config.nea_region ?? "no region"), on: on(config.nea_region) },
+    {
+      label: String(config.nea_region ?? "no region"),
+      on: true,
+      ...(on(config.nea_region) ? {} : { tone: "warn" as const }),
+    },
     // No cadence pill. Every haze project runs hourly — there is no second
     // cadence to distinguish it from — so a pill reading "hourly" would be
     // true of all 25 and tell a reader nothing. It said "4-hourly" vs
@@ -24,14 +28,18 @@ export function hazePills(config: ProjectConfigRow): Pill[] {
     // whether or not the override is on. Saying "every band" here was right
     // when four-hourly was the whole cadence and is wrong now: it would
     // claim the 09:00 and 10:00 sends ignore the gate too.
+    // Always shown, because both of its labels say something: a floor, or no
+    // floor at all. Dropping the unlit half would leave an ungated project —
+    // the one that notifies on every band — looking like it had no gate pill
+    // to begin with.
     {
       label: config.alert_only_when_at_least
         ? `≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
         : "every band",
-      on: on(config.alert_only_when_at_least),
+      on: true,
     },
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
     { label: "POC mentions", on: on(config.enable_poc_mentions) },
     {
       // WHO gets tagged, which is a different question from whether anyone is.

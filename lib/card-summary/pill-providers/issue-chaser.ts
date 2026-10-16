@@ -53,8 +53,8 @@ export function issueChaserPills(config: ProjectConfigRow): Pill[] {
     // Not gated by `enabled` the way the styles are, so these two can be lit
     // on a project that is otherwise switched off — which is correct: they
     // describe the calendar, not the cadence.
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
     // "origin required", "images" and "PIC mentions" were dropped here when
     // their columns were retired from the service (412256d). Each is now
     // unconditional behaviour, and a pill for a setting that no longer exists

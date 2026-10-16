@@ -28,11 +28,9 @@ export function subconPills(config: ProjectConfigRow): Pill[] {
     // because it is a scoping choice, not a cadence, and shown always rather
     // than only when off — a roster that silently includes or excludes the
     // main contractor changes every headcount on the report.
-    {
-      label: "excl. Woh Hup",
-      on: config.exclude_wohhup_from_manpower !== false,
-      tone: "info" as const,
-    },
+    ...(config.exclude_wohhup_from_manpower === false
+      ? [{ label: "incl. Woh Hup", on: true, tone: "info" as const }]
+      : []),
     {
       // What it answers: does anything reach this project, and does the
       // nightly housekeeping report have anywhere to go? Since 140b1e9 one
@@ -48,7 +46,7 @@ export function subconPills(config: ProjectConfigRow): Pill[] {
     // Last, and after the intake pill deliberately: they silence the three
     // outbound reports and leave intake running, so they belong at the end
     // of the row rather than next to the switch they do not affect.
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
   ];
 }

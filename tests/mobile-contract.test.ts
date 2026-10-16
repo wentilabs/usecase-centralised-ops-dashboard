@@ -301,43 +301,38 @@ test("a second water-parade group is a second recipient, not a warning", () => {
   assert.ok(!one.some((p) => /reminder groups/.test(p.label)), "a single group needs no count");
 });
 
-test("the Water Parade pills are one blue family, and an off one still reads as off", async () => {
-  // Tone says what a pill is ABOUT; `on` says whether it is in force. Before
-  // this, the tone branch ignored `on`, so an off toned pill rendered exactly
-  // like an on one — which would have made MBS look like it excludes Woh Hup
-  // when it is the one project that does not.
+test("the Water Parade pills are one blue family, and the card shows only what is in force", async () => {
+  // Tone says what a pill is ABOUT. It no longer has to carry `on` as well,
+  // because an off pill is not rendered at all — the struck-through variant is
+  // gone from both surfaces, and a pill that is on the card is in force.
   for (const file of ["components/ProjectCard.tsx", "components/ProjectSheet.tsx"]) {
     const source_ = await source(file);
-    // Anchored FORWARD from the tone branch: `bg-muted` also appears earlier, in
-    // the Chip component, and slicing to its first occurrence produced an empty
-    // string that matched nothing.
     const start = source_.indexOf('pill.tone === "info"');
-    const toned = source_.slice(start, source_.indexOf("bg-muted", start));
+    const toned = source_.slice(start, source_.indexOf("</span>", start));
     assert.ok(toned.length > 0, `${file}: could not find the toned-pill branch`);
-    assert.match(toned, /pill\.on/, `${file}: a toned pill must still branch on \`on\``);
-    assert.match(toned, /text-primary\/60 line-through/, `${file}: an off info pill is struck through`);
-    assert.match(toned, /text-warn\/60 line-through/, `${file}: and so is an off warn pill`);
+    assert.doesNotMatch(toned, /line-through/, `${file}: no pill is struck through any more`);
+    assert.doesNotMatch(toned, /pill\.on/, `${file}: and none branches on \`on\``);
   }
 
-  // All three Water Parade pills carry the blue tone, and the two switchable
-  // ones report their real state.
+  // All three Water Parade pills carry the blue tone where they appear.
   const { pillsFor } = await import("../lib/card-summary");
   const on_ = pillsFor("wbgt", {
     water_parade_enabled: true,
     water_parade_cooldown_enabled: true,
-    exclude_wohhup_from_manpower: true,
+    exclude_wohhup_from_manpower: false,
   });
-  for (const label of ["💧 Water Parade", "cooldown 2h", "excl. Woh Hup"]) {
+  for (const label of ["💧 Water Parade", "cooldown 2h", "incl. Woh Hup"]) {
     const pill = on_.find((p) => p.label === label);
     assert.equal(pill?.tone, "info", `${label} should be blue`);
     assert.equal(pill?.on, true, label);
   }
 
-  const off = pillsFor("wbgt", { water_parade_enabled: true, exclude_wohhup_from_manpower: false });
-  assert.equal(off.find((p) => p.label === "cooldown 2h")?.on, false);
-  assert.equal(off.find((p) => p.label === "cooldown 2h")?.tone, "info", "still blue when off");
-  assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.on, false);
-  assert.equal(off.find((p) => p.label === "excl. Woh Hup")?.tone, "info");
+  // And where they do not apply they are absent, not dimmed. MBS is still the
+  // distinguishable one: excluding Woh Hup is the default and says nothing,
+  // while counting it in is stated outright above.
+  const off = pillsFor("wbgt", { water_parade_enabled: true, exclude_wohhup_from_manpower: true });
+  assert.ok(!off.some((p) => p.label === "cooldown 2h"), "an off cooldown is absent");
+  assert.ok(!off.some((p) => p.label.includes("Woh Hup")), "the default roster filter is silent");
 });
 
 test("the coordinate picker is offered wherever coordinates are, and only there", async () => {

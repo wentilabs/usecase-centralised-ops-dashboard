@@ -15,8 +15,8 @@ export function noisePills(config: ProjectConfigRow): Pill[] {
     { label: "evening summary", on: on(config.enable_evening_summary) },
     { label: "Sunday Leq12h", on: on(config.enable_sunday_leq12h_hourly) },
     { label: "Leq12hr table", on: on(config.enable_7am_7pm_leq12hr_table) },
-    { label: "mute Sundays", on: on(config.remove_sunday_notifications) },
-    { label: "mute PH", on: on(config.remove_ph_notifications) },
+    { label: "Sundays", on: !on(config.remove_sunday_notifications) },
+    { label: "PH", on: !on(config.remove_ph_notifications) },
     { label: "expiry alerts", on: on(config.allow_expiry_alert) },
     // Shown only when set. It is opt-in and off nearly everywhere, so a
     // struck-through pill would take a slot on every card to say nothing —

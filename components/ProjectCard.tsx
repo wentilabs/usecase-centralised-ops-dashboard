@@ -171,8 +171,8 @@ export function ProjectCard({
   pills.forEach((pill, index) => {
     if (pill.tone && mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
   });
-  pills.forEach((pill, index) => {
-    if (pill.on && mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
+  pills.forEach((_pill, index) => {
+    if (mobilePills.size < MOBILE_PILL_LIMIT) mobilePills.add(index);
   });
   const hiddenPillCount = pills.length - mobilePills.size;
 
@@ -262,21 +262,15 @@ export function ProjectCard({
           <span
             key={pill.label}
             className={[
-              // A toned pill keeps its colour when it is OFF, but says so:
-              // dimmed and struck through, not rendered as if it were on. Tone
-              // marks what a pill is ABOUT — blue for Water Parade — while
-              // `on` still has to carry whether it is in force.
+              // Every pill on the card is in force — `pillsFor` drops the rest,
+              // so there is no dimmed or struck-through variant to style. Tone
+              // marks what a pill is ABOUT: blue for a called-out capability
+              // like Water Parade, amber for something to look at.
               pill.tone === "info"
-                ? pill.on
-                  ? "rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/40"
-                  : "rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary/60 line-through ring-1 ring-primary/20"
+                ? "rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/40"
                 : pill.tone === "warn"
-                  ? pill.on
-                    ? "rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-semibold text-warn ring-1 ring-warn/40"
-                    : "rounded-full bg-warn/10 px-2 py-0.5 text-[11px] font-semibold text-warn/60 line-through ring-1 ring-warn/20"
-                  : pill.on
-                    ? "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30"
-                    : "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground line-through",
+                  ? "rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-semibold text-warn ring-1 ring-warn/40"
+                  : "rounded-full bg-on/15 px-2 py-0.5 text-[11px] text-on ring-1 ring-on/30",
               mobilePills.has(index) ? "" : "hidden md:block",
             ].join(" ")}
           >

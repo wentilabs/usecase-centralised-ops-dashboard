@@ -46,6 +46,7 @@ import {
   pillsFor,
   subconReports,
 } from "../lib/card-summary";
+import { PILL_PROVIDERS } from "../lib/card-summary/pill-providers";
 
 const field = (over: Partial<FieldSpec>): FieldSpec => ({
   name: "f",
@@ -226,7 +227,7 @@ test("the haze cadence and band pills say what is in force", () => {
   // Labelled for what it does. A pill is read at a glance, and "4" for seven
   // sends is simply wrong; the editor's help explains the column-name mismatch.
   assert.ok(four.some((p) => p.label === "🕓 2-hourly override" && p.on));
-  assert.ok(plain.some((p) => p.label === "🕓 2-hourly override" && !p.on), "unlit without the flag");
+  assert.ok(!plain.some((p) => p.label === "🕓 2-hourly override"), "absent without the flag");
   // The majority mode, so it must not be emphasised.
   assert.equal(four.find((p) => p.label === "🕓 2-hourly override")?.tone, undefined);
 
@@ -412,7 +413,7 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   assert.ok(hazePills.some((p) => p.label === "wohhup format" && p.on));
   // Haze took the same manpower-sheet source as lightning, so it reads the
   // same on the card — a fixed list lights nothing extra.
-  assert.ok(hazePills.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+  assert.ok(!hazePills.some((p) => p.label === "POCs from manpower sheet"));
   assert.ok(
     pillsFor("haze", { enable_poc_mentions: true, poc_phone_numbers: "manpower-sheet" }).some(
       (p) => p.label === "POCs from manpower sheet" && p.on,
@@ -424,8 +425,9 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
     ),
     "the switch has to be on for the source to mean anything",
   );
-  // `default` is a real value, not an absence — shown, but not lit up.
-  assert.ok(pillsFor("haze", {}).some((p) => p.label === "default format" && !p.on));
+  // `default` is a real value, but it is also the majority, so it is silent:
+  // the card states what differs, and "wohhup format" above is the difference.
+  assert.ok(!pillsFor("haze", {}).some((p) => p.label.endsWith("format")));
 
   // Amber, then the signed SMS alerts, while the column is still named for
   // red. "POC" stays in the label because that is what a person searches for.
@@ -454,7 +456,7 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
     }).some((p) => p.label === "no all-clear POC mentions" && p.on),
   );
   // A fixed list of numbers is the ordinary case, so it lights nothing extra.
-  assert.ok(ltg.some((p) => p.label === "POCs from manpower sheet" && !p.on));
+  assert.ok(!ltg.some((p) => p.label === "POCs from manpower sheet"));
 
   // WHO gets tagged is a separate question from whether anyone is: "whoever is
   // on site today" and a fixed list behave very differently on a Monday.
@@ -471,7 +473,7 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   );
 
   // The setting controls shared outbound wording, independently of input recognition.
-  assert.ok(pillsFor("lightning", {}).some((p) => p.label === "SMS STOP/SAFE wording" && !p.on));
+  assert.ok(!pillsFor("lightning", {}).some((p) => p.label === "SMS STOP/SAFE wording"));
   assert.ok(
     pillsFor("lightning", { sms_lightning_format: "TRI-style" }).some(
       (p) => p.label === "SMS STOP/SAFE wording" && p.on,
@@ -492,13 +494,26 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   const subconPills = pillsFor("subcon", { enabled: false, enable_water_parade: true });
   // Subcon has no outbound surface at all now, so there is no such pill to show.
   assert.ok(!subconPills.some((p) => p.label === "outbound WhatsApp"), "superseded by the named routes");
-  assert.ok(subconPills.some((p) => p.label === "housekeeping"));
   // One pill per report, so which of the two a site receives is visible on the
-  // card rather than only in the editor.
+  // card rather than only in the editor — and absent, not struck through, when
+  // Scheduled reports is off.
   for (const label of ["activity + manpower", "manpower + machines"]) {
-    const pill = subconPills.find((p) => p.label === label);
-    assert.ok(pill, `${label} must have its own pill`);
-    assert.equal(pill.on, false, `${label} must read off when Scheduled reports is off`);
+    assert.equal(
+      subconPills.find((p) => p.label === label),
+      undefined,
+      `${label} must be absent when Scheduled reports is off`,
+    );
+  }
+  const scheduled = pillsFor("subcon", {
+    enabled: true,
+    enable_activity_summary: true,
+    enable_manpower_summary: true,
+  });
+  for (const label of ["activity + manpower", "manpower + machines"]) {
+    assert.ok(
+      scheduled.some((p) => p.label === label),
+      `${label} must have its own pill where reports are scheduled`,
+    );
   }
   // Water Parade belongs to the WBGT service now, so subcon must not claim it.
   assert.ok(!subconPills.some((p) => /Water Parade/.test(p.label)));
@@ -506,7 +521,7 @@ test("the POC switches haze and lightning gained are surfaced as pills", () => {
   // it as `=== true` ("Only an explicit true enables it"), so an absent flag
   // reads as OFF. This assertion used to claim the opposite default.
   assert.ok(
-    subconPills.some((p) => p.label === "housekeeping" && !p.on),
+    !subconPills.some((p) => p.label === "housekeeping"),
     "an absent flag is off, not on",
   );
   assert.ok(
@@ -1339,32 +1354,48 @@ test("Water Parade leads the pills, in its own colour, only when configured", ()
   // than a green tick, since it is a capability and not a cadence.
   assert.equal(pills[0].label, "💧 Water Parade");
   assert.equal(pills[0].tone, "info");
-  assert.equal(pills[0].on, true);
+  // Off by default, so absent: the card states what is in force.
+  assert.ok(!pills.some((p) => p.label === "cooldown 2h"), "off by default");
   // Its cooldown rides directly behind it, because the two answer one question
   // together: does this site get asked, and how often.
-  assert.equal(pills[1].label, "cooldown 2h");
-  assert.equal(pills[1].on, false, "off by default");
-  assert.equal(
-    pillsFor("wbgt", { water_parade_enabled: true, water_parade_cooldown_enabled: true })[1].on,
-    true,
-  );
+  const cooled = pillsFor("wbgt", {
+    water_parade_enabled: true,
+    enable_hourly: true,
+    water_parade_cooldown_enabled: true,
+  });
+  assert.equal(cooled[1].label, "cooldown 2h");
   // Then the daily summary, still inside the Water Parade block: it is the
   // third thing that answers "what does this site get" — asked, how often, and
   // whether anyone is told who missed. It carries its hour because that is what
   // someone checks before asking why the evening was quiet.
-  assert.equal(pills[2].label, "daily summary 18:00", "unset falls back to the database default");
-  assert.equal(pills[2].on, false, "off by default");
-  assert.equal(pills[2].tone, "info");
+  assert.ok(!pills.some((p) => p.label.startsWith("daily summary")), "off by default");
+  const summarised = pillsFor("wbgt", {
+    water_parade_enabled: true,
+    enable_hourly: true,
+    water_parade_cooldown_enabled: true,
+    water_parade_daily_summary_enabled: true,
+  });
+  assert.equal(summarised[2].label, "daily summary 18:00", "unset falls back to the database default");
+  assert.equal(summarised[2].tone, "info");
   const summarising = pillsFor("wbgt", {
     water_parade_enabled: true,
     water_parade_daily_summary_enabled: true,
     water_parade_daily_summary_hour: 7,
   });
-  assert.equal(summarising[2].label, "daily summary 07:00", "the configured hour, zero-padded");
-  assert.equal(summarising[2].on, true);
+  // By label rather than by index: the cooldown pill sits between them only
+  // when it is on, so a position here would be asserting the wrong thing.
+  assert.ok(
+    summarising.some((p) => p.label === "daily summary 07:00"),
+    "the configured hour, zero-padded",
+  );
 
-  // Then the cadence pills, in their usual order.
-  assert.equal(pills[3].label, "hourly");
+  // Then the cadence pills, AFTER the Water Parade block. Asserted as an
+  // ordering rather than an index, because the two switchable Water Parade
+  // pills are absent when off and every index below them shifts.
+  assert.ok(
+    pills.findIndex((p) => p.label === "hourly") > pills.findIndex((p) => p.label === "💧 Water Parade"),
+    "the cadence pills follow the Water Parade block",
+  );
 
   // Not configured: both absent entirely. Most projects do not use Water Parade,
   // so struck-through pills on each would be noise rather than emphasis — and a
@@ -1409,13 +1440,15 @@ test("HALO distinguishes muted Water Parade reminders from tracking and summary"
   };
   const pills = pillsFor("wbgt", config);
   assert.equal(pills.find((pill) => pill.label === "💧 Water Parade")?.on, true);
-  assert.equal(pills.find((pill) => pill.label === "reminders")?.on, false);
+  // Said positively — "no reminders" — because the notable state is the muted
+  // one, and a pill that only existed to be struck through would now vanish.
+  assert.equal(pills.find((pill) => pill.label === "no reminders")?.on, true);
   assert.equal(pills.find((pill) => pill.label === "daily summary 18:00")?.on, true);
   assert.ok(pillsFor("wbgt", { ...config, water_parade_outbound_group_id: "a@g.us,b@g.us" })
     .some((pill) => pill.label === "2 Water Parade groups"));
   assert.match(firesAt("wbgt", config), /Water Parade tracking \(reminders off\)/);
   assert.doesNotMatch(firesAt("wbgt", config), /Water Parade reminders,/);
-  assert.ok(!pillsFor("wbgt", { water_parade_enabled: true }).some((pill) => pill.label === "reminders"),
+  assert.ok(!pillsFor("wbgt", { water_parade_enabled: true }).some((pill) => pill.label.includes("reminders")),
     "pre-migration rows keep reminders on and do not show a muted pill");
 });
 
@@ -1429,9 +1462,9 @@ test("Ailytics shows its switches and not its setup", () => {
   // switch is the state someone needs to see before asking why no summary
   // arrived.
   const bare = pillsFor("ailytics", {});
-  assert.ok(bare.some((p) => p.label === "forward PENDING" && !p.on));
-  assert.ok(bare.some((p) => p.label === "daily summary" && !p.on));
-  assert.ok(bare.some((p) => p.label === "yesterday summary" && !p.on));
+  assert.ok(!bare.some((p) => p.label === "forward PENDING"));
+  assert.ok(!bare.some((p) => p.label === "daily summary"));
+  assert.ok(!bare.some((p) => p.label === "yesterday summary"));
 
   // `telegram source`, `sheet` and `whatsapp relay` were dropped: they were on
   // for every working project, so they reported that setup was finished rather
@@ -1446,7 +1479,7 @@ test("Ailytics shows its switches and not its setup", () => {
   }
   // Four since ec8e843: mention targets is a real per-project choice, off by
   // default, so it belongs beside the other switches rather than among setup.
-  assert.ok(configured.some((p) => p.label === "mention targets" && !p.on));
+  assert.ok(!configured.some((p) => p.label === "mention targets"));
   assert.ok(
     pillsFor("ailytics", { mention_targets: { enabled: true } } as never).some(
       (p) => p.label === "mention targets" && p.on,
@@ -1457,12 +1490,24 @@ test("Ailytics shows its switches and not its setup", () => {
   // off. A truthiness check on the column alone would light it, and the card
   // would report mentions firing on a project that has disabled them.
   assert.ok(
-    pillsFor("ailytics", { mention_targets: { enabled: false, targets: [{ camera: "any" }] } } as never).some(
-      (p) => p.label === "mention targets" && !p.on,
+    !pillsFor("ailytics", { mention_targets: { enabled: false, targets: [{ camera: "any" }] } } as never).some(
+      (p) => p.label === "mention targets",
     ),
-    "a configured-but-disabled feature must read as off",
+    "a configured-but-disabled feature must not light up",
   );
-  assert.equal(configured.length, 4, "exactly the four switches");
+  // Setup alone produces no pills now: all four ailytics pills are switches,
+  // and this project has turned none of them on.
+  assert.equal(configured.length, 0, "setup columns are not capabilities");
+  assert.equal(
+    pillsFor("ailytics", {
+      forward_pending_to_whatsapp: true,
+      status_summary_enabled: true,
+      yesterday_summary_enabled: true,
+      mention_targets: { enabled: true },
+    } as never).length,
+    4,
+    "exactly the four switches",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1487,7 +1532,7 @@ test("a project running only the evening closeout is not treated as idle", () =>
 test("the evening summary is surfaced as a pill", () => {
   const pills = pillsFor("noise", { enable_evening_summary: true });
   assert.ok(pills.some((p) => p.label === "evening summary" && p.on));
-  assert.ok(pillsFor("noise", {}).some((p) => p.label === "evening summary" && !p.on));
+  assert.ok(!pillsFor("noise", {}).some((p) => p.label === "evening summary"));
 });
 
 test("company is offered on every service, as guidance rather than a constraint", () => {
@@ -1558,19 +1603,22 @@ test("search matches a card's switched-on capabilities, not just its code", () =
   assert.ok(searchTokens("wbgt", withWaterParade).some((t) => t.includes("💧")));
 });
 
-test("a struck-through pill is NOT a match", () => {
+test("a pill that is off is not a match, because it is not on the card", () => {
   // This is the whole distinction: matching an off pill would return exactly the
   // projects the searcher does not want.
   //
-  // It has to be tested with a pill that is EMITTED in both states. Water Parade
-  // is not — it is omitted entirely when off — so asserting on that passed
-  // whether or not the `pill.on` filter existed. "5-min alerts" is always
-  // rendered, lit or struck through, which is what makes this a real guard.
+  // It has to be tested with a pill the PROVIDER emits in both states, or the
+  // assertion passes whether or not anything filters. "5-min alerts" is emitted
+  // either way; `pillsFor` is what drops the off one, so the chain below names
+  // each link and cannot go quiet if that filter is removed.
   const row = { project_code: "ZRA", enable_hourly: true, enable_5min_alerts: false };
-  const pills = pillsFor("wbgt", row);
-  const fiveMin = pills.find((p) => p.label === "5-min alerts");
-  assert.ok(fiveMin, "the pill must exist for this test to mean anything");
-  assert.equal(fiveMin.on, false, "and it must be off");
+  const emitted = PILL_PROVIDERS.wbgt(row).find((p) => p.label === "5-min alerts");
+  assert.ok(emitted, "the provider must still emit it for this test to mean anything");
+  assert.equal(emitted.on, false, "and emit it as off");
+  assert.ok(
+    !pillsFor("wbgt", row).some((p) => p.label === "5-min alerts"),
+    "and the card must then not carry it",
+  );
 
   assert.equal(matchesQuery("wbgt", row, "5-min alerts"), false, "an off pill must not match");
   assert.equal(matchesQuery("wbgt", row, "hourly"), true, "an on pill still matches");
@@ -1660,8 +1708,9 @@ test("Issue Chaser's two new switches are on the card, both off by default", () 
   assert.equal(
     pillsFor("issueChaser", { send_to_originating_groups: false }).find(
       (pill) => pill.label === "reply in origin group",
-    )?.on,
-    false,
+    ),
+    undefined,
+    "a switch that is off is absent, not struck through",
   );
 });
 
@@ -1669,19 +1718,26 @@ test("the Woh Hup roster filter appears only where the Manpower tab is read", ()
   // Default true, and it drops Woh Hup / Wohhup / WHPL rows when the Manpower
   // tab is parsed. It governs two consumers at once — the Water Parade roster
   // and manpower-sheet POC resolution — so it is shown for either.
+  // Excluding the main contractor is the default and therefore silent. What is
+  // stated is the exception: a roster that counts Woh Hup IN changes every
+  // headcount on the report, and that is the card worth finding.
   const parade = pillsFor("wbgt", { water_parade_enabled: true });
-  assert.ok(parade.some((p) => p.label === "excl. Woh Hup" && p.on), "default is to exclude");
+  assert.ok(!parade.some((p) => p.label.includes("Woh Hup")), "the default says nothing");
 
   const included = pillsFor("wbgt", { water_parade_enabled: true, exclude_wohhup_from_manpower: false });
   assert.ok(
-    included.some((p) => p.label === "excl. Woh Hup" && !p.on),
-    "struck through where Woh Hup counts as a participant — MBS today",
+    included.some((p) => p.label === "incl. Woh Hup" && p.on),
+    "stated where Woh Hup counts as a participant — MBS today",
   );
 
   // POC numbers resolved from the sheet read the same tab, so the filter matters
   // there even with Water Parade off.
-  const pocFromSheet = pillsFor("wbgt", { poc_phone_numbers: "manpower-sheet" });
-  assert.ok(pocFromSheet.some((p) => p.label === "excl. Woh Hup"));
+  const pocFromSheet = pillsFor("wbgt", {
+    poc_phone_numbers: "manpower-sheet",
+    enable_red_band_poc_mentions: true,
+    exclude_wohhup_from_manpower: false,
+  });
+  assert.ok(pocFromSheet.some((p) => p.label === "incl. Woh Hup"));
 
   // And nowhere else: on a project that never reads the tab the flag is inert,
   // and a pill on all 25 cards would carry no information.
@@ -1968,18 +2024,15 @@ test("the issue-chaser card reads its configured cadence windows, not the retire
 
 test("subcon shows whether the roster excludes the main contractor", () => {
   const labels = (config: Record<string, unknown>) => pillsFor("subcon", config).map((pill) => pill.label);
-  assert.ok(labels({}).includes("excl. Woh Hup"), "shown even at its default");
-
-  // Default is exclude, so an absent column reads as on — matching the database,
-  // where the column is `not null default true`.
-  const dflt = pillsFor("subcon", {}).find((pill) => pill.label === "excl. Woh Hup");
-  assert.equal(dflt?.on, true);
-  assert.equal(dflt?.tone, "info");
+  // Default is exclude — the column is `not null default true` — so an absent
+  // column says nothing on the card. The exception is what gets a pill.
+  assert.ok(!labels({}).some((label) => label.includes("Woh Hup")), "silent at its default");
 
   const included = pillsFor("subcon", { exclude_wohhup_from_manpower: false }).find(
-    (pill) => pill.label === "excl. Woh Hup",
+    (pill) => pill.label === "incl. Woh Hup",
   );
-  assert.equal(included?.on, false, "off means Woh Hup rows count towards the roster");
+  assert.equal(included?.on, true, "Woh Hup rows count towards the roster");
+  assert.equal(included?.tone, "info");
 });
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { classifyRunStatus, colourForStatus, isIdleStatus, worstColour } from "../lib/health-status";
-import { contractHealthColour, contractHealthGranularity } from "../lib/service-contracts";
+import { SERVICE_CONTRACTS, contractHealthColour, contractHealthGranularity } from "../lib/service-contracts";
 import { SERVICE_KEYS } from "../lib/services";
 
 const source = (path: string) => readFile(resolve(path), "utf8");
@@ -166,27 +166,64 @@ test("a service's own declaration outranks the naming convention", () => {
   assert.equal(fell.basis, "prefix");
 });
 
-test("no service declares a health block yet, and everything still works", () => {
-  // All seven are undeclared at the time of writing. That is the case the
-  // fallback exists for: HALO must be correct before any service adopts this,
-  // and for one that never does.
+test("every service declares its own colours, and only the three", () => {
+  // This test previously asserted that NONE of them declared a block — true
+  // when the mechanism landed, false since each service committed its own. It
+  // now pins the state that matters: every service answers for itself, and no
+  // contract can introduce a fourth colour.
   for (const service of SERVICE_KEYS) {
-    assert.equal(contractHealthColour(service, "completed"), null, `${service} should declare nothing yet`);
-    // And the resolver then falls through to the convention rather than failing.
-    assert.equal(colourForStatus(service, "completed").colour, "green");
-    assert.equal(colourForStatus(service, "failed_setup").colour, "red");
-    assert.equal(colourForStatus(service, "nonesuch").colour, "amber");
-    assert.equal(colourForStatus(service, "completed").basis, "prefix");
+    const declared = SERVICE_CONTRACTS[service]?.health;
+    assert.ok(declared, `${service} should declare a health block`);
+    assert.ok(Object.keys(declared.statuses ?? {}).length > 0, `${service} declares no statuses`);
+    for (const [status, colour] of Object.entries(declared.statuses ?? {})) {
+      assert.ok(["green", "amber", "red"].includes(colour), `${service}.${status} is "${colour}"`);
+      // And the reader agrees with the file, case-insensitively — Haze and
+      // Lightning write theirs upper case, the rest lower.
+      assert.equal(contractHealthColour(service, status), colour, `${service}.${status}`);
+      assert.equal(contractHealthColour(service, status.toUpperCase()), colour, `${service}.${status} upper`);
+    }
+    // The four shared delivery outcomes are the ones every service agreed on.
+    const lower = Object.fromEntries(
+      Object.entries(declared.statuses ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    assert.equal(lower.queued, "green", `${service}: a listener that accepted the message is not a fault`);
+    assert.equal(lower.sent, "green", service);
+    assert.equal(lower.unconfirmed, "amber", `${service}: ambiguous is worth reading, not alarming`);
+    assert.equal(lower.failed, "red", service);
   }
 });
 
-test("an undeclared signal is not covered, never healthy", () => {
-  // The one mistake this page cannot afford: a service that has not said it
-  // reports a signal must not read as green.
+test("a status no service declared still falls to the convention", () => {
+  // The fallback has to survive adoption: a status added tomorrow by someone
+  // who never opened the contract must still be read, not dropped.
   for (const service of SERVICE_KEYS) {
-    for (const signal of ["ingestion", "run", "delivery"] as const) {
-      assert.equal(contractHealthGranularity(service, signal), "none", `${service}.${signal}`);
-    }
+    assert.equal(contractHealthColour(service, "completed_with_meter_issues"), null, service);
+    assert.equal(colourForStatus(service, "completed_with_meter_issues").colour, "amber");
+    assert.equal(colourForStatus(service, "completed_with_meter_issues").basis, "prefix");
+    assert.equal(colourForStatus(service, "nonesuch").colour, "amber");
+    assert.equal(colourForStatus(service, "nonesuch").basis, "unrecognised");
+  }
+});
+
+test("granularity is declared per signal, and an undeclared one is not covered", () => {
+  // Ingestion, run and delivery do not share a granularity, so each is
+  // declared separately. Delivery is the one every service can answer.
+  for (const service of SERVICE_KEYS) {
+    assert.equal(contractHealthGranularity(service, "delivery"), "project", `${service} delivery`);
+  }
+  // Haze and Lightning fetch one public feed, so ingestion has no per-project
+  // answer; Lightning records it estate-wide, Haze records nothing at all.
+  assert.equal(contractHealthGranularity("lightning", "ingestion"), "service");
+  assert.equal(contractHealthGranularity("haze", "ingestion"), "none");
+  // Only the two that keep their own readings answer ingestion per project.
+  assert.deepEqual(
+    SERVICE_KEYS.filter((s) => contractHealthGranularity(s, "ingestion") === "project"),
+    ["wbgt", "noise"],
+  );
+  // The rule itself: anything undeclared is "not covered", never "project".
+  // A service with no contract at all is the clearest case.
+  for (const signal of ["ingestion", "run", "delivery"] as const) {
+    assert.equal(contractHealthGranularity("nosuchservice", signal), "none", signal);
   }
 });
 

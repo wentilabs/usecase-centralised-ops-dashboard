@@ -20,7 +20,9 @@
     { "id": "telegram-group-discovery", "file": "migrate_telegram_group_discovery.sql", "requires": [] },
     { "id": "telegram-group-bot-observations", "file": "migrate_telegram_group_bot_observations.sql", "requires": ["telegram-group-discovery"] },
     { "id": "yesterday-24h-summary", "file": "migrate_yesterday_24h_summary.sql", "requires": ["telegram-group-bot-observations"] },
-    { "id": "mention-targets", "file": "migrate_mention_targets.sql", "requires": [] }
+    { "id": "mention-targets", "file": "migrate_mention_targets.sql", "requires": [] },
+    { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["yesterday-24h-summary"] },
+    { "id": "repeatable-yesterday-summary", "file": "migrate_repeatable_yesterday_summary.sql", "requires": ["listener-queue-acceptance"] }
   ],
   "destructiveUtilities": [
     { "file": "ailytics_safety_reset.sql", "purpose": "Empty-environment reset only; never part of an upgrade." }

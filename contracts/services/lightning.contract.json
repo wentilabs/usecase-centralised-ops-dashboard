@@ -61,5 +61,9 @@
       { "name": "lightning_red_poc_mentions_check", "help": "Red mentions require both phone and destination lists." },
       { "name": "lightning_working_hours_check", "help": "Working-hours start and end must both be null or both valid, unequal HHMM values." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "service", "run": "service", "delivery": "project" },
+    "statuses": { "NOT_APPLICABLE": "green", "PENDING": "green", "SENT": "green", "DELIVERED": "green", "QUEUED": "green", "UNCONFIRMED": "amber", "PARTIAL": "amber", "FAILED": "red", "SUPPRESSED_OUTSIDE_WORKING_HOURS": "green", "SUPPRESSED_SUNDAY": "green", "SUPPRESSED_PUBLIC_HOLIDAY": "green", "SUPPRESSED_SMS_DISABLED": "green", "RUNNING": "green", "SKIPPED_LOCK": "green", "COMPLETED": "green", "COMPLETED_WITH_ERRORS": "amber" }
   }
 }

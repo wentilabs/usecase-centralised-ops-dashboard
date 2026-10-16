@@ -24,7 +24,8 @@
     { "id": "company-column", "file": "migrate_company_column.sql", "requires": [] },
     { "id": "lightning-sms", "file": "lightning-sms.sql", "requires": ["notification-calendar"] },
     { "id": "sms-lightning-format", "file": "sms-lightning-format.sql", "requires": ["lightning-sms"] },
-    { "id": "single-red-until-green", "file": "single-red-until-green.sql", "requires": ["stop-runtime-safety"] }
+    { "id": "single-red-until-green", "file": "single-red-until-green.sql", "requires": ["stop-runtime-safety"] },
+    { "id": "listener-queue-acceptance", "file": "listener-queue-acceptance.sql", "requires": [] }
   ],
   "dataMigrations": [
     {

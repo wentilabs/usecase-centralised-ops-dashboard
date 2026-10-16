@@ -40,7 +40,7 @@
       "yesterday_summary_enabled": { "label": "Yesterday summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Enables the hourly previous-local-day Ailytics findings summary route without changing the existing status summary behavior." },
       "yesterday_summary_hour": { "label": "Yesterday summary hour", "group": "behavior", "mutable": true, "role": "configuration", "help": "Local project hour from 0 to 23 at which the hourly route is allowed to send the previous day's summary." },
       "yesterday_summary_group_ids": { "label": "Yesterday summary WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated dedicated Safety Inspection Summary WhatsApp group IDs; this does not reuse whatsapp_group_ids." },
-      "mention_targets": { "label": "Mention targets", "group": "mentions", "mutable": true, "role": "configuration", "help": "JSONB camera-to-contact rules shared by the configurable day/night windows. Camera-specific contacts take priority over that shift's `any` contacts. Pending and non-compliant captions have separate mention switches." },
+      "mention_targets": { "label": "WhatsApp mention targets", "group": "delivery", "mutable": true, "role": "configuration", "help": "Controls optional camera-to-contact mentions on Pending and Non-Compliant image captions, with separate shift windows and exact-camera-before-any matching." },
       "created_at": { "label": "Created at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned audit timestamp." },
       "updated_at": { "label": "Updated at", "group": "runtime", "mutable": false, "role": "runtime-state", "help": "Database-owned optimistic-concurrency timestamp." }
     },
@@ -48,5 +48,9 @@
       { "name": "project_configs_project_code_key", "help": "Project codes are unique." },
       { "name": "project_configs_telegram_chat_id_upstream_bot_username_key", "help": "Only one row may use a Telegram chat ID and bot-username pair, including a fully blank draft pair (INV-AIL-09)." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "none", "run": "none", "delivery": "project" },
+    "statuses": { "pending": "green", "queued": "green", "sent": "green", "unconfirmed": "amber", "failed": "red" }
   }
 }

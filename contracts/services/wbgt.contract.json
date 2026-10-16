@@ -96,5 +96,9 @@
       { "name": "wbgt_project_configs_delivery_scope_check", "help": "Sensor delivery scope is permitted only for MBS; all other projects remain project-scoped." },
       { "name": "wbgt_project_configs_sensor_delivery_groups_check", "help": "Sensor delivery groups must be a JSON object." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "project", "run": "project", "delivery": "project" },
+    "statuses": { "pending": "green", "sending": "green", "queued": "green", "sent": "green", "unconfirmed": "amber", "cancelled": "amber", "failed": "red", "suppressed": "green", "expired": "amber" }
   }
 }

@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "main",
-      "commit": "1f8e1e55b8b5f1da639c5645257b691514d29990",
+      "commit": "841d095d619e888936aac0d695938a769683b6f7",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "863722e5877c6e0c37de5e7df69c1a60228a76a9",
+      "commit": "694b94161222bf0b246184f57826fa17b296d61c",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "main",
-      "commit": "6e5069f5154bcfa4c1a7722fa989548f09f7e5b0",
+      "commit": "97fbb4c50471a6b9bb08ff769cf07d65bd4851dd",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -31,7 +31,7 @@
     "lightning": {
       "repository": "wentilabs/usecase-lightning-alerts",
       "branch": "main",
-      "commit": "af7a3e492d55f4b2a03ec36d009098fe1918e93f",
+      "commit": "9f01606e18f1784d1185f790c6dceb8a9aaaea35",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/lightning.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -40,7 +40,7 @@
     "noise": {
       "repository": "wentilabs/usecase-wohhup-noise-meter-alerts",
       "branch": "main",
-      "commit": "5a89d71d6bef83418e7f6ef5646d2d639aa45558",
+      "commit": "a306fcb158ffdd5bfdbb4b71e5fadfbc8048ef45",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/noise.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -50,7 +50,7 @@
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "localDirectory": "usecase-subcon-manpower-activities",
       "branch": "main",
-      "commit": "492e0ad86a6b25f5f6ac6ab3ca91464c94f394ca",
+      "commit": "024cf5809aeb3313dcda2c7f7fc308d27dee0404",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -59,7 +59,7 @@
     "wbgt": {
       "repository": "wentilabs/usecase-wohhup-wbgt-alerts",
       "branch": "main",
-      "commit": "300c99763c2ccc998974ceb0a423eaf4c98c2e3f",
+      "commit": "78ceb4e6de6f5b09060ed5176abb35e4c84c1c9f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",

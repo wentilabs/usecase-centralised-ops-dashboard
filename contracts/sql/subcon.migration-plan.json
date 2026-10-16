@@ -42,7 +42,8 @@
     { "id": "daily-manpower-summary-state", "file": "migrations/20260904_daily_manpower_summary_state.sql", "requires": ["supabase-activity-truth"] },
     { "id": "notification-mutes", "file": "migrations/20260905_notification_mutes.sql", "requires": [] },
     { "id": "housekeeping-opt-in", "file": "migrations/20260911_housekeeping_opt_in.sql", "requires": ["housekeeping-and-daily-summary"] },
-    { "id": "housekeeping-outcomes", "file": "migrations/20260911_housekeeping_outcomes.sql", "requires": ["supabase-activity-truth"] }
+    { "id": "housekeeping-outcomes", "file": "migrations/20260911_housekeeping_outcomes.sql", "requires": ["supabase-activity-truth"] },
+    { "id": "listener-queue-acceptance", "file": "migrations/20261015_listener_queue_acceptance.sql", "requires": ["housekeeping-and-daily-summary"] }
   ],
   "destructiveUtilities": []
 }

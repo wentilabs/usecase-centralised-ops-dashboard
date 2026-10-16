@@ -25,7 +25,11 @@
     { "id": "mbs-sensor-delivery", "file": "migrate_mbs_sensor_delivery.sql", "requires": ["water-parade-multiple-groups"] },
     { "id": "external-telegram-channels", "file": "migrate_external_telegram_channels.sql", "requires": ["raw-readings", "onboarding-rpc"] },
     { "id": "monthly-wbgt-report", "file": "migrate_monthly_wbgt_report.sql", "requires": [] },
-    { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] }
+    { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["monthly-wbgt-report"] },
+    { "id": "telegram-message-acceptance", "file": "migrate_telegram_message_acceptance.sql", "requires": ["external-telegram-channels", "listener-queue-acceptance"] },
+    { "id": "repeatable-reports", "file": "migrate_repeatable_reports.sql", "requires": ["listener-queue-acceptance", "water-parade-daily-summary"] },
+    { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] },
+    { "id": "data-health-listener-acceptance", "file": "migrate_data_health_listener_acceptance.sql", "requires": ["data-health"] }
   ],
   "operationalUtilities": [
     { "file": "schedule_job_runs_cleanup.sql", "purpose": "Install the named pg_cron job that deletes WBGT job-run audit rows older than 30 days.", "targetSchemas": ["cron"] }

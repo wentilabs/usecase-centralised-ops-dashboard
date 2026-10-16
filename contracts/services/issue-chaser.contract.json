@@ -73,5 +73,9 @@
       { "name": "issue_chaser_p2_p3_window_check", "help": "The P2/P3 time window must be a complete, unequal pair or entirely null." },
       { "name": "issue_chaser_summary_destination_check", "help": "Enabled fixed-destination reports require their dedicated group list or the legacy fallback." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "none", "run": "none", "delivery": "project" },
+    "statuses": { "pending": "green", "sending": "green", "sent": "green", "queued": "green", "unconfirmed": "amber", "failed": "red", "skipped": "green", "partial": "amber", "expired": "amber", "cancelled": "amber", "preview": "green", "completed": "green" }
   }
 }

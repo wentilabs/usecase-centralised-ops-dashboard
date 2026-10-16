@@ -31,7 +31,8 @@
     { "id": "summary-destination-groups", "file": "migrate_summary_destination_groups.sql", "requires": ["feature-destination-groups", "chatgroup-summary"] },
     { "id": "severity-reminder-age-limit", "file": "migrate_severity_reminder_age_limit.sql", "requires": ["consolidated-reconciliation"] },
     { "id": "company-open-backlog", "file": "migrate_company_open_backlog.sql", "requires": ["consolidated-reconciliation"] },
-    { "id": "issues-format", "file": "migrate_issues_format.sql", "requires": ["consolidated-reconciliation"] }
+    { "id": "issues-format", "file": "migrate_issues_format.sql", "requires": ["consolidated-reconciliation"] },
+    { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["consolidated-reconciliation"] }
   ],
   "destructiveUtilities": []
 }

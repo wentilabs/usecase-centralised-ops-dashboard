@@ -10,7 +10,9 @@
     { "id": "15min-average-exceedance", "file": "migrate_15min_average_exceedance.sql", "requires": [] },
     { "id": "monthly-noise-report", "file": "migrate_monthly_noise_report.sql", "requires": [] },
     { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] },
-    { "id": "hourly-app-screenshot", "file": "migrate_hourly_app_screenshot.sql", "requires": [] }
+    { "id": "hourly-app-screenshot", "file": "migrate_hourly_app_screenshot.sql", "requires": [] },
+    { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["monthly-noise-report", "data-health"] },
+    { "id": "repeatable-monthly-reports", "file": "migrate_repeatable_monthly_reports.sql", "requires": ["listener-queue-acceptance"] }
   ],
   "destructiveUtilities": []
 }

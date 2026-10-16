@@ -86,5 +86,9 @@
     "constraints": [
       { "name": "days_left_before_alerting_check", "help": "Expiry warning days must be between 1 and 365." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "project", "run": "project", "delivery": "project" },
+    "statuses": { "pending": "green", "sending": "green", "queued": "green", "sent": "green", "unconfirmed": "amber", "cancelled": "amber", "failed": "red" }
   }
 }

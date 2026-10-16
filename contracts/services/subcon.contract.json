@@ -39,5 +39,9 @@
       { "name": "project_configs_project_code_key", "help": "Project codes are unique." },
       { "name": "project_configs_morning_report_start_hour_check", "help": "The optional morning start hour must be between 0 and 23." }
     ]
+  },
+  "health": {
+    "granularity": { "ingestion": "none", "run": "none", "delivery": "project" },
+    "statuses": { "sent": "green", "queued": "green", "unconfirmed": "amber", "failed": "red" }
   }
 }

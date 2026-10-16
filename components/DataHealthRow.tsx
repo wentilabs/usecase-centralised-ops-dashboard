@@ -25,6 +25,16 @@ import type { ProjectHealth } from "@/lib/data-health";
  * people stop reading. The strip replaced it: it is the same shape on every
  * card, so an idle project and a failing one are compared rather than read.
  */
+/**
+ * Lifted above the card's mobile tap overlay (`z-20`), because a `z-30` on the
+ * strip itself did nothing: this section's `relative` made it the enclosing
+ * stacking context, so the strip's z-index was only ever compared with its own
+ * siblings. The section is what has to clear the overlay.
+ *
+ * It is then transparent to taps except for the strip, so tapping the pill still
+ * opens the card the way tapping anywhere else on it does, and only the strip
+ * takes a tap for itself.
+ */
 export function DataHealthRow({
   projectCode,
   health,
@@ -47,7 +57,7 @@ export function DataHealthRow({
   // statement that has to be read.
   if (!health) {
     return (
-      <section className="relative z-10 mt-auto border-t border-border pt-2.5" aria-label="Data health">
+      <section className="pointer-events-none relative z-30 mt-auto border-t border-border pt-2.5" aria-label="Data health">
         <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
           Data health{bars.length ? " — delivery" : ""}
         </div>
@@ -66,7 +76,7 @@ export function DataHealthRow({
         : "bg-on/15 text-on ring-on/30";
 
   return (
-    <section className="relative z-10 mt-auto border-t border-border pt-2.5" aria-label="Data health">
+    <section className="pointer-events-none relative z-30 mt-auto border-t border-border pt-2.5" aria-label="Data health">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Data health</div>
       <div className="flex flex-wrap items-baseline gap-1.5">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${tone}`}>{label}</span>

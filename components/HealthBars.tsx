@@ -66,11 +66,19 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
               ? `Last ${bars.length} processes for ${projectCode}, nothing to action.`
               : `No processes for ${projectCode} in the last 48 hours.`
         }
-        className="group block w-full text-left disabled:cursor-default"
+        // The section around this is `pointer-events-none` and sits above the
+        // card's mobile tap overlay; this is the one part of it that takes a tap.
+        // Without that, the strip was visible on a phone and unopenable, because
+        // the overlay swallows every tap inside the card to open the editor.
+        //
+        // Still `pointer-events-none` when there is nothing to show, so an idle
+        // project's strip does not punch a dead hole in the overlay: a disabled
+        // button still hit-tests, so it would block the tap without using it.
+        className="group pointer-events-auto block w-full text-left disabled:pointer-events-none disabled:cursor-default"
       >
         {/* Fixed-width bars, right-aligned so the newest is always at the same
             place and a short history does not stretch to fill the card. */}
-        <span className="flex h-5 items-stretch gap-px">
+        <span className="flex h-7 items-stretch gap-px md:h-5">
           {/* Empty slots first, so the newest process is always hard against
               the right edge whatever this project's history looks like. */}
           {Array.from({ length: Math.max(0, BAR_COUNT - bars.length) }, (_, index) => (

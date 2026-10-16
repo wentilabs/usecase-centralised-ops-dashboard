@@ -224,3 +224,29 @@ test("a project with no processes still gets a full strip of empty slots", async
   assert.match(source, /no activity/, "and labelled as no activity rather than as health");
   assert.match(source, /No processes for \$\{projectCode\} in the last 48 hours/, "said for a screen reader too");
 });
+
+test("the strip is tappable on a phone, and an idle one does not block the card", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const [bars, card] = await Promise.all([
+    readFile(resolve("components/HealthBars.tsx"), "utf8"),
+    readFile(resolve("components/ProjectCard.tsx"), "utf8"),
+  ]);
+
+  // The card covers itself with a full-bleed tap overlay on mobile so the whole
+  // card opens the editor. At z-20 it swallowed every tap inside the card, so
+  // the strip was visible on a phone and completely unopenable.
+  assert.match(card, /absolute inset-0 z-20/, "the overlay this has to clear");
+  // On the SECTION, not the strip: `relative` there makes it the enclosing
+  // stacking context, so a z-index on the strip is only ever compared with its
+  // own siblings and never with the overlay. Learned by watching the card open
+  // instead of the modal.
+  const row = await readFile(resolve("components/DataHealthRow.tsx"), "utf8");
+  assert.match(row, /pointer-events-none relative z-30/, "the section clears the overlay");
+  assert.match(bars, /pointer-events-auto/, "and only the strip takes a tap back");
+
+  // And gives the overlay back when there is nothing to open: a disabled button
+  // still hit-tests, so it would punch a dead hole in the card's tap target.
+  assert.match(bars, /disabled:pointer-events-none/);
+  assert.match(bars, /h-7 items-stretch gap-px md:h-5/, "and is thumb-sized on a phone");
+});

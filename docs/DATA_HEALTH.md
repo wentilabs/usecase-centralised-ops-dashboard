@@ -158,21 +158,52 @@ mistake this page cannot afford.
 
 ## Current coverage
 
-Verified against the live database on 2026-10-16.
+Audited against the live database on 2026-10-16: every log table in all seven
+schemas was read, not just the ones HALO uses. Two questions per service — can
+you tell whether a process RAN, and whether it DELIVERED — and whether the answer
+is per project.
 
-| Service | Run evidence | Per project? | Notes |
-| --- | --- | --- | --- |
-| Noise | `noise_job_runs` | ✅ | 26 statuses; one row per project per invocation |
-| WBGT | `wbgt_job_runs` | ✅ | 14 statuses; same shape, `sensors_*` instead of `meters_*` |
-| Lightning | `lightning_tick_audit` | ❌ | estate-wide: `projects_total` / `projects_failed`, not one row per project |
-| Issue Chaser | `delivery_runs` | ➖ | operator previews and sends (`requested_by`, `expires_at`), not a cron run log |
-| Haze | — | — | nothing recorded |
-| Ailytics | — | — | nothing recorded |
-| Subcon | — | — | nothing recorded |
+| Service | Ran? | Delivered? | Per project | Three states? |
+| --- | --- | --- | --- | --- |
+| Noise | `noise_job_runs` | — | ✅ | ✅ completed / completed_with_meter_issues / failed_config_validation |
+| WBGT | `wbgt_job_runs` | Telegram only | ✅ | ✅ completed / completed_with_issues / skipped_outside_site_hours |
+| Haze | — | `haze_notification_events` | ✅ | ✅ SENT / UNCONFIRMED / FAILED |
+| Lightning | `lightning_tick_audit` | `lightning_events` | delivery only | ✅ but the run log is estate-wide |
+| Issue Chaser | `delivery_runs` (dormant) | `outbound_submissions` | ✅ | ✅ |
+| Ailytics | — | summary only | by uuid | partial |
+| Subcon | — | — | ❌ | ❌ |
 
-So two services can answer all three questions today. HALO must show the rest as
-**not covered**, never as green: a service with no evidence is not a healthy
-service, and colouring it green is the one failure this page cannot afford.
+### Gaps, worst first
+
+1. **Lightning cannot name its failing project.** Every one of the last 300
+   ticks is `COMPLETED_WITH_ERRORS` with `fetch_status: SUCCESS`, `error_code:
+   null` and `projects_failed: 1` of 28 — one project has failed on every tick
+   for as long as the table goes back. The audit row is estate-wide, so it says
+   *one* failed without saying *which*, and no per-project row is written
+   (`lightning_events` FAILED rows are all from 6 Oct). A permanent amber nobody
+   can act on is the worst kind of log: it trains people to ignore the colour.
+2. **Subcon logs nothing about its own runs or sends.**
+   `outbound_message_submissions` is declared and empty, `inbound_events` has
+   been silent since 5 Sep, and only `housekeeping_events`
+   (`completed` / `excused`) is live. There is no way to tell a quiet morning
+   from a broken one.
+3. **Haze has no run log at all.** Deliveries are recorded well, but an hour
+   where the cron never fired leaves no trace anywhere — the absence of a
+   notification row is indistinguishable from a correctly quiet hour.
+4. **Ailytics has no run log**, and `cctv_activity_events` has no status column
+   at all. Only `yesterday_summary_deliveries` carries an outcome, and it covers
+   one of its several jobs.
+5. **Declared-but-empty log tables**, which read as coverage and are not:
+   `noise_data_health_deliveries`, `wbgt_notification_outbox`,
+   `outbound_message_submissions`. `delivery_runs` has not been written since
+   25 Sep and `haze_service_runtime` not since 14 Aug.
+
+### What good already looks like
+
+Noise and WBGT are the pattern to copy: one row per project per invocation, in
+one table, with a status that answers all three states in its own name. A
+service that adopts that shape needs no HALO change — the contract's `health`
+block maps its words, and the strips draw it.
 
 ## Delivery: what HALO can read today
 

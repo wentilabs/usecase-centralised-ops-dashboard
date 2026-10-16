@@ -28,19 +28,43 @@ test("Data Health is automatic and the estate board offers no policy setup actio
     source("components/DataHealthBoard.tsx"),
   ]);
 
-  assert.match(row, /dataHealthDetail\(health\)/, "the card must explain automatic monitoring through the tested health-detail policy");
+  // The intent this test was written for — Data Health is automatic, and the
+  // board offers no policy setup — is asserted below and still holds. The
+  // original form of it pinned `dataHealthDetail(health)`, an explainer line
+  // printed under every pill; that was removed when the card was redesigned to
+  // be readable 196 times, and the sentence it printed said the same thing on
+  // every card in the estate.
+  // Comments stripped first: this file's own doc comment quotes the removed
+  // pill while explaining why it went, and an assertion that reads prose as
+  // code fails on the explanation rather than on the behaviour.
+  const rowCode = row.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(rowCode, /not monitored/i, "a pill that says nothing on every card trains people to ignore the section");
+  assert.doesNotMatch(rowCode, /DeliveryOutcome|healthBadge/, "the delivery badge returns when there is an outcome to put in it");
   assert.match(board, /automatically monitored/i, "the board must label the pilot as automatic");
   assert.doesNotMatch(board, /Set up policy|database migration required/i, "the board must not offer the retired policy flow");
 });
 
-test("a covered project with a receipt shows only that receipt below its health badges", async () => {
+test("a covered project shows its receipt, and never a receipt plus an explanation", async () => {
   const row = await source("components/DataHealthRow.tsx");
 
-  assert.match(
-    row,
-    /health\?\.newestReceivedAt\s*\?\s*`Latest receipt \$\{formatSgt\(health\.newestReceivedAt\)\} SGT\.`\s*:\s*dataHealthDetail\(health\)/,
-    "a latest receipt must replace, rather than follow, the automatic-monitoring explanation",
-  );
+  // The original intent, preserved: a latest receipt REPLACES the explanation
+  // rather than following it. The card now prints the receipt and no prose at
+  // all, so the two can never appear together.
+  assert.match(row, /formatSgt\(health\.newestReceivedAt\)/, "a receipt is shown when there is one");
+  assert.doesNotMatch(row, /dataHealthDetail/, "and no explanatory sentence is printed beside it");
+
+  // Green stays short; amber and red carry the service's own words. That is
+  // what makes an abnormal pill longer and heavier on the page, so a problem is
+  // findable by presence rather than only by hue — on 196 cards, hue alone is
+  // wallpaper.
+  assert.match(row, /health\.label\.replace\(\/\^Data:\\s\*\/i, ""\)/, "the label drops the prefix the section already states");
+  assert.match(row, /colourOfTone\(health\.tone\)/, "the colour comes from the shared mapping, not a second one here");
+
+  // A project with no reading is not a healthy project and must not be dressed
+  // as one — these are the services declaring `none` for every signal.
+  // Wording follows the semantics: coverage is about what HALO can READ, not
+  // what the service declares — all seven declare delivery, and nothing reads it.
+  assert.match(row, /nothing reads this service yet/i);
 });
 
 test("WBGT and Noise expose a dedicated ungated Data Health group picker", async () => {

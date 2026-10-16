@@ -6,6 +6,8 @@ import test from "node:test";
 import { classifyRunStatus, colourForStatus, isIdleStatus, worstColour } from "../lib/health-status";
 import { SERVICE_CONTRACTS, contractHealthColour, contractHealthGranularity } from "../lib/service-contracts";
 import { SERVICE_KEYS } from "../lib/services";
+import { healthKey } from "../lib/data-health";
+import { boardEntries, signalsFor, summarise, summaryLine } from "../lib/health-board";
 
 const source = (path: string) => readFile(resolve(path), "utf8");
 
@@ -251,4 +253,78 @@ test("the doc states the resolution order and the granularity rule", async () =>
   assert.match(doc, /"statuses"/);
   // Amber, not orange: WBGT already ships check (status in ('green','amber','red')).
   assert.doesNotMatch(doc, /\borange\b/i, "the scale is green/amber/red, matching the live constraint");
+});
+
+// ---------------------------------------------------------------------------
+// The board: what the strip and the modal both read.
+// ---------------------------------------------------------------------------
+
+test("entries resolve against the real key, not a hand-built one", () => {
+  // The bug this exists for: the board looked projects up by `service:code`
+  // while healthKey is JSON.stringify([service, code]). Every lookup missed,
+  // and nothing failed — the strip reported a healthy estate as "idle".
+  const rows = { noise: [{ project_code: "C9177" }, { project_code: "ZRA" }] };
+  const health = new Map([
+    [healthKey("noise", "C9177"), { service: "noise", projectCode: "C9177", tone: "good", label: "Data: receiving", newestReceivedAt: "2026-10-16T11:12:00.000Z", sourceEventAt: null }],
+    [healthKey("noise", "ZRA"), { service: "noise", projectCode: "ZRA", tone: "danger", label: "Data: no recent data", newestReceivedAt: null, sourceEventAt: null }],
+  ] as const) as never;
+
+  const entries = boardEntries(rows as never, health);
+  assert.equal(entries.length, 2, "both projects must resolve");
+  assert.deepEqual(entries.map((e) => e.colour).sort(), ["green", "red"]);
+  // The "Data: " prefix is dropped — the section heading already says it.
+  assert.equal(entries.find((e) => e.colour === "green")?.label, "receiving");
+});
+
+test("the strip and the modal cannot disagree, and red sorts above amber", () => {
+  const rows = { noise: [{ project_code: "A" }, { project_code: "B" }, { project_code: "C" }] };
+  const h = (code: string, tone: string, label: string) =>
+    [healthKey("noise", code), { service: "noise", projectCode: code, tone, label, newestReceivedAt: null, sourceEventAt: null }] as const;
+  const health = new Map([h("A", "warn", "Data: delayed"), h("B", "danger", "Data: no recent data"), h("C", "good", "Data: receiving")]) as never;
+
+  const summary = summarise(boardEntries(rows as never, health));
+  // The counts the strip shows and the list the modal shows are one derivation,
+  // so a header saying "1 red" can never open a list showing two.
+  assert.equal(summary.red, 1);
+  assert.equal(summary.amber, 1);
+  assert.equal(summary.exceptions.length, summary.red + summary.amber);
+  // Worst first, so the thing to do is the thing at the top.
+  assert.deepEqual(summary.exceptions.map((e) => e.projectCode), ["B", "A"]);
+  // Healthy never appears in the list.
+  assert.ok(!summary.exceptions.some((e) => e.colour === "green"));
+});
+
+test("a service HALO cannot read is reported, never counted as healthy", () => {
+  // Every service declares `delivery: project`, so asking the contract alone
+  // would call all seven covered — while HALO has no delivery reader and can
+  // speak for only the two that store readings. Coverage is therefore literal:
+  // a service with no entry is one nothing measured.
+  const rows = { noise: [{ project_code: "A" }] };
+  const health = new Map([
+    [healthKey("noise", "A"), { service: "noise", projectCode: "A", tone: "good", label: "Data: receiving", newestReceivedAt: null, sourceEventAt: null }],
+  ]) as never;
+
+  const summary = summarise(boardEntries(rows as never, health));
+  assert.ok(summary.uncovered.includes("haze"), "haze has no reading and must say so");
+  assert.ok(!summary.uncovered.includes("noise"), "noise has a reading");
+  assert.equal(summary.uncovered.length, SERVICE_KEYS.length - 1);
+
+  // The contract still supplies the explanation: which signals it would report.
+  assert.deepEqual(signalsFor("haze"), ["delivery"]);
+  assert.deepEqual(signalsFor("wbgt"), ["ingestion", "run", "delivery"]);
+
+  // And an empty estate is not a healthy estate.
+  assert.equal(summarise([]).green, 0);
+  assert.equal(summarise([]).uncovered.length, SERVICE_KEYS.length);
+});
+
+test("the quiet line never overstates health", () => {
+  const quiet = { red: 0, amber: 0, green: 0, idle: 12, uncovered: [], exceptions: [] };
+  // Not "all healthy": most of the estate is outside its cadence hours for most
+  // of the day, and claiming health for a project nothing asked of is the same
+  // overstatement the colours were fixed to avoid.
+  assert.equal(summaryLine(quiet), "idle");
+  assert.equal(summaryLine({ ...quiet, green: 3 }), "nothing to action");
+  assert.equal(summaryLine({ ...quiet, red: 2, amber: 5 }), "2 red · 5 amber");
+  assert.equal(summaryLine({ ...quiet, amber: 1 }), "1 amber");
 });

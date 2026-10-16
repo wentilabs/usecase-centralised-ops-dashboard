@@ -20,6 +20,8 @@ import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
+import { HealthStrip } from "./HealthStrip";
+import { boardEntries, summarise } from "@/lib/health-board";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
@@ -109,6 +111,21 @@ export function DashboardShell({
   const healthByProject = useMemo(
     () => new Map(projectHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
     [projectHealth],
+  );
+
+  /**
+   * One reading of the estate, shared by the strip and the board.
+   *
+   * Derived here rather than in each: the strip's counts and the board's list
+   * must be the same answer, and computing them separately is how a header that
+   * says "2 red" opens a list showing three.
+   */
+  const healthSummary = useMemo(
+    // `rows`, not `services[].rows`: the shell keeps edited rows in state, so
+    // reading the props instead would leave the strip describing the estate as
+    // it was when the page loaded.
+    () => summarise(boardEntries(rows, healthByProject)),
+    [rows, healthByProject],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -427,7 +444,7 @@ export function DashboardShell({
             </button>
           ))}
         </nav>
-        <button type="button" onClick={() => setDataHealthOpen(true)} className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1 text-[13px] hover:border-primary">Data health</button>
+        <HealthStrip summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
 
         {/* Not a service tab: a whole-estate view that cuts across all of them.
             Kept visually apart from the tabs for that reason. */}
@@ -679,7 +696,19 @@ export function DashboardShell({
         />
       ) : null}
 
-      {dataHealthOpen ? <DataHealthBoard services={services} projectHealth={projectHealth} onClose={() => setDataHealthOpen(false)} /> : null}
+      {dataHealthOpen ? (
+        <DataHealthBoard
+          summary={healthSummary}
+          onClose={() => setDataHealthOpen(false)}
+          onOpenProject={(service, projectCode) => {
+            // The row is the start of a fix, not a report: switch to that
+            // service's tab and filter to the project, then close.
+            setTab(service);
+            setQuery(projectCode);
+            setDataHealthOpen(false);
+          }}
+        />
+      ) : null}
 
       {/* The sheet's row comes from `rows`, so an edit saved from within it is
           reflected the next time it is opened. */}

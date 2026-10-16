@@ -387,7 +387,12 @@ export function ProjectCard({
 
       <DataHealthRow projectCode={String(config.project_code ?? "")} health={health} bars={healthBars} />
 
-      <footer className="mt-auto flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
+      {/* No `mt-auto` here any more: the health section above claims the free
+          space instead, so the strips sit at the same height on every card in a
+          row and the footer rides along beneath them. With it on the footer,
+          the gap opened between the two and the strips floated up with whatever
+          content each card happened to have. */}
+      <footer className="flex justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground md:pt-2">
         <span className="hidden md:inline">
           {String(config.source_type ?? "default")} · {String(config.timezone ?? "Asia/Singapore")}
         </span>

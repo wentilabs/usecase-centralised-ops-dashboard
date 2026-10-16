@@ -22,7 +22,8 @@ import type { ProjectHealth } from "@/lib/data-health";
  *
  * The old second pill, "Delivery: not monitored", is gone. It said nothing on
  * every card in the estate, and a section that is mostly noise is a section
- * people stop reading. It returns when there is a delivery outcome to put in it.
+ * people stop reading. The strip replaced it: it is the same shape on every
+ * card, so an idle project and a failing one are compared rather than read.
  */
 export function DataHealthRow({
   projectCode,
@@ -33,22 +34,23 @@ export function DataHealthRow({
   health?: ProjectHealth;
   bars?: Bar[];
 }) {
-  // No reading at all is not the same as a healthy reading, and must not be
-  // dressed as one.
+  // No per-project ingestion reading. Haze and Lightning live here by design —
+  // their NEA source is one public feed for the whole estate, so there is
+  // nothing per-project to report about the fetch — and they do have a real
+  // delivery history underneath, which the strip shows.
+  //
+  // The section used to say "nothing reads this service yet" in this case. That
+  // sentence is gone: an empty strip of a hundred grey columns says the same
+  // thing more precisely — nothing has happened for this project in 48 hours —
+  // and it says it in the same shape as every other card, so the absence is
+  // comparable against its neighbours instead of being a different kind of
+  // statement that has to be read.
   if (!health) {
     return (
-      <section className="relative z-10 border-t border-border pt-2.5" aria-label="Data health">
-        {bars.length ? (
-          // Haze and Lightning land here: no per-project ingestion to speak of,
-          // because their NEA source is one public feed for the whole estate, but
-          // a real per-project delivery history underneath. Saying "nothing reads
-          // this service" above a strip full of bars contradicts itself, and the
-          // strip is the more credible of the two — so the section says which
-          // question it is answering and lets the bars answer it.
-          <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Data health — delivery</div>
-        ) : (
-          <p className="text-[11px] text-muted-foreground">Data health — nothing reads this service yet.</p>
-        )}
+      <section className="relative z-10 mt-auto border-t border-border pt-2.5" aria-label="Data health">
+        <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+          Data health{bars.length ? " — delivery" : ""}
+        </div>
         <HealthBars projectCode={projectCode} bars={bars} />
       </section>
     );
@@ -64,7 +66,7 @@ export function DataHealthRow({
         : "bg-on/15 text-on ring-on/30";
 
   return (
-    <section className="relative z-10 border-t border-border pt-2.5" aria-label="Data health">
+    <section className="relative z-10 mt-auto border-t border-border pt-2.5" aria-label="Data health">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Data health</div>
       <div className="flex flex-wrap items-baseline gap-1.5">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${tone}`}>{label}</span>

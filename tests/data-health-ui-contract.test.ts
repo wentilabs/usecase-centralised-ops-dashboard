@@ -23,13 +23,23 @@ test("the dashboard composes server health into the matching source card below i
   // reader sees which project a list of failures belongs to.
   assert.match(card, /<DataHealthRow projectCode=/, "and must name the project it belongs to");
   assert.ok(card.indexOf("<DataHealthRow") > card.indexOf("{links.length"), "health stays below sheet/action links");
+
 });
 
-test("Data Health is automatic and the estate board offers no policy setup action", async () => {
-  const [row, board] = await Promise.all([
+test("Data Health is automatic, anchored to the card's base, and offers no policy setup", async () => {
+  const [row, board, card] = await Promise.all([
     source("components/DataHealthRow.tsx"),
     source("components/DataHealthBoard.tsx"),
+    source("components/ProjectCard.tsx"),
   ]);
+
+  // Anchored to the bottom of the card, so every strip in a row sits at the
+  // same height and the set reads as one picture instead of being hunted for at
+  // a different height on each card. The free space has to be claimed HERE, not
+  // by the footer: with `mt-auto` on the footer the gap opened between the two
+  // and the strips floated up with whatever content each card happened to carry.
+  assert.match(row, /mt-auto border-t/, "the health section claims the card's free space");
+  assert.doesNotMatch(card, /<footer className="mt-auto/, "so the footer must not claim it too");
 
   // The intent this test was written for — Data Health is automatic, and the
   // board offers no policy setup — is asserted below and still holds. The
@@ -67,14 +77,18 @@ test("a covered project shows its receipt, and never a receipt plus an explanati
   // as one — these are the services declaring `none` for every signal.
   // Wording follows the semantics: coverage is about what HALO can READ, not
   // what the service declares — all seven declare delivery, and nothing reads it.
-  // Still said — but only where it is true. Haze and Lightning have no
-  // per-project ingestion, because their NEA source is one public feed for the
-  // whole estate, yet they do have a real per-project delivery history. The
-  // sentence was appearing directly above a strip full of bars and contradicting
-  // it, and the strip is the more credible of the two.
-  assert.match(row, /nothing reads this service yet/i);
-  assert.match(row, /bars\.length \?/, "and only when there is no history either");
-  assert.match(row, /Data health — delivery/, "a delivery-only project says which question it answers");
+  // "Nothing reads this service yet" is gone. A hundred grey columns says the
+  // same thing more precisely — nothing happened for this project in 48 hours —
+  // and says it in the same shape as every other card, so the absence can be
+  // compared against its neighbours instead of being prose that has to be read.
+  // Comments stripped first: the component's own doc comment quotes the removed
+  // sentence while explaining why it went, and an assertion that reads prose as
+  // code fails on the explanation rather than on the behaviour. This is the
+  // second time that has caught me in this file.
+  const code = row.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /nothing reads this service yet/i, "an empty strip states this better");
+  assert.match(row, /Data health\{bars\.length \? " — delivery" : ""\}/,
+    "a project with delivery history but no ingestion says which question it answers");
 });
 
 test("WBGT and Noise expose a dedicated ungated Data Health group picker", async () => {

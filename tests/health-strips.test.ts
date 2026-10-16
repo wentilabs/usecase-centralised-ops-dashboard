@@ -211,3 +211,17 @@ test("a short strip is padded to a full width, and the padding is never counted"
   assert.equal(troubleCount(bars), 1);
   assert.equal(troubleIn(bars).length, 1, "and the modal lists only what happened");
 });
+
+test("a project with no processes still gets a full strip of empty slots", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const source = await readFile(resolve("components/HealthBars.tsx"), "utf8");
+
+  // It used to render nothing at all, and the card said "nothing reads this
+  // service yet" instead. A hundred grey columns is the better statement: it is
+  // precise about the window, and it is the same shape as every other card, so
+  // an idle project sits beside a failing one and the two are comparable.
+  assert.doesNotMatch(source, /if \(!bars\.length\) return null/, "an empty strip is still drawn");
+  assert.match(source, /no activity/, "and labelled as no activity rather than as health");
+  assert.match(source, /No processes for \$\{projectCode\} in the last 48 hours/, "said for a screen reader too");
+});

@@ -53,8 +53,6 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!bars.length) return null;
-
   return (
     <div className="mt-2">
       <button
@@ -64,7 +62,9 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
         aria-label={
           troubled
             ? `Last ${bars.length} processes for ${projectCode}. Show the ${troubled} that need looking at.`
-            : `Last ${bars.length} processes for ${projectCode}, nothing to action.`
+            : bars.length
+              ? `Last ${bars.length} processes for ${projectCode}, nothing to action.`
+              : `No processes for ${projectCode} in the last 48 hours.`
         }
         className="group block w-full text-left disabled:cursor-default"
       >
@@ -92,7 +92,7 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
             there invites "is that bad?", which nobody can answer without
             knowing the service. */}
         <span className="mt-1 flex items-center gap-1.5 text-[9px] text-muted-foreground">
-          <span className="whitespace-nowrap">{bars.length} ago</span>
+          <span className="whitespace-nowrap">{bars.length ? `${bars.length} ago` : "48h"}</span>
           <span className="h-px flex-1 bg-border" />
           {troubled ? (
             <span
@@ -103,7 +103,7 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
               {troubled} to look at
             </span>
           ) : (
-            <span className="whitespace-nowrap">nothing to action</span>
+            <span className="whitespace-nowrap">{bars.length ? "nothing to action" : "no activity"}</span>
           )}
           <span className="h-px flex-1 bg-border" />
           <span className="whitespace-nowrap">now</span>

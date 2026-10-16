@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { deliveryEntries, incidentsFrom, summarise, type BoardEntry } from "../lib/health-board";
-import { readDelivery, servicesWithLedger } from "../lib/delivery-reader";
-
-const reply = (body: unknown) => async () => ({ ok: true, body });
+import { DELIVERY_SERVICES } from "../lib/process-log";
+import { healthKey } from "../lib/data-health";
+import type { Bar } from "../lib/health-timeline";
 
 const entry = (over: Partial<BoardEntry> & Pick<BoardEntry, "service" | "projectCode">): BoardEntry => ({
   signal: "delivery",
@@ -17,68 +17,57 @@ const entry = (over: Partial<BoardEntry> & Pick<BoardEntry, "service" | "project
   ...over,
 });
 
-test("the newest attempt wins, because the ledger holds every attempt ever made", async () => {
-  // Newest-first, as the query orders them. AST appears twice: the older row is
-  // the one that succeeded, and reporting it would show a green project that is
-  // currently failing — the exact direction of error that matters.
-  const verdicts = await readDelivery(
-    "haze",
-    reply([
-      { project_code: "AST", delivery_status: "UNCONFIRMED", created_at: "2026-10-16T10:00:00+00:00" },
-      { project_code: "C991-SGB", delivery_status: "SENT", created_at: "2026-10-16T10:00:00+00:00" },
-      { project_code: "AST", delivery_status: "SENT", created_at: "2026-10-16T09:00:00+00:00" },
-    ]),
-  );
+const bar = (at: string, colour: Bar["colour"], status: string): Bar => ({ at, colour, status, log: [] });
 
-  assert.equal(verdicts.length, 2, "one verdict per project, not one per attempt");
-  const ast = verdicts.find((verdict) => verdict.projectCode === "AST");
-  assert.equal(ast?.status, "UNCONFIRMED", "the newest attempt is the verdict");
-  assert.equal(ast?.at, "2026-10-16T10:00:00+00:00");
+test("the board reads the newest bar of each strip, rather than querying the ledgers again", () => {
+  // There used to be a second reader for this: one query per ledger for the
+  // newest row per project, on the server, for every page load — beside the
+  // query that built the strips from the same tables. The newest bar IS the
+  // newest verdict, so that was the same answer fetched twice, and two surfaces
+  // that could disagree about one project.
+  const strips = {
+    [healthKey("haze", "AST")]: [
+      bar("2026-10-16T09:00:00Z", "green", "SENT"),
+      bar("2026-10-16T10:00:00Z", "amber", "UNCONFIRMED"),
+    ],
+  };
+
+  const [entry] = deliveryEntries(strips, (service) => DELIVERY_SERVICES.includes(service));
+  assert.equal(entry.projectCode, "AST");
+  assert.equal(entry.label, "UNCONFIRMED", "the newest attempt, not the first one in the list");
+  assert.equal(entry.colour, "amber");
+  assert.equal(entry.signal, "delivery", "which is what makes it a different problem from a stale reading");
+  assert.equal(entry.detail, "2026-10-16T10:00:00Z");
 });
 
-test("a delivery status is coloured by the service's own contract, not by this reader", async () => {
-  // `UNCONFIRMED` is amber because haze's contract says so. Nothing in HALO
-  // decides what haze's words mean — that is the whole point of the contract
-  // block, and a reader that classified them here would drift the first time a
-  // service added a status.
-  const [verdict] = await readDelivery(
-    "haze",
-    reply([{ project_code: "AST", delivery_status: "UNCONFIRMED", created_at: "2026-10-16T10:00:00+00:00" }]),
-  );
-  assert.equal(verdict.colour, "amber");
+test("a run strip is not read as a delivery, or the project would be counted twice", () => {
+  // Noise and WBGT contribute RUN bars, and their ingestion is already reported
+  // from the readings-age check. Taking their newest run bar as a delivery too
+  // would double-count the project and label a run as a send.
+  const strips = {
+    [healthKey("noise", "ZRA")]: [bar("2026-10-16T10:00:00Z", "red", "failed_config_validation")],
+    [healthKey("haze", "AST")]: [bar("2026-10-16T10:00:00Z", "amber", "UNCONFIRMED")],
+  };
 
-  const [failed] = await readDelivery(
-    "lightning",
-    reply([{ project_code: "AST", delivery_status: "FAILED", created_at: "2026-10-16T10:00:00+00:00" }]),
-  );
-  assert.equal(failed.colour, "red");
+  const entries = deliveryEntries(strips, (service) => DELIVERY_SERVICES.includes(service));
+  assert.deepEqual(entries.map((item) => item.service), ["haze"]);
+  assert.deepEqual(DELIVERY_SERVICES.slice().sort(), ["haze", "issueChaser", "lightning"]);
 });
 
-test("a service with no readable ledger yields nothing rather than a green it has not earned", async () => {
-  let called = false;
-  const verdicts = await readDelivery("wbgt", async () => {
-    called = true;
-    return { ok: true, body: [] };
-  });
-
-  assert.deepEqual(verdicts, [], "no ledger means no verdict");
-  assert.equal(called, false, "and no query is attempted against a table that is empty by design");
-
-  // The three with a per-project ledger that is actually written to. The others
-  // are absent deliberately — see the omissions note in delivery-reader.ts —
-  // and the board reports them as uncovered instead of inventing a verdict.
-  assert.deepEqual(servicesWithLedger().sort(), ["haze", "issueChaser", "lightning"]);
-});
-
-test("a failed query leaves the project unjudged instead of reporting it healthy", async () => {
-  const verdicts = await readDelivery("haze", async () => ({
-    ok: false,
-    // Deliberately a well-formed row behind a failed status — a stale proxy
-    // body, or a partial response. The status has to win, or an outage is
-    // reported as a healthy send.
-    body: [{ project_code: "AST", delivery_status: "SENT", created_at: "2026-10-16T09:00:00+00:00" }],
-  }));
-  assert.deepEqual(verdicts, [], "an unreachable ledger is not a clean ledger");
+test("an empty or unparseable strip key yields no entry rather than a wrong one", () => {
+  // The key is `JSON.stringify([service, code])`, and a hand-rolled
+  // `service:code` split has already cost one silent lookup failure in this
+  // codebase — so the inverse is parsed, and anything that is not a pair is
+  // dropped instead of becoming an entry for service "undefined".
+  const entries = deliveryEntries(
+    {
+      [healthKey("haze", "AST")]: [],
+      "not-json": [bar("2026-10-16T10:00:00Z", "red", "FAILED")],
+      '["haze"]': [bar("2026-10-16T10:00:00Z", "red", "FAILED")],
+    },
+    () => true,
+  );
+  assert.deepEqual(entries, []);
 });
 
 test("one failure across many projects is one incident, not many problems", () => {
@@ -128,12 +117,12 @@ test("the widest blast radius sorts first among equals", () => {
   assert.equal(incidents[1].service, "haze");
 });
 
-test("delivery verdicts become entries that carry the service's own status word", () => {
-  const entries = deliveryEntries([
-    { service: "haze", projectCode: "AST", colour: "amber", status: "UNCONFIRMED", at: "2026-10-16T10:00:00+00:00" },
-  ]);
+test("delivery and ingestion coexist for one project, and are counted separately", () => {
+  const entries = deliveryEntries(
+    { [healthKey("haze", "AST")]: [bar("2026-10-16T10:00:00+00:00", "amber", "UNCONFIRMED")] },
+    () => true,
+  );
 
-  assert.equal(entries[0].signal, "delivery", "the signal is what makes this a different problem from a stale reading");
   assert.equal(entries[0].label, "UNCONFIRMED", "unrewritten, so it can be grepped");
   assert.equal(entries[0].idle, false, "a delivery is never inferred to be idle — the service names its own skips");
 

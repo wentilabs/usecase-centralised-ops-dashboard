@@ -48,10 +48,9 @@
     "lib/onboarding.ts",
     "lib/message-previews.ts",
     "lib/message-previews.generated.ts",
-    "lib/delivery-reader.ts",
+    "lib/process-log.ts",
     "lib/health-timeline.ts",
     "lib/paged-read.ts",
-    "lib/run-reader.ts",
     "lib/health-board.ts",
     "tests/**/*.ts"
   ]

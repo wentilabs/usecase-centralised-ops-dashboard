@@ -1,6 +1,7 @@
 import { isIdleStatus, worstColour, type HealthColour } from "./health-status";
 import { contractHealthGranularity } from "./service-contracts";
 import { healthKey, type ProjectHealth } from "./data-health";
+import type { Bar } from "./health-timeline";
 import { SERVICE_KEYS, type ServiceKey } from "./services";
 
 /**
@@ -106,23 +107,63 @@ export function boardEntries(
   return entries;
 }
 
-/** Delivery verdicts, as board entries. */
+/**
+ * The board's delivery entries, taken from the strips already on the page.
+ *
+ * There used to be a second reader for this — one query per ledger for the
+ * newest row per project, run on the server for every page load, beside the
+ * query that built the strips from the same tables. The newest bar of a strip
+ * IS the newest verdict, so the second read was the same answer fetched twice:
+ * a blocking round trip per service, and two surfaces that could disagree with
+ * each other about the same project.
+ *
+ * Only the DELIVERY services. Noise and WBGT contribute run bars, and their
+ * ingestion is already reported from the readings-age check in `boardEntries` —
+ * taking their newest run bar as well would count the same project twice and
+ * label a run as a delivery.
+ */
 export function deliveryEntries(
-  verdicts: { service: ServiceKey; projectCode: string; colour: HealthColour; status: string; at: string }[],
+  strips: Record<string, Bar[]>,
+  isDeliveryService: (service: ServiceKey) => boolean,
 ): BoardEntry[] {
-  return verdicts.map((verdict) => ({
-    service: verdict.service,
-    projectCode: verdict.projectCode,
-    signal: "delivery" as const,
-    colour: verdict.colour,
-    // The service's own word. A reader's next move is to search the logs for
-    // this exact string, so rewording it would cost them the search.
-    label: verdict.status,
-    detail: verdict.at || null,
-    // A delivery that was not due is a skip the service already named; nothing
-    // here is inferred to be idle.
-    idle: false,
-  }));
+  const entries: BoardEntry[] = [];
+  for (const [key, bars] of Object.entries(strips)) {
+    if (!bars.length) continue;
+    const [service, projectCode] = parseHealthKey(key);
+    if (!service || !projectCode || !isDeliveryService(service)) continue;
+
+    const newest = bars[bars.length - 1];
+    entries.push({
+      service,
+      projectCode,
+      signal: "delivery",
+      colour: newest.colour,
+      // The service's own word. A reader's next move is to search the logs for
+      // this exact string, so rewording it would cost them the search.
+      label: newest.status,
+      detail: newest.at || null,
+      // A delivery that was not due is a skip the service already named; nothing
+      // here is inferred to be idle.
+      idle: false,
+    });
+  }
+  return entries;
+}
+
+/**
+ * `healthKey`'s inverse. Parsed rather than split on a separator, because the
+ * key is `JSON.stringify([service, code])` and a project code may contain
+ * anything — a hand-rolled `service:code` split has already cost one silent
+ * lookup failure in this file's history.
+ */
+function parseHealthKey(key: string): [ServiceKey | null, string] {
+  try {
+    const parsed = JSON.parse(key);
+    if (!Array.isArray(parsed) || parsed.length !== 2) return [null, ""];
+    return [String(parsed[0]) as ServiceKey, String(parsed[1])];
+  } catch {
+    return [null, ""];
+  }
 }
 
 export type BoardSummary = {

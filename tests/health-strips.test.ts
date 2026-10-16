@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BAR_COUNT, stripFrom, stripsFrom, troubleCount, troubleIn } from "../lib/health-timeline";
-import { readDeliveryWindow, servicesWithLedger } from "../lib/delivery-reader";
-import { readRunWindow, servicesWithRunLog } from "../lib/run-reader";
+import { DELIVERY_SERVICES, PROCESS_SERVICES, readProcessWindow } from "../lib/process-log";
 
 const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour, log: string[] = []) =>
   ({ at, colour, status, log });
@@ -93,7 +92,7 @@ test("repeated faults stay separate rows, each with its own time and log", () =>
 
 test("both readers are bounded per project rather than by time, and carry the service's own status", async () => {
   let path = "";
-  const delivered = await readDeliveryWindow(
+  const delivered = await readProcessWindow(
     "haze",
     async (requested) => {
       path = requested;
@@ -129,12 +128,12 @@ test("both readers are bounded per project rather than by time, and carry the se
   // about all thirty-one projects rather than a fact about any one of them —
   // they are tracked on DELIVERY alone, which is the part that differs per
   // project.
-  assert.deepEqual(servicesWithRunLog().sort(), ["noise", "wbgt"]);
+  assert.deepEqual(PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).sort(), ["noise", "wbgt"]);
   for (const publicFeed of ["haze", "lightning"] as const) {
-    assert.ok(!servicesWithRunLog().includes(publicFeed), `${publicFeed} must not contribute run bars`);
-    assert.ok(servicesWithLedger().includes(publicFeed), `${publicFeed} is tracked on delivery instead`);
+    assert.ok(!PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).includes(publicFeed), `${publicFeed} must not contribute run bars`);
+    assert.ok(DELIVERY_SERVICES.includes(publicFeed), `${publicFeed} is tracked on delivery instead`);
   }
-  const ran = await readRunWindow(
+  const ran = await readProcessWindow(
     "wbgt",
     async () => ({
       ok: true,

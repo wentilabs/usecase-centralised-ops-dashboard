@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readPaged } from "../lib/paged-read";
-import { readRunWindow, servicesWithRunLog } from "../lib/run-reader";
 
 /**
  * A server that serves `total` rows newest-first, 1000 at a time, cut by a

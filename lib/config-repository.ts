@@ -11,14 +11,8 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
-import {
-  readDelivery,
-  readDeliveryWindow,
-  servicesWithLedger,
-  type DeliveryVerdict,
-} from "./delivery-reader";
+import { PROCESS_SERVICES, readProcessWindow } from "./process-log";
 import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline";
-import { readRunWindow, servicesWithRunLog } from "./run-reader";
 import { healthKey } from "./data-health";
 import { describePostgrestError } from "./postgrest-error";
 import {
@@ -931,23 +925,7 @@ export async function attachCanonicalServiceAlias(
 // Delivery verdicts — "did this project's last message reach the listener?"
 // ---------------------------------------------------------------------------
 
-/**
- * The newest delivery attempt per project, for every service that records one.
- *
- * One query per service rather than per project, and `allSettled` so a service
- * whose ledger is unreadable reports nothing instead of costing the page every
- * other service's answer — the ledger most likely to fail is the one being
- * asked about.
- */
-export async function listDeliveryVerdicts(): Promise<DeliveryVerdict[]> {
-  const services = servicesWithLedger();
-  const settled = await Promise.allSettled(
-    services.map((service) =>
-      readDelivery(service, (path, init) => request(path, { schema: init.schema })),
-    ),
-  );
-  return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
-}
+
 
 /**
  * The last 100 processes per project, within the last 48 hours, as card bars.
@@ -971,9 +949,9 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
   // index do the work. `toISOString` is deliberate — its `Z` form survives a
   // query string, where a `+00:00` offset would be read as a space.
   const since = new Date(Date.now() - WINDOW_HOURS * 3_600_000).toISOString();
-  const settled = await Promise.allSettled([
-    ...servicesWithLedger().map(async (service) =>
-      (await readDeliveryWindow(service, read, BAR_COUNT, since)).map((sample) => ({
+  const settled = await Promise.allSettled(
+    PROCESS_SERVICES.map(async (service) =>
+      (await readProcessWindow(service, read, BAR_COUNT, since)).map((sample) => ({
         key: healthKey(service, sample.projectCode),
         at: sample.at,
         colour: sample.colour,
@@ -981,16 +959,7 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
         log: sample.log,
       })),
     ),
-    ...servicesWithRunLog().map(async (service) =>
-      (await readRunWindow(service, read, BAR_COUNT, since)).map((sample) => ({
-        key: healthKey(service, sample.projectCode),
-        at: sample.at,
-        colour: sample.colour,
-        status: sample.status,
-        log: sample.log,
-      })),
-    ),
-  ]);
+  );
 
   const samples = settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   const strips = Object.fromEntries(stripsFrom(samples));

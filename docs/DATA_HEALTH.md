@@ -96,6 +96,87 @@ a `skipped…`/`suppressed…` that is really a missing value:
 **A long exception list means the convention is not being followed.** The fix is
 then the status name in the service, not another entry here.
 
+## Hard rules first
+
+**Decide everything configuration already determines before touching any data,
+and name the rule that decided it.**
+
+This is the single most important rule in this document, because breaking it
+produces a log that is confidently wrong rather than merely incomplete.
+
+### The case that proves it
+
+WBGT logged this against CCCC, four times in an afternoon:
+
+```
+completed_with_issues   16 Oct, 18:31 SGT
+  CCCC — set the CloudLynx label: reading 40 minutes old; production delivery suppressed
+```
+
+Read literally: a delivery was suppressed because the reading was stale, and
+somebody should go and set a label. Every part of that is misleading. CCCC runs
+`enable_hourly` only — `enable_intermittent_reports` is `false` — so at **:31
+nothing was due at all**. The run was a correct no-op. The reading's age was
+irrelevant, because no message was going to be sent at that minute whatever the
+reading said.
+
+What happened is that the job consulted the sensor first and the configuration
+second, so it reported the first imperfection it found on a path it should never
+have walked. The result is worse than silence: it sent a developer to look at a
+sensor, in a service that was working exactly as configured.
+
+### The ladder
+
+Evaluate in this order, stop at the first rule that fires, and record that rule
+as the status. Everything above the line is decided from configuration and the
+clock alone, with **no reads, no vendor calls and no sends**:
+
+| # | Question | Example status | Colour |
+| --- | --- | --- | --- |
+| 1 | Is the project enabled? | `skipped_project_disabled` | green |
+| 2 | Is this capability switched on? | `skipped_intermittent_off`, `skipped_housekeeping_off` | green |
+| 3 | Is this invocation one this project uses? | `skipped_outside_cadence_window`, `skipped_unsupported_invocation_minute` | green |
+| 4 | Is the calendar open? | `suppressed_sunday`, `suppressed_public_holiday`, `skipped_lunch_hour`, `skipped_outside_site_hours` | green |
+| 5 | Is delivery actually configured? | `failed_config_validation` | **red** |
+| — | *— line: everything below reads data or sends —* | | |
+| 6 | Did the source answer? | `failed_source_unavailable`, `completed_with_source_errors` | red / amber |
+| 7 | Was the reading usable? | `suppressed_stale_reading` | amber |
+| 8 | Did the listener accept it? | `sent`, `queued`, `unconfirmed`, `failed` | green / amber / red |
+
+Rule 5 is the one red among the hard rules, and deliberately: a project that is
+switched on, is due to send, and has nowhere to send to is misconfigured, and
+nothing downstream will ever fix it.
+
+### Two consequences worth stating
+
+**A skip is not an error.** Rules 1–4 are the service doing its job. They belong
+in `status`, never in `errors[]`, and `errors[]` should be empty on those runs.
+An amber bar on every quarter-hour of a correctly-quiet afternoon trains people
+to ignore the colour, which costs more than logging nothing would have.
+
+**The reason names the rule, not the symptom.** `skipped_intermittent_off` says
+what to check — the project's switches. "Reading 40 minutes old" sends somebody
+to the vendor. When both are true, the rule that fired first is the one that
+explains the outcome.
+
+A useful test of whether the ladder is implemented in the right order: an
+ineligible slot should perform **zero reads**. If the sensor was fetched, the
+configuration was consulted too late.
+
+### What to write
+
+One row per project per invocation, whatever the outcome:
+
+```
+status        the rule that fired, from the ladder above
+reason        optional, for a rule with variants — e.g. which holiday
+errors[]      only what needs a human; empty for every rule 1–4 skip
+```
+
+A service that cannot yet record a row for an invocation it SKIPPED has not
+finished this work: the absence of a row and a correct skip look identical from
+outside, and that ambiguity is exactly what the strips exist to remove.
+
 ## Who decides a colour
 
 **HALO owns the scale. Each service owns the mapping onto it.**

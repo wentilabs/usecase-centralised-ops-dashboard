@@ -126,3 +126,41 @@ export async function readDelivery(
   }
   return [...newest.values()];
 }
+
+/**
+ * Every attempt in a recent window, for the history strip.
+ *
+ * Separate from `readDelivery` because it answers a different question and has
+ * a different cost: that one wants the newest row per project, this one wants
+ * all of them, and only their time and status. Two columns rather than the
+ * whole row keeps a two-day window for a service sending to sixty-four groups
+ * an hour down to a few hundred kilobytes, and the repository caches it.
+ *
+ * Bounded by time rather than by count. A `limit` alone silently truncates the
+ * window for the busiest service — exactly the one worth watching — and the
+ * strip would then show its older hours as empty gaps, which reads as missed
+ * cycles. `limit` stays only as a ceiling against a runaway table.
+ */
+export async function readDeliveryWindow(
+  service: ServiceKey,
+  request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
+  sinceIso: string,
+  limit = 6000,
+): Promise<{ at: string; colour: HealthColour }[]> {
+  const ledger = LEDGERS[service];
+  if (!ledger) return [];
+
+  const { schema, table, statusColumn, timeColumn } = ledger;
+  const res = await request(
+    `${table}?select=${statusColumn},${timeColumn}&${timeColumn}=gte.${sinceIso}` +
+      `&order=${timeColumn}.desc&limit=${limit}`,
+    { schema },
+  );
+  if (!res.ok || !Array.isArray(res.body)) return [];
+
+  return (res.body as Record<string, unknown>[]).flatMap((row) => {
+    const at = String(row[timeColumn] ?? "");
+    if (!at) return [];
+    return [{ at, colour: colourForStatus(service, String(row[statusColumn] ?? "").trim()).colour }];
+  });
+}

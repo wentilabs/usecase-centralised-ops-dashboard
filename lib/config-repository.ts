@@ -11,7 +11,13 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
-import { readDelivery, servicesWithLedger, type DeliveryVerdict } from "./delivery-reader";
+import {
+  readDelivery,
+  readDeliveryWindow,
+  servicesWithLedger,
+  type DeliveryVerdict,
+} from "./delivery-reader";
+import { BAR_COUNT, timelineFrom, type Bar } from "./health-timeline";
 import { describePostgrestError } from "./postgrest-error";
 import {
   MANUAL_SOURCE_MARKER,
@@ -939,4 +945,29 @@ export async function listDeliveryVerdicts(): Promise<DeliveryVerdict[]> {
     ),
   );
   return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+}
+
+/**
+ * The last 50 hours of delivery attempts, bucketed into bars.
+ *
+ * Cached: this reads far more rows than anything else on the page, and the
+ * answer only changes once an hour. Five minutes keeps a newly-broken cycle
+ * visible quickly while a reload costs nothing.
+ */
+const timelineCache = createTtlCache<"estate", Bar[]>(5 * 60_000);
+
+export async function listDeliveryTimeline(): Promise<Bar[]> {
+  const cached = timelineCache.get("estate");
+  if (cached) return cached;
+
+  const since = new Date(Date.now() - BAR_COUNT * 3_600_000).toISOString();
+  const settled = await Promise.allSettled(
+    servicesWithLedger().map((service) =>
+      readDeliveryWindow(service, (path, init) => request(path, { schema: init.schema }), since),
+    ),
+  );
+  const samples = settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+  const bars = timelineFrom(samples);
+  timelineCache.set("estate", bars);
+  return bars;
 }

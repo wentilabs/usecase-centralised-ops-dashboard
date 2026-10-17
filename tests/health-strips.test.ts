@@ -136,7 +136,15 @@ test("both readers are bounded per project rather than by time, and carry the se
   // about all thirty-one projects rather than a fact about any one of them —
   // they are tracked on DELIVERY alone, which is the part that differs per
   // project.
-  assert.deepEqual(PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).sort(), ["noise", "wbgt"]);
+  assert.deepEqual(
+    PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).sort(),
+    ["noise", "subcon", "wbgt"],
+    "the three services whose history is a per-project RUN log",
+  );
+  // Subcon reads its run log rather than its delivery ledger, although both
+  // exist: only the run log records the projects that did nothing, and a
+  // delivery ledger cannot tell a correct skip from a cron that never fired.
+  assert.ok(!DELIVERY_SERVICES.includes("subcon"));
   for (const publicFeed of ["haze", "lightning"] as const) {
     assert.ok(!PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).includes(publicFeed), `${publicFeed} must not contribute run bars`);
     assert.ok(DELIVERY_SERVICES.includes(publicFeed), `${publicFeed} is tracked on delivery instead`);

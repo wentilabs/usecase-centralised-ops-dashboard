@@ -22,8 +22,13 @@ import type { ServiceKey } from "./services";
  * **Why some services are absent.** Deliberately, so the board says "nothing
  * reads this service" instead of showing a green it has not earned:
  *
- *   subcon    `outbound_message_submissions` exists, is wired, and is empty
  *   ailytics  keys deliveries by `project_config_id`, a uuid, not `project_code`
+ *
+ * Subcon reads from its RUN log rather than its delivery ledger. Both exist, but
+ * only the run log records the projects that did nothing — which is most of
+ * them, and the whole reason this service was invisible: a delivery ledger can
+ * only log a send that happened, so a correct skip and a cron that never fired
+ * look identical in it.
  *
  * **Why Haze and Lightning are delivery-only.** Their ingestion is one public
  * NEA feed for the whole estate, so a failed fetch is the same fact about all
@@ -95,6 +100,15 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
   wbgt: {
     schema: "wbgts",
     table: "wbgt_job_runs",
+    projectColumn: "project_code",
+    statusColumn: "status",
+    timeColumn: "started_at",
+    errorColumn: "errors",
+    signal: "run",
+  },
+  subcon: {
+    schema: "manpower_activity",
+    table: "job_runs",
     projectColumn: "project_code",
     statusColumn: "status",
     timeColumn: "started_at",

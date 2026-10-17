@@ -278,8 +278,22 @@ test("one red outranks any number of ambers, however many", () => {
   assert.ok(bySeverity(strip(1, 9), strip(1, 2)) < 0);
   assert.equal(bySeverity(strip(0, 0), strip(0, 0)), 0, "two clean projects keep their existing order");
 
-  assert.deepEqual(strip(3, 4), { red: 3, amber: 4 }, "greens are not counted as trouble");
-  assert.deepEqual(severityOf(undefined), { red: 0, amber: 0 }, "a project with no strip is not a problem");
+  assert.deepEqual(strip(3, 4), { red: 3, amber: 4, green: 1 }, "greens are counted separately, not as trouble");
+  assert.deepEqual(severityOf(undefined), { red: 0, amber: 0, green: 0 }, "a project with no strip is not a problem");
+});
+
+test("among clean projects, the busiest leads and the barely-run sink", () => {
+  const clean = (green: number) => ({ red: 0, amber: 0, green });
+
+  // A card showing a hundred clean runs is more informative than one showing
+  // two, and sinking the quiet ones keeps a project that has barely run where
+  // it can be noticed rather than scattered through the healthy majority.
+  assert.ok(bySeverity(clean(100), clean(2)) < 0);
+  assert.equal(bySeverity(clean(7), clean(7)), 0, "a true tie keeps the existing order");
+
+  // Green never outranks trouble, however much of it there is.
+  assert.ok(bySeverity({ red: 0, amber: 1, green: 0 }, clean(100)) < 0, "one amber still leads a perfect strip");
+  assert.ok(bySeverity({ red: 1, amber: 0, green: 0 }, { red: 0, amber: 99, green: 0 }) < 0);
 });
 
 test("the card list is ordered by severity before anything else", async () => {

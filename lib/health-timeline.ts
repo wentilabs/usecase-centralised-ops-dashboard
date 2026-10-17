@@ -114,17 +114,19 @@ export function troubleCount(bars: Bar[]): number {
   return bars.filter((bar) => bar.colour !== "green").length;
 }
 
-export type Severity = { red: number; amber: number };
+export type Severity = { red: number; amber: number; green: number };
 
-/** How much of a strip needs looking at, split by how badly. */
+/** How much of a strip needs looking at, split by how badly, and how much is fine. */
 export function severityOf(bars: Bar[] | undefined): Severity {
   let red = 0;
   let amber = 0;
+  let green = 0;
   for (const bar of bars ?? []) {
     if (bar.colour === "red") red += 1;
     else if (bar.colour === "amber") amber += 1;
+    else green += 1;
   }
-  return { red, amber };
+  return { red, amber, green };
 }
 
 /**
@@ -136,9 +138,15 @@ export function severityOf(bars: Bar[] | undefined): Severity {
  * run — outrank a single hard failure. A score with weights would eventually be
  * tuned until it did, because the amber counts are so much larger.
  *
+ * Among projects with nothing wrong, the busiest leads: a card showing a
+ * hundred clean runs is more informative than one showing two, and sinking the
+ * quiet ones keeps a project that has barely run where it can be noticed rather
+ * than scattered through the healthy majority.
+ *
  * Returns a comparator value: negative sorts `a` first.
  */
 export function bySeverity(a: Severity, b: Severity): number {
   if (a.red !== b.red) return b.red - a.red;
-  return b.amber - a.amber;
+  if (a.amber !== b.amber) return b.amber - a.amber;
+  return b.green - a.green;
 }

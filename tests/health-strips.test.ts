@@ -175,6 +175,55 @@ test("both readers are bounded per project rather than by time, and carry the se
   assert.equal(ran[0].colour, "amber", "completed_with_ is the in-between state, not a pass");
 });
 
+test("Lightning shows current failed recipient errors without changing their wording", async () => {
+  let path = "";
+  const rows = await readProcessWindow("lightning", async (requested) => {
+    path = requested;
+    return { ok: true, body: [{
+      project_code: "AST", delivery_status: "PARTIAL", created_at: "2026-10-17T10:00:00Z",
+      last_delivery_error: null,
+      delivery_attempts: [
+        { target: "one", delivery_status: "FAILED", last_error: "Listener rejected recipient one" },
+        { target: "one", delivery_status: "SENT", last_error: null },
+        { target: "two", delivery_status: "FAILED", last_error: "Listener rejected recipient two" },
+        { target: "three", delivery_status: "QUEUED", last_error: null },
+      ],
+    }] };
+  }, 100, "2026-10-15T10:00:00Z");
+
+  assert.match(path, /delivery_attempts/, "the existing per-target audit is read");
+  assert.equal(rows[0].colour, "amber");
+  assert.deepEqual(rows[0].log, ["Listener rejected recipient two"]);
+});
+
+test("Lightning keeps the parent error and tolerates old rows without attempts", async () => {
+  const rows = await readProcessWindow("lightning", async () => ({ ok: true, body: [
+    { project_code: "AST", delivery_status: "FAILED", created_at: "2026-10-17T10:00:00Z", last_delivery_error: "Original failure", delivery_attempts: null },
+  ] }), 100, "2026-10-15T10:00:00Z");
+  assert.deepEqual(rows[0].log, ["Original failure"]);
+});
+
+test("each covered service maps its stored error field to HALO without rewriting text", async () => {
+  const cases = [
+    { service: "noise", status: "failed", time: "started_at", error: "errors", value: ["Noise source timed out"] },
+    { service: "wbgt", status: "failed", time: "started_at", error: "errors", value: ["WBGT sheet unavailable"] },
+    { service: "subcon", status: "failed_unhandled_error", time: "started_at", error: "errors", value: ["Report build failed"] },
+    { service: "haze", status: "FAILED", time: "created_at", error: "last_error", value: "Haze listener rejected" },
+    { service: "issueChaser", status: "failed", time: "submitted_at", error: "error", value: "Chaser listener rejected" },
+  ] as const;
+
+  for (const entry of cases) {
+    let path = "";
+    const rows = await readProcessWindow(entry.service, async (requested) => {
+      path = requested;
+      return { ok: true, body: [{ project_code: "AST", status: entry.status,
+        delivery_status: entry.status, [entry.time]: "2026-10-17T10:00:00Z", [entry.error]: entry.value }] };
+    }, 100, "2026-10-15T10:00:00Z");
+    assert.match(path, new RegExp(entry.error), `${entry.service} reads its actual error column`);
+    assert.deepEqual(rows[0].log, Array.isArray(entry.value) ? entry.value : [entry.value]);
+  }
+});
+
 test("the strip reports what to look at, never a score", async () => {
   const { readFile } = await import("node:fs/promises");
   const { resolve } = await import("node:path");

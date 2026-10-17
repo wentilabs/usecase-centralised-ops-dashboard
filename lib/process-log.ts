@@ -14,7 +14,7 @@ import type { ServiceKey } from "./services";
  * same thing in half the code, and there is now one place where a new service
  * is added.
  *
- * **What `signal` means.** `delivery` answers "did the message go out";
+ * **What `signal` means.** `delivery` answers "did the service accept the send";
  * `run` answers "did the job execute". The distinction is not cosmetic: a
  * project's ingestion is reported separately from its readings age, so a run
  * source must not also be read as a delivery or the project is counted twice.
@@ -57,6 +57,8 @@ type Source = {
    * went wrong.
    */
   errorColumn: string;
+  /** Additional fields needed to read the service's existing error text. */
+  extraColumns?: readonly string[];
   signal: "delivery" | "run";
 };
 
@@ -77,6 +79,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "delivery_status",
     timeColumn: "created_at",
     errorColumn: "last_delivery_error",
+    extraColumns: ["delivery_attempts"],
     signal: "delivery",
   },
   issueChaser: {
@@ -151,11 +154,11 @@ export async function readProcessWindow(
   const source = SOURCES[service];
   if (!source) return [];
 
-  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn } = source;
+  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, extraColumns = [] } = source;
   const rows = await readPaged(
     request,
     (before, limit) =>
-      `${table}?select=${projectColumn},${statusColumn},${timeColumn},${errorColumn}` +
+      `${table}?select=${[projectColumn, statusColumn, timeColumn, errorColumn, ...extraColumns].join(",")}` +
       `&${timeColumn}=gte.${sinceIso}` +
       `&order=${timeColumn}.desc&limit=${limit}` +
       // Encoded: PostgREST returns timestamps as `2026-10-16T20:13:34.12+08:00`,
@@ -182,6 +185,32 @@ export async function readProcessWindow(
     // can be neither ordered nor labelled.
     if (!projectCode || !at) return [];
     const status = String(row[statusColumn] ?? "").trim();
-    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status, log: logLines(row[errorColumn]) }];
+    const log = service === "lightning"
+      ? lightningErrorLines(status, row[errorColumn], row.delivery_attempts)
+      : logLines(row[errorColumn]);
+    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status, log }];
   });
+}
+
+/** Lightning stores one event for several targets; the final target may have no error. */
+function lightningErrorLines(status: string, lastError: unknown, attempts: unknown): string[] {
+  const parent = logLines(lastError);
+  if (!["PARTIAL", "FAILED", "UNCONFIRMED"].includes(status.toUpperCase()) || !Array.isArray(attempts)) return parent;
+
+  const latestByTarget = new Map<string, Record<string, unknown>>();
+  for (const attempt of attempts) {
+    if (!attempt || typeof attempt !== "object" || Array.isArray(attempt)) continue;
+    const record = attempt as Record<string, unknown>;
+    const target = String(record.target ?? "").trim();
+    if (target) latestByTarget.set(target, record);
+  }
+
+  const errors = [...parent];
+  for (const attempt of latestByTarget.values()) {
+    if (!["FAILED", "UNCONFIRMED"].includes(String(attempt.delivery_status ?? "").toUpperCase())) continue;
+    for (const line of logLines(attempt.last_error ?? attempt.error)) {
+      if (!errors.includes(line)) errors.push(line);
+    }
+  }
+  return errors;
 }

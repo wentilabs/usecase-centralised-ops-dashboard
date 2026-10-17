@@ -113,3 +113,32 @@ export function troubleIn(bars: Bar[]): Bar[] {
 export function troubleCount(bars: Bar[]): number {
   return bars.filter((bar) => bar.colour !== "green").length;
 }
+
+export type Severity = { red: number; amber: number };
+
+/** How much of a strip needs looking at, split by how badly. */
+export function severityOf(bars: Bar[] | undefined): Severity {
+  let red = 0;
+  let amber = 0;
+  for (const bar of bars ?? []) {
+    if (bar.colour === "red") red += 1;
+    else if (bar.colour === "amber") amber += 1;
+  }
+  return { red, amber };
+}
+
+/**
+ * Order two projects by how much attention their strips are asking for.
+ *
+ * Lexicographic on (red, amber), not a weighted sum: ONE red outranks any
+ * number of ambers, however many. That is a deliberate refusal to let a
+ * chronic, tolerated amber — a project logging `completed_with_issues` on every
+ * run — outrank a single hard failure. A score with weights would eventually be
+ * tuned until it did, because the amber counts are so much larger.
+ *
+ * Returns a comparator value: negative sorts `a` first.
+ */
+export function bySeverity(a: Severity, b: Severity): number {
+  if (a.red !== b.red) return b.red - a.red;
+  return b.amber - a.amber;
+}

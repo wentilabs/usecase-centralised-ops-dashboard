@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { BAR_COUNT, stripFrom, stripsFrom, troubleCount, troubleIn } from "../lib/health-timeline";
+import {
+  BAR_COUNT,
+  bySeverity,
+  severityOf,
+  stripFrom,
+  stripsFrom,
+  troubleCount,
+  troubleIn,
+} from "../lib/health-timeline";
 import { DELIVERY_SERVICES, PROCESS_SERVICES, readProcessWindow } from "../lib/process-log";
 
 const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour, log: string[] = []) =>
@@ -249,4 +257,42 @@ test("the strip is tappable on a phone, and an idle one does not block the card"
   // still hit-tests, so it would punch a dead hole in the card's tap target.
   assert.match(bars, /disabled:pointer-events-none/);
   assert.match(bars, /h-7 items-stretch gap-px md:h-5/, "and is thumb-sized on a phone");
+});
+
+test("one red outranks any number of ambers, however many", () => {
+  const strip = (red: number, amber: number) =>
+    severityOf([
+      ...Array.from({ length: red }, (_, i) => sample(`2026-10-16T0${i % 10}:00:00Z`, "red", "failed")),
+      ...Array.from({ length: amber }, (_, i) => sample(`2026-10-15T0${i % 10}:00:00Z`, "amber", "degraded")),
+      sample("2026-10-16T11:00:00Z", "green", "completed"),
+    ]);
+
+  // Lexicographic, not weighted. A chronic tolerated amber — a project logging
+  // `completed_with_issues` on every run — must not bury one hard failure, and
+  // a weighted score would eventually be tuned until it did, because the amber
+  // counts are an order of magnitude larger.
+  assert.ok(bySeverity(strip(1, 0), strip(0, 99)) < 0, "a single red leads 99 ambers");
+  assert.ok(bySeverity(strip(2, 0), strip(1, 50)) < 0, "and more reds still lead");
+
+  // Within the same red count, the ambers break the tie.
+  assert.ok(bySeverity(strip(1, 9), strip(1, 2)) < 0);
+  assert.equal(bySeverity(strip(0, 0), strip(0, 0)), 0, "two clean projects keep their existing order");
+
+  assert.deepEqual(strip(3, 4), { red: 3, amber: 4 }, "greens are not counted as trouble");
+  assert.deepEqual(severityOf(undefined), { red: 0, amber: 0 }, "a project with no strip is not a problem");
+});
+
+test("the card list is ordered by severity before anything else", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const shell = await readFile(resolve("components/DashboardShell.tsx"), "utf8");
+
+  assert.match(shell, /const severity = bySeverity\(/, "severity decides first");
+  assert.match(shell, /if \(severity\) return severity;/);
+  // And only then the pre-existing order, which still decides every healthy card.
+  assert.ok(
+    shell.indexOf("const severity = bySeverity(") < shell.indexOf("const rank = emphasisRank("),
+    "emphasis is the tie-break, not the other way round",
+  );
+  assert.match(shell, /\}, \[rows, active, query, projectStrips\]\);/, "and it re-sorts when the strips arrive");
 });

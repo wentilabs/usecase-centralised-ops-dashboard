@@ -26,6 +26,7 @@ import { DELIVERY_SERVICES } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
+import { bySeverity, severityOf } from "@/lib/health-timeline";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import { onboardingDraftFromCanonicalProject } from "@/lib/canonical-project-onboarding";
@@ -376,11 +377,25 @@ export function DashboardShell({
       .filter((row) => matchesQuery(active.key, row, query))
       .slice()
       .sort((a, b) => {
-        // Scheduled first, then manual-ingestion projects, then idle ones.
+        // What needs attention, first. Lexicographic on (red, amber): a single
+        // red outranks any number of ambers, so a chronic tolerated amber
+        // cannot bury one hard failure.
+        const severity = bySeverity(
+          severityOf(projectStrips[healthKey(active.key, String(a.project_code ?? ""))]),
+          severityOf(projectStrips[healthKey(active.key, String(b.project_code ?? ""))]),
+        );
+        if (severity) return severity;
+
+        // Then the pre-existing order, which still decides every healthy card:
+        // scheduled first, then manual-ingestion projects, then idle ones.
         const rank = emphasisRank(active.key, b) - emphasisRank(active.key, a);
         return rank || String(a.project_code ?? "").localeCompare(String(b.project_code ?? ""));
       });
-  }, [rows, active, query]);
+    // `projectStrips` arrives after first paint, so the list is ordered by
+    // emphasis alone until it does and then settles. Re-sorting once is the
+    // point; it is what puts the failing project in front of a reader who did
+    // not know which tab to open.
+  }, [rows, active, query, projectStrips]);
 
   function rowIdOf(service: ServiceData, row: ProjectConfigRow) {
     return String(row[service.idColumn as keyof ProjectConfigRow] ?? row.project_code ?? "");

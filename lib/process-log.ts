@@ -214,3 +214,67 @@ function lightningErrorLines(status: string, lastError: unknown, attempts: unkno
   }
   return errors;
 }
+
+
+/**
+ * A standing fault: something a project is stuck in RIGHT NOW, rather than
+ * something that happened at a moment.
+ *
+ * It exists because a strip draws processes, and the worst failure has no
+ * process to draw. Lightning rejects SGK's configuration on every tick and has
+ * never once evaluated it, so SGK has no delivery, no run and no event of any
+ * kind — its strip is a hundred calm grey columns, which reads as "nothing to
+ * report" for a site that has no lightning protection at all. The state is real
+ * and current; there is just no instant to hang it on.
+ *
+ * So it is read as state, from the column the service already writes it to, and
+ * shown beside the strip rather than inside it.
+ */
+type FaultSource = {
+  schema: string;
+  table: string;
+  projectColumn: string;
+  errorColumn: string;
+};
+
+const FAULT_SOURCES: Partial<Record<ServiceKey, FaultSource>> = {
+  lightning: {
+    schema: "lightning",
+    table: "lightning_project_runtime",
+    projectColumn: "project_code",
+    errorColumn: "last_error",
+  },
+};
+
+export const FAULT_SERVICES = Object.keys(FAULT_SOURCES) as ServiceKey[];
+
+export type ProjectFault = {
+  projectCode: string;
+  /** The service's own words, unrewritten: this is what a reader greps for. */
+  message: string;
+};
+
+export async function readProjectFaults(
+  service: ServiceKey,
+  request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
+): Promise<ProjectFault[]> {
+  const source = FAULT_SOURCES[service];
+  if (!source) return [];
+
+  const { schema, table, projectColumn, errorColumn } = source;
+  // `not.is.null` rather than reading every row: one project in thirty-one is
+  // at fault at most, and the answer is a handful of rows however large the
+  // estate grows.
+  const res = await request(`${table}?select=${projectColumn},${errorColumn}&${errorColumn}=not.is.null`, { schema });
+  // An unreadable table returns no faults. That is the weaker answer and worth
+  // stating plainly: this cannot tell "nothing is wrong" from "could not look",
+  // so a fault is shown when it is found and its absence proves nothing. It
+  // matches the rest of this module, which prefers a missing pill to a wrong one.
+  if (!res.ok || !Array.isArray(res.body)) return [];
+
+  return (res.body as Record<string, unknown>[]).flatMap((row) => {
+    const projectCode = String(row[projectColumn] ?? "").trim();
+    const [message] = logLines(row[errorColumn]);
+    return projectCode && message ? [{ projectCode, message }] : [];
+  });
+}

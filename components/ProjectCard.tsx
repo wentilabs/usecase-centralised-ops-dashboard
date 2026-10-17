@@ -94,6 +94,7 @@ export function ProjectCard({
   protectedMeters,
   health,
   healthBars,
+  healthFault,
 }: {
   service: ServiceKey;
   config: ProjectConfigRow;
@@ -124,6 +125,8 @@ export function ProjectCard({
   health?: ProjectHealth;
   /** The site's recent cycles, newest last. */
   healthBars?: Bar[];
+  /** Why this project is stuck, if it is — the service's own words. */
+  healthFault?: string;
 }) {
   const enabled = isProjectOn(service, config);
   // Three states: scheduled, running on manual photo ingestion, or idle. A
@@ -385,7 +388,7 @@ export function ProjectCard({
         </div>
       ) : null}
 
-      <DataHealthRow projectCode={String(config.project_code ?? "")} health={health} bars={healthBars} />
+      <DataHealthRow projectCode={String(config.project_code ?? "")} health={health} bars={healthBars} fault={healthFault} />
 
       {/* No `mt-auto` here any more: the health section above claims the free
           space instead, so the strips sit at the same height on every card in a

@@ -140,12 +140,66 @@ clock alone, with **no reads, no vendor calls and no sends**:
 | 5 | Is delivery actually configured? | `failed_config_validation` | **red** |
 | — | *— line: everything below reads data or sends —* | | |
 | 6 | Did the source answer? | `failed_source_unavailable`, `completed_with_source_errors` | red / amber |
-| 7 | Was the reading usable? | `suppressed_stale_reading` | amber |
+| 7 | Was the reading usable? | `suppressed_stale` | amber — **declared**, see below |
 | 8 | Did the listener accept it? | `sent`, `queued`, `unconfirmed`, `failed` | green / amber / red |
 
 Rule 5 is the one red among the hard rules, and deliberately: a project that is
 switched on, is due to send, and has nowhere to send to is misconfigured, and
 nothing downstream will ever fix it.
+
+### Check that your names convert
+
+A status the dashboard does not recognise is drawn **amber**, by design — so a
+service whose log speaks its own dialect does not fail loudly, it paints its
+normal operation as a problem. Haze's first run log did exactly this: the hourly
+job's own words — `processed`, `outside_working_hours`, `below_alert_threshold`,
+`sunday_no_send` — all came out amber, which would have made every quiet evening
+an amber bar. Its tests asserted the status strings and never the colour.
+
+Two ways to be right, in order of preference:
+
+1. **Use the convention.** `completed` · `completed_with_<x>` · `skipped_<x>` ·
+   `suppressed_<x>` · `failed_<x>`. The dashboard colours these by prefix, with
+   no per-service configuration.
+2. **Declare the exception** in your contract's `health.statuses`, for the few
+   words the prefix would get wrong. `suppressed_` is green by prefix, so a
+   `suppressed_stale` that must be amber is declared amber.
+
+A service with a legacy vocabulary should translate **in the log only**, and
+leave its HTTP result alone — consumers depend on those words. Haze does this
+with `runStatusFor`.
+
+To check a name, run it through `colourForStatus` (`lib/health-status.ts`);
+HALO's `tests/run-log-colours.test.ts` holds the table of what each service
+logs and the colour each should be.
+
+### Some failures have no moment to log
+
+A strip draws things that happened. The worst failure can have no event at all:
+a project that is **rejected before it is ever evaluated** produces no delivery,
+no run and no row of any kind.
+
+Lightning is the case. SGK's configuration switched on manpower-sheet POC
+mentions without a `manpower_sheet_id`, so the validator rejected it on every
+tick — and it was never once evaluated, so never alerted, in a service where a
+false CLEAR is the dangerous failure. The tick counted it in `projects_failed`
+and logged the reason to the console only, so for a day it read as 300 identical
+"1 of 28 failed" ticks that named nothing. On HALO its strip was a hundred calm
+grey columns, which reads as "nothing to report".
+
+So record a **standing fault** where the project's own state lives, in the
+service's words — Lightning writes
+`failed_config_validation: <the validator's errors>` to
+`lightning_project_runtime.last_error`:
+
+- **Don't touch the timestamp that says it ran.** `last_evaluated_at` stays
+  empty; stamping it would claim the project was evaluated.
+- **Clear it on success**, so a fixed project heals itself.
+- **Don't rewrite an identical message** every tick.
+- **Never let recording it stop the other projects.**
+
+HALO reads `last_error` as state and shows it above the strip in red, as a board
+entry of its own `config` signal, and sorts the project as one red.
 
 ### Two consequences worth stating
 

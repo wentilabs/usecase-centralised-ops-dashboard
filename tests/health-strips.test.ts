@@ -365,5 +365,5 @@ test("the card list is ordered by severity before anything else", async () => {
     shell.indexOf("const severity = bySeverity(") < shell.indexOf("const rank = emphasisRank("),
     "emphasis is the tie-break, not the other way round",
   );
-  assert.match(shell, /\}, \[rows, active, query, projectStrips\]\);/, "and it re-sorts when the strips arrive");
+  assert.match(shell, /\}, \[rows, active, query, projectStrips, projectFaults\]\);/, "and it re-sorts when the strips or the faults arrive");
 });

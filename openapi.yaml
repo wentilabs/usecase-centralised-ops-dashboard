@@ -748,7 +748,7 @@ paths:
       tags:
         - discovery
       summary: Recent process history per project, for the health strips
-      description: The last 100 processes per project within the past 48 hours, keyed by service and project code. A process is one run or one delivery attempt, each carrying the service's own status word and whatever it logged about a failure. Noise and WBGT answer from their per-project run logs; Haze, Lightning and Issue Chaser from their delivery ledgers — for Haze and Lightning that is deliveries only, since their NEA source is one public feed for the whole estate rather than a per-project scrape. Services with neither are absent rather than reported healthy.
+      description: "The last 100 processes per project within the past 48 hours, keyed by service and project code. A process is one run or one delivery attempt, each carrying the service's own status word and whatever it logged about a failure. Noise and WBGT answer from their per-project run logs; Haze, Lightning and Issue Chaser from their delivery ledgers — for Haze and Lightning that is deliveries only, since their NEA source is one public feed for the whole estate rather than a per-project scrape. Services with neither are absent rather than reported healthy. The response also carries `faults`: projects stuck in a standing state with no instant to draw on a strip — today Lightning's `last_error`, e.g. a rejected configuration — keyed the same way, in the service's own words."
       responses:
         "200":
           description: Bars per project, oldest first within each strip.

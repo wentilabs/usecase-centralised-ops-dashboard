@@ -150,3 +150,15 @@ export function bySeverity(a: Severity, b: Severity): number {
   if (a.amber !== b.amber) return b.amber - a.amber;
   return b.green - a.green;
 }
+
+/**
+ * A standing fault counts as one red.
+ *
+ * A project that cannot be evaluated has no processes, so its strip is empty and
+ * its severity would otherwise be zero — sorting it among the healthy. One red is
+ * enough to put it above every project that is merely degraded, which is where a
+ * project with no coverage belongs.
+ */
+export function withFault(severity: Severity, fault: string | undefined): Severity {
+  return fault ? { ...severity, red: severity.red + 1 } : severity;
+}

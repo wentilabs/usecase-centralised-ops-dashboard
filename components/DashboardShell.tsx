@@ -21,12 +21,12 @@ import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
-import { boardEntries, deliveryEntries, summarise } from "@/lib/health-board";
+import { boardEntries, deliveryEntries, faultEntries, summarise } from "@/lib/health-board";
 import { DELIVERY_SERVICES } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
-import { bySeverity, severityOf } from "@/lib/health-timeline";
+import { bySeverity, severityOf, withFault } from "@/lib/health-timeline";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import { onboardingDraftFromCanonicalProject } from "@/lib/canonical-project-onboarding";
@@ -117,12 +117,17 @@ export function DashboardShell({
   // leaves the strips absent, which the cards already render as "no history"
   // rather than as a healthy project.
   const [projectStrips, setProjectStrips] = useState<Record<string, Bar[]>>({});
+  // Standing faults arrive with the strips but are not part of them: a project
+  // stuck in one often has no processes at all, so there is no bar to draw.
+  const [projectFaults, setProjectFaults] = useState<Record<string, string>>({});
   useEffect(() => {
     let live = true;
     void fetch("/api/project-strips")
       .then((response) => (response.ok ? response.json() : { strips: {} }))
       .then((body) => {
-        if (live) setProjectStrips(body?.strips ?? {});
+        if (!live) return;
+        setProjectStrips(body?.strips ?? {});
+        setProjectFaults(body?.faults ?? {});
       })
       .catch(() => {});
     return () => {
@@ -150,8 +155,9 @@ export function DashboardShell({
       summarise([
         ...boardEntries(rows, healthByProject),
         ...deliveryEntries(projectStrips, (service) => DELIVERY_SERVICES.includes(service)),
+        ...faultEntries(projectFaults),
       ]),
-    [rows, healthByProject, projectStrips],
+    [rows, healthByProject, projectStrips, projectFaults],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -380,9 +386,13 @@ export function DashboardShell({
         // What needs attention, first. Lexicographic on (red, amber): a single
         // red outranks any number of ambers, so a chronic tolerated amber
         // cannot bury one hard failure.
+        // A standing fault counts as one red: a project that cannot be evaluated
+        // must not sort among the healthy just because it has no bars to count.
+        const keyA = healthKey(active.key, String(a.project_code ?? ""));
+        const keyB = healthKey(active.key, String(b.project_code ?? ""));
         const severity = bySeverity(
-          severityOf(projectStrips[healthKey(active.key, String(a.project_code ?? ""))]),
-          severityOf(projectStrips[healthKey(active.key, String(b.project_code ?? ""))]),
+          withFault(severityOf(projectStrips[keyA]), projectFaults[keyA]),
+          withFault(severityOf(projectStrips[keyB]), projectFaults[keyB]),
         );
         if (severity) return severity;
 
@@ -395,7 +405,7 @@ export function DashboardShell({
     // emphasis alone until it does and then settles. Re-sorting once is the
     // point; it is what puts the failing project in front of a reader who did
     // not know which tab to open.
-  }, [rows, active, query, projectStrips]);
+  }, [rows, active, query, projectStrips, projectFaults]);
 
   function rowIdOf(service: ServiceData, row: ProjectConfigRow) {
     return String(row[service.idColumn as keyof ProjectConfigRow] ?? row.project_code ?? "");
@@ -701,6 +711,7 @@ export function DashboardShell({
               protectedMeters={protectedMeters?.[String(row.project_code ?? "")]}
               health={healthByProject.get(healthKey(active.key, String(row.project_code ?? "")))}
               healthBars={projectStrips[healthKey(active.key, String(row.project_code ?? ""))]}
+              healthFault={projectFaults[healthKey(active.key, String(row.project_code ?? ""))]}
               groupNames={groupNames}
               visoUrl={visoUrl}
             />

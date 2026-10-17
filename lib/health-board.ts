@@ -29,7 +29,7 @@ export type BoardEntry = {
    * the vendor or the scraper, a failed send is the listener or the group. A
    * project may appear once for each, which is honest — they are two problems.
    */
-  signal: "ingestion" | "delivery";
+  signal: "ingestion" | "delivery" | "config";
   colour: HealthColour;
   /** Short for green, the service's own words for amber and red. */
   label: string;
@@ -164,6 +164,37 @@ function parseHealthKey(key: string): [ServiceKey | null, string] {
   } catch {
     return [null, ""];
   }
+}
+
+/**
+ * Standing faults, as board entries.
+ *
+ * Always red. A project that cannot be evaluated is not merely degraded: it is
+ * not covered at all, and in Lightning's case that means a site with no
+ * protection. Its own words are the label, so the reader can grep for them.
+ *
+ * Its own `config` signal rather than `delivery` or `ingestion`, because it is
+ * neither — and the three are different people's problems: a stale reading is
+ * the vendor, a failed send is the listener, a rejected configuration is
+ * whoever last edited the project.
+ */
+export function faultEntries(faults: Record<string, string>): BoardEntry[] {
+  const entries: BoardEntry[] = [];
+  for (const [key, message] of Object.entries(faults)) {
+    const [service, projectCode] = parseHealthKey(key);
+    if (!service || !projectCode || !message) continue;
+    entries.push({
+      service,
+      projectCode,
+      signal: "config",
+      colour: "red",
+      label: message,
+      // No instant to report: the state is current, not an event.
+      detail: null,
+      idle: false,
+    });
+  }
+  return entries;
 }
 
 export type BoardSummary = {

@@ -11,7 +11,7 @@ import {
   type TokenRecord,
 } from "./api-tokens";
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
-import { PROCESS_SERVICES, readProcessWindow } from "./process-log";
+import { FAULT_SERVICES, PROCESS_SERVICES, readProcessWindow, readProjectFaults } from "./process-log";
 import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline";
 import { healthKey } from "./data-health";
 import { describePostgrestError } from "./postgrest-error";
@@ -965,4 +965,28 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
   const strips = Object.fromEntries(stripsFrom(samples));
   stripCache.set("estate", strips);
   return strips;
+}
+
+/**
+ * Projects stuck in a standing fault, keyed like the strips.
+ *
+ * Cached separately and for less time than the strips: it is one tiny query
+ * against a handful of rows, and a fault somebody has just fixed should clear
+ * from the dashboard promptly rather than sit there for five minutes.
+ */
+const faultCache = createTtlCache<"estate", Record<string, string>>(60_000);
+
+export async function listProjectFaults(): Promise<Record<string, string>> {
+  const cached = faultCache.get("estate");
+  if (cached) return cached;
+
+  const read = (path: string, init: { schema: string }) => request(path, { schema: init.schema });
+  const settled = await Promise.allSettled(
+    FAULT_SERVICES.map(async (service) =>
+      (await readProjectFaults(service, read)).map((fault) => [healthKey(service, fault.projectCode), fault.message] as const),
+    ),
+  );
+  const faults = Object.fromEntries(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
+  faultCache.set("estate", faults);
+  return faults;
 }

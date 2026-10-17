@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listProjectStrips } from "@/lib/config-repository";
+import { listProjectFaults, listProjectStrips } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,11 @@ export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const strips = await listProjectStrips();
-  return NextResponse.json({ strips });
+  // In parallel, and a failure of one must not take the other down: the faults
+  // are a handful of rows and the strips are the slow read.
+  const [strips, faults] = await Promise.all([
+    listProjectStrips(),
+    listProjectFaults().catch(() => ({})),
+  ]);
+  return NextResponse.json({ strips, faults });
 }

@@ -39,10 +39,13 @@ export function DataHealthRow({
   projectCode,
   health,
   bars = [],
+  fault,
 }: {
   projectCode: string;
   health?: ProjectHealth;
   bars?: Bar[];
+  /** A state the project is stuck in, with no instant to put on a strip. */
+  fault?: string;
 }) {
   // No per-project ingestion reading. Haze and Lightning live here by design —
   // their NEA source is one public feed for the whole estate, so there is
@@ -61,6 +64,7 @@ export function DataHealthRow({
         <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
           Data health{bars.length ? " — delivery" : ""}
         </div>
+        <StandingFault message={fault} />
         <HealthBars projectCode={projectCode} bars={bars} />
       </section>
     );
@@ -78,6 +82,7 @@ export function DataHealthRow({
   return (
     <section className="pointer-events-none relative z-30 mt-auto border-t border-border pt-2.5" aria-label="Data health">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Data health</div>
+      <StandingFault message={fault} />
       <div className="flex flex-wrap items-baseline gap-1.5">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${tone}`}>{label}</span>
         {health.newestReceivedAt ? (
@@ -88,5 +93,28 @@ export function DataHealthRow({
           say whether it has been true all week or since an hour ago. */}
       <HealthBars projectCode={projectCode} bars={bars} />
     </section>
+  );
+}
+
+/**
+ * A project stuck in a state, shown ABOVE its strip.
+ *
+ * Lightning rejects SGK's configuration on every tick and has never evaluated it,
+ * so SGK has no processes and its strip is a hundred calm grey columns — which
+ * reads as "nothing to report" for a site with no lightning protection. The
+ * strip cannot carry this, because there is no instant to hang it on; this can.
+ *
+ * Red and written out in full, in the service's own words, because the reader's
+ * next move is to fix the configuration and the message says which field.
+ */
+function StandingFault({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p
+      role="alert"
+      className="mb-1.5 break-words rounded-lg bg-danger/15 px-2 py-1 text-[11px] font-medium text-danger ring-1 ring-danger/30"
+    >
+      {message}
+    </p>
   );
 }

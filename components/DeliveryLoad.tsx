@@ -61,7 +61,7 @@ export function DeliveryLoad({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-background/90 p-2 backdrop-blur-sm md:p-6"
+      className="pt-safe-dialog fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-background/90 p-2 backdrop-blur-sm md:p-6"
       {...dismiss}
     >
       <div className="w-full max-w-[min(1500px,97vw)] rounded-2xl border border-border bg-card shadow-2xl">

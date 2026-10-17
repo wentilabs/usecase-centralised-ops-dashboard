@@ -76,7 +76,7 @@ export function MentionTargetsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6"
+      className="pt-safe-dialog fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6"
       {...dismiss}
     >
       <section

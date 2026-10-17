@@ -632,3 +632,28 @@ test("the onboarding review is a sheet on a phone and a dialog on desktop", asyn
   // The list scrolls, not the page behind it.
   assert.match(proposal, /overflow-y-auto overscroll-contain/, "the list scrolls inside the sheet");
 });
+
+test("a dialog that opens flush to the top keeps its Close button out of the status bar", async () => {
+  // `viewportFit: "cover"` lets content sit under the status bar and the
+  // Dynamic Island, so a dialog with ordinary padding draws its Close button
+  // somewhere the phone's own interface is already using: visible, and not
+  // tappable. Reported from a real phone against the Data Health dialog.
+  const css = await source("app/globals.css");
+  assert.match(css, /\.pt-safe-dialog\s*\{[^}]*env\(safe-area-inset-top\)/, "the utility exists");
+  assert.match(css, /calc\(env\(safe-area-inset-top\) \+ 0\.5rem\)/,
+    "and clears the inset rather than merely matching it, so the control is not flush against the island");
+
+  // Every overlay that starts at the top of the screen, as opposed to the
+  // bottom sheets, which put their controls mid-screen already.
+  for (const file of [
+    "components/HealthBars.tsx",
+    "components/DataHealthBoard.tsx",
+    "components/NoiseLimits.tsx",
+    "components/MentionTargetsDialog.tsx",
+    "components/JobBatch.tsx",
+    "components/DeliveryLoad.tsx",
+  ]) {
+    const overlay = await source(file);
+    assert.match(overlay, /pt-safe-dialog fixed inset-0/, `${file}: top-anchored dialog must clear the notch`);
+  }
+});

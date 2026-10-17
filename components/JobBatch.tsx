@@ -167,7 +167,7 @@ export function JobBatch({ plan, onClose }: { plan: JobPlan; onClose: () => void
   // Click the backdrop to close, on the same guard as Escape.
   const dismiss = useBackdropDismiss(true, onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6" {...dismiss}>
+    <div className="pt-safe-dialog fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/85 p-3 backdrop-blur-sm md:p-6" {...dismiss}>
       <div className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl">
         <header className="border-b border-border px-4 py-3 md:px-6">
           <h2 className="text-base font-semibold text-foreground">{plan.title}</h2>

@@ -104,4 +104,18 @@ textarea {
   .pb-safe {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
+
+  /* For a dialog that opens flush to the top of the screen.
+   *
+   * `viewportFit: "cover"` lets content sit under the status bar and the
+   * Dynamic Island, so a dialog with ordinary 12px padding puts its Close
+   * button somewhere the phone's own interface is already using — it is drawn,
+   * it is just not tappable.
+   *
+   * Half a rem MORE than the inset, not merely the inset: a control flush
+   * against the island is reachable only at its lower edge, and that is a
+   * fiddly target for the one control whose job is getting back out. */
+  .pt-safe-dialog {
+    padding-top: max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem));
+  }
 }

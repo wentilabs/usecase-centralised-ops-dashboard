@@ -158,7 +158,7 @@ function TroubleDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/80 p-3 md:p-8"
+      className="pt-safe-dialog fixed inset-0 z-50 bg-black/80 p-3 md:p-8"
       role="dialog"
       aria-modal="true"
       aria-label={`Data health for ${projectCode}`}

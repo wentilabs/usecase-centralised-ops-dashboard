@@ -295,44 +295,50 @@ mistake this page cannot afford.
 
 ## Current coverage
 
-The baseline live-table audit was on 2026-10-16; newer Haze and Subcon run-log
-rows below reflect their subsequent service changes and need a later live
-cycle check. Two questions per service — can you tell whether a process RAN,
+The baseline live-table audit was on 2026-10-16; the run logs below were added
+the next day and several are **written by deployed code but not yet visible in
+the database** — each needs its SQL applied and one scheduled cycle observed
+before a missing row means anything. Two questions per service — can you tell whether a process RAN,
 and whether it DELIVERED — and whether the answer is per project.
 
 | Service | Ran? | Delivered? | Per project | Three states? |
 | --- | --- | --- | --- | --- |
 | Noise | `noise_job_runs` | — | ✅ | ✅ completed / completed_with_meter_issues / failed_config_validation |
 | WBGT | `wbgt_job_runs` | Telegram only | ✅ | ✅ completed / completed_with_issues / skipped_outside_site_hours |
-| Haze | `haze_job_runs` — written by current code; live table installation needs verification | `haze_notification_events` | ✅ | ✅ convention-named, translated in the log only |
-| Lightning | `lightning_tick_audit` | `lightning_events` | delivery only | ✅ but the run log is estate-wide |
-| Issue Chaser | `delivery_runs` (dormant) | `outbound_submissions` | ✅ | ✅ |
-| Ailytics | — | summary only | by uuid | partial |
+| Haze | `haze_job_runs` — written by deployed code; **table not yet visible to HALO** | `haze_notification_events` | ✅ | ✅ convention-named, translated in the log only |
+| Lightning | `lightning_project_runtime.last_error` for a standing fault; `lightning_tick_audit` is estate-wide and unused | `lightning_events` | ✅ for faults and deliveries | ✅ |
+| Issue Chaser | `issue_chaser.job_runs` — written by deployed code; **table not yet created** | `outbound_submissions` | ✅ | ✅ convention-named |
+| Ailytics | `ailytics.job_runs` — written by deployed code; **table not yet created** | `yesterday_summary_deliveries` (by uuid, unused) | ✅ | ✅ convention-named |
 | Subcon | `manpower_activity.job_runs` — live, **first rows when its cron next fires** | `outbound_message_submissions` (empty until sends are accepted) | ✅ | ✅ convention-named |
 
 ### Gaps, worst first
 
-1. **Lightning cannot name its failing project.** Every one of the last 300
-   ticks is `COMPLETED_WITH_ERRORS` with `fetch_status: SUCCESS`, `error_code:
-   null` and `projects_failed: 1` of 28 — one project has failed on every tick
-   for as long as the table goes back. The audit row is estate-wide, so it says
-   *one* failed without saying *which*, and no per-project row is written
-   (`lightning_events` FAILED rows are all from 6 Oct). A permanent amber nobody
-   can act on is the worst kind of log: it trains people to ignore the colour.
+1. **Lightning's rejected project is now named — and the project it named is
+   unprotected.** Every tick since at least 16 Oct counted one project as failed
+   and said nothing about which. It was SGK: its configuration switches on
+   manpower-sheet POC mentions without a `manpower_sheet_id`, so the validator
+   rejects it on every tick and it has **never been evaluated, so never
+   alerted**. Lightning now writes the validator's sentence to
+   `lightning_project_runtime.last_error` and HALO shows it above the project's
+   strip. The configuration itself still needs fixing.
 2. **Subcon's new run log needs a full scheduled cycle of observation.**
    `manpower_activity.job_runs` now records one project row even for a correct
    skip, and HALO reads it. The older live audit found
    `outbound_message_submissions` empty; that ledger only grows when a report
    is submitted. Verify that the next scheduled cycle writes the expected run
    rows before treating missing rows as an outage.
-3. **Haze's run-log rollout needs verification.** Current code writes
-   `haze_job_runs`, including correct quiet hours, but this review has not
-   verified the live table migration or a complete hourly cycle. HALO still
-   reads `haze_notification_events` for its process strip.
-4. **Ailytics has no HALO process source.** Its Pending activity links and
-   yesterday-summary delivery rows retain queue outcomes, but they are keyed
-   by project UUID or cover one job rather than a common per-project run log.
-   HALO currently does not display them as a project process strip.
+3. **Three run logs are written but not yet readable.** Haze, ailytics and issue
+   chaser each write one row per project per scheduled run, including the runs
+   that correctly did nothing. HALO reads the run log first and falls back to the
+   delivery ledger **only while the run log's table cannot be read** — never when
+   it is merely empty, because a cron that has stopped firing has an empty run
+   log, and falling back would show green bars for a silent service. Until each
+   table exists, haze and chaser keep showing their ledgers and ailytics shows
+   nothing.
+4. **Ailytics' queue outcomes are still keyed by project UUID.** Its summary and
+   pending-image ledgers cannot be joined to a project code without a lookup, so
+   HALO reads only the new run log. Its intake events (`cctv_activity_events`)
+   still carry no status column.
 5. **Declared-but-empty log tables**, which read as coverage and are not:
    `noise_data_health_deliveries`, `wbgt_notification_outbox`,
    `outbound_message_submissions`. `delivery_runs` has not been written since

@@ -22,7 +22,7 @@ import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
 import { boardEntries, deliveryEntries, faultEntries, summarise } from "@/lib/health-board";
-import { DELIVERY_SERVICES } from "@/lib/process-log";
+import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
@@ -154,7 +154,7 @@ export function DashboardShell({
     () =>
       summarise([
         ...boardEntries(rows, healthByProject),
-        ...deliveryEntries(projectStrips, (service) => DELIVERY_SERVICES.includes(service)),
+        ...deliveryEntries(projectStrips, boardSignalFor),
         ...faultEntries(projectFaults),
       ]),
     [rows, healthByProject, projectStrips, projectFaults],

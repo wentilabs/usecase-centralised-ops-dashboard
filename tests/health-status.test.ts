@@ -311,7 +311,11 @@ test("a service HALO cannot read is reported, never counted as healthy", () => {
   assert.equal(summary.uncovered.length, SERVICE_KEYS.length - 1);
 
   // The contract still supplies the explanation: which signals it would report.
-  assert.deepEqual(signalsFor("haze"), ["delivery"]);
+  // Haze declares a per-project RUN signal as well since it gained a run log: it
+  // records one row per project per hourly run, including the hours whose correct
+  // action was to send nothing. The contract used to say `run: none`, declaring
+  // that it could not answer a question it now can.
+  assert.deepEqual(signalsFor("haze"), ["run", "delivery"]);
   assert.deepEqual(signalsFor("wbgt"), ["ingestion", "run", "delivery"]);
 
   // And an empty estate is not a healthy estate.

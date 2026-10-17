@@ -4,7 +4,7 @@
     "ailytics": {
       "repository": "wentilabs/mdw-lambda-ailytics",
       "branch": "main",
-      "commit": "841d095d619e888936aac0d695938a769683b6f7",
+      "commit": "a1535f803e20d5d8f84baed7b9f3eb1ebbe3aa5f",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/ailytics.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "694b94161222bf0b246184f57826fa17b296d61c",
+      "commit": "b6664447d0e02bf01900eda60331ca086aa1573c",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",
@@ -22,7 +22,7 @@
     "issueChaser": {
       "repository": "wentilabs/usecase-issue-chaser",
       "branch": "main",
-      "commit": "97fbb4c50471a6b9bb08ff769cf07d65bd4851dd",
+      "commit": "0bbd08669a6ad9871f34e6beae81fcb3d59c8dfb",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/issue-chaser.contract.json",
       "sqlPath": "supabase/migration-plan.json",

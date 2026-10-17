@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { deliveryEntries, incidentsFrom, summarise, type BoardEntry } from "../lib/health-board";
-import { DELIVERY_SERVICES } from "../lib/process-log";
+import { BOARD_SERVICES, boardSignalFor } from "../lib/process-log";
 import { healthKey } from "../lib/data-health";
 import type { Bar } from "../lib/health-timeline";
 
@@ -26,13 +26,13 @@ test("the board reads the newest bar of each strip, rather than querying the led
   // newest verdict, so that was the same answer fetched twice, and two surfaces
   // that could disagree about one project.
   const strips = {
-    [healthKey("haze", "AST")]: [
+    [healthKey("lightning", "AST")]: [
       bar("2026-10-16T09:00:00Z", "green", "SENT"),
       bar("2026-10-16T10:00:00Z", "amber", "UNCONFIRMED"),
     ],
   };
 
-  const [entry] = deliveryEntries(strips, (service) => DELIVERY_SERVICES.includes(service));
+  const [entry] = deliveryEntries(strips, boardSignalFor);
   assert.equal(entry.projectCode, "AST");
   assert.equal(entry.label, "UNCONFIRMED", "the newest attempt, not the first one in the list");
   assert.equal(entry.colour, "amber");
@@ -40,18 +40,41 @@ test("the board reads the newest bar of each strip, rather than querying the led
   assert.equal(entry.detail, "2026-10-16T10:00:00Z");
 });
 
-test("a run strip is not read as a delivery, or the project would be counted twice", () => {
-  // Noise and WBGT contribute RUN bars, and their ingestion is already reported
-  // from the readings-age check. Taking their newest run bar as a delivery too
-  // would double-count the project and label a run as a send.
+test("noise and wbgt stay off the board, or their project would be counted twice", () => {
+  // Their ingestion is already reported from the readings-age check, so taking
+  // their newest run bar as well would double-count the project and label a run
+  // as something it is not.
   const strips = {
     [healthKey("noise", "ZRA")]: [bar("2026-10-16T10:00:00Z", "red", "failed_config_validation")],
-    [healthKey("haze", "AST")]: [bar("2026-10-16T10:00:00Z", "amber", "UNCONFIRMED")],
+    [healthKey("wbgt", "C991")]: [bar("2026-10-16T10:00:00Z", "amber", "completed_with_issues")],
+    [healthKey("lightning", "AST")]: [bar("2026-10-16T10:00:00Z", "amber", "UNCONFIRMED")],
   };
 
-  const entries = deliveryEntries(strips, (service) => DELIVERY_SERVICES.includes(service));
-  assert.deepEqual(entries.map((item) => item.service), ["haze"]);
-  assert.deepEqual(DELIVERY_SERVICES.slice().sort(), ["haze", "issueChaser", "lightning"]);
+  const entries = deliveryEntries(strips, boardSignalFor);
+  assert.deepEqual(entries.map((item) => item.service), ["lightning"]);
+  assert.equal(boardSignalFor("noise"), null);
+  assert.equal(boardSignalFor("wbgt"), null);
+});
+
+test("the run-log services reach the board under their own signal", () => {
+  // This used to be decided by "is it a delivery source", which silently kept
+  // every run source off the board: a subcon, ailytics, haze or chaser run that
+  // ended `completed_with_errors` was red on its card and never reached the
+  // estate board — the one place that exists to be looked at first. No readings-
+  // age check covers them, so a failed run has to arrive from here or nowhere.
+  assert.deepEqual(BOARD_SERVICES.slice().sort(), ["ailytics", "haze", "issueChaser", "lightning", "subcon"]);
+  for (const service of ["subcon", "ailytics", "haze", "issueChaser"] as const) {
+    assert.equal(boardSignalFor(service), "run", service);
+  }
+  assert.equal(boardSignalFor("lightning"), "delivery", "lightning has no run log, only a delivery ledger");
+
+  const [entry] = deliveryEntries(
+    { [healthKey("subcon", "ZRB")]: [bar("2026-10-17T08:00:00Z", "amber", "completed_with_errors")] },
+    boardSignalFor,
+  );
+  assert.equal(entry.signal, "run");
+  assert.equal(entry.colour, "amber");
+  assert.equal(entry.label, "completed_with_errors", "the service's own word");
 });
 
 test("an empty or unparseable strip key yields no entry rather than a wrong one", () => {
@@ -65,7 +88,7 @@ test("an empty or unparseable strip key yields no entry rather than a wrong one"
       "not-json": [bar("2026-10-16T10:00:00Z", "red", "FAILED")],
       '["haze"]': [bar("2026-10-16T10:00:00Z", "red", "FAILED")],
     },
-    () => true,
+    () => "delivery",
   );
   assert.deepEqual(entries, []);
 });
@@ -120,7 +143,7 @@ test("the widest blast radius sorts first among equals", () => {
 test("delivery and ingestion coexist for one project, and are counted separately", () => {
   const entries = deliveryEntries(
     { [healthKey("haze", "AST")]: [bar("2026-10-16T10:00:00+00:00", "amber", "UNCONFIRMED")] },
-    () => true,
+    boardSignalFor,
   );
 
   assert.equal(entries[0].label, "UNCONFIRMED", "unrewritten, so it can be grepped");

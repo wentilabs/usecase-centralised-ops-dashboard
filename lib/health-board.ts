@@ -29,7 +29,7 @@ export type BoardEntry = {
    * the vendor or the scraper, a failed send is the listener or the group. A
    * project may appear once for each, which is honest — they are two problems.
    */
-  signal: "ingestion" | "delivery" | "config";
+  signal: "ingestion" | "delivery" | "run" | "config";
   colour: HealthColour;
   /** Short for green, the service's own words for amber and red. */
   label: string;
@@ -124,19 +124,21 @@ export function boardEntries(
  */
 export function deliveryEntries(
   strips: Record<string, Bar[]>,
-  isDeliveryService: (service: ServiceKey) => boolean,
+  /** Which signal a service's newest bar reports under, or null to keep it off the board. */
+  signalFor: (service: ServiceKey) => "delivery" | "run" | null,
 ): BoardEntry[] {
   const entries: BoardEntry[] = [];
   for (const [key, bars] of Object.entries(strips)) {
     if (!bars.length) continue;
     const [service, projectCode] = parseHealthKey(key);
-    if (!service || !projectCode || !isDeliveryService(service)) continue;
+    const signal = service ? signalFor(service) : null;
+    if (!service || !projectCode || !signal) continue;
 
     const newest = bars[bars.length - 1];
     entries.push({
       service,
       projectCode,
-      signal: "delivery",
+      signal,
       colour: newest.colour,
       // The service's own word. A reader's next move is to search the logs for
       // this exact string, so rewording it would cost them the search.

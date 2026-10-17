@@ -75,7 +75,7 @@
     ]
   },
   "health": {
-    "granularity": { "ingestion": "none", "run": "none", "delivery": "project" },
+    "granularity": { "ingestion": "none", "run": "project", "delivery": "project" },
     "statuses": { "pending": "green", "sending": "green", "sent": "green", "queued": "green", "unconfirmed": "amber", "failed": "red", "skipped": "green", "partial": "amber", "expired": "amber", "cancelled": "amber", "preview": "green", "completed": "green" }
   }
 }

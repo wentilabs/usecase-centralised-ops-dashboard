@@ -60,17 +60,59 @@ type Source = {
   /** Additional fields needed to read the service's existing error text. */
   extraColumns?: readonly string[];
   signal: "delivery" | "run";
+  /**
+   * Whether the newest bar of a project's strip also enters the estate board.
+   *
+   * True for almost everything. False only for Noise and WBGT, whose ingestion
+   * is already reported from the readings-age check — taking their newest run
+   * bar as well would count one project twice. It used to be decided by `signal`
+   * alone, which silently kept every run source off the board: a subcon,
+   * ailytics or chaser run that ended `completed_with_errors` was red on its
+   * card and never reached the board.
+   */
+  board: boolean;
+  /**
+   * Read INSTEAD of this source, but only while this source's table cannot be
+   * read at all — it has not been created yet.
+   *
+   * Deliberately not "when this one is empty". A service whose cron has stopped
+   * firing has an empty run log, and falling back to older delivery rows would
+   * show green bars for a service that has gone silent: the exact failure the
+   * run log exists to expose.
+   */
+  fallback?: Source;
 };
 
 const SOURCES: Partial<Record<ServiceKey, Source>> = {
   haze: {
+    // One bar per project per hourly run, including the hours whose correct
+    // action was to send nothing — which the delivery ledger below cannot show,
+    // and which are indistinguishable there from a cron that never fired.
+    // Delivery trouble is carried inside the run: a group that did not get its
+    // advisory makes the hour `completed_with_errors` and names the group and the
+    // listener's own words.
+    //
+    // Haze's NEA scrape is still not tracked: it is one public feed for the whole
+    // estate, so a failed fetch is the same fact about every project. This is the
+    // per-project send job, which is a different thing.
     schema: "haze",
-    table: "haze_notification_events",
+    table: "haze_job_runs",
     projectColumn: "project_code",
-    statusColumn: "delivery_status",
-    timeColumn: "created_at",
-    errorColumn: "last_error",
-    signal: "delivery",
+    statusColumn: "status",
+    timeColumn: "started_at",
+    errorColumn: "errors",
+    signal: "run",
+    board: true,
+    fallback: {
+      schema: "haze",
+      table: "haze_notification_events",
+      projectColumn: "project_code",
+      statusColumn: "delivery_status",
+      timeColumn: "created_at",
+      errorColumn: "last_error",
+      signal: "delivery",
+      board: true,
+    },
   },
   lightning: {
     schema: "lightning",
@@ -81,15 +123,41 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     errorColumn: "last_delivery_error",
     extraColumns: ["delivery_attempts"],
     signal: "delivery",
+    board: true,
   },
   issueChaser: {
+    // The run log first, for the same reason as haze: it records the projects
+    // that did nothing, which the submissions ledger cannot.
     schema: "issue_chaser",
-    table: "outbound_submissions",
+    table: "job_runs",
     projectColumn: "project_code",
     statusColumn: "status",
-    timeColumn: "submitted_at",
-    errorColumn: "error",
-    signal: "delivery",
+    timeColumn: "started_at",
+    errorColumn: "errors",
+    signal: "run",
+    board: true,
+    fallback: {
+      schema: "issue_chaser",
+      table: "outbound_submissions",
+      projectColumn: "project_code",
+      statusColumn: "status",
+      timeColumn: "submitted_at",
+      errorColumn: "error",
+      signal: "delivery",
+      board: true,
+    },
+  },
+  ailytics: {
+    // Previously absent: its deliveries are keyed by `project_config_id`, a uuid,
+    // not `project_code`. Its run log is keyed by code, so it can finally be read.
+    schema: "ailytics",
+    table: "job_runs",
+    projectColumn: "project_code",
+    statusColumn: "status",
+    timeColumn: "started_at",
+    errorColumn: "errors",
+    signal: "run",
+    board: true,
   },
   noise: {
     schema: "noise-meters",
@@ -99,6 +167,8 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     signal: "run",
+    // Ingestion is reported from the readings-age check; see `Source.board`.
+    board: false,
   },
   wbgt: {
     schema: "wbgts",
@@ -108,6 +178,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     signal: "run",
+    board: false,
   },
   subcon: {
     schema: "manpower_activity",
@@ -117,18 +188,39 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     signal: "run",
+    // No readings-age check covers subcon, so a failed run has to reach the board
+    // from here or nowhere.
+    board: true,
   },
 };
 
 export const PROCESS_SERVICES = Object.keys(SOURCES) as ServiceKey[];
 
 /**
- * The services whose newest process is a DELIVERY verdict.
+ * The services whose newest process also enters the estate board, and under
+ * which signal.
  *
- * Exported so the board can tell them from the run sources, whose ingestion is
- * already reported from the readings-age check.
+ * `null` for Noise and WBGT, whose ingestion is already reported from the
+ * readings-age check: their newest run bar as well would count one project
+ * twice. Everything else is on the board — including the run-log services, which
+ * this used to exclude by treating "run" as "already covered", so that a subcon
+ * run ending `completed_with_errors` was red on its card and absent from the
+ * board.
  */
-export const DELIVERY_SERVICES = PROCESS_SERVICES.filter((service) => SOURCES[service]?.signal === "delivery");
+export function boardSignalFor(service: ServiceKey): "delivery" | "run" | null {
+  const source = SOURCES[service];
+  return source?.board ? source.signal : null;
+}
+
+export const BOARD_SERVICES = PROCESS_SERVICES.filter((service) => boardSignalFor(service) !== null);
+
+async function tableReadable(
+  source: Source,
+  request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
+): Promise<boolean> {
+  const res = await request(`${source.table}?select=${source.timeColumn}&limit=1`, { schema: source.schema });
+  return res.ok;
+}
 
 export type ProcessSample = {
   projectCode: string;
@@ -151,8 +243,13 @@ export async function readProcessWindow(
   perProject: number,
   sinceIso: string,
 ): Promise<ProcessSample[]> {
-  const source = SOURCES[service];
+  let source = SOURCES[service];
   if (!source) return [];
+
+  // Use the fallback ONLY when the primary's table cannot be read at all. One
+  // tiny request, and the whole result is cached for five minutes. Not "when it
+  // is empty" — see `Source.fallback`.
+  if (source.fallback && !(await tableReadable(source, request))) source = source.fallback;
 
   const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, extraColumns = [] } = source;
   const rows = await readPaged(

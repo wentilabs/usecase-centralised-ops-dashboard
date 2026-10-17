@@ -54,6 +54,36 @@ const LOGGED: Record<string, Array<[string, HealthColour]>> = {
     ["failed_config_validation", "red"],
     ["failed", "red"],
   ],
+  ailytics: [
+    ["completed", "green"],
+    ["completed_with_unconfirmed", "amber"],
+    ["completed_with_errors", "amber"],
+    ["skipped_project_disabled", "green"],
+    ["skipped_status_summary_off", "green"],
+    ["skipped_yesterday_summary_off", "green"],
+    // Hourly, so most of these are `not due`: green, or every quiet hour is an
+    // amber bar and the colour stops meaning anything.
+    ["skipped_not_due", "green"],
+    ["failed", "red"],
+    ["failed_unhandled_error", "red"],
+  ],
+  issueChaser: [
+    ["completed", "green"],
+    ["completed_with_errors", "amber"],
+    ["completed_with_unconfirmed", "amber"],
+    ["skipped_project_disabled", "green"],
+    ["skipped_feature_disabled", "green"],
+    ["skipped_not_due", "green"],
+    ["skipped_schedule_intent_required", "green"],
+    ["suppressed_sunday", "green"],
+    ["suppressed_public_holiday", "green"],
+    // Red: a project due to run whose schedule or configuration is invalid will
+    // never be fixed by anything downstream.
+    ["failed_config_validation", "red"],
+    // A summary in which EVERY send failed: nobody was told.
+    ["failed", "red"],
+    ["failed_unhandled_error", "red"],
+  ],
 };
 
 for (const [service, cases] of Object.entries(LOGGED)) {

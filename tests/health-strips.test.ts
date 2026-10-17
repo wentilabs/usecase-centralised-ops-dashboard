@@ -10,7 +10,7 @@ import {
   troubleCount,
   troubleIn,
 } from "../lib/health-timeline";
-import { DELIVERY_SERVICES, PROCESS_SERVICES, readProcessWindow } from "../lib/process-log";
+import { PROCESS_SERVICES, boardSignalFor, readProcessWindow } from "../lib/process-log";
 
 const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour, log: string[] = []) =>
   ({ at, colour, status, log });
@@ -98,10 +98,11 @@ test("repeated faults stay separate rows, each with its own time and log", () =>
   assert.equal(trouble[0].at, "2026-10-16T19:58:00Z", "newest first");
 });
 
-test("both readers are bounded per project rather than by time, and carry the service's own status", async () => {
+test("a source is bounded per project rather than by time, and carries the service's own status", async () => {
   let path = "";
+  // Lightning has no run log, only a delivery ledger, so this reads one directly.
   const delivered = await readProcessWindow(
-    "haze",
+    "lightning",
     async (requested) => {
       path = requested;
       return {
@@ -110,7 +111,7 @@ test("both readers are bounded per project rather than by time, and carry the se
           project_code: "JCU",
           delivery_status: "UNCONFIRMED",
           created_at: "2026-10-16T11:00:39+00:00",
-          last_error: "Listener response did not confirm the requested recipient",
+          last_delivery_error: "Listener response did not confirm the requested recipient",
         }],
       };
     },
@@ -124,31 +125,13 @@ test("both readers are bounded per project rather than by time, and carry the se
   // fetched".
   assert.match(path, /created_at=gte\.2026-10-14T11:00:00\.000Z/, "bounded by the window floor");
   assert.ok(!path.includes("offset="), "and cut by a keyset, never a row offset");
+  assert.match(path, /order=created_at\.desc/, "newest first, so the quota is the newest");
   assert.match(path, /limit=1000/, "a full page, since the server caps at 1000 whatever is asked");
-  assert.match(path, /order=created_at\.desc/, "newest first, so the quota is the newest fifty");
   assert.equal(delivered[0].status, "UNCONFIRMED", "kept verbatim, for the modal and for grepping");
-  assert.match(path, /last_error/, "and the service's own reason comes with it");
+  assert.match(path, /last_delivery_error/, "and the service's own reason comes with it");
   assert.deepEqual(delivered[0].log, ["Listener response did not confirm the requested recipient"]);
-  assert.equal(delivered[0].colour, "amber", "coloured by haze's own contract");
+  assert.equal(delivered[0].colour, "amber", "coloured by lightning's own contract");
 
-  // Only the two services whose scrape is per-site. Haze and Lightning read one
-  // public NEA feed for the whole estate, so a failed fetch is the same fact
-  // about all thirty-one projects rather than a fact about any one of them —
-  // they are tracked on DELIVERY alone, which is the part that differs per
-  // project.
-  assert.deepEqual(
-    PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).sort(),
-    ["noise", "subcon", "wbgt"],
-    "the three services whose history is a per-project RUN log",
-  );
-  // Subcon reads its run log rather than its delivery ledger, although both
-  // exist: only the run log records the projects that did nothing, and a
-  // delivery ledger cannot tell a correct skip from a cron that never fired.
-  assert.ok(!DELIVERY_SERVICES.includes("subcon"));
-  for (const publicFeed of ["haze", "lightning"] as const) {
-    assert.ok(!PROCESS_SERVICES.filter((s) => !DELIVERY_SERVICES.includes(s)).includes(publicFeed), `${publicFeed} must not contribute run bars`);
-    assert.ok(DELIVERY_SERVICES.includes(publicFeed), `${publicFeed} is tracked on delivery instead`);
-  }
   const ran = await readProcessWindow(
     "wbgt",
     async () => ({
@@ -173,6 +156,76 @@ test("both readers are bounded per project rather than by time, and carry the se
   assert.equal(ran[0].status, "completed_with_issues");
   assert.deepEqual(ran[0].log, ["WC-55: reading 38 minutes old", "WC-56: reading 33 minutes old"]);
   assert.equal(ran[0].colour, "amber", "completed_with_ is the in-between state, not a pass");
+});
+
+test("which services read a run log, which a delivery ledger, and which are not tracked", () => {
+  // Haze's NEA scrape is one public feed for the whole estate, so a failed fetch
+  // is the same fact about every project and is NOT tracked. What IS tracked is
+  // the per-project hourly send job, which is a different thing — it is how an
+  // hour whose correct action was to send nothing becomes visible at all.
+  assert.deepEqual(
+    PROCESS_SERVICES.slice().sort(),
+    ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "wbgt"],
+  );
+  for (const service of ["haze", "issueChaser", "subcon", "ailytics", "noise", "wbgt"] as const) {
+    // `signal` is the PRIMARY source's; board membership is a separate question.
+    assert.ok(PROCESS_SERVICES.includes(service), service);
+  }
+  // Lightning's source is a delivery ledger: it has no run log, and its tick
+  // audit is estate-wide so it is deliberately not read.
+  assert.equal(boardSignalFor("lightning"), "delivery");
+});
+
+test("a run log is read first, and the delivery ledger only while its table does not exist", async () => {
+  const asked: string[] = [];
+  const row = (extra: Record<string, unknown>) => ({ project_code: "AST", ...extra });
+  const missing = (table: string) => async (path: string) => {
+    asked.push(path.split("?")[0]);
+    if (path.startsWith(`${table}?`)) return { ok: false, body: { message: "Could not find the table" } };
+    return {
+      ok: true,
+      body: [row({ delivery_status: "SENT", created_at: "2026-10-16T09:00:00+00:00", last_error: null })],
+    };
+  };
+
+  // Not created yet — which is where every new run log starts. HALO must not
+  // blank the strip in the meantime: the ledger that already has data is read.
+  const fallen = await readProcessWindow("haze", missing("haze_job_runs"), 100, "2026-10-14T00:00:00.000Z");
+  assert.deepEqual(fallen.map((sample) => sample.status), ["SENT"]);
+  assert.ok(asked.includes("haze_notification_events"));
+
+  // Once the table exists, the run log wins outright.
+  asked.length = 0;
+  const primary = await readProcessWindow(
+    "haze",
+    async (path: string) => {
+      asked.push(path.split("?")[0]);
+      return { ok: true, body: [row({ status: "skipped_outside_working_hours", started_at: "2026-10-16T14:00:00+00:00", errors: [] })] };
+    },
+    100,
+    "2026-10-14T00:00:00.000Z",
+  );
+  assert.deepEqual(primary.map((sample) => sample.status), ["skipped_outside_working_hours"]);
+  assert.ok(!asked.includes("haze_notification_events"), "the ledger is not consulted once the run log exists");
+});
+
+test("an EMPTY run log does not fall back, because a silent cron is the thing it exists to show", async () => {
+  // A service whose cron has stopped firing has a readable but empty run log.
+  // Falling back to older delivery rows would show green bars for a service that
+  // has gone quiet — hiding exactly the failure the run log was built to expose.
+  const asked: string[] = [];
+  const result = await readProcessWindow(
+    "haze",
+    async (path: string) => {
+      asked.push(path.split("?")[0]);
+      return { ok: true, body: [] };
+    },
+    100,
+    "2026-10-14T00:00:00.000Z",
+  );
+
+  assert.deepEqual(result, []);
+  assert.ok(!asked.includes("haze_notification_events"), "readable but empty means nothing happened, not 'look elsewhere'");
 });
 
 test("Lightning shows current failed recipient errors without changing their wording", async () => {
@@ -204,23 +257,35 @@ test("Lightning keeps the parent error and tolerates old rows without attempts",
 });
 
 test("each covered service maps its stored error field to HALO without rewriting text", async () => {
+  // Haze and chaser have TWO sources — the run log, and the delivery ledger read
+  // only while the run log's table does not exist — and each must be right.
+  // `unreadable` names a table to report as missing, which is how the ledger path
+  // is reached.
   const cases = [
     { service: "noise", status: "failed", time: "started_at", error: "errors", value: ["Noise source timed out"] },
     { service: "wbgt", status: "failed", time: "started_at", error: "errors", value: ["WBGT sheet unavailable"] },
     { service: "subcon", status: "failed_unhandled_error", time: "started_at", error: "errors", value: ["Report build failed"] },
-    { service: "haze", status: "FAILED", time: "created_at", error: "last_error", value: "Haze listener rejected" },
-    { service: "issueChaser", status: "failed", time: "submitted_at", error: "error", value: "Chaser listener rejected" },
+    { service: "ailytics", status: "failed", time: "started_at", error: "errors", value: ["Summary build failed"] },
+    { service: "haze", status: "failed", time: "started_at", error: "errors", value: ["bad@g.us: Haze listener rejected"] },
+    { service: "issueChaser", status: "failed", time: "started_at", error: "errors", value: ["Chaser listener rejected"] },
+    // The ledgers, while the run logs are not created yet.
+    { service: "haze", status: "FAILED", time: "created_at", error: "last_error", value: "Haze listener rejected", unreadable: "haze_job_runs" },
+    { service: "issueChaser", status: "failed", time: "submitted_at", error: "error", value: "Chaser listener rejected", unreadable: "job_runs" },
   ] as const;
 
   for (const entry of cases) {
     let path = "";
+    const label = `${entry.service}${"unreadable" in entry ? " (ledger fallback)" : ""}`;
     const rows = await readProcessWindow(entry.service, async (requested) => {
+      if ("unreadable" in entry && requested.startsWith(`${entry.unreadable}?`)) {
+        return { ok: false, body: { message: "Could not find the table" } };
+      }
       path = requested;
       return { ok: true, body: [{ project_code: "AST", status: entry.status,
         delivery_status: entry.status, [entry.time]: "2026-10-17T10:00:00Z", [entry.error]: entry.value }] };
     }, 100, "2026-10-15T10:00:00Z");
-    assert.match(path, new RegExp(entry.error), `${entry.service} reads its actual error column`);
-    assert.deepEqual(rows[0].log, Array.isArray(entry.value) ? entry.value : [entry.value]);
+    assert.match(path, new RegExp(entry.error), `${label} reads its actual error column`);
+    assert.deepEqual(rows[0].log, Array.isArray(entry.value) ? entry.value : [entry.value], label);
   }
 });
 

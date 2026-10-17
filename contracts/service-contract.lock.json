@@ -50,7 +50,7 @@
       "repository": "wentilabs/usecase-wohhup-coy-housekeeping-waterparade",
       "localDirectory": "usecase-subcon-manpower-activities",
       "branch": "main",
-      "commit": "024cf5809aeb3313dcda2c7f7fc308d27dee0404",
+      "commit": "2acaf3d40086ac7464c6a2060ffa58487ad32dff",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/subcon.contract.json",
       "sqlPath": "supabase/migration-plan.json",

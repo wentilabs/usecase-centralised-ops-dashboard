@@ -217,9 +217,9 @@ carries no meaning.
 2. the naming convention above
 3. amber — an unclassified status must be visible
 
-The convention is a **fallback, not a replacement**. It is what reads a service
-that has declared nothing — which is all seven today — and a status added
-tomorrow by someone who never opened the contract.
+The convention is a **fallback, not a replacement**. The current service
+contracts declare the common listener-acceptance outcomes; the convention
+still covers a status added before its contract mapping is updated.
 
 ### `granularity`: what "per project" means per service
 
@@ -229,9 +229,11 @@ share a granularity:
 | Service | Ingestion | Run | Delivery |
 | --- | --- | --- | --- |
 | Noise, WBGT | per project | per project | per project |
-| Haze, Lightning | **service** — one public feed fetched once | per project | per project |
-| Ailytics | **service** — events are pushed in, nothing is fetched | per project | per project |
-| Subcon, Issue Chaser | per project — one workbook each | per project | per project |
+| Haze | none declared; the public feed is estate-wide | none declared | per project |
+| Lightning | **service** — one public feed fetched once | service | per project |
+| Ailytics | none declared; events are pushed in | none declared | per project |
+| Subcon | none declared | per project | per project |
+| Issue Chaser | none declared | none declared | per project |
 
 An **undeclared** signal is `none`, never `project`. A service that has not said
 it reports a signal must read as *not covered*; showing it green is the one
@@ -239,20 +241,20 @@ mistake this page cannot afford.
 
 ## Current coverage
 
-Audited against the live database on 2026-10-16: every log table in all seven
-schemas was read, not just the ones HALO uses. Two questions per service — can
-you tell whether a process RAN, and whether it DELIVERED — and whether the answer
-is per project.
+The baseline live-table audit was on 2026-10-16; newer Haze and Subcon run-log
+rows below reflect their subsequent service changes and need a later live
+cycle check. Two questions per service — can you tell whether a process RAN,
+and whether it DELIVERED — and whether the answer is per project.
 
 | Service | Ran? | Delivered? | Per project | Three states? |
 | --- | --- | --- | --- | --- |
 | Noise | `noise_job_runs` | — | ✅ | ✅ completed / completed_with_meter_issues / failed_config_validation |
 | WBGT | `wbgt_job_runs` | Telegram only | ✅ | ✅ completed / completed_with_issues / skipped_outside_site_hours |
-| Haze | — | `haze_notification_events` | ✅ | ✅ SENT / UNCONFIRMED / FAILED |
+| Haze | `haze_job_runs` — written by current code; live table installation needs verification | `haze_notification_events` | ✅ | ✅ convention-named, translated in the log only |
 | Lightning | `lightning_tick_audit` | `lightning_events` | delivery only | ✅ but the run log is estate-wide |
 | Issue Chaser | `delivery_runs` (dormant) | `outbound_submissions` | ✅ | ✅ |
 | Ailytics | — | summary only | by uuid | partial |
-| Subcon | — | — | ❌ | ❌ |
+| Subcon | `manpower_activity.job_runs` — live, **first rows when its cron next fires** | `outbound_message_submissions` (empty until sends are accepted) | ✅ | ✅ convention-named |
 
 ### Gaps, worst first
 
@@ -263,17 +265,20 @@ is per project.
    *one* failed without saying *which*, and no per-project row is written
    (`lightning_events` FAILED rows are all from 6 Oct). A permanent amber nobody
    can act on is the worst kind of log: it trains people to ignore the colour.
-2. **Subcon logs nothing about its own runs or sends.**
-   `outbound_message_submissions` is declared and empty, `inbound_events` has
-   been silent since 5 Sep, and only `housekeeping_events`
-   (`completed` / `excused`) is live. There is no way to tell a quiet morning
-   from a broken one.
-3. **Haze has no run log at all.** Deliveries are recorded well, but an hour
-   where the cron never fired leaves no trace anywhere — the absence of a
-   notification row is indistinguishable from a correctly quiet hour.
-4. **Ailytics has no run log**, and `cctv_activity_events` has no status column
-   at all. Only `yesterday_summary_deliveries` carries an outcome, and it covers
-   one of its several jobs.
+2. **Subcon's new run log needs a full scheduled cycle of observation.**
+   `manpower_activity.job_runs` now records one project row even for a correct
+   skip, and HALO reads it. The older live audit found
+   `outbound_message_submissions` empty; that ledger only grows when a report
+   is submitted. Verify that the next scheduled cycle writes the expected run
+   rows before treating missing rows as an outage.
+3. **Haze's run-log rollout needs verification.** Current code writes
+   `haze_job_runs`, including correct quiet hours, but this review has not
+   verified the live table migration or a complete hourly cycle. HALO still
+   reads `haze_notification_events` for its process strip.
+4. **Ailytics has no HALO process source.** Its Pending activity links and
+   yesterday-summary delivery rows retain queue outcomes, but they are keyed
+   by project UUID or cover one job rather than a common per-project run log.
+   HALO currently does not display them as a project process strip.
 5. **Declared-but-empty log tables**, which read as coverage and are not:
    `noise_data_health_deliveries`, `wbgt_notification_outbox`,
    `outbound_message_submissions`. `delivery_runs` has not been written since
@@ -288,8 +293,10 @@ block maps its words, and the strips draw it.
 
 ## Delivery: what HALO can read today
 
-Three services write a per-project outbound ledger, and HALO reads the newest
-row per project from each (`lib/delivery-reader.ts`):
+HALO's process reader (`lib/process-log.ts`) reads delivery ledgers for three
+services and run logs for Noise, WBGT and Subcon. A delivery-ledger strip
+answers whether a listener submission was accepted; a run-log strip answers
+whether the scheduled job ran and what it decided. They are different signals.
 
 | Service | Ledger | Status column | Keyed by |
 | --- | --- | --- | --- |
@@ -297,21 +304,21 @@ row per project from each (`lib/delivery-reader.ts`):
 | Lightning | `lightning.lightning_events` | `delivery_status` | `project_code` |
 | Issue Chaser | `issue_chaser.outbound_submissions` | `status` | `project_code` |
 
-The other four are deliberately absent rather than guessed at, so the board says
-*not covered* instead of showing a green it has not earned:
+The other services are deliberately absent from the **delivery-ledger** reader:
 
 | Service | Why not |
 | --- | --- |
 | WBGT | `wbgt_notification_outbox` exists but is empty |
-| Subcon | `outbound_message_submissions` exists but is empty |
+| Subcon | HALO reads `manpower_activity.job_runs` for the run signal; the separate `outbound_message_submissions` ledger is not its process-strip source |
 | Ailytics | keys deliveries by `project_config_id` (a uuid), not `project_code` |
 | Noise | no general delivery ledger — only the monthly report |
 
-Noise and WBGT do decide a per-message outcome — `partial`, `read_failed`,
-`stale_telegram_message`, `test_stale_reading_suppressed` — but these are
-**console-logged only**. For those two, question 2 is still answered at run
-granularity: `completed` implies a send, `completed_with_…` a partial one.
-Writing those outcomes to a table beside the run row is what would close it.
+Noise and WBGT retain recipient outcomes for specific paths such as monthly
+reports, Telegram forwards, and internal Data Health reminders. HALO's current
+process strip still reads their general cadence **run** rows, not those
+recipient ledgers. A `completed` run is evidence that the cadence completed;
+inspect its `details` and the relevant recipient ledger before claiming that
+every WhatsApp recipient received a message.
 
 **Which table is an integration detail, what the statuses mean is not.** The
 mapping above lives in HALO because only HALO needs it; the colour of
@@ -321,13 +328,37 @@ added one.
 
 ### What `queued` proves, and what it does not
 
-Since the listener queue landed, a service can confirm the listener **accepted**
-a message and no more. Whether WhatsApp sent it is resolved later in the
-listener's own `internal.whatsapp_outbound_queue` (`sent` / `dropped` /
-`failed`), and **nothing reconciles the two** — no service joins its `queue_id`
-back to that outcome. So `queued` is green because acceptance is the furthest
-this side can honestly see. The gap is recorded here rather than hidden behind a
-colour.
+For a one-recipient listener request, an HTTP 200 result with
+`success: true`, matching `chatId`, a WhatsApp `messageId` and `ack` is an
+immediate confirmed send. The other accepted result has `success: true`,
+`queued: true`, `code: "QUEUED"` and a `queueId`. Through the proxy, the listener
+answer is under `data`. A timeout, network error, listener 5xx, or malformed
+success cannot establish whether a queue row was inserted; the services
+record that as `unconfirmed` and do not automatically repost it. An explicit
+pre-acceptance rejection can remain eligible for a bounded service retry.
+Each destination is a separate instruction; the result for one group never
+substitutes for the result for another.
+
+Since the listener queue landed, an initial `queued` response confirms that
+the listener **accepted** a message; it does not confirm WhatsApp delivery or
+provide a WhatsApp message ID. `queued` is green in the service contracts
+because acceptance completed that submission. `unconfirmed` is amber because
+the service cannot prove whether the listener accepted it, and `failed` is red.
+HALO reads the service's persisted status; it does not poll the listener queue
+or turn a green acceptance into a WhatsApp delivery receipt.
+
+Two workflows do look up queue IDs when the later message ID matters. Ailytics
+reconciles queued Pending images and promotes their activities from
+`PENDING_DELIVERY` to `PENDING` only after a verified `sent` result with a
+message ID. WBGT looks up a queued Water Parade reminder when a quoted reply
+needs that reminder's WhatsApp ID. Other service ledgers retain queue IDs for
+audit without polling every message. A final listener `failed` or `dropped`
+outcome is not an instruction to repost a previously accepted submission.
+
+Noise and WBGT also have **Data Health reminder** routes and recipient ledgers.
+Those internal reminders are distinct from HALO's Data Health dashboard, which
+currently reads their `noise_job_runs` and `wbgt_job_runs` rows. A green run row
+does not independently verify every recipient's WhatsApp delivery.
 
 ### One failure, one row
 

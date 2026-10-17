@@ -217,6 +217,7 @@ test("granularity is declared per signal, and an undeclared one is not covered",
   // answer; Lightning records it estate-wide, Haze records nothing at all.
   assert.equal(contractHealthGranularity("lightning", "ingestion"), "service");
   assert.equal(contractHealthGranularity("haze", "ingestion"), "none");
+  assert.equal(contractHealthGranularity("subcon", "run"), "project");
   // Only the two that keep their own readings answer ingestion per project.
   assert.deepEqual(
     SERVICE_KEYS.filter((s) => contractHealthGranularity(s, "ingestion") === "project"),

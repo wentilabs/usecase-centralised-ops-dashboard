@@ -18,10 +18,9 @@ export type ContractField = {
 /**
  * What a service says about its own health reporting.
  *
- * Optional, and absent on every contract today. A service that declares nothing
- * is read by the name convention in `lib/health-status.ts` instead, so HALO
- * works before any service adopts this and keeps working for one that never
- * does.
+ * Optional. Current services declare their common status outcomes; a status
+ * missing from the declaration is read by the name convention in
+ * `lib/health-status.ts` instead.
  *
  * It lives in the service's contract rather than in HALO because only the
  * service knows what its own words mean: whether `partial` is "some recipients
@@ -60,7 +59,7 @@ export type ServiceContract = {
     fields: Record<string, ContractField>;
     constraints: Array<{ name: string; help: string }>;
   };
-  /** Optional; see ContractHealth. Absent on every contract at the time of writing. */
+  /** Optional; see ContractHealth. */
   health?: ContractHealth;
 };
 

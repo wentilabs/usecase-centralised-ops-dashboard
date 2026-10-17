@@ -161,10 +161,8 @@ export function isIdleStatus(status: unknown): boolean {
  * allowed to answer differently for the same word; a rule written here could
  * only ever guess, and would guess silently.
  *
- * The convention stays as the fallback rather than being replaced, because a
- * service that has declared nothing — which is all seven today — still has to
- * be read correctly, and so does a status added tomorrow by someone who never
- * opened the contract.
+ * The convention stays as the fallback because a status added tomorrow by
+ * someone who never opened the contract must still be read correctly.
  */
 export function colourForStatus(
   service: string,
@@ -172,9 +170,8 @@ export function colourForStatus(
   /**
    * Where a service's own declaration is read from.
    *
-   * Injectable only so the precedence can be tested: no contract declares a
-   * health block yet, so the declared branch is otherwise unreachable, and an
-   * assertion that cannot reach the code it describes is worse than none.
+   * Injectable so the precedence can be tested independently of the current
+   * service contracts.
    */
   declaredBy: (service: string, status: unknown) => HealthColour | null = contractHealthColour,
 ): Classification {

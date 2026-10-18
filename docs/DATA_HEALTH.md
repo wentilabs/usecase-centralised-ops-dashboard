@@ -295,46 +295,44 @@ mistake this page cannot afford.
 
 ## Current coverage
 
-The baseline live-table audit was on 2026-10-16; the run logs below were added
-the next day and several are **written by deployed code but not yet visible in
-the database** — each needs its SQL applied and one scheduled cycle observed
-before a missing row means anything. Two questions per service — can you tell whether a process RAN,
+The baseline live-table audit was on 2026-10-16. Every run log below was added
+on 17 Oct and **verified live on 18 Oct**: all four tables exist and are filling,
+and every status they write converts to the colour a reader would expect. Two
+questions per service — can you tell whether a process RAN,
 and whether it DELIVERED — and whether the answer is per project.
 
 | Service | Ran? | Delivered? | Per project | Three states? |
 | --- | --- | --- | --- | --- |
 | Noise | `noise_job_runs` | — | ✅ | ✅ completed / completed_with_meter_issues / failed_config_validation |
 | WBGT | `wbgt_job_runs` | Telegram only | ✅ | ✅ completed / completed_with_issues / skipped_outside_site_hours |
-| Haze | `haze_job_runs` — written by deployed code; **table not yet visible to HALO** | `haze_notification_events` | ✅ | ✅ convention-named, translated in the log only |
+| Haze | `haze_job_runs` — live; 30 projects at :00 and CRP at :02, from two invocations | `haze_notification_events` | ✅ | ✅ convention-named, translated in the log only |
 | Lightning | `lightning_project_runtime.last_error` for a standing fault; `lightning_tick_audit` is estate-wide and unused | `lightning_events` | ✅ for faults and deliveries | ✅ |
-| Issue Chaser | `issue_chaser.job_runs` — written by deployed code; **table not yet created** | `outbound_submissions` | ✅ | ✅ convention-named |
-| Ailytics | `ailytics.job_runs` — written by deployed code; **table not yet created** | `yesterday_summary_deliveries` (by uuid, unused) | ✅ | ✅ convention-named |
+| Issue Chaser | `issue_chaser.job_runs` — live; all 35 projects | `outbound_submissions` | ✅ | ✅ convention-named |
+| Ailytics | `ailytics.job_runs` — live; all 5 projects | `yesterday_summary_deliveries` (by uuid, unused) | ✅ | ✅ convention-named |
 | Subcon | `manpower_activity.job_runs` — live, **first rows when its cron next fires** | `outbound_message_submissions` (empty until sends are accepted) | ✅ | ✅ convention-named |
 
 ### Gaps, worst first
 
-1. **Lightning's rejected project is now named — and the project it named is
-   unprotected.** Every tick since at least 16 Oct counted one project as failed
-   and said nothing about which. It was SGK: its configuration switches on
-   manpower-sheet POC mentions without a `manpower_sheet_id`, so the validator
-   rejects it on every tick and it has **never been evaluated, so never
-   alerted**. Lightning now writes the validator's sentence to
+1. **Lightning's rejected project was named, fixed, and cleared itself.** For at
+   least a day one project was counted as failed on every tick with nothing to say
+   which. It was SGK: its configuration switched on manpower-sheet POC mentions
+   without a `manpower_sheet_id`, so it was rejected on every tick and **never
+   evaluated, so never alerted**. Lightning now writes the validator's sentence to
    `lightning_project_runtime.last_error` and HALO shows it above the project's
-   strip. The configuration itself still needs fixing.
-2. **Subcon's new run log needs a full scheduled cycle of observation.**
-   `manpower_activity.job_runs` now records one project row even for a correct
-   skip, and HALO reads it. The older live audit found
-   `outbound_message_submissions` empty; that ledger only grows when a report
-   is submitted. Verify that the next scheduled cycle writes the expected run
-   rows before treating missing rows as an outage.
-3. **Three run logs are written but not yet readable.** Haze, ailytics and issue
-   chaser each write one row per project per scheduled run, including the runs
-   that correctly did nothing. HALO reads the run log first and falls back to the
-   delivery ledger **only while the run log's table cannot be read** — never when
-   it is merely empty, because a cron that has stopped firing has an empty run
-   log, and falling back would show green bars for a silent service. Until each
-   table exists, haze and chaser keep showing their ledgers and ailytics shows
-   nothing.
+   strip. The configuration was then corrected (18 Oct, config v18); SGK's first
+   ever evaluation ran three minutes later, ticks went from `COMPLETED_WITH_ERRORS`
+   to `COMPLETED, 0 of 28`, and the fault cleared on the next tick without anyone
+   touching it. The mechanism has now been seen working end to end.
+2. **Subcon's run log is live.** 93 rows in its first cycle, every status the right
+   colour, including `suppressed_sunday` on the Sunday it was first observed. Its
+   own delivery ledger (`outbound_message_submissions`) only grows when a report
+   is submitted.
+3. **Run log first, ledger only while the table does not exist.** HALO reads a
+   service's run log first and falls back to its delivery ledger **only while the
+   run log's table cannot be read** — never when it is merely empty, because a
+   cron that has stopped firing has an empty run log, and falling back would show
+   green bars for a silent service. All four tables now exist, so the fallback is
+   dormant; it is there for the next service that gains one.
 4. **Ailytics' queue outcomes are still keyed by project UUID.** Its summary and
    pending-image ledgers cannot be joined to a project code without a lookup, so
    HALO reads only the new run log. Its intake events (`cctv_activity_events`)

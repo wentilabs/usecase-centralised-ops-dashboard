@@ -61,6 +61,17 @@ type Source = {
   extraColumns?: readonly string[];
   signal: "delivery" | "run";
   /**
+   * Which job in this run log PRODUCES the readings the health check ages.
+   *
+   * Only Noise and WBGT have one. It is how the health reader tells "the service
+   * chose not to produce anything" from "the service produced nothing": a
+   * maintenance job completing, or a five-minute alert run reading data already
+   * stored, is not evidence the pipeline works or fails — only the scrape is.
+   * Both services name it `scrape-…`, and that is stated here rather than guessed
+   * at in the reader.
+   */
+  producer?: { jobTypeColumn: string; jobTypePrefix: string };
+  /**
    * Whether the newest bar of a project's strip also enters the estate board.
    *
    * True for almost everything. False only for Noise and WBGT, whose ingestion
@@ -167,6 +178,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     signal: "run",
+    producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     // Ingestion is reported from the readings-age check; see `Source.board`.
     board: false,
   },
@@ -178,6 +190,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     signal: "run",
+    producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     board: false,
   },
   subcon: {
@@ -210,6 +223,28 @@ export const PROCESS_SERVICES = Object.keys(SOURCES) as ServiceKey[];
 export function boardSignalFor(service: ServiceKey): "delivery" | "run" | null {
   const source = SOURCES[service];
   return source?.board ? source.signal : null;
+}
+
+/**
+ * Where a service writes its per-project RUN log, if it has one.
+ *
+ * Exported for the health reader, which uses it as testimony: when a project
+ * looks stale, the service's own runs can say whether it was meant to be
+ * producing anything.
+ */
+export function runLogOf(service: ServiceKey): {
+  schema: string;
+  table: string;
+  projectColumn: string;
+  statusColumn: string;
+  timeColumn: string;
+  producer: { jobTypeColumn: string; jobTypePrefix: string };
+} | null {
+  const source = SOURCES[service];
+  // Only a log that says which job produces the readings can explain their absence.
+  if (!source || source.signal !== "run" || !source.producer) return null;
+  const { schema, table, projectColumn, statusColumn, timeColumn, producer } = source;
+  return { schema, table, projectColumn, statusColumn, timeColumn, producer };
 }
 
 export const BOARD_SERVICES = PROCESS_SERVICES.filter((service) => boardSignalFor(service) !== null);

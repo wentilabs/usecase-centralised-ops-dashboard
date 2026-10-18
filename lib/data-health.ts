@@ -158,6 +158,17 @@ export function assessIngestionHealth(
   return result(target, "good", "Data: receiving", newestReceivedAt, sourceEventAt);
 }
 
+/**
+ * A project that looks stale but whose own runs say it was told not to produce.
+ *
+ * Keeps the time of the last reading, so the card still says when data last
+ * arrived — it is only the VERDICT that changes, from a fault to idle. The
+ * service's own word is the reason, unrewritten, so it can be searched for.
+ */
+export function idleBecauseSkipped(health: ProjectHealth, skippedStatus: string): ProjectHealth {
+  return { ...health, tone: "neutral", label: `Data: idle — ${skippedStatus}` };
+}
+
 export function healthBadge(outcome: DeliveryOutcome): { tone: HealthTone; label: string } {
   if (outcome === "provider_accepted") return { tone: "good", label: "Delivery: Provider accepted" };
   if (outcome === "device_delivered") return { tone: "good", label: "Delivery: Delivered" };

@@ -443,6 +443,42 @@ at all, and a fixed age budget reports a site that shut down on time as broken �
 measured at 18:29 on an ordinary working day, a 1h/4h budget put 19 of 32 Noise
 projects in danger while their own run rows said they were not due.
 
+### A stale reading is not always a fault: ask the service
+
+On a muted Sunday, four noise projects went red for doing exactly what they were
+told. Their cadence windows covered the afternoon, so HALO — which models "should
+something have happened this hour" from the configured hours — expected readings;
+Noise had been skipping every run on purpose, `skipped_sunday_notifications_disabled`,
+every five minutes. HALO cannot know about a calendar mute, and mirroring each
+service's calendar rules would drift: WBGT still scrapes on a muted Sunday and
+mutes only the send.
+
+So when a project is about to be reported stale, HALO asks the service's own run
+log, and treats the silence as deliberate only when **all** of these hold:
+
+1. **The producer has not run since the last reading, and nothing has failed.**
+   Not "no run at all". After each project's last reading the log held a
+   five-minute alert run that finished twelve seconds later and a daily
+   maintenance job three hours on — neither produces readings, so neither says
+   anything about whether the pipeline works. Only the scrape does. If the scrape
+   ran and produced no reading, that is the fault, and it stays red. A service
+   declares which job produces its readings (`producer` in HALO's source table);
+   both Noise and WBGT call it `scrape-…`.
+2. **The newest run is a deliberate skip** — the service alive and choosing not to
+   work. No run at all is not an explanation: a silent cron is exactly what a
+   stale verdict is for.
+3. **No recent skip names a fault.** `skipped_google_sheet_not_configured` starts
+   with `skipped` and is a project that cannot run.
+
+If HALO cannot ask, the red stands. The card keeps the time of the last reading
+and says why it is idle in the service's own words, unrewritten.
+
+The first two versions of this rule were wrong in opposite directions, which is
+why the conditions above are so specific: reading only the newest few runs would
+have cleared a project whose scrape had been running for weeks and finding
+nothing, and asking "has any run since the reading been a non-skip?" cleared none
+of the four.
+
 ## Adding a service
 
 1. Create `<service>_job_runs` with the columns above, in that service's schema,

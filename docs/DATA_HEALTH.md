@@ -201,6 +201,39 @@ service's words — Lightning writes
 HALO reads `last_error` as state and shows it above the strip in red, as a board
 entry of its own `config` signal, and sorts the project as one red.
 
+### An error says what was SEEN, not only what was concluded
+
+Lightning recorded `Listener response did not confirm the requested recipient`
+against 27 messages the listener had in fact queued. The conclusion was wrong
+because of a parsing bug, and that was fixed — but the wording was a second
+failure. It stated a verdict and withheld the evidence, although the service was
+holding the reply in its hand and that reply said `QUEUED` with a queue id. Anyone
+reading "did not confirm" reasonably concluded the send had broken, and the only
+way to learn otherwise was to open the stored attempt and read the JSON.
+
+When a service cannot interpret a reply, the error must say **what it expected,
+what it actually received, and where they differ** — enough that the reader can
+tell "the other side refused" from "I could not read what the other side said":
+
+```
+not this:   Listener response did not confirm the requested recipient
+but this:   no `results` array in the reply; top-level keys seen: data, action,
+            success, instance, proxyDurationMs
+```
+
+The second names the cause (the reply was wrapped one level deeper than expected)
+without anyone opening a database row. Two guidelines:
+
+- **Describe the shape, don't dump the body.** Key names and the few fields the
+  decision turned on, not the whole payload — replies can carry recipient numbers
+  and message text that do not belong in a log line.
+- **Never let the conclusion outrank the evidence.** If the service read the reply
+  wrongly, a digest of what it read will look odd, and that oddness is the signal.
+  A verdict alone hides it.
+
+The same applies to every "unconfirmed" and "could not parse" outcome, not only
+to listener replies.
+
 ### Two consequences worth stating
 
 **A skip is not an error.** Rules 1–4 are the service doing its job. They belong

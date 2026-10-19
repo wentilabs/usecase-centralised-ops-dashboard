@@ -129,6 +129,13 @@
       "requires": [
         "listener-queue-acceptance"
       ]
+    },
+    {
+      "id": "manpower-summary-format",
+      "file": "migrations/20261019_manpower_summary_format.sql",
+      "requires": [
+        "independent-summary-switches"
+      ]
     }
   ],
   "destructiveUtilities": []

@@ -223,7 +223,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
       columns: ["enable_housekeeping", "safety_group_ids"],
     },
     { routes: ["POST /daily-activity-summary"], columns: ["enable_activity_summary"] },
-    { routes: ["POST /daily-manpower-summary"], columns: ["enable_manpower_summary", "exclude_wohhup_from_manpower"] },
+    { routes: ["POST /daily-manpower-summary"], columns: ["enable_manpower_summary", "manpower_summary_format", "exclude_wohhup_from_manpower"] },
     {
       routes: ["POST /daily-activity-summary", "POST /daily-manpower-summary"],
       columns: ["morning_report_start_hour", "manpower_activity_outbound_group_id"],

@@ -89,6 +89,18 @@ export function DataHealthRow({
           <span className="text-[11px] text-muted-foreground">{formatSgt(health.newestReceivedAt)} SGT</span>
         ) : null}
       </div>
+      {/* A finding must say why. Amber and red carry what was expected, what was
+          seen and what the service itself reported, so the next move is a search
+          for that sentence and not a guess. Green and idle say nothing extra. */}
+      {health.evidence?.length && colour !== "green" ? (
+        <ul className="mt-1.5 flex flex-col gap-0.5 text-[11px] leading-snug text-muted-foreground">
+          {health.evidence.map((line) => (
+            <li key={line} className="break-words">
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {/* The shape, under the words: the pill says what is true now, the bars
           say whether it has been true all week or since an hour ago. */}
       <HealthBars projectCode={projectCode} bars={bars} />

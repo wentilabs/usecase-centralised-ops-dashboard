@@ -238,13 +238,14 @@ export function runLogOf(service: ServiceKey): {
   projectColumn: string;
   statusColumn: string;
   timeColumn: string;
+  errorColumn: string;
   producer: { jobTypeColumn: string; jobTypePrefix: string };
 } | null {
   const source = SOURCES[service];
   // Only a log that says which job produces the readings can explain their absence.
   if (!source || source.signal !== "run" || !source.producer) return null;
-  const { schema, table, projectColumn, statusColumn, timeColumn, producer } = source;
-  return { schema, table, projectColumn, statusColumn, timeColumn, producer };
+  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, producer } = source;
+  return { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, producer };
 }
 
 export const BOARD_SERVICES = PROCESS_SERVICES.filter((service) => boardSignalFor(service) !== null);

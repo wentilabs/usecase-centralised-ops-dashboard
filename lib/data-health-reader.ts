@@ -2,12 +2,14 @@ import {
   assessIngestionHealth,
   healthKey,
   healthTarget,
+  describeAge,
   idleBecauseSkipped,
   type HealthTarget,
   type IngestionEvidence,
   type ProjectHealth,
 } from "./data-health";
 import { activityFor, type Activity } from "./data-health-activity";
+import { logLines } from "./log-lines";
 import { isIdleStatus } from "./health-status";
 import { runLogOf } from "./process-log";
 import type { ProjectConfigRow, ServiceKey } from "./services";
@@ -160,6 +162,100 @@ async function skippedSinceReading(
   }
 }
 
+/** "18 Oct, 16:46 SGT" without the year: these lines are read within days of the event. */
+function whenSgt(iso: string): string {
+  const at = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
+  if (Number.isNaN(at.getTime())) return iso;
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][at.getUTCMonth()];
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${at.getUTCDate()} ${month}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} SGT`;
+}
+
+const shorten = (text: string, max = 220) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/**
+ * What the service itself said, for an amber or red the age check is about to give.
+ *
+ * The age check knows only that readings stopped. The service's run log knows more:
+ * whether the scrape that produces them ran at all, and what it reported. Two
+ * facts, both in the service's own words and neither interpreted:
+ *
+ *  - the newest run since the last reading — "is the service alive, and what does
+ *    it say about the project?"
+ *  - the newest run of the PRODUCER job, whenever it was — "when did anything last
+ *    try to bring data in, and what happened?" A scrape that has not run for this
+ *    project in three weeks is a different problem from one that runs every
+ *    fifteen minutes and finds nothing, and the verdict colour cannot tell them
+ *    apart.
+ *
+ * Returns nothing rather than guessing when the log cannot be read, so a failure
+ * to ask can only ever remove a line, never invent one.
+ */
+async function serviceTestimony(
+  target: HealthTarget,
+  since: string,
+  options: Required<Pick<HealthReadOptions, "fetchImpl" | "now" | "timeoutMs">> & { url: string; key: string },
+): Promise<string[]> {
+  const log = runLogOf(target.service);
+  if (!log) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  const ask = async (extra: Record<string, string>) => {
+    const query = new URLSearchParams({
+      select: `${log.timeColumn},${log.statusColumn},${log.producer.jobTypeColumn},${log.errorColumn}`,
+      [log.projectColumn]: `eq.${target.projectCode}`,
+      order: `${log.timeColumn}.desc`,
+      ...extra,
+    });
+    const response = await options.fetchImpl(`${options.url}/rest/v1/${encodeURIComponent(log.table)}?${query}`, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { apikey: options.key, Authorization: `Bearer ${options.key}`, "Accept-Profile": log.schema },
+    });
+    if (!response.ok) return null;
+    const rows = await response.json() as unknown;
+    return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : null;
+  };
+  const describe = (row: Record<string, unknown>) => {
+    const status = String(row[log.statusColumn] ?? "").trim();
+    const job = String(row[log.producer.jobTypeColumn] ?? "").trim();
+    const first = logLines(row[log.errorColumn])[0];
+    return `${job ? `${job} ` : ""}${status} at ${whenSgt(String(row[log.timeColumn]))}${first ? ` — “${shorten(first)}”` : ""}`;
+  };
+
+  try {
+    const [recent, producer] = await Promise.all([
+      ask({ limit: "50", [log.timeColumn]: `gt.${since}` }),
+      ask({ limit: "1", [log.producer.jobTypeColumn]: `like.${log.producer.jobTypePrefix}*` }),
+    ]);
+    const lines: string[] = [];
+    if (recent) {
+      if (!recent.length) {
+        lines.push("Service log: no run of any kind since that reading, so the service itself has gone quiet for this project.");
+      } else {
+        const newest = recent[0];
+        const message = logLines(newest[log.errorColumn])[0];
+        const same = message ? recent.filter((row) => logLines(row[log.errorColumn])[0] === message).length : 0;
+        lines.push(
+          `Service log: the newest of ${recent.length}${recent.length === 50 ? "+" : ""} runs since then was ${describe(newest)}${same > 1 ? `; ${same} runs carry that same message` : ""}.`,
+        );
+      }
+    }
+    if (producer) {
+      lines.push(
+        producer.length
+          ? `Scrape: last ran ${describe(producer[0])} (${describeAge(options.now.getTime() - new Date(String(producer[0][log.timeColumn])).getTime())} ago).`
+          : "Scrape: this project has no scrape run in the log.",
+      );
+    }
+    return lines;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Reads only catalog-derived source tables; the server-only wrapper exposes it to HALO. */
 export async function listProjectHealth(
   configured: Partial<Record<ServiceKey, ProjectConfigRow[]>>,
@@ -209,6 +305,10 @@ export async function listProjectHealth(
     if ((verdict.tone === "warn" || verdict.tone === "danger") && evidence.kind === "row" && verdict.newestReceivedAt) {
       const skipped = await skippedSinceReading(target, verdict.newestReceivedAt, readOptions);
       if (skipped) return { target, verdict: idleBecauseSkipped(verdict, skipped) };
+      // Still a finding: say what the service itself reported, so the reader has
+      // somewhere to start instead of a colour.
+      const testimony = await serviceTestimony(target, verdict.newestReceivedAt, readOptions);
+      if (testimony.length) return { target, verdict: { ...verdict, evidence: [...(verdict.evidence ?? []), ...testimony] } };
     }
     return { target, verdict };
   }));

@@ -56,7 +56,8 @@ test("the tolerated gap comes from the project's own cadence, not a fixed budget
   const oneHour = activeHoursFor("wbgt", row({ site_hours_start: 20, site_hours_end: 20 }));
   assert.deepEqual(oneHour.hours, [20]);
   const single = activityFor("wbgt", row({ site_hours_start: 20, site_hours_end: 20 }), EVENING);
-  assert.equal(single.state === "active" && single.toleranceMs, 25 * 60 * 60 * 1000);
+  // Previous occurrence 24 h ago, plus the two hours' grace a break gets.
+  assert.equal(single.state === "active" && single.toleranceMs, 26 * 60 * 60 * 1000);
 
   /**
    * The first active hour of the day looks back to the LAST one, yesterday.
@@ -70,7 +71,10 @@ test("the tolerated gap comes from the project's own cadence, not a fixed budget
   const firstHour = activityFor("wbgt", row({ site_hours_start: 8, site_hours_end: 10 }), dayStart);
   assert.equal(firstHour.state, "active");
   assert.equal(firstHour.state === "active" && firstHour.activeHours[0], 8);
-  assert.equal(firstHour.state === "active" && firstHour.toleranceMs, 23 * 60 * 60 * 1000);
+  // Twenty-two hours back, and two hours' grace: the first reading of the day
+  // arrives during the first hour back, so judging at its start called every site
+  // behind each morning.
+  assert.equal(firstHour.state === "active" && firstHour.toleranceMs, 24 * 60 * 60 * 1000);
 });
 
 test("an idle verdict ignores the evidence entirely", () => {

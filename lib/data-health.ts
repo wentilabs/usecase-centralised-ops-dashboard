@@ -28,6 +28,16 @@ export type ProjectHealth = {
   label: string;
   newestReceivedAt: string | null;
   sourceEventAt: string | null;
+  /**
+   * Why an amber or red says what it says, one fact per line.
+   *
+   * A colour with nothing behind it tells a developer something is wrong and
+   * nothing about where to look, which is how a red becomes a colour people learn
+   * to ignore. Every warn/danger carries what was EXPECTED, what was SEEN, and —
+   * added by the reader, which can ask — what the service itself said about it.
+   * Plain sentences, never values from the data.
+   */
+  evidence?: string[];
 };
 
 const HOUR = 60 * 60 * 1000;
@@ -82,7 +92,14 @@ function parseTimestamp(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function result(target: HealthTarget, tone: HealthTone, label: string, newestReceivedAt: string | null, sourceEventAt: string | null): ProjectHealth {
+function result(
+  target: HealthTarget,
+  tone: HealthTone,
+  label: string,
+  newestReceivedAt: string | null,
+  sourceEventAt: string | null,
+  evidence?: string[],
+): ProjectHealth {
   return {
     service: target.service,
     projectCode: target.projectCode,
@@ -90,7 +107,29 @@ function result(target: HealthTarget, tone: HealthTone, label: string, newestRec
     label,
     newestReceivedAt,
     sourceEventAt,
+    ...(evidence?.length ? { evidence } : {}),
   };
+}
+
+/** "8–11, 13–19" from the hours a project works in. */
+export function describeHours(hours: number[]): string {
+  const runs: string[] = [];
+  let start = 0;
+  for (let index = 1; index <= hours.length; index += 1) {
+    if (index < hours.length && hours[index] === hours[index - 1] + 1) continue;
+    runs.push(hours[start] === hours[index - 1] ? `${hours[start]}` : `${hours[start]}–${hours[index - 1]}`);
+    start = index;
+  }
+  return runs.join(", ");
+}
+
+/** "52 min", "5 h", "2 days". Coarse on purpose: it is read, not computed with. */
+export function describeAge(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 90) return `${Math.max(minutes, 1)} min`;
+  const hours = Math.round(ms / HOUR);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} days`;
 }
 
 export function neutralHealth(service: ServiceKey, projectCode: string): ProjectHealth {
@@ -131,9 +170,25 @@ export function assessIngestionHealth(
   const idle = activity ? activityLabel(activity) : null;
   if (idle) return result(target, "neutral", idle, null, null);
 
-  if (evidence.kind === "empty") return result(target, "danger", "Data: no data received yet", null, null);
-  if (evidence.kind === "missing_table") return result(target, "danger", "Data: table unavailable", null, null);
-  if (evidence.kind === "monitor_error") return result(target, "danger", "Data: monitor unavailable", null, null);
+  if (evidence.kind === "empty") {
+    return result(target, "danger", "Data: no data received yet", null, null, [
+      `Seen: the table ${target.schema}.${target.table} exists and has no rows.`,
+    ]);
+  }
+  if (evidence.kind === "missing_table") {
+    return result(target, "danger", "Data: table unavailable", null, null, [
+      `Seen: ${target.schema}.${target.table} does not exist, so no reading can have been stored for this project.`,
+    ]);
+  }
+  if (evidence.kind === "monitor_error") {
+    // Amber, not red: HALO failing to read says nothing about the project, so it is
+    // not a fault of the site. Not green either — neutral renders green here, and
+    // a project HALO could not look at must never read as healthy. The evidence
+    // line says the problem is the reading, not the project.
+    return result(target, "warn", "Data: monitor unavailable", null, null, [
+      "Seen: HALO could not read the table (a timeout or an error), so nothing about the project was judged.",
+    ]);
+  }
 
   const newestReceivedAt = parseTimestamp(evidence.createdAt);
   const sourceEventAt = parseTimestamp(evidence.sourceEventAt);
@@ -153,8 +208,24 @@ export function assessIngestionHealth(
   const warnAfter = activity?.state === "active" ? activity.toleranceMs : target.warningAfterMs;
   const criticalAfter = activity?.state === "active" ? activity.toleranceMs * 2 : target.criticalAfterMs;
 
-  if (ageMs >= criticalAfter) return result(target, "danger", "Data: no recent data", newestReceivedAt, sourceEventAt);
-  if (ageMs >= warnAfter) return result(target, "warn", "Data: delayed", newestReceivedAt, sourceEventAt);
+  const sgtMidnight = Math.floor((now.getTime() + 8 * HOUR) / (24 * HOUR)) * 24 * HOUR - 8 * HOUR;
+  if (activity?.state === "active" && activity.mutedDay && new Date(newestReceivedAt).getTime() < sgtMidnight) {
+    // The site does not work today and nothing has arrived today, so silence is
+    // the expected state and not a finding. Neutral rather than green, because
+    // nothing was received; a reading that DID arrive today is judged normally.
+    return result(target, "neutral", `Data: idle — ${activity.mutedDay} is muted`, newestReceivedAt, sourceEventAt);
+  }
+
+  // What the reader was told to expect and what it saw, written out, so the
+  // colour is never the only thing a developer is handed.
+  const reasons = [
+    activity?.state === "active"
+      ? `Expected: ${activity.cadence} in hours ${describeHours(activity.activeHours)} SGT, so the longest normal silence is ${describeAge(activity.toleranceMs)}.`
+      : `Expected: a reading within ${describeAge(target.warningAfterMs)}.`,
+    `Seen: the newest reading arrived ${describeAge(ageMs)} ago.`,
+  ];
+  if (ageMs >= criticalAfter) return result(target, "danger", "Data: no recent data", newestReceivedAt, sourceEventAt, reasons);
+  if (ageMs >= warnAfter) return result(target, "warn", "Data: delayed", newestReceivedAt, sourceEventAt, reasons);
   return result(target, "good", "Data: receiving", newestReceivedAt, sourceEventAt);
 }
 

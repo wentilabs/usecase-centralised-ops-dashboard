@@ -40,7 +40,19 @@ export type Activity =
    * twenty-four, and judging it at one hour would report a healthy project as
    * broken twenty-three times a day.
    */
-  | { state: "active"; cadence: string; activeHours: number[]; toleranceMs: number };
+  | {
+      state: "active";
+      cadence: string;
+      activeHours: number[];
+      toleranceMs: number;
+      /**
+       * Set when today is a day this project mutes ("Sunday"). The service is still
+       * scheduled, so the hour is active, but a silent table is not a fault: the
+       * site declared it does not work today. Fresh data still reads as healthy, so
+       * a site that DOES report on its muted day is not hidden by this.
+       */
+      mutedDay?: string;
+    };
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -63,18 +75,44 @@ export function activeHoursFor(service: ServiceKey, row: ProjectConfigRow): { ho
   return { hours: [...cadenceByHour.keys()].sort((a, b) => a - b), cadenceByHour };
 }
 
+/** The Singapore weekday of an instant: 0 is Sunday. */
+function sgtWeekday(at: Date): number {
+  return new Date(at.getTime() + 8 * HOUR_MS).getUTCDay();
+}
+
 /**
- * How long ago the previous active hour began, from the current one.
+ * The calendar day this project does not work, if the instant falls on one.
  *
- * Wraps across midnight, because a project running 22:00–02:00 has 01:00
- * following 00:00 and a naive subtraction would make that negative. A single
- * active hour in the day gives 24, which is correct: the previous occurrence
- * really was yesterday.
+ * Sunday only, because it is the one mute HALO can decide from the row alone.
+ * Public holidays are the service's calendar, not HALO's, and stay with the
+ * service's own run log (`skipped_ph_…`), which the reader already consults.
  */
-function hoursSincePreviousActive(hours: number[], current: number): number {
-  if (hours.length <= 1) return 24;
-  const previous = [...hours].reverse().find((hour) => hour < current);
-  return previous === undefined ? current + 24 - hours[hours.length - 1] : current - previous;
+function mutedDayAt(row: ProjectConfigRow, at: Date): string | null {
+  return row.remove_sunday_notifications === true && sgtWeekday(at) === 0 ? "Sunday" : null;
+}
+
+/**
+ * The longest silence the configuration can explain, from the current hour.
+ *
+ * Walks back to the previous hour this project works in — skipping muted days,
+ * which is what makes Monday morning compare against Saturday and not against a
+ * Sunday nobody works. A gap of one hour tolerates one more hour of grace (a job
+ * that fires at :05 has not failed at :04). A longer gap is a BREAK — overnight, a
+ * lunch skip, a weekend — and tolerates two: the first reading after a break
+ * arrives during the first hour back, and judging at its start reported every
+ * site as behind each morning until its first reading landed.
+ */
+function toleranceFrom(hours: number[], row: ProjectConfigRow, now: Date): number {
+  const hourStart = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+  // Eight days covers a weekend plus a holiday; a project with no work hour in
+  // that span is dormant, which was settled before this is asked.
+  for (let back = 1; back <= 8 * 24; back += 1) {
+    const candidate = new Date(hourStart - back * HOUR_MS);
+    if (hours.includes(sgtHour(candidate)) && !mutedDayAt(row, candidate)) {
+      return (back + (back > 1 ? 2 : 1)) * HOUR_MS;
+    }
+  }
+  return 26 * HOUR_MS;
 }
 
 export function activityFor(service: ServiceKey, row: ProjectConfigRow, now: Date): Activity {
@@ -90,9 +128,8 @@ export function activityFor(service: ServiceKey, row: ProjectConfigRow, now: Dat
     state: "active",
     cadence: cadenceByHour.get(hour) as string,
     activeHours: hours,
-    // Plus one hour of grace: a cadence that fires at :05 has not failed at
-    // :04, and the gap is measured between hour starts.
-    toleranceMs: (hoursSincePreviousActive(hours, hour) + 1) * HOUR_MS,
+    toleranceMs: toleranceFrom(hours, row, now),
+    ...(mutedDayAt(row, now) ? { mutedDay: mutedDayAt(row, now) as string } : {}),
   };
 }
 

@@ -512,6 +512,59 @@ have cleared a project whose scrape had been running for weeks and finding
 nothing, and asking "has any run since the reading been a non-skip?" cleared none
 of the four.
 
+### What "no recent data" means, and what it must carry
+
+The rule is age against what the configuration can explain: the newest `created_at`
+in the project's readings table, compared with the longest silence the project's own
+cadence allows. Amber is past that gap, red is past twice it. Nothing more — in
+particular it does not know *why* the table is quiet, so it must never be the only
+thing a developer is handed.
+
+**Every amber and red carries its evidence**, in plain sentences on the card
+(`ProjectHealth.evidence`):
+
+- **Expected** — the cadence and hours HALO held the project to, and the longest
+  normal silence they imply.
+- **Seen** — how old the newest reading is.
+- **Service log** — the newest run since that reading, in the service's own words,
+  and how many runs carry the same message. A standing message repeated every hour
+  is a different finding from a one-off.
+- **Scrape** — when the producing job last ran for this project, and what it said.
+  A scrape that has not run for a project in three weeks is not the same problem as
+  one that runs every fifteen minutes and finds nothing, and the colour cannot tell
+  them apart.
+
+If the log cannot be read, those lines are simply absent; the evidence only ever
+gets shorter, never invented, and the colour is unchanged.
+
+**The calendar the project declares is part of what is expected.** Two rules, both
+read from the row so they cannot drift from the service:
+
+1. *A muted Sunday is not a finding.* A project with `remove_sunday_notifications`
+   whose table has received nothing today is `idle — Sunday is muted`, keeping the
+   time of its last reading. A reading that **did** arrive today is judged normally,
+   so a site that reports on its muted day and then stops is still caught.
+2. *Monday compares against Saturday.* The tolerated gap is measured back to the
+   previous hour the project works in on a day it works. A break — overnight, a
+   skipped lunch hour, a weekend — gets two hours' grace rather than one, because
+   the first reading after a break arrives during the first hour back. Without it
+   every site was amber each morning until its first reading landed, and every
+   Sunday-muted site red until Monday's.
+
+Public holidays are the service's calendar, not HALO's, so they stay with the run-log
+testimony above rather than a copied holiday list.
+
+**HALO failing to read is not a finding about the project.** A timeout or error
+reading the table is amber with the sentence "HALO could not read the table" — not
+red, because nothing is known to be wrong with the site, and not green, because a
+project HALO could not look at must not look healthy.
+
+The services' own *Data Health reminder* messages (`/api/wbgt-data-health`,
+`/api/noise-data-health`) use a flat age rule — amber from one hour, red from four,
+whatever the site hours or calendar — and are a separate source of exactly this
+noise. They go to the data-health groups only, and WBGT's are restricted to `TEST`
+during rollout; they are not changed by anything above.
+
 ## Adding a service
 
 1. Create `<service>_job_runs` with the columns above, in that service's schema,

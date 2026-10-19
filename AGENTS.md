@@ -385,10 +385,10 @@ introspection but WBGT's contract does not declare — so
 `/api/water-parade-intake` is deliberately unbound rather than pointed at
 something undeclared.
 
-**`lib/message-previews.ts`** shows the real message behind a switch. Five of
-the seven services are covered; the two that are not are recorded as a test
-rather than a comment, so the gap is reviewable and fails once those repos
-publish their shapes:
+**`lib/message-previews.ts`** shows the real message behind a switch. All seven
+services are covered. Ailytics and Subcon were the last two, excused because their
+docs never print a complete body and composing one would be a guess; they are covered
+now by *running their own builders*, not by composing — see "Endpoint messages" below.
 
 | Service | Previews come from |
 |---|---|
@@ -396,12 +396,42 @@ publish their shapes:
 | wbgt, haze | their message builders, executed and pasted |
 | lightning | `MESSAGE_SHAPES.md`, plus the SMS wrapper transcribed from `usecases/lightning/sms.js` |
 | issueChaser | `MESSAGE_SHAPES.md` |
-| ailytics | **none** — the docs describe parsing, never an outbound body |
-| subcon | **none** — SPECS.md gives the rules and the trailers, no complete body |
+| ailytics | `buildStatusSummaryMessage` / `buildYesterdaySummaryMessage`, executed (`scripts/build-endpoint-previews.mjs`) |
+| subcon | `buildManpowerSummaryMessage`, `buildDailySummary`, `buildHousekeepingReport`, executed (same script) |
 
 A preview column need not be a formatter. `amber_enabled`,
 `sms_lightning_format` and every Issue Chaser style are switches, and each
 sends a different thing — which is the only question this file answers.
+
+### Endpoint messages
+
+Most endpoints that deliver a message have no formatter column to hang a `?` on — the
+manpower reports, the lightning kickoff, the data-health reminders. They are covered
+two ways, from one registry (`lib/endpoint-registry.ts`, keyed by the route as the
+pinned contract spells it):
+
+- **The `?` beside the switch** that turns the message on (`HELP_COLUMNS`): the
+  same panel the formatters use, with a line saying which endpoint sends it. These
+  never offer "Use this" — only a dropdown can be set from the panel.
+- **Developer tab → "What each endpoint sends"**: every delivering endpoint, with the
+  switches it needs, which projects have it on, and the message. "On" is the
+  configuration's answer (`enabled` plus every switch), not an observation — a
+  calendar or time gate can still skip a run, and the service decides that.
+
+Nothing is typed by hand. `scripts/build-endpoint-previews.mjs` writes
+`lib/endpoint-samples.generated.ts` from each service's **`origin/main`** — never a
+sibling's working tree, which goes stale or carries another session's uncommitted
+edits — either lifting a fenced block out of its own message document or running its
+own builder on a fixture its own tests already use. It fails when a document has moved
+rather than emitting a plausible old shape, and `tests/endpoint-previews.test.ts`
+regenerates and compares whenever the siblings are checked out. After a service changes
+a message, run `node scripts/build-endpoint-previews.mjs` and commit the result.
+
+`tests/endpoint-previews.test.ts` closes the silent failure: every contract route that
+is not a diagnostic or a read must have an entry or a reason in `NOT_A_MESSAGE`, and a
+stale entry fails too. An endpoint with nothing to show carries a `gap` that says why
+(an image, a generated workbook) instead of being left off. `enabledBy: null` means the
+service documents no single switch, so HALO shows no project count rather than a wrong one.
 
 ## Outbound load (`lib/load-model`)
 

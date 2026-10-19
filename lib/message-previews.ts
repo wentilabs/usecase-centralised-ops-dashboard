@@ -1,6 +1,8 @@
 import type { ServiceKey } from "./services";
 import { NOISE_PREVIEWS } from "./message-previews.generated";
 import { ISSUE_FORMAT_PREVIEWS } from "./issue-chaser-previews.generated";
+import { ENDPOINT_SAMPLES } from "./endpoint-samples.generated";
+import { ENDPOINT_PREVIEWS, HELP_COLUMNS } from "./endpoint-registry";
 
 /**
  * What each formatter option actually sends to WhatsApp.
@@ -601,14 +603,81 @@ const ISSUE_CHASER_PREVIEWS: FormatterPreview[] = [
   },
 ];
 
-export const MESSAGE_PREVIEWS: FormatterPreview[] = [
+/**
+ * Subcon's `manpower_summary_format`. Both options are `buildManpowerSummaryMessage`
+ * run on one fixture by `scripts/build-endpoint-previews.mjs`, so the only difference
+ * on screen is the one the setting makes.
+ */
+const SUBCON_PREVIEWS: FormatterPreview[] = [
+  {
+    value: "manpower+machine",
+    summary: "The default, and the message every project had before the setting existed: per-company worker totals with machine counts alongside.",
+  },
+  {
+    value: "manpower-only",
+    summary: "The same report with every machine count removed, from the header total to each company line. The route still computes the machine total; it is only left out of the message.",
+  },
+].map(({ value, summary }) => ({
+  service: "subcon" as const,
+  column: "manpower_summary_format",
+  value,
+  summary,
+  kind: "message" as const,
+  bubbles: ENDPOINT_SAMPLES[`subcon.manpower-summary.${value}`].bubbles,
+  isFallback: value === "manpower+machine",
+  source: ENDPOINT_SAMPLES[`subcon.manpower-summary.${value}`].source,
+}));
+
+/**
+ * The `?` for an endpoint that has no formatter column of its own.
+ *
+ * Built from the endpoint registry, so a message added there appears beside the
+ * switch that turns it on without a second place to remember. Only the columns that
+ * registry names are covered, and a column that already has a hand-written preview
+ * keeps it — this never replaces one.
+ */
+function endpointHelpPreviews(taken: ReadonlySet<string>): { previews: FormatterPreview[]; contexts: Record<string, PreviewContext> } {
+  const previews: FormatterPreview[] = [];
+  const contexts: Record<string, PreviewContext> = {};
+  for (const entry of ENDPOINT_PREVIEWS) {
+    const column = HELP_COLUMNS[`${entry.service}:${entry.path}`];
+    if (!column || taken.has(`${entry.service}:${column}`)) continue;
+    const samples = entry.sources.flatMap((source) => ("sample" in source ? [ENDPOINT_SAMPLES[source.sample]] : []));
+    if (!samples.length) continue;
+    const isFlag = (entry.enabledBy ?? []).some((rule) => rule.column === column && rule.as === "flag");
+    previews.push({
+      service: entry.service,
+      column,
+      // A switch is on or off; a recipient list is set or blank. The panel is for
+      // reading, so this is a label and never written back to the column.
+      value: isFlag ? "true" : "set",
+      summary: entry.summary,
+      kind: "message",
+      bubbles: samples.flatMap((sample) => sample.bubbles),
+      source: samples[0].source,
+    });
+    contexts[`${entry.service}:${column}`] = {
+      intro: `Sent by POST ${entry.path}${entry.enabledBy?.length ? `, once ${entry.enabledBy.map((rule) => rule.column).join(" and ")} ${entry.enabledBy.length > 1 ? "are" : "is"} on for the project` : ""}. This is the message a group receives.`,
+    };
+  }
+  return { previews, contexts };
+}
+
+const HAND_WRITTEN_AND_GENERATED: FormatterPreview[] = [
   ...NOISE_PREVIEWS,
   ...ISSUE_FORMAT_PREVIEWS,
   ...WBGT_PREVIEWS,
   ...HAZE_PREVIEWS,
   ...LIGHTNING_PREVIEWS,
   ...ISSUE_CHASER_PREVIEWS,
+  ...SUBCON_PREVIEWS,
 ];
+
+const ENDPOINT_HELP = endpointHelpPreviews(
+  new Set(HAND_WRITTEN_AND_GENERATED.map((preview) => `${preview.service}:${preview.column}`)),
+);
+
+export const MESSAGE_PREVIEWS: FormatterPreview[] = [...HAND_WRITTEN_AND_GENERATED, ...ENDPOINT_HELP.previews];
 
 const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
   "wbgt:intermittent_reports_formatter": {
@@ -654,6 +723,10 @@ const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
     intro:
       "This is the signed SMS Gateway relay, not NEA. Project-specific code recognises and routes each incoming body. This column only chooses whether the shared STOP/SAFE instructions are added underneath.",
   },
+  "subcon:manpower_summary_format": {
+    intro:
+      "Sent by POST /daily-manpower-summary, once enable_manpower_summary is on. Only the machine counts differ between the two options.",
+  },
   "noise:five_min_formatter": {
     intro:
       "The 5-minute cadence either stays silent until a meter breaches, or reports every cycle. Two of these options do both.",
@@ -668,7 +741,8 @@ export function previewsFor(service: ServiceKey, column: string): FormatterPrevi
 }
 
 export function previewContext(service: ServiceKey, column: string): PreviewContext | null {
-  return PREVIEW_CONTEXT[`${service}:${column}`] ?? null;
+  const key = `${service}:${column}`;
+  return PREVIEW_CONTEXT[key] ?? ENDPOINT_HELP.contexts[key] ?? null;
 }
 
 export function hasPreview(service: ServiceKey, column: string): boolean {

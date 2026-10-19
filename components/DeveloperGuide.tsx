@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { EndpointMessages } from "./EndpointMessages";
 import { ServiceTag } from "./ServiceTag";
 import { dataHealthDetail, healthKey, type ProjectHealth } from "@/lib/data-health";
 import {
@@ -64,6 +65,8 @@ export function DeveloperGuide({ rows, errors, health }: {
           health={health}
         />
       ))}
+
+      <EndpointMessages rows={rows} />
 
       <section className="grid gap-3 md:grid-cols-2">
         {SERVICE_KEYS.map((service) => (

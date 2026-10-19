@@ -50,6 +50,13 @@ export const subconFieldProvider: ServiceFieldProvider = {
       help: "The plain per-company headcount, which also reads the `Machines` tab when there is one. Its own opt-in, independent of the report above: either can run without the other, and with both off no morning report goes out at all. With Project enabled off it still reads and records — only the message is held back.",
       showIf: { field: "enabled", equals: true },
     },
+    // Not behind `showIf`: the `?` beside it is how someone learns what the report
+    // looks like, and that is most useful to the person deciding whether to turn
+    // the report on. It only changes the message when the report above is on.
+    manpower_summary_format: {
+      label: "Manpower summary format",
+      help: "Whether the plain manpower report lists machine counts. manpower+machine is the default and what every project sent before this setting existed; manpower-only removes every machine count from the message, though the route still computes the machine total. It changes the message only: it does not turn the report on (INV-HK-18).",
+    },
     // Both directions since 140b1e9: `housekeepingOutboundIds` now returns
     // `safetyGroupIds`, so this one list routes forwarded messages IN and is
     // where the nightly housekeeping report goes OUT. It used to be inbound
@@ -140,7 +147,7 @@ export const subconFieldProvider: ServiceFieldProvider = {
     { title: "Google Sheets", fields: ["spreadsheet_id", "exclude_wohhup_from_manpower"] },
     {
       title: "Scheduled reports",
-      fields: ["enable_activity_summary", "enable_manpower_summary", "manpower_activity_outbound_group_id"],
+      fields: ["enable_activity_summary", "enable_manpower_summary", "manpower_summary_format", "manpower_activity_outbound_group_id"],
     },
     // The delivery trio had been folded into the reports section, so this was
     // the one service where "where do the WhatsApp credentials live" had a

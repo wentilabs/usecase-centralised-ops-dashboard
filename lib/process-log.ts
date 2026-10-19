@@ -30,12 +30,13 @@ import type { ServiceKey } from "./services";
  * only log a send that happened, so a correct skip and a cron that never fired
  * look identical in it.
  *
- * **Why Haze and Lightning are delivery-only.** Their ingestion is one public
- * NEA feed for the whole estate, so a failed fetch is the same fact about all
- * thirty-one projects rather than a fact about any one of them. Putting it on
- * every card would say nothing while burying the part that IS per-project,
- * which is whether the message was accepted. Noise and WBGT scrape per site, so
- * their runs are per-project and belong on the strip.
+ * **Why their NEA fetch is not a project strip.** Haze and Lightning read a
+ * public feed for the whole estate, so a failed fetch is one shared fact.
+ * Haze's hourly job nevertheless writes one run decision per project, even
+ * when no message was due; that run log is its primary strip source. Lightning
+ * uses its per-project delivery events and reports a standing configuration
+ * fault separately. Noise and WBGT scrape per site, so their runs are also
+ * per-project strip sources.
  *
  * This mapping lives in HALO because it is an integration detail — which table,
  * which column. What the statuses MEAN stays with each service, in its contract,

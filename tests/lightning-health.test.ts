@@ -103,6 +103,22 @@ test("a project that stopped being evaluated is a fault, fifteen minutes in and 
   assert.equal(EVALUATION_STALE_MS, 15 * MIN);
 });
 
+test("a CLEAR project is not stale after its configured working hours", () => {
+  const now = new Date("2026-10-20T11:30:00.000Z"); // 19:30 SGT
+  const finished = { last_tick_finished_at: now.getTime() - 30_000 };
+  const project = { project_code: "TJR", last_notified_state: "CLEAR", last_evaluated_at: Date.parse("2026-10-20T10:59:00.000Z") };
+  const config = { project_code: "TJR", enabled: true, working_hours_start_hhmm: "0800", working_hours_end_hhmm: "1900", red_dwell_seconds: 1200 };
+  assert.deepEqual(lightningProjectFaults([project], new Set(["TJR"]), finished, now, [config]), {});
+});
+
+test("an open Lightning episode remains expected to be evaluated after hours", () => {
+  const now = new Date("2026-10-20T11:30:00.000Z"); // 19:30 SGT
+  const finished = { last_tick_finished_at: now.getTime() - 30_000 };
+  const project = { project_code: "TJR", last_notified_state: "WATCH", last_evaluated_at: Date.parse("2026-10-20T10:59:00.000Z") };
+  const config = { project_code: "TJR", enabled: true, working_hours_start_hhmm: "0800", working_hours_end_hhmm: "1900", red_dwell_seconds: 1200 };
+  assert.match(lightningProjectFaults([project], new Set(["TJR"]), finished, now, [config]).TJR, /^Not evaluated since/);
+});
+
 test("the service's own error wins, and silence is not a fault", () => {
   const faults = lightningProjectFaults(
     [{ project_code: "SGK", last_error: "manpower-sheet POC mentions require manpower_sheet_id", last_notified_state: "STOP", active_stop_until_at: ago(90), last_evaluated_at: ago(60) }],

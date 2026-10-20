@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatHealthErrorReport } from "../lib/health-report";
+import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects } from "../lib/health-report";
+import type { Incident } from "../lib/health-board";
 import type { Bar } from "../lib/health-timeline";
 
 const bar = (colour: Bar["colour"], status: string, at: string, log: string[]): Bar => ({
@@ -30,4 +31,22 @@ test("copy report includes red and orange process errors across projects, newest
 
 test("copy report gives a useful empty message", () => {
   assert.match(formatHealthErrorReport({}), /No red or orange process errors/);
+});
+
+test("current issues report includes Lightning findings that have no process bar", () => {
+  const incident: Incident = {
+    service: "lightning",
+    signal: "config",
+    colour: "red",
+    label: "Not evaluated since 20 Oct, 18:59 SGT (42 min ago), although the tick last finished at 20 Oct, 19:40 SGT",
+    projects: ["AST", "C991-SGB", "C992-SYT"],
+    from: null,
+    to: null,
+  };
+
+  const report = formatHealthCurrentIssues([incident], healthErrorProjects({}));
+  assert.match(report, /Current issues/);
+  assert.match(report, /Lightning \| config \| current/);
+  assert.match(report, /Not evaluated since 20 Oct, 18:59 SGT/);
+  assert.match(report, /Projects: AST, C991-SGB, C992-SYT/);
 });

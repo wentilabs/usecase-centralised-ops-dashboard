@@ -164,7 +164,8 @@ test("the board lists incidents and the project codes inside them", async () => 
   const board = await readFile(resolve("components/DataHealthBoard.tsx"), "utf8");
   const code = board.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-  assert.match(code, /summary\.incidents\.map/, "the list is grouped failures, not one row per project");
+  assert.match(code, /issuesByService\.get\(service\)/, "current findings share each service's card with process errors");
+  assert.match(code, /incidents\.map/, "the list is grouped failures, not one row per project");
   assert.doesNotMatch(code, /summary\.exceptions\.map/, "an ungrouped list reprints one sentence thirty times");
   assert.match(code, /incident\.projects\.map/, "and the affected codes stay visible, not hidden behind a disclosure");
   assert.match(code, /onOpenProject\?\.\(incident\.service, projectCode\)/, "each code still opens its project");

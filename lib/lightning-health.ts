@@ -34,9 +34,9 @@ export const TICK_LATE_MS = 5 * MINUTE;
 /** Past this the safety service has been blind for a quarter of an hour, which is red. */
 export const TICK_STALLED_MS = 15 * MINUTE;
 /**
- * A project not evaluated for this long while the tick is alive is stuck on its own. It is looser
- * than the tick's because a single slow evaluation is normal and a project missed by one tick is not
- * a fault; fifteen missed minutes is.
+ * A project expected to be evaluated but not evaluated for this long while the tick is alive is stuck
+ * on its own. Outside its configured working-hours/prewarm window, a CLEAR project is deliberately
+ * skipped; an open WATCH/STOP episode is still expected to be evaluated.
  */
 export const EVALUATION_STALE_MS = 15 * MINUTE;
 /** The feed is read every tick, so anything older than this is behind. */
@@ -76,13 +76,49 @@ export type ProjectRuntime = {
   last_error?: string | null;
   last_notified_state?: string | null;
   last_notified_degraded?: boolean | null;
+  current_episode_id?: string | null;
   active_stop_until_at?: number | null;
+};
+
+type LightningEvaluationConfig = {
+  project_code?: unknown;
+  enabled?: unknown;
+  working_hours_start_hhmm?: unknown;
+  working_hours_end_hhmm?: unknown;
+  red_dwell_seconds?: unknown;
 };
 
 const sgt = (ms: number) => `${formatSgt(new Date(ms).toISOString())} SGT`;
 const minutes = (ms: number) => Math.max(1, Math.round(ms / MINUTE));
 const iso = (ms: number | null | undefined) => (typeof ms === "number" && ms > 0 ? new Date(ms).toISOString() : null);
 const clip = (text: string, max = 140) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** Whether the worker should evaluate a CLEAR project at this Singapore time. */
+function inEvaluationWindow(config: LightningEvaluationConfig | undefined, now: Date): boolean {
+  const start = String(config?.working_hours_start_hhmm ?? "").trim();
+  const end = String(config?.working_hours_end_hhmm ?? "").trim();
+  if (!start && !end) return true; // NULL/NULL is the worker's 24-hour default.
+  if (!/^([01]\d|2[0-3])[0-5]\d$/.test(start) || !/^([01]\d|2[0-3])[0-5]\d$/.test(end) || start === end) {
+    return true; // Invalid configs are diagnosed by last_error; don't hide a stale-evaluation fault.
+  }
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Singapore",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "00";
+  const current = `${part("hour")}${part("minute")}`;
+  const dwellMinutes = Math.ceil((Number(config?.red_dwell_seconds) || 0) / 60);
+  const prewarmMinutes = Math.max(30, dwellMinutes + 5);
+  const startMinutes = Number(start.slice(0, 2)) * 60 + Number(start.slice(2));
+  const prewarmTime = ((startMinutes - prewarmMinutes) % 1440 + 1440) % 1440;
+  const prewarm = `${String(Math.floor(prewarmTime / 60)).padStart(2, "0")}${String(prewarmTime % 60).padStart(2, "0")}`;
+  return start < end
+    ? current >= prewarm && current < end
+    : current >= prewarm || current < end;
+}
 
 /**
  * Did the tick run, and did it finish clean?
@@ -170,17 +206,19 @@ export function assessFeed(runtime: ServiceRuntime | null, degradedProjects: rea
  * while the tick is alive — if the tick itself has stopped, every project is "not evaluated" and the
  * one notice about the tick says it better than twenty-eight cards.
  *
- * `enabled` is from the project's config, because a disabled project keeps its last evaluation time
- * for ever, and would read as a fault.
+ * `enabled` and evaluation hours are from the project's config. A disabled project retains its last
+ * evaluation forever, and a CLEAR project outside its evaluation window is intentionally skipped.
  */
 export function lightningProjectFaults(
   projects: readonly ProjectRuntime[],
   enabled: ReadonlySet<string>,
   runtime: ServiceRuntime | null,
   now: Date,
+  configs: readonly LightningEvaluationConfig[] = [],
 ): Record<string, string> {
   const finished = runtime?.last_tick_finished_at || runtime?.last_tick_started_at || 0;
   const tickAlive = finished > 0 && now.getTime() - finished < TICK_LATE_MS;
+  const configByProject = new Map(configs.map((config) => [String(config.project_code ?? "").trim(), config]));
   const faults: Record<string, string> = {};
 
   for (const project of projects) {
@@ -198,7 +236,9 @@ export function lightningProjectFaults(
     }
 
     const evaluated = Number(project.last_evaluated_at) || 0;
-    if (evaluated > 0 && now.getTime() - evaluated >= EVALUATION_STALE_MS) {
+    const episodeOpen = (project.last_notified_state && project.last_notified_state !== "CLEAR") || project.current_episode_id;
+    const evaluationExpected = Boolean(episodeOpen) || inEvaluationWindow(configByProject.get(code), now);
+    if (evaluationExpected && evaluated > 0 && now.getTime() - evaluated >= EVALUATION_STALE_MS) {
       faults[code] = `Not evaluated since ${sgt(evaluated)} (${minutes(now.getTime() - evaluated)} min ago), although the tick last finished at ${sgt(finished)}`;
     }
   }
@@ -224,22 +264,23 @@ export async function readLightningHealth(request: Request, now: Date = new Date
       { schema },
     ).catch(() => null),
     request(
-      "lightning_project_runtime?select=project_code,last_evaluated_at,last_error,last_notified_state,last_notified_degraded,active_stop_until_at",
+      "lightning_project_runtime?select=project_code,last_evaluated_at,last_error,last_notified_state,last_notified_degraded,current_episode_id,active_stop_until_at",
       { schema },
     ).catch(() => null),
-    request("lightning_project_configs?select=project_code,enabled", { schema }).catch(() => null),
+    request("lightning_project_configs?select=project_code,enabled,working_hours_start_hhmm,working_hours_end_hhmm,red_dwell_seconds", { schema }).catch(() => null),
   ]);
 
   const runtime = service?.ok && Array.isArray(service.body) ? ((service.body[0] as ServiceRuntime | undefined) ?? null) : null;
   const projectRows = projects?.ok && Array.isArray(projects.body) ? (projects.body as ProjectRuntime[]) : [];
   const enabled = new Set(
     configs?.ok && Array.isArray(configs.body)
-      ? (configs.body as { project_code?: unknown; enabled?: unknown }[])
+      ? (configs.body as LightningEvaluationConfig[])
           .filter((row) => row.enabled === true)
           .map((row) => String(row.project_code ?? "").trim())
           .filter(Boolean)
       : [],
   );
+  const configRows = configs?.ok && Array.isArray(configs.body) ? (configs.body as LightningEvaluationConfig[]) : [];
 
   const degraded = projectRows
     .filter((row) => row.last_notified_degraded === true && enabled.has(String(row.project_code)))
@@ -247,5 +288,5 @@ export async function readLightningHealth(request: Request, now: Date = new Date
     .sort();
 
   const notices = [assessTick(runtime, now), assessFeed(runtime, degraded, now)].filter((notice): notice is LightningNotice => notice !== null);
-  return { notices, faults: lightningProjectFaults(projectRows, enabled, runtime, now) };
+  return { notices, faults: lightningProjectFaults(projectRows, enabled, runtime, now, configRows) };
 }

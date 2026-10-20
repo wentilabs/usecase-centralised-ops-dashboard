@@ -1,4 +1,5 @@
 import { troubleIn, type Bar } from "./health-timeline";
+import type { Incident } from "./health-board";
 import { isServiceKey, SERVICES, type ServiceKey } from "./services";
 
 export type HealthErrorProject = {
@@ -32,6 +33,19 @@ export function healthErrorProjects(strips: Record<string, Bar[]>): HealthErrorP
     || a.projectCode.localeCompare(b.projectCode));
 }
 
+/** Current board findings not already represented by an identical process row. */
+export function standaloneHealthIncidents(incidents: readonly Incident[], projects: readonly HealthErrorProject[]): Incident[] {
+  return incidents.map((incident) => {
+    if (incident.signal !== "run" && incident.signal !== "delivery") return incident;
+    const projectCodes = incident.projects.filter((projectCode) => !projects.some((project) =>
+      project.service === incident.service
+      && project.projectCode === projectCode
+      && project.bars.some((bar) => bar.status === incident.label),
+    ));
+    return { ...incident, projects: projectCodes };
+  }).filter((incident) => incident.projects.length > 0);
+}
+
 function formatSgt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -47,7 +61,7 @@ function formatSgt(value: string): string {
   return `${formatted} SGT`;
 }
 
-/** Copyable, source-worded error report from the process strips currently loaded in HALO. */
+/** Copyable, source-worded process errors currently loaded in HALO. */
 export function formatHealthErrorReport(strips: Record<string, Bar[]>): string {
   const projects = healthErrorProjects(strips);
   if (!projects.length) return "HALO Data Health errors (last 48 hours)\nNo red or orange process errors are currently loaded.";
@@ -62,4 +76,23 @@ export function formatHealthErrorReport(strips: Record<string, Bar[]>): string {
     }
   }
   return lines.join("\n");
+}
+
+/** Copy current board findings that process history does not already cover. */
+export function formatHealthCurrentIssues(incidents: readonly Incident[], projects: readonly HealthErrorProject[]): string {
+  const currentIssues = standaloneHealthIncidents(incidents, projects);
+  if (currentIssues.length) {
+    const lines = ["Current issues"];
+    for (const incident of currentIssues) {
+      const date = incident.from
+        ? incident.to && incident.to !== incident.from
+          ? `${formatSgt(incident.from)} → ${formatSgt(incident.to)}`
+          : formatSgt(incident.from)
+        : "current";
+      lines.push("", `${SERVICES[incident.service].label} | ${incident.signal} | ${date}`, `  ${incident.label}`);
+      lines.push(`  Projects: ${incident.projects.join(", ")}`);
+    }
+    return lines.join("\n");
+  }
+  return "";
 }

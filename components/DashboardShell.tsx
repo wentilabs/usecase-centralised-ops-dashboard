@@ -755,6 +755,7 @@ export function DashboardShell({
       {dataHealthOpen ? (
         <DataHealthBoard
           summary={healthSummary}
+          strips={projectStrips}
           onClose={() => setDataHealthOpen(false)}
           onOpenProject={(service, projectCode) => {
             // The row is the start of a fix, not a report: switch to that

@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
+
 import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
+import { formatHealthErrorReport } from "@/lib/health-report";
+import type { Bar } from "@/lib/health-timeline";
 
 /** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
 function when(incident: Incident): string | null {
@@ -29,13 +33,24 @@ function when(incident: Incident): string | null {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, onClose, onOpenProject }: {
+export function DataHealthBoard({ summary, strips, onClose, onOpenProject }: {
   summary: BoardSummary;
+  strips: Record<string, Bar[]>;
   onClose: () => void;
   /** Jump to that project's editor — the row is the start of a fix, not a report. */
   onOpenProject?: (service: ServiceKey, projectCode: string) => void;
 }) {
   const affected = summary.red + summary.amber;
+  const [copyStatus, setCopyStatus] = useState("");
+  const copyErrors = async () => {
+    try {
+      await navigator.clipboard.writeText(formatHealthErrorReport(strips));
+      setCopyStatus("Copied");
+    } catch {
+      setCopyStatus("Copy unavailable");
+    }
+    window.setTimeout(() => setCopyStatus(""), 2200);
+  };
 
   return (
     <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health">
@@ -53,13 +68,23 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
               <span className="opacity-70">Every covered project is automatically monitored.</span>
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto rounded-lg border border-border px-3 py-2 text-xs hover:border-primary"
-          >
-            Close
-          </button>
+          <div className="ml-auto flex gap-2">
+            <button
+              type="button"
+              onClick={() => void copyErrors()}
+              className="rounded-lg border border-border px-3 py-2 text-xs hover:border-primary"
+              aria-label="Copy all red and orange Data Health process errors"
+            >
+              {copyStatus || "Copy errors"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-2 text-xs hover:border-primary"
+            >
+              Close
+            </button>
+          </div>
         </header>
 
         <div className="overflow-y-auto p-5">

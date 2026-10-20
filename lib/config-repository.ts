@@ -1018,6 +1018,22 @@ export async function listProjectFaults(): Promise<Record<string, string>> {
   return faults;
 }
 
+/**
+ * Forget everything Data Health remembers, so the next read goes to the database.
+ *
+ * Four things are held for a while, for good reason: the cards' strips (five minutes, a second of
+ * paging each), the standing faults and Lightning's heartbeat (a minute), and the config rows health is
+ * judged against (a few seconds). Waiting those out is the right default and the wrong answer to "I
+ * just fixed that — is it clear?", which is what the Refresh button asks. The ingestion verdict itself
+ * is not cached; it is re-read whenever it is asked for.
+ */
+export function forgetHealthCaches() {
+  stripCache.forget();
+  faultCache.forget();
+  lightningCache.forget();
+  configCache.forget();
+}
+
 /** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */
 export async function listServiceNotices(): Promise<LightningNotice[]> {
   return (await lightningHealth()).notices;

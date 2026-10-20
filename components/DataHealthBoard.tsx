@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { RefreshHealthButton } from "./RefreshHealthButton";
+
 import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
 import { formatHealthErrorReport } from "@/lib/health-report";
@@ -33,9 +35,14 @@ function when(incident: Incident): string | null {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, onClose, onOpenProject }: {
+export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRefresh, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
+  /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  refreshedAt?: string | null;
+  refreshFailed?: boolean;
   onClose: () => void;
   /** Jump to that project's editor — the row is the start of a fix, not a report. */
   onOpenProject?: (service: ServiceKey, projectCode: string) => void;
@@ -68,7 +75,10 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject }: {
               <span className="opacity-70">Every covered project is automatically monitored.</span>
             </p>
           </div>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap items-start justify-end gap-2">
+            {onRefresh ? (
+              <RefreshHealthButton onRefresh={onRefresh} refreshing={refreshing} refreshedAt={refreshedAt} failed={refreshFailed} />
+            ) : null}
             <button
               type="button"
               onClick={() => void copyErrors()}

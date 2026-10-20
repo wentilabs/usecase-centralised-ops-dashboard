@@ -21,6 +21,8 @@ import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
+import { RefreshHealthButton } from "./RefreshHealthButton";
+import { refreshUpdates } from "@/lib/health-refresh";
 import { boardEntries, deliveryEntries, faultEntries, noticeEntries, summarise } from "@/lib/health-board";
 import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
@@ -138,9 +140,41 @@ export function DashboardShell({
     };
   }, []);
 
+  // The server renders the first reading; "Refresh data health" replaces it without a page reload.
+  const [liveHealth, setLiveHealth] = useState(projectHealth);
+  useEffect(() => setLiveHealth(projectHealth), [projectHealth]);
+  const [refreshingHealth, setRefreshingHealth] = useState(false);
+  const [healthRefreshedAt, setHealthRefreshedAt] = useState<string | null>(null);
+  const [healthRefreshFailed, setHealthRefreshFailed] = useState(false);
+
+  /**
+   * Forget what Data Health remembers and read it all again — see the route for what that clears.
+   *
+   * Each part is applied only if it was read: the route answers `null` for one it could not read,
+   * and an empty answer in its place would blank every card's history and read as "nothing happened".
+   */
+  const refreshHealth = useCallback(async () => {
+    setRefreshingHealth(true);
+    setHealthRefreshFailed(false);
+    try {
+      const response = await fetch("/api/data-health/refresh", { method: "POST" });
+      if (!response.ok) throw new Error(String(response.status));
+      const updates = refreshUpdates(await response.json());
+      if (updates.health) setLiveHealth(updates.health);
+      if (updates.strips) setProjectStrips(updates.strips);
+      if (updates.faults) setProjectFaults(updates.faults);
+      if (updates.notices) setServiceNotices(updates.notices);
+      setHealthRefreshedAt(updates.refreshedAt);
+    } catch {
+      setHealthRefreshFailed(true);
+    } finally {
+      setRefreshingHealth(false);
+    }
+  }, []);
+
   const healthByProject = useMemo(
-    () => new Map(projectHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
-    [projectHealth],
+    () => new Map(liveHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
+    [liveHealth],
   );
 
   /**
@@ -498,7 +532,15 @@ export function DashboardShell({
             </button>
           ))}
         </nav>
-        <HealthStrip summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
+        <span className="inline-flex items-center gap-2">
+          <HealthStrip summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
+          <RefreshHealthButton
+            onRefresh={() => void refreshHealth()}
+            refreshing={refreshingHealth}
+            refreshedAt={healthRefreshedAt}
+            failed={healthRefreshFailed}
+          />
+        </span>
 
         {/* Not a service tab: a whole-estate view that cuts across all of them.
             Kept visually apart from the tabs for that reason. */}
@@ -756,6 +798,10 @@ export function DashboardShell({
         <DataHealthBoard
           summary={healthSummary}
           strips={projectStrips}
+          onRefresh={() => void refreshHealth()}
+          refreshing={refreshingHealth}
+          refreshedAt={healthRefreshedAt}
+          refreshFailed={healthRefreshFailed}
           onClose={() => setDataHealthOpen(false)}
           onOpenProject={(service, projectCode) => {
             // The row is the start of a fix, not a report: switch to that

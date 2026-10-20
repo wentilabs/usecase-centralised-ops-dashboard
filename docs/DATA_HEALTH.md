@@ -748,6 +748,33 @@ status and declares it in its contract — `completed_with_stale_readings` — w
 so HALO then stops reading the wording at all. Nothing about the sentence has to change
 either way.
 
+## Refreshing data health
+
+Health is remembered for a while on purpose, because the reads behind it are not free:
+
+| What | Held for | Why |
+| --- | --- | --- |
+| The strips (each card's hundred bars) | 5 minutes | A second of keyset paging per service |
+| Standing faults, and Lightning's heartbeat and per-project runtime | 1 minute | Three small reads, shared |
+| The configuration rows health is judged against | a few seconds | Every card needs them |
+| The readings-age verdict (Noise, WBGT) | not held | Re-read on every page load |
+
+That is right for a page left open and wrong for "I just fixed the sheet — has it cleared?". **Refresh health**
+(beside the estate strip, and in the board's header) forgets all four, reads everything again together, and
+shows when it finished (`POST /api/data-health/refresh`). It is labelled *Refresh health* because the header's
+own *Refresh* reloads configuration, and two buttons with one name leave nobody sure which they pressed.
+
+Two rules, each with a test:
+
+- **A part that could not be read leaves the screen as it was.** The route answers `null` for a failed read,
+  never an empty one, because an empty strips object would blank every card's history and an empty faults
+  object would clear a standing fault: "could not look" drawn as "nothing is wrong".
+- **A genuinely empty answer is applied.** No faults any more is exactly what a fix looks like, so SGK's fault must
+  be able to clear. `lib/health-refresh.ts` is the one place that decides which is which.
+
+Any signed-in viewer can use it, read-only accounts included: it reads what the page already shows, and a
+read-only account is the one that most needs to see whether something cleared.
+
 ## Lightning: every alert, the tick, and the feed
 
 Lightning is not like the services that run on a schedule. Its tick (`/api/lightning-tick`) runs

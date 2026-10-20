@@ -760,6 +760,12 @@ the card; a late NEA feed is stale and turns amber once sites were told the warn
 threshold is a named constant with a test at its edge. Every strip bar also carries the service's own
 `job_type`/`event_type`, so a red says which process it was.
 
+**"Refresh health" forgets four caches and rereads together** (`forgetHealthCaches` in
+`lib/config-repository.ts`, `POST /api/data-health/refresh`). If you add a cache that Data Health reads, add it
+to `forgetHealthCaches` — `tests/refresh-health.test.ts` fails if one of the four is dropped, but cannot know
+about a fifth. A read that fails must answer `null`, never an empty value, and the client applies only what
+`refreshUpdates` accepts; see `docs/DATA_HEALTH.md`.
+
 **`queued` is not delivered, and HALO cannot see the difference.** A message the
 listener accepted and later dropped (`NOT_PARTICIPANT`) is still `queued`, green, in the
 service that sent it. HALO has no key for the listener's queue and will not be given

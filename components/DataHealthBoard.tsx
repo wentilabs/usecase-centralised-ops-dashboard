@@ -6,7 +6,7 @@ import { RefreshHealthButton } from "./RefreshHealthButton";
 
 import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
-import { formatHealthErrorReport } from "@/lib/health-report";
+import { formatHealthErrorReport, healthErrorProjects } from "@/lib/health-report";
 import type { Bar } from "@/lib/health-timeline";
 
 /** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
@@ -15,6 +15,19 @@ function when(incident: Incident): string | null {
   if (!incident.from) return null;
   if (!incident.to || incident.to.slice(0, 16) === incident.from.slice(0, 16)) return short(incident.from);
   return `${short(incident.from)} → ${short(incident.to)}`;
+}
+
+function processTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Singapore",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
 }
 
 /**
@@ -48,6 +61,15 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
   onOpenProject?: (service: ServiceKey, projectCode: string) => void;
 }) {
   const affected = summary.red + summary.amber;
+  const errorProjects = healthErrorProjects(strips);
+  const errorProcessCount = errorProjects.reduce((total, project) => total + project.bars.length, 0);
+  const errorProjectCount = errorProjects.length;
+  const errorsByService = new Map<ServiceKey, typeof errorProjects>();
+  for (const project of errorProjects) {
+    const projects = errorsByService.get(project.service) ?? [];
+    projects.push(project);
+    errorsByService.set(project.service, projects);
+  }
   const [copyStatus, setCopyStatus] = useState("");
   const copyErrors = async () => {
     try {
@@ -61,14 +83,16 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
 
   return (
     <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health">
-      <section className="mx-auto flex max-h-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
+      <section className="mx-auto flex max-h-full max-w-6xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
         <header className="flex items-start gap-3 border-b border-border p-5">
           <div>
             <h2 className="text-xl font-semibold">Data Health</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {summary.incidents.length
-                ? `${summary.incidents.length} issue${summary.incidents.length === 1 ? "" : "s"} across ${affected} project${affected === 1 ? "" : "s"}.`
-                : "Nothing needs attention."}{" "}
+              {errorProcessCount
+                ? `${errorProcessCount} process error${errorProcessCount === 1 ? "" : "s"} across ${errorProjectCount} project${errorProjectCount === 1 ? "" : "s"}.`
+                : summary.incidents.length
+                  ? `${summary.incidents.length} issue${summary.incidents.length === 1 ? "" : "s"} across ${affected} project${affected === 1 ? "" : "s"}.`
+                  : "Nothing needs attention."}{" "}
               {/* Said once, here, rather than on every card: there is nothing to
                   switch on, so a reader seeing a quiet board knows the check ran
                   rather than wondering whether it was ever configured. */}
@@ -98,6 +122,65 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
         </header>
 
         <div className="overflow-y-auto p-5">
+          {errorProcessCount ? (
+            <div>
+              <h3 className="mb-3 text-sm font-semibold">Process errors · last 48 hours</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {[...errorsByService.entries()].map(([service, projects]) => (
+                  <section key={service} className="min-w-0 rounded-lg border border-border bg-card">
+                    <header className="flex items-baseline justify-between gap-3 border-b border-border px-3 py-2.5">
+                      <h4 className="text-sm font-semibold">{SERVICES[service].label}</h4>
+                      <span className="text-[11px] text-muted-foreground">
+                        {projects.reduce((total, project) => total + project.bars.length, 0)} process errors
+                      </span>
+                    </header>
+                    <div className="overflow-x-auto">
+                      <table className="w-full table-fixed text-left text-xs">
+                        <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="w-[27%] px-3 py-2 font-medium">Project / process</th>
+                            <th className="w-[53%] px-3 py-2 font-medium">Error</th>
+                            <th className="w-[20%] px-3 py-2 font-medium">Last run</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {projects.flatMap((project) => project.bars.map((bar, index) => {
+                            const red = bar.colour === "red";
+                            return (
+                              <tr key={`${project.service}|${project.projectCode}|${bar.at}|${bar.kind ?? ""}|${index}`} className="align-top">
+                                <td className="break-words px-3 py-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenProject?.(project.service, project.projectCode)}
+                                    className="font-mono font-semibold text-foreground underline decoration-border underline-offset-2 hover:decoration-primary"
+                                  >
+                                    {project.projectCode}
+                                  </button>
+                                  {bar.kind ? <div className="mt-1 break-all font-mono text-[10px] text-muted-foreground">{bar.kind}</div> : null}
+                                </td>
+                                <td className="break-words px-3 py-2.5">
+                                  <div className={`font-medium ${red ? "text-danger" : "text-warn"}`}>{bar.status}</div>
+                                  {bar.log.length ? (
+                                    <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] text-muted-foreground">
+                                      {bar.log.map((line, lineIndex) => <li key={`${lineIndex}|${line}`}>{line}</li>)}
+                                    </ul>
+                                  ) : <div className="mt-1 text-[11px] text-muted-foreground">No reason recorded</div>}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[10px] text-muted-foreground">
+                                  {processTime(bar.at)} SGT
+                                </td>
+                              </tr>
+                            );
+                          }))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {summary.incidents.length ? (
             <ul className="flex flex-col gap-2">
               {summary.incidents.map((incident) => {
@@ -155,12 +238,12 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                 );
               })}
             </ul>
-          ) : (
+          ) : !errorProcessCount ? (
             <p className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">
               {summary.green} project{summary.green === 1 ? "" : "s"} reporting, {summary.idle} idle outside their
               cadence hours.
             </p>
-          )}
+          ) : null}
 
           {/* Late readings: the sensor or its feed, with the service working. A
               calm section of their own, after everything that needs acting on and

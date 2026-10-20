@@ -12,7 +12,8 @@
     { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] },
     { "id": "hourly-app-screenshot", "file": "migrate_hourly_app_screenshot.sql", "requires": [] },
     { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["monthly-noise-report", "data-health"] },
-    { "id": "repeatable-monthly-reports", "file": "migrate_repeatable_monthly_reports.sql", "requires": ["listener-queue-acceptance"] }
+    { "id": "repeatable-monthly-reports", "file": "migrate_repeatable_monthly_reports.sql", "requires": ["listener-queue-acceptance"] },
+    { "id": "run-log-started-at-index", "file": "migrate_run_log_started_at_index.sql", "requires": ["repeatable-monthly-reports"] }
   ],
   "destructiveUtilities": []
 }

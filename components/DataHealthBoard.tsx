@@ -125,18 +125,18 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
           {errorProcessCount ? (
             <div>
               <h3 className="mb-3 text-sm font-semibold">Process errors · last 48 hours</h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {[...errorsByService.entries()].map(([service, projects]) => (
-                  <section key={service} className="min-w-0 rounded-lg border border-border bg-card">
+                  <section key={service} className="flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-card">
                     <header className="flex items-baseline justify-between gap-3 border-b border-border px-3 py-2.5">
                       <h4 className="text-sm font-semibold">{SERVICES[service].label}</h4>
                       <span className="text-[11px] text-muted-foreground">
                         {projects.reduce((total, project) => total + project.bars.length, 0)} process errors
                       </span>
                     </header>
-                    <div className="overflow-x-auto">
+                    <div className="max-h-[min(30rem,60vh)] min-h-0 overflow-auto overscroll-contain">
                       <table className="w-full table-fixed text-left text-xs">
-                        <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <thead className="sticky top-0 z-10 bg-card text-[10px] uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="w-[27%] px-3 py-2 font-medium">Project / process</th>
                             <th className="w-[53%] px-3 py-2 font-medium">Error</th>

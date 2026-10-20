@@ -89,12 +89,12 @@ test("a project with a fault sorts above one that is merely degraded", () => {
   // sorting it among the healthy. One red puts it above every project that is
   // only degraded, which is where a project with no coverage belongs.
   const empty = severityOf([]);
-  assert.deepEqual(withFault(empty, SGK), { red: 1, amber: 0, green: 0 });
+  assert.deepEqual(withFault(empty, SGK), { red: 1, amber: 0, stale: 0, green: 0 });
   assert.deepEqual(withFault(empty, undefined), empty, "no fault changes nothing");
 
-  const degraded = { red: 0, amber: 99, green: 1 };
+  const degraded = { red: 0, amber: 99, stale: 0, green: 1 };
   assert.ok(bySeverity(withFault(empty, SGK), degraded) < 0, "one fault leads 99 ambers");
-  assert.ok(bySeverity({ red: 2, amber: 0, green: 0 }, withFault(empty, SGK)) < 0, "but two reds still lead it");
+  assert.ok(bySeverity({ red: 2, amber: 0, stale: 0, green: 0 }, withFault(empty, SGK)) < 0, "but two reds still lead it");
 });
 
 test("the card shows the fault above the strip, and the API carries it", async () => {

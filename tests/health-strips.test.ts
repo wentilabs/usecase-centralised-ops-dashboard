@@ -155,7 +155,26 @@ test("a source is bounded per project rather than by time, and carries the servi
   assert.equal(ran.length, 1, "a row with no project code belongs to no strip");
   assert.equal(ran[0].status, "completed_with_issues");
   assert.deepEqual(ran[0].log, ["WC-55: reading 38 minutes old", "WC-56: reading 33 minutes old"]);
-  assert.equal(ran[0].colour, "amber", "completed_with_ is the in-between state, not a pass");
+  // Both lines are the service saying a reading was late, so the run is `stale`: the
+  // sensor was behind and the run itself did its job. Not a pass either — it keeps its
+  // own colour and its lines, and is never counted as needing action.
+  assert.equal(ran[0].colour, "stale", "only late-reading lines, so the sensor was late and the run was fine");
+});
+
+test("a completed_with_ run stays amber unless EVERY line it wrote is a late reading", async () => {
+  const run = (errors: string[]) => readProcessWindow(
+    "wbgt",
+    async () => ({ ok: true, body: [{ project_code: "C991", status: "completed_with_issues", started_at: "2026-10-16T09:00:00+00:00", errors }] }),
+    100,
+    "2026-10-14T11:00:00.000Z",
+  );
+  // A real finding among the late readings: the stale part must never hide it.
+  const mixed = await run(["WC-55: reading 38 minutes old", "Missing configured sensors: WBGT C3 (Manual)"]);
+  assert.equal(mixed[0].colour, "amber", "a different problem keeps the run amber");
+  assert.equal((await run(["Missing configured sensors: WBGT C3 (Manual)"]))[0].colour, "amber");
+  // No lines at all is not evidence of anything, so it cannot be softened.
+  assert.equal((await run([]))[0].colour, "amber");
+  assert.equal((await run(["WC-55: reading 38 minutes old"]))[0].colour, "stale");
 });
 
 test("which services read a run log, which a delivery ledger, and which are not tracked", () => {
@@ -400,12 +419,12 @@ test("one red outranks any number of ambers, however many", () => {
   assert.ok(bySeverity(strip(1, 9), strip(1, 2)) < 0);
   assert.equal(bySeverity(strip(0, 0), strip(0, 0)), 0, "two clean projects keep their existing order");
 
-  assert.deepEqual(strip(3, 4), { red: 3, amber: 4, green: 1 }, "greens are counted separately, not as trouble");
-  assert.deepEqual(severityOf(undefined), { red: 0, amber: 0, green: 0 }, "a project with no strip is not a problem");
+  assert.deepEqual(strip(3, 4), { red: 3, amber: 4, stale: 0, green: 1 }, "greens are counted separately, not as trouble");
+  assert.deepEqual(severityOf(undefined), { red: 0, amber: 0, stale: 0, green: 0 }, "a project with no strip is not a problem");
 });
 
 test("among clean projects, the busiest leads and the barely-run sink", () => {
-  const clean = (green: number) => ({ red: 0, amber: 0, green });
+  const clean = (green: number) => ({ red: 0, amber: 0, stale: 0, green });
 
   // A card showing a hundred clean runs is more informative than one showing
   // two, and sinking the quiet ones keeps a project that has barely run where
@@ -414,8 +433,8 @@ test("among clean projects, the busiest leads and the barely-run sink", () => {
   assert.equal(bySeverity(clean(7), clean(7)), 0, "a true tie keeps the existing order");
 
   // Green never outranks trouble, however much of it there is.
-  assert.ok(bySeverity({ red: 0, amber: 1, green: 0 }, clean(100)) < 0, "one amber still leads a perfect strip");
-  assert.ok(bySeverity({ red: 1, amber: 0, green: 0 }, { red: 0, amber: 99, green: 0 }) < 0);
+  assert.ok(bySeverity({ red: 0, amber: 1, stale: 0, green: 0 }, clean(100)) < 0, "one amber still leads a perfect strip");
+  assert.ok(bySeverity({ red: 1, amber: 0, stale: 0, green: 0 }, { red: 0, amber: 99, stale: 0, green: 0 }) < 0);
 });
 
 test("the card list is ordered by severity before anything else", async () => {

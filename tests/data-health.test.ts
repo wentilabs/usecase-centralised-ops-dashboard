@@ -40,8 +40,8 @@ test("ingestion freshness moves from receiving to delayed to no recent data at e
   assert.ok(target);
 
   assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.001Z" }, NOW).tone, "good");
-  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.000Z" }, NOW).tone, "warn");
-  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T08:00:00.000Z" }, NOW).tone, "danger");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T11:00:00.000Z" }, NOW).tone, "stale");
+  assert.equal(assessIngestionHealth(target, { kind: "row", createdAt: "2026-09-26T08:00:00.000Z" }, NOW).tone, "stale");
   assert.equal(assessIngestionHealth(target, { kind: "empty" }, NOW).label, "Data: no data received yet");
 });
 

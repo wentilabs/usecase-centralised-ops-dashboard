@@ -77,7 +77,9 @@ export function DataHealthRow({
       ? "bg-danger/15 text-danger ring-danger/30"
       : colour === "amber"
         ? "bg-warn/15 text-warn ring-warn/30"
-        : "bg-on/15 text-on ring-on/30";
+        : colour === "stale"
+          ? "bg-stale/25 text-stale-text ring-stale/50"
+          : "bg-on/15 text-on ring-on/30";
 
   return (
     <section className="pointer-events-none relative z-30 mt-auto border-t border-border pt-2.5" aria-label="Data health">

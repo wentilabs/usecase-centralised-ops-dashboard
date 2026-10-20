@@ -729,6 +729,35 @@ service's cadence flags, start and end times and site hours, and is already
 tested as a mirror of them; a second reading would drift on exactly the hours
 that decide whether someone is woken up.
 
+**Data Health has four colours, and amber is reserved for what a developer acts
+on.** Green, **stale** (dark green), amber, red. A late reading is a fact about a
+sensor, not the pipeline, so both ingestion tiers (`delayed`, `no recent data`) and
+any run whose every line is a late-reading line are `stale` — measured, that was 91%
+of Noise's and 71% of WBGT's `completed_with_…` runs, and left amber it buried the
+amber that is a real fault. Stale is never counted as "to look at", sorts between amber
+and a clean strip, and has its own quiet section on the board. It is recognised from
+each service's own wording (`STALE_READING_LINES` in `lib/health-status.ts`), which is
+read and never changed, or declared as `"stale"` in the service's contract. Red is kept
+for what is broken: an empty or missing table, a failed run, a `dropped…` send.
+
+Every amber, red and stale card carries its evidence (`ProjectHealth.evidence`):
+what was expected, what was seen, and what the service itself last said, in its own
+words. The reader asks the service's run log for the latter only when the age check has
+a finding. If you add a tone, add it to `colourOfTone`, `severityOf`, `summarise` and
+`HealthBars`' `FILL` together — `tests/health-stale.test.ts` fails on the ones you miss.
+
+What a service must write for any of this to be accurate is
+[`docs/SERVICE_HEALTH_CONTRACT.md`](./docs/SERVICE_HEALTH_CONTRACT.md); the reasoning is
+[`docs/DATA_HEALTH.md`](./docs/DATA_HEALTH.md). To see what each service actually writes
+today against that contract: `node scripts/audit-service-health.mjs`.
+
+**`queued` is not delivered, and HALO cannot see the difference.** A message the
+listener accepted and later dropped (`NOT_PARTICIPANT`) is still `queued`, green, in the
+service that sent it. HALO has no key for the listener's queue and will not be given
+one; the fix is for each service to reconcile its queue ids through `outbound/status`
+and write `dropped…`/`failed…` back (HALO already reads those prefixes as red). Do not
+build a HALO-side poller.
+
 ## Pending: the monthly noise report
 
 The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery

@@ -2,7 +2,12 @@ import { noiseTableForProject, wbgtTableForProject } from "./onboarding/naming";
 import { activityLabel, type Activity } from "./data-health-activity";
 import type { ServiceKey } from "./services";
 
-export type HealthTone = "good" | "warn" | "danger" | "neutral";
+/**
+ * `stale` is a late reading: a fact about the sensor or its feed, with the service
+ * itself working. It is its own tone, dark green, and not a softer amber — see
+ * `health-status.ts` for why amber has to stay reserved for things a developer acts on.
+ */
+export type HealthTone = "good" | "stale" | "warn" | "danger" | "neutral";
 export type DeliveryOutcome = "provider_accepted" | "provider_pending" | "transport_failed" | "device_delivered" | "read" | "not_monitored";
 
 export type HealthTarget = {
@@ -224,8 +229,11 @@ export function assessIngestionHealth(
       : `Expected: a reading within ${describeAge(target.warningAfterMs)}.`,
     `Seen: the newest reading arrived ${describeAge(ageMs)} ago.`,
   ];
-  if (ageMs >= criticalAfter) return result(target, "danger", "Data: no recent data", newestReceivedAt, sourceEventAt, reasons);
-  if (ageMs >= warnAfter) return result(target, "warn", "Data: delayed", newestReceivedAt, sourceEventAt, reasons);
+  // Both tiers are `stale`. How late is carried by the label and the evidence, not by
+  // escalating the colour: a reading that is four hours late is still the sensor's
+  // problem to explain, and red is for what the pipeline did or did not do.
+  if (ageMs >= criticalAfter) return result(target, "stale", "Data: no recent data", newestReceivedAt, sourceEventAt, reasons);
+  if (ageMs >= warnAfter) return result(target, "stale", "Data: delayed", newestReceivedAt, sourceEventAt, reasons);
   return result(target, "good", "Data: receiving", newestReceivedAt, sourceEventAt);
 }
 

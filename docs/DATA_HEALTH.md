@@ -64,14 +64,25 @@ correctly without being changed:
 | `skipped…` | the run was not due — an hour outside the cadence, a muted Sunday | 🟢 green |
 | `suppressed…` | it ran and correctly chose not to send | 🟢 green |
 | `failed…` | it did not run, did not send, or ended unsuccessfully | 🔴 red |
+| `dropped…` | the listener accepted a send, then gave up on it for good | 🔴 red |
 | `running` | in flight | 🟢 green |
 
-The three colours mean:
+The colours mean:
 
 - **🟢 green** — expected behaviour, *including deliberately doing nothing*.
+- **🟩 stale (dark green)** — the data is *late*. The sensor or its feed is the
+  likely cause and the service itself did its job. Worth knowing, deliberately not
+  attention-grabbing, and never counted as "to look at". See
+  [Stale readings](#stale-readings-dark-green).
 - **🟠 amber** — it worked, but a value was missing or something non-critical
   broke. Worth reading, not worth waking anyone.
 - **🔴 red** — it did not run, did not send, or ended unsuccessfully.
+
+Four colours, and each asks something different of a reader: green nothing, stale
+"be aware", amber "a developer should look", red "this is broken". **Amber has to
+keep meaning that third thing.** Anything that is amber for a reason a developer
+cannot act on — a sensor that reports late — teaches people that amber is
+background, and the next real amber is read as background too.
 
 ### An unrecognised status is amber, never green
 
@@ -234,6 +245,55 @@ without anyone opening a database row. Two guidelines:
 The same applies to every "unconfirmed" and "could not parse" outcome, not only
 to listener replies.
 
+### A log says what, where and why — and whether it will happen again
+
+A status gives HALO a colour. The error is what a developer is handed after the
+colour has got their attention, so it has to be enough to act on without opening a
+database. Two real examples from one fortnight, both from `failed_unhandled_error`
+runs, show the difference.
+
+```
+Ailytics, ZRA, job status_summary — written twice, at 18:00 on 18 and 19 Oct:
+  The caller does not have permission
+
+Ailytics, another project, the same week:
+  Sheet "(IRN) CCTV Safety Sheet" is missing the required Status column.
+```
+
+The second can be acted on: it names the sheet and the column. The first says
+*someone* is not permitted to do *something* to *something*. A developer cannot tell
+which spreadsheet, which tab, which Google call, or which account lacks permission,
+and it recurs every day at the same hour, so it is a standing fault being re-reported
+as if it were new.
+
+An error a developer can act on carries, in this order:
+
+1. **What was being done** — the operation, in the service's own vocabulary
+   (`reading the Activity History tab`, `sending the 09:00 summary to a group`,
+   `probing reading table wcp_noise_data_daily`). The run row already has the job
+   and the project; the sentence says the step within it.
+2. **On what** — the resource, enough to find it: a sheet and tab name, a table, a
+   chat id, an endpoint. A tail of an opaque id is enough (`…q2Xk`), never a secret.
+3. **Why, in the upstream's own words, verbatim.** Wrap the upstream's message,
+   never replace it: `Google Sheets 403: The caller does not have permission` keeps
+   the sentence a reader can search for and adds the status they would otherwise have
+   to guess. This is the rule that lets HALO keep every service's wording unchanged
+   while still showing it.
+4. **What the service did about it**, when it matters — `will retry`, `held, not
+   resent`, `skipped`. A timeout the service retried is not the same fact as one it
+   gave up on.
+
+And, because a log line that repeats is information too, the error should be
+**stable**: the same cause writes the same sentence. HALO can then say "this has
+happened on every run since 18 Oct" instead of showing it as a new problem each
+hour. Putting a timestamp, a count or a request id *inside* the sentence defeats
+that; put them in the row's columns.
+
+A bare upstream message is a symptom. Two failures this fortnight read identically
+for different reasons — `Requested entity was not found.` (Issue Chaser, SGK) was a
+wrong spreadsheet id, and could as easily have been a deleted tab or a revoked share.
+Only the missing operation and resource separate them.
+
 ### Two consequences worth stating
 
 **A skip is not an error.** Rules 1–4 are the service doing its job. They belong
@@ -268,7 +328,7 @@ outside, and that ambiguity is exactly what the strips exist to remove.
 
 **HALO owns the scale. Each service owns the mapping onto it.**
 
-HALO defines three colours and what each means — that is a presentation concern
+HALO defines four colours and what each means — that is a presentation concern
 and belongs here. What a service's own words *mean* belongs to the service:
 whether `partial` is "some recipients failed" or "partial by configuration" is
 not something HALO can infer, and two services are allowed to answer
@@ -446,6 +506,64 @@ needs that reminder's WhatsApp ID. Other service ledgers retain queue IDs for
 audit without polling every message. A final listener `failed` or `dropped`
 outcome is not an instruction to repost a previously accepted submission.
 
+### Queued is not delivered: the drop nobody sees
+
+`queued` is green, correctly, for the question it answers: *did the listener accept
+the message?* It does not answer *did the message reach the group?* — and the
+listener can accept a message and later give up on it for good.
+
+The listener drops a queued send, final and without retry, when WhatsApp refuses it
+for a reason that will not change: `NOT_PARTICIPANT`, "this number is no longer a
+participant of this group", is the one seen in practice. The row ends
+`status = dropped` in the listener's own queue (`internal.whatsapp_outbound_queue`,
+with `last_code` and `last_error`), and **nothing tells the service that sent it.**
+
+This was found, not predicted. On 19 Oct an Issue Chaser summary for HLD recorded
+`unconfirmed` for two of its seven groups. The listener's queue showed both had been
+dropped with `NOT_PARTICIPANT` — and had been, about eighteen times a day each, since
+the queue's records begin on 13 Oct. Across the estate, 376 drops in seven days hit
+eleven chats, among them groups that C992's WBGT, Noise and Issue Chaser all send to.
+Issue Chaser's ledger was matched against the drops and holds four sends recorded
+`queued`, green, that the listener later dropped; the other services record queue ids
+the same way and were not matched. For a week the Data Health board was green for
+messages that never arrived.
+
+The two HLD groups only showed up because their send happened to fail inside the
+listener's eight-second window, so the answer came back immediately as a 502; a
+queued send fails later, asynchronously, and in silence.
+
+**What HALO can and cannot do.** HALO reads each service's own run logs and
+ledgers, and its only credential for the listener is a read-only key that is refused
+on the queue's schema. It will not be given the service key: by decision HALO holds no
+credentials for the services it watches. So HALO **cannot see a drop** today, and no HALO change can fix that
+alone. The fix belongs where the queue id already is:
+
+> **A service that sends through the listener queue must reconcile its queued sends.**
+> For queue ids older than a few minutes it asks the listener's `outbound/status`
+> endpoint (through the proxy: `POST /proxy/outbound-status`, body `queueIds`, at most
+> 100 per call), reads each item's `status` — `queued`, `sending`, `sent`, `failed` or
+> `dropped` — and `error: { code, text }`, and writes the final outcome back onto its
+> own ledger row, and into its run log's `errors` when it is `failed` or `dropped`.
+
+WBGT (`platform/outbound-status.js`) and Ailytics (`connectors/whatsapp/outbound-status.js`)
+already call that endpoint, to find a message's WhatsApp id; they do not record a
+drop. Noise, Haze, Lightning, Issue Chaser and Subcon do not call it.
+
+What the service writes is the contract with HALO. A reconciled `dropped` send is
+recorded with a status that begins `dropped` (HALO reads that prefix as **red** with
+no further change), and its error follows the standard above — the listener's own
+`last_code` and `last_error`, the chat, the queue id:
+
+```
+status:  dropped
+errors:  ["120363405395020959@g.us: queue 57557 dropped — NOT_PARTICIPANT: WhatsApp rejected the send: this number is no longer a participant of this group"]
+```
+
+A `failed` outcome is already red. `sent` after a `queued` is the confirmation — and
+means WhatsApp's server accepted it, not that anyone's phone received or read it — and is
+green. Until a service reconciles, its `queued` means exactly *accepted*, and the board
+must not be read as delivery.
+
 Noise and WBGT also have **Data Health reminder** routes and recipient ledgers.
 Those internal reminders are distinct from HALO's Data Health dashboard, which
 currently reads their `noise_job_runs` and `wbgt_job_runs` rows. A green run row
@@ -516,11 +634,15 @@ of the four.
 
 The rule is age against what the configuration can explain: the newest `created_at`
 in the project's readings table, compared with the longest silence the project's own
-cadence allows. Amber is past that gap, red is past twice it. Nothing more — in
-particular it does not know *why* the table is quiet, so it must never be the only
-thing a developer is handed.
+cadence allows. Past that gap the reading is `delayed`, past twice it `no recent
+data` — and **both are stale (dark green)**, not amber or red: the age of a reading
+is a fact about the sensor, not about what the pipeline did. The label keeps saying
+how late; the colour says whose problem it is. Red here is kept for what is actually
+broken — an empty or missing table. Nothing more — in particular the rule does not
+know *why* the table is quiet, so it must never be the only thing a developer is
+handed.
 
-**Every amber and red carries its evidence**, in plain sentences on the card
+**Every stale, amber and red carries its evidence**, in plain sentences on the card
 (`ProjectHealth.evidence`):
 
 - **Expected** — the cadence and hours HALO held the project to, and the longest
@@ -564,6 +686,100 @@ The services' own *Data Health reminder* messages (`/api/wbgt-data-health`,
 whatever the site hours or calendar — and are a separate source of exactly this
 noise. They go to the data-health groups only, and WBGT's are restricted to `TEST`
 during rollout; they are not changed by anything above.
+
+## Stale readings (dark green)
+
+A reading that arrives late is a fact about a **sensor**, not about the pipeline. The
+service ran, found the latest row old, said so, and (for WBGT) held back a message it
+would otherwise have sent from outdated data. Nothing the service did was wrong, and
+nothing a developer changes in the service will make the sensor report. So it must not
+be amber: amber is the colour that means *a developer should look*, and when most of
+the amber on the board is a sensor being slow, the amber that is a real fault is the
+one nobody reads.
+
+Measured over the fortnight to 20 Oct 2026 (`node scripts/audit-service-health.mjs`):
+
+| Service | `completed_with_…` runs | wrote only late-reading lines | still amber |
+| --- | ---: | ---: | ---: |
+| Noise | 12,091 | 10,970 (91%) | 1,121 |
+| WBGT | 3,049 | 2,156 (71%) | 893 |
+
+What stays amber is what a developer can act on: Noise's `No parseable rows: …`
+(625 + 319 runs), WBGT's `Missing configured sensors: WBGT C? (Manual)` (854, a
+standing configuration gap), and Google permission failures.
+
+**Where HALO shows stale, and where it does not**
+
+- *The age of the newest reading* (Noise and WBGT, from the readings table). Past the
+  tolerated gap is `delayed`, past twice it `no recent data`; **both are dark green**,
+  and the label keeps saying how late. The card lists what was expected and what was
+  seen.
+- *A run that only reported late readings.* Its status is still `completed_with_…`
+  and its lines are unchanged; the run is drawn dark green because every line it wrote
+  was the service saying a reading was late.
+- *Never in "to look at".* The strip counts red and amber under that heading and stale
+  separately and quietly (`· 36 stale`); the board lists late readings in their own calm
+  section, after everything that needs acting on; the estate strip says "nothing to
+  action" when stale is all there is. A project with a sensor problem sorts above a
+  clean one and below any real fault.
+
+**How a run is recognised as stale.** By the service's own wording, which HALO reads
+and never asks to change (`STALE_READING_LINES` in `lib/health-status.ts`):
+
+| Service | Line it writes | Pattern |
+| --- | --- | --- |
+| Noise | `Stale latest rows: PN NM01 Watertown Blk 71 …` | starts with `Stale latest rows:` |
+| WBGT | `MBS IR2 (WC-3): reading 84 minutes old; production delivery suppressed` | contains `reading N minutes old` |
+
+Three rules keep it honest, and each has a test:
+
+1. **Every line must be a late reading.** One line that is not — a missing sensor, a
+   permission failure — keeps the run amber. Lateness must never hide the part that
+   needs acting on.
+2. **Only a run that completed is softened.** A `failed…` run keeps its red: a stale
+   line in a failed run is a symptom, not the explanation.
+3. **No lines is not evidence of anything.** A `completed_with_…` run that wrote
+   nothing stays amber.
+
+**The better route, for a service that wants it.** Recognising wording is HALO guessing
+at a sentence. A service that would rather say it outright gives lateness its own
+status and declares it in its contract — `completed_with_stale_readings` — with
+`"stale"` as the colour in `health.statuses`. A declaration outranks every rule above,
+so HALO then stops reading the wording at all. Nothing about the sentence has to change
+either way.
+
+## What each service writes today
+
+Run `node scripts/audit-service-health.mjs [days]` to regenerate this from the live
+run logs. It reads every service's run log through HALO's own classifier and flags
+`COLOUR-WITHOUT-EVIDENCE` (amber or red with no error written), `GREEN-BUT-HAS-ERRORS`
+and `UNRECOGNISED`. The findings of 20 Oct 2026 (14 days; Noise's log is larger than
+the script's 60,000-row cap, so its counts are for the newest 60,000 rows) are the
+work list below. The
+services' error wording is **not** on it: nothing here asks any service to reword what
+it says.
+
+| Service | What HALO captures well | Where capture or evidence falls short |
+| --- | --- | --- |
+| **Noise** | Run log per project per cadence; late readings (91% of `completed_with_meter_issues`) now stale. | `suppressed_all_unavailable` (281) and `skipped_google_sheet_not_configured` (40) are amber with **no error written**: the colour has nothing behind it. `bootstrap_required` (8) is an unrecognised status, shown amber by default. `failed_config_validation` is 1,475 rows, 1,472 of them the same standing `Missing delivery config: lambda_url`; the other three are table-probe failures whose message ends `…: ` with the reason blank, because the probe is a `HEAD` request and a failed `HEAD` has no body. Queued sends never reconciled. |
+| **WBGT** | Run log per project; late readings (71%) now stale. | One status, `completed_with_issues`, carries both a late sensor and `Missing configured sensors` (854, a standing config gap) — only the wording separates them. `Missing configured sensors: WBGT C? (Manual)` repeats every run. Permission failures name the operation (`monthly sheet sync`) but not the sheet. Queued sends never reconciled beyond the Water Parade lookup. |
+| **Haze** | Run log per project per hourly run, skips included. Clean: no errors in the window. | The NEA scrape is estate-wide and not tracked (by design). Queued sends never reconciled. |
+| **Issue Chaser** | Run log per project and style; ledger with queue ids. | `failed_unhandled_error` ×3 `Requested entity was not found.` names no sheet, tab or operation. A listener 502 recorded only `Request failed with status code 502`; the listener's own `code`/`error`/`queueId` were discarded (fixed in the repo, awaiting commit). `skipped_feature_disabled` is 70% of all rows (7,056 of 10,080). Four sends recorded `queued` were later dropped by the listener. |
+| **Ailytics** | Run log per project. | `failed_unhandled_error` ×2 `The caller does not have permission` (ZRA, `status_summary`, daily at the same hour) names no sheet, tab or Google call. |
+| **Subcon** | Run log per project; clean, and 243 of 279 rows are `skipped_project_disabled`. | No failure in the window, so the quality of its errors is untested. |
+| **Lightning** | Delivery ledger with the service's own declared statuses. | `FAILED` ×21 `timeout of Nms exceeded` names no endpoint. 26 `UNCONFIRMED` rows carry the older `did not confirm the requested recipient` wording (a digest of what was seen was added afterwards). |
+
+### What HALO cannot capture yet
+
+| Gap | Why | What closes it |
+| --- | --- | --- |
+| A queued send the listener later dropped or failed | The outcome exists only in the listener's queue; HALO has no key for it and must not get one. | Services reconcile queue ids through `outbound/status` and write `dropped` / `failed` back. See [Queued is not delivered](#queued-is-not-delivered-the-drop-nobody-sees). |
+| Whether a standing error is new | An error text is a string with no recurrence. | Stable wording (above). HALO can then group by text; not built yet. |
+| Which job produced a bar | A strip bar carries status and lines, not the job name. | Add `job_type` to the bar and the modal row. Not built yet. |
+| A reading that is late *and* its run was clean | Only the age check sees it, and only for Noise and WBGT. | Other services do not store readings; nothing to age. |
+
+The contract for what a service must write so that none of this needs guessing is
+[`SERVICE_HEALTH_CONTRACT.md`](./SERVICE_HEALTH_CONTRACT.md).
 
 ## Adding a service
 

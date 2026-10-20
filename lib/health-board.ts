@@ -58,10 +58,11 @@ export function signalsFor(service: ServiceKey): string[] {
   );
 }
 
-/** `ProjectHealth`'s four tones, onto the three colours the UI has. */
+/** `ProjectHealth`'s five tones, onto the four colours the UI has. */
 export function colourOfTone(tone: ProjectHealth["tone"]): HealthColour {
   if (tone === "danger") return "red";
   if (tone === "warn") return "amber";
+  if (tone === "stale") return "stale";
   // `neutral` covers idle and "no receipt timestamp" — expected, not a fault.
   return "green";
 }
@@ -202,6 +203,12 @@ export function faultEntries(faults: Record<string, string>): BoardEntry[] {
 export type BoardSummary = {
   red: number;
   amber: number;
+  /**
+   * Late readings: the sensor or its feed, with the service working. Counted and
+   * listed, but never part of `exceptions` or `incidents`, which are what needs
+   * acting on — a late reading is worth knowing and not worth interrupting for.
+   */
+  stale: number;
   green: number;
   idle: number;
   /** Services declaring no signal at all — reported, never coloured green. */
@@ -210,11 +217,13 @@ export type BoardSummary = {
   exceptions: BoardEntry[];
   /** The same exceptions, with one row per distinct failure. */
   incidents: Incident[];
+  /** The late readings, grouped the same way, for the calm section of the board. */
+  late: Incident[];
 };
 
 export function summarise(entries: BoardEntry[]): BoardSummary {
-  const exceptions = entries
-    .filter((entry) => entry.colour !== "green")
+  const actionable = entries.filter((entry) => entry.colour === "red" || entry.colour === "amber");
+  const exceptions = actionable
     // Red before amber, then by service and code so the order is stable between
     // renders — a list that reshuffles is a list nobody trusts.
     .sort((a, b) => {
@@ -225,6 +234,7 @@ export function summarise(entries: BoardEntry[]): BoardSummary {
   return {
     red: entries.filter((entry) => entry.colour === "red").length,
     amber: entries.filter((entry) => entry.colour === "amber").length,
+    stale: entries.filter((entry) => entry.colour === "stale").length,
     green: entries.filter((entry) => entry.colour === "green" && !entry.idle).length,
     idle: entries.filter((entry) => entry.idle).length,
     // Services HALO produced no reading for at all. Literal rather than
@@ -232,7 +242,8 @@ export function summarise(entries: BoardEntry[]): BoardSummary {
     // its contract declares it would report.
     uncovered: SERVICE_KEYS.filter((service) => !entries.some((entry) => entry.service === service)),
     exceptions,
-    incidents: incidentsFrom(entries),
+    incidents: incidentsFrom(actionable),
+    late: incidentsFrom(entries.filter((entry) => entry.colour === "stale")),
   };
 }
 
@@ -246,7 +257,10 @@ export function summaryLine(summary: BoardSummary): string {
   // Deliberately not "all healthy": most of the estate is idle for most of the
   // day, and claiming health for a project nothing asked of would be the same
   // overstatement the colours were fixed to avoid.
-  return summary.green ? "nothing to action" : "idle";
+  // A late reading is a covered project doing its job with a slow sensor, so a board
+  // holding only those still has "nothing to action" — not "idle", which would say
+  // nothing was running.
+  return summary.green || summary.stale ? "nothing to action" : "idle";
 }
 
 export type Incident = {
@@ -278,6 +292,7 @@ export type Incident = {
 export function incidentsFrom(entries: BoardEntry[]): Incident[] {
   const groups = new Map<string, Incident>();
   for (const entry of entries) {
+    // A project is only ever in a group because something is worth saying about it.
     if (entry.colour === "green") continue;
     const key = `${entry.service}|${entry.signal}|${entry.label}`;
     const existing = groups.get(key);

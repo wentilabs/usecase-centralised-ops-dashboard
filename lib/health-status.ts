@@ -1,5 +1,5 @@
 /**
- * One status vocabulary, three colours, and a rule rather than a list.
+ * One status vocabulary, four colours, and a rule rather than a list.
  *
  * Every service already records what each run did, in its own words:
  * `completed`, `skipped_outside_project_cadence_window`,
@@ -19,11 +19,22 @@
  *   completed_with… it ran and sent, but something was missing amber
  *   failed…         it did not do its job                      red
  *
- * The three colours are the ones an operator asked for, and they mean:
+ * The colours, and what each asks of a reader:
  *
  *   green   expected behaviour, including deliberately doing nothing
- *   amber  it worked, but a value was missing or something non-critical broke
+ *   stale   the data is late — the sensor or its feed is the likely cause, and
+ *           the service itself is working. Dark green: worth knowing, and
+ *           deliberately not attention-grabbing. Never counted as "to look at".
+ *   amber   it worked, but a value was missing or something non-critical broke
  *   red     it did not run, did not send, or ended unsuccessfully
+ *
+ * `stale` exists because a late reading is a fact about a SENSOR, not about the
+ * pipeline. Amber says "something here needs a developer", and late readings are
+ * the largest single source of it. Measured over the fortnight to 20 Oct 2026:
+ * 10,968 of Noise's 12,089 `completed_with_…` runs (91%) and 2,156 of WBGT's 3,049
+ * (71%) wrote nothing but late-reading lines. Left amber they drown the amber that
+ * is a real fault — "No parseable rows", "Missing configured sensors", a revoked
+ * sheet permission — which is the one thing amber has to keep meaning.
  *
  * **An unrecognised status is amber, never green.** Green would hide a status
  * nobody has classified yet, which is the one case where silence is most likely
@@ -34,7 +45,7 @@
 
 import { contractHealthColour } from "./service-contracts";
 
-export type HealthColour = "green" | "amber" | "red";
+export type HealthColour = "green" | "stale" | "amber" | "red";
 
 /**
  * Statuses whose name does not predict their colour.
@@ -81,6 +92,10 @@ const PREFIXES: { prefix: string; colour: HealthColour }[] = [
   { prefix: "skipped", colour: "green" },
   { prefix: "suppressed", colour: "green" },
   { prefix: "failed", colour: "red" },
+  // The listener accepted a send and later gave up on it for good — the number
+  // is no longer in the group, say. Final and undelivered, so red. A service that
+  // reconciles its queued sends writes this; until one does, HALO cannot see it.
+  { prefix: "dropped", colour: "red" },
   // In flight. Not a failure by itself — a run that has been `running` for
   // longer than its cadence is caught by staleness, which is a question about
   // time rather than about this word.
@@ -97,7 +112,7 @@ export type Classification = {
    * `declared` is the service's own answer from its contract and outranks the
    * rest; the others are HALO reading a name it was never told about.
    */
-  basis: "declared" | "exception" | "prefix" | "unrecognised";
+  basis: "declared" | "exception" | "prefix" | "stale-message" | "unrecognised";
   because?: string;
 };
 
@@ -131,7 +146,39 @@ export function classifyRunStatus(status: unknown): Classification {
 export function worstColour(colours: HealthColour[]): HealthColour {
   if (colours.includes("red")) return "red";
   if (colours.includes("amber")) return "amber";
+  if (colours.includes("stale")) return "stale";
   return "green";
+}
+
+/**
+ * The phrases each service already uses when a reading is late.
+ *
+ * The services write stale readings as ordinary run statuses — Noise as
+ * `completed_with_meter_issues`, WBGT as `completed_with_issues` — and the status
+ * says nothing about which kind of issue it was. Only the error text does, and the
+ * text is the service's to word as it likes: this reads it, and never asks for it
+ * to change.
+ *
+ * Kept here, not in a contract, because it is an integration detail of how two
+ * services phrase one thing. A service that wants to stop being matched by its
+ * wording gives the situation its own status and declares it `stale` in its
+ * contract, which outranks everything here (`docs/DATA_HEALTH.md`).
+ *
+ * Every line of a run must match: a run that was late AND hit a different problem
+ * stays amber, because the stale part must never hide the part that needs acting on.
+ */
+const STALE_READING_LINES: Record<string, RegExp[]> = {
+  // "Stale latest rows: NM01 Blk 7 Roof, NM02 …"
+  noise: [/^stale latest rows:/i],
+  // "MBS IR2 (WC-3): reading 84 minutes old; production delivery suppressed"
+  wbgt: [/\breading \d+ minutes? old\b/i],
+};
+
+/** Whether every line a run wrote is the service saying a reading was late. */
+export function isStaleReadingLog(service: string, lines: readonly string[]): boolean {
+  const patterns = STALE_READING_LINES[service];
+  if (!patterns || !lines.length) return false;
+  return lines.every((line) => patterns.some((pattern) => pattern.test(String(line).trim())));
 }
 
 /**
@@ -185,4 +232,31 @@ export function colourForStatus(
     };
   }
   return classifyRunStatus(status);
+}
+
+/**
+ * One run's colour: its status, then what it wrote about itself.
+ *
+ * A `completed_with_…` run is amber by name. If everything it recorded is the
+ * service reporting a late reading, it is `stale` instead — the run did its job and
+ * the sensor was late. Only the name-derived amber is softened: a status the
+ * service declared, or one that failed, keeps the colour it was given, because a
+ * stale line in a failed run is a symptom and not an explanation.
+ */
+export function colourForRun(
+  service: string,
+  status: unknown,
+  lines: readonly string[],
+  declaredBy: (service: string, status: unknown) => HealthColour | null = contractHealthColour,
+): Classification {
+  const base = colourForStatus(service, status, declaredBy);
+  if (base.colour === "amber" && base.basis === "prefix" && isStaleReadingLog(service, lines)) {
+    return {
+      ...base,
+      colour: "stale",
+      basis: "stale-message",
+      because: `${service} wrote only late-reading lines, so the sensor was late and the run itself was fine`,
+    };
+  }
+  return base;
 }

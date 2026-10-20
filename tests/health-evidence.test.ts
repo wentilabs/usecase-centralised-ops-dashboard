@@ -60,7 +60,7 @@ test("the mute only applies when the project declares it", () => {
   const unmuted = { ...CCCC, remove_sunday_notifications: false } as unknown as ProjectConfigRow;
   const activity = activityFor("wbgt", unmuted, SUNDAY_NOON);
   assert.equal(activity.state === "active" && activity.mutedDay, undefined);
-  assert.equal(assessIngestionHealth(target, reading(SATURDAY_LAST), SUNDAY_NOON, activity).tone, "danger");
+  assert.equal(assessIngestionHealth(target, reading(SATURDAY_LAST), SUNDAY_NOON, activity).tone, "stale");
 });
 
 test("Monday morning compares against Saturday, not against a Sunday nobody works", () => {
@@ -75,7 +75,7 @@ test("Monday morning compares against Saturday, not against a Sunday nobody work
 test("and a site that really has gone quiet on a working day still goes red", () => {
   const activity = activityFor("wbgt", CCCC, MONDAY_1030);
   const verdict = assessIngestionHealth(target, reading(SATURDAY_LAST), MONDAY_1030, activity);
-  assert.equal(verdict.tone, "danger");
+  assert.equal(verdict.tone, "stale");
   assert.equal(verdict.label, "Data: no recent data");
 });
 
@@ -142,7 +142,7 @@ test("the service's own words are attached, with how often it said them", async 
     producer: [{ started_at: "2026-09-25T06:00:11Z", status: "completed_with_issues", job_type: "scrape-wbgt", errors: ["Missing configured sensors: CCCC — set the CloudLynx label"] }],
   });
   const verdict = health.get(healthKey("wbgt", "CCCC"))!;
-  assert.equal(verdict.tone, "danger");
+  assert.equal(verdict.tone, "stale");
   const text = (verdict.evidence ?? []).join("\n");
   assert.match(text, /Service log: the newest of 3 runs since then was wbgt-hourly completed_with_issues at 19 Oct, 10:13 SGT — “CCCC — set the CloudLynx label: reading 1372 minutes old/);
   assert.match(text, /3 runs carry that same message/);
@@ -157,7 +157,7 @@ test("a service that has gone quiet is said to have gone quiet", async () => {
 
 test("if the log cannot be read the evidence only gets shorter, and the red stays", async () => {
   const verdict = (await world({ logFails: true })).get(healthKey("wbgt", "CCCC"))!;
-  assert.equal(verdict.tone, "danger");
+  assert.equal(verdict.tone, "stale");
   assert.equal(verdict.evidence?.length, 2);
   assert.match(verdict.evidence?.join("\n") ?? "", /^Expected: /);
 });

@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { formatSgt } from "@/lib/card-summary";
-import { BAR_COUNT, troubleCount, troubleIn, type Bar } from "@/lib/health-timeline";
+import { BAR_COUNT, staleCount, troubleCount, troubleIn, type Bar } from "@/lib/health-timeline";
 
 const FILL: Record<string, string> = {
   red: "bg-danger",
   amber: "bg-warn",
+  // Late readings: the sensor, not the pipeline. Visibly green, visibly not the
+  // bright "ran fine" green, and nowhere near amber.
+  stale: "bg-stale",
   green: "bg-on",
 };
 
@@ -41,6 +44,7 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
   const [open, setOpen] = useState(false);
   const trouble = troubleIn(bars);
   const troubled = troubleCount(bars);
+  const late = staleCount(bars);
   const worst = trouble.some((bar) => bar.colour === "red") ? "red" : "amber";
 
   // Escape closes it, like every other dialog here.
@@ -58,11 +62,13 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
       <button
         type="button"
         onClick={() => setOpen(true)}
-        disabled={!troubled}
+        disabled={!troubled && !late}
         aria-label={
           troubled
-            ? `Last ${bars.length} processes for ${projectCode}. Show the ${troubled} that need looking at.`
-            : bars.length
+            ? `Last ${bars.length} processes for ${projectCode}. Show the ${troubled} that need looking at${late ? `, and ${late} late readings` : ""}.`
+            : late
+              ? `Last ${bars.length} processes for ${projectCode}. ${late} were late readings, nothing to action.`
+              : bars.length
               ? `Last ${bars.length} processes for ${projectCode}, nothing to action.`
               : `No processes for ${projectCode} in the last 48 hours.`
         }
@@ -113,6 +119,13 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
           ) : (
             <span className="whitespace-nowrap">{bars.length ? "nothing to action" : "no activity"}</span>
           )}
+          {/* Said quietly, after what needs action: a late reading is worth
+              knowing, and must not read as one more thing to chase. */}
+          {late ? (
+            <span className="whitespace-nowrap text-stale-text underline decoration-dotted group-hover:text-foreground">
+              · {late} stale
+            </span>
+          ) : null}
           <span className="h-px flex-1 bg-border" />
           <span className="whitespace-nowrap">now</span>
         </span>
@@ -172,7 +185,11 @@ function TroubleDialog({
           <div>
             <h2 className="font-mono text-lg font-semibold">{projectCode}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {trouble.length} process{trouble.length === 1 ? "" : "es"} needing attention, newest first.
+              {trouble.filter((bar) => bar.colour !== "stale").length} needing attention
+              {trouble.some((bar) => bar.colour === "stale")
+                ? `, ${trouble.filter((bar) => bar.colour === "stale").length} late readings`
+                : ""}
+              , newest first.
             </p>
           </div>
           <button
@@ -188,7 +205,7 @@ function TroubleDialog({
           {trouble.map((bar, index) => (
             <li key={`${bar.at}-${index}`} className="px-5 py-2.5">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className={bar.colour === "red" ? "text-danger" : "text-warn"}>●</span>
+                <span className={bar.colour === "red" ? "text-danger" : bar.colour === "stale" ? "text-stale-text" : "text-warn"}>●</span>
                 <span className="font-mono text-[13px] font-medium">{bar.status}</span>
                 <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-muted-foreground">
                   {formatSgt(bar.at)} SGT

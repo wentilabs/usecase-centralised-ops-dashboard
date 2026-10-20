@@ -39,6 +39,9 @@ export function HealthStrip({ summary, onOpen }: { summary: BoardSummary; onOpen
       {summary.red ? <span className="font-semibold text-danger">● {summary.red}</span> : null}
       {summary.amber ? <span className="font-semibold text-warn">● {summary.amber}</span> : null}
       {actionable ? null : <span>{summaryLine(summary)}</span>}
+      {/* Late readings, after everything that needs action and in their own quiet
+          colour: counted so they are not hidden, never allowed to colour the strip. */}
+      {summary.stale ? <span className="text-[11px] text-stale-text">● {summary.stale} stale</span> : null}
       {/* Idle is said out loud rather than folded into a green count: most of
           the estate is outside its cadence hours for most of the day, and a
           reader needs to know the difference between quiet and working. */}

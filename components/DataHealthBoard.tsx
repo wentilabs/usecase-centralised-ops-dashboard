@@ -120,6 +120,51 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
             </p>
           )}
 
+          {/* Late readings: the sensor or its feed, with the service working. A
+              calm section of their own, after everything that needs acting on and
+              in their own colour, so they are findable without being a to-do. */}
+          {summary.late.length ? (
+            <div className="mt-4 border-t border-border pt-3">
+              <h3 className="text-[12px] font-medium text-stale-text">
+                Late readings — {summary.stale} project{summary.stale === 1 ? "" : "s"}
+              </h3>
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                The service ran fine; the sensor or its feed is behind. Not counted as needing action.
+              </p>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {summary.late.map((incident) => (
+                  <li
+                    key={`${incident.service}|${incident.signal}|${incident.label}`}
+                    className="rounded-lg border border-stale/50 bg-stale/10 px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                      <span className="text-sm font-semibold text-stale-text">●</span>
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        {SERVICES[incident.service].label}
+                      </span>
+                      <span className="font-mono text-[12px] font-medium">{incident.label}</span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {incident.projects.length} project{incident.projects.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {incident.projects.map((projectCode) => (
+                        <button
+                          key={projectCode}
+                          type="button"
+                          onClick={() => onOpenProject?.(incident.service, projectCode)}
+                          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
+                        >
+                          {projectCode}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {/* Coverage is stated, not implied. A service recording no evidence is
               not a healthy service, and leaving it out of the list entirely
               would read as a clean bill of health. */}

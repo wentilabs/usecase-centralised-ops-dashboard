@@ -104,35 +104,46 @@ export function stripsFrom(samples: KeyedSample[], bars = BAR_COUNT): Map<string
  * and lists it on click, and there is no score to interpret.
  */
 
-/** Every amber and red process, newest first — one row each, for the modal. */
+/**
+ * Every process that has something to read, newest first — one row each, for the modal.
+ * Includes late readings (dark green): they carry the service's own lines, and someone
+ * chasing a sensor wants them. They are not counted as needing action, below.
+ */
 export function troubleIn(bars: Bar[]): Bar[] {
   return bars.filter((bar) => bar.colour !== "green").reverse();
 }
 
-/** How many processes need looking at — what the strip counts. */
+/** How many processes need looking at — what the strip counts. Not late readings. */
 export function troubleCount(bars: Bar[]): number {
-  return bars.filter((bar) => bar.colour !== "green").length;
+  return bars.filter((bar) => bar.colour === "red" || bar.colour === "amber").length;
 }
 
-export type Severity = { red: number; amber: number; green: number };
+/** How many processes were a late reading — said quietly, in its own colour. */
+export function staleCount(bars: Bar[]): number {
+  return bars.filter((bar) => bar.colour === "stale").length;
+}
+
+export type Severity = { red: number; amber: number; stale: number; green: number };
 
 /** How much of a strip needs looking at, split by how badly, and how much is fine. */
 export function severityOf(bars: Bar[] | undefined): Severity {
   let red = 0;
   let amber = 0;
+  let stale = 0;
   let green = 0;
   for (const bar of bars ?? []) {
     if (bar.colour === "red") red += 1;
     else if (bar.colour === "amber") amber += 1;
+    else if (bar.colour === "stale") stale += 1;
     else green += 1;
   }
-  return { red, amber, green };
+  return { red, amber, stale, green };
 }
 
 /**
  * Order two projects by how much attention their strips are asking for.
  *
- * Lexicographic on (red, amber), not a weighted sum: ONE red outranks any
+ * Lexicographic on (red, amber, stale), not a weighted sum: ONE red outranks any
  * number of ambers, however many. That is a deliberate refusal to let a
  * chronic, tolerated amber — a project logging `completed_with_issues` on every
  * run — outrank a single hard failure. A score with weights would eventually be
@@ -148,6 +159,9 @@ export function severityOf(bars: Bar[] | undefined): Severity {
 export function bySeverity(a: Severity, b: Severity): number {
   if (a.red !== b.red) return b.red - a.red;
   if (a.amber !== b.amber) return b.amber - a.amber;
+  // Late readings sort above a clean strip but below anything that needs acting on,
+  // so a project with a sensor problem is findable without outranking a real fault.
+  if (a.stale !== b.stale) return b.stale - a.stale;
   return b.green - a.green;
 }
 

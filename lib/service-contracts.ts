@@ -39,7 +39,7 @@ export type ContractHealth = {
    */
   granularity?: Partial<Record<"ingestion" | "run" | "delivery", "service" | "project" | "none">>;
   /** This service's own status values, mapped to the shared three colours. */
-  statuses?: Record<string, "green" | "amber" | "red">;
+  statuses?: Record<string, "green" | "stale" | "amber" | "red">;
 };
 
 export type ServiceContract = {
@@ -104,7 +104,7 @@ export function serviceContractFor(service: string): ServiceContract | null {
  * the caller then falls back to the name convention, which is the whole reason
  * this is allowed to be absent.
  */
-export function contractHealthColour(service: string, status: unknown): "green" | "amber" | "red" | null {
+export function contractHealthColour(service: string, status: unknown): "green" | "stale" | "amber" | "red" | null {
   const declared = serviceContractFor(service)?.health?.statuses;
   if (!declared) return null;
   const key = String(status ?? "").trim().toLowerCase();
@@ -112,8 +112,8 @@ export function contractHealthColour(service: string, status: unknown): "green" 
   for (const [name, colour] of Object.entries(declared)) {
     if (name.trim().toLowerCase() === key) {
       // A contract is vendored from another repository, so a value outside the
-      // three colours is possible and must not reach the UI as a class name.
-      return colour === "green" || colour === "amber" || colour === "red" ? colour : null;
+      // four colours is possible and must not reach the UI as a class name.
+      return colour === "green" || colour === "stale" || colour === "amber" || colour === "red" ? colour : null;
     }
   }
   return null;

@@ -102,9 +102,9 @@ test("inside the window, silence is still reported", () => {
   // Fresh within the tolerated gap.
   assert.equal(assessIngestionHealth(target, at("2026-09-26T01:30:00.000Z") as never, MIDMORNING, active).tone, "good");
   // Past it — the project should have produced and did not.
-  assert.equal(assessIngestionHealth(target, at("2026-09-25T23:30:00.000Z") as never, MIDMORNING, active).tone, "warn");
+  assert.equal(assessIngestionHealth(target, at("2026-09-25T23:30:00.000Z") as never, MIDMORNING, active).tone, "stale");
   // Twice past it.
-  assert.equal(assessIngestionHealth(target, at("2026-09-25T20:00:00.000Z") as never, MIDMORNING, active).tone, "danger");
+  assert.equal(assessIngestionHealth(target, at("2026-09-25T20:00:00.000Z") as never, MIDMORNING, active).tone, "stale");
   // And an active project with nothing at all is a real fault.
   assert.equal(assessIngestionHealth(target, { kind: "empty" }, MIDMORNING, active).tone, "danger");
 });
@@ -129,7 +129,7 @@ test("a long cadence is judged by its own gap, not by the fixed budget", () => {
 
   assert.equal(assessIngestionHealth(target, fiveHoursOld as never, MIDMORNING, dailyReport).tone, "good");
   // Same evidence, same moment, judged by the fixed budget instead.
-  assert.equal(assessIngestionHealth(target, fiveHoursOld as never, MIDMORNING).tone, "danger");
+  assert.equal(assessIngestionHealth(target, fiveHoursOld as never, MIDMORNING).tone, "stale");
   assert.ok(dailyReport.toleranceMs > target.criticalAfterMs, "the gap this cadence allows exceeds the flat budget");
 });
 
@@ -138,5 +138,5 @@ test("without an activity the old fixed budgets still apply", () => {
   // exactly the behaviour it had before.
   const target = healthTarget("wbgt", "TJR")!;
   const stale = { kind: "row" as const, createdAt: "2026-09-26T06:00:00.000Z", sourceEventAt: null };
-  assert.equal(assessIngestionHealth(target, stale as never, EVENING).tone, "danger");
+  assert.equal(assessIngestionHealth(target, stale as never, EVENING).tone, "stale");
 });

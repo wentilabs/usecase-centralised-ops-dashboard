@@ -1,4 +1,4 @@
-import { colourForStatus, type HealthColour } from "./health-status";
+import { colourForRun, type HealthColour } from "./health-status";
 import { logLines } from "./log-lines";
 import { readPaged } from "./paged-read";
 import type { ServiceKey } from "./services";
@@ -322,7 +322,9 @@ export async function readProcessWindow(
     const log = service === "lightning"
       ? lightningErrorLines(status, row[errorColumn], row.delivery_attempts)
       : logLines(row[errorColumn]);
-    return [{ projectCode, at, colour: colourForStatus(service, status).colour, status, log }];
+    // The colour reads what the run wrote as well as its status: a run that only
+    // reported late readings is `stale`, not amber (see `colourForRun`).
+    return [{ projectCode, at, colour: colourForRun(service, status, log).colour, status, log }];
   });
 }
 

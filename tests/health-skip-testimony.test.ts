@@ -145,43 +145,43 @@ test("the SCRAPE having run since the reading, and found nothing, stays red", as
   // completing for days without producing data is broken, not muted.
   const runs: Run[] = [...SUNDAY, { job_type: "scrape-noiselynx", status: "completed" }];
   const { health } = await verdictFor(runs, { code: "OBAYA" });
-  assert.equal(health.tone, "danger");
+  assert.equal(health.tone, "stale");
   assert.equal(health.label, "Data: no recent data");
 });
 
 test("a failed run since the reading stays red, whatever else the log says", async () => {
   const runs: Run[] = [...SUNDAY, { job_type: "noise-hourly", status: "failed_config_validation" }];
-  assert.equal((await verdictFor(runs)).health.tone, "danger");
+  assert.equal((await verdictFor(runs)).health.tone, "stale");
 });
 
 test("no run at all is not an explanation, because a silent cron is what stale exists to catch", async () => {
-  assert.equal((await verdictFor([])).health.tone, "danger");
+  assert.equal((await verdictFor([])).health.tone, "stale");
 });
 
 test("the newest run must itself be a deliberate skip", async () => {
   // The project is working right now — a scrape would have been caught above, but
   // an alert run completing is the service doing something, not declining to.
   const runs: Run[] = [{ job_type: "noise-5min", status: "completed" }, ...SUNDAY];
-  assert.equal((await verdictFor(runs)).health.tone, "danger");
+  assert.equal((await verdictFor(runs)).health.tone, "stale");
 });
 
 test("a skip that names a fault, mixed among ordinary skips, is not an explanation", async () => {
   // `skipped_` normally means "not due", so it would pass a prefix check. A sheet
   // that is not configured is a project that cannot run, hiding among muted ones.
   const runs: Run[] = [...SUNDAY.slice(0, 5), { job_type: "noise-5min", status: "skipped_google_sheet_not_configured" }];
-  assert.equal((await verdictFor(runs)).health.tone, "danger");
+  assert.equal((await verdictFor(runs)).health.tone, "stale");
   // An unrecognised word is not a deliberate skip either.
-  assert.equal((await verdictFor([{ job_type: "noise-5min", status: "bootstrap_required" }])).health.tone, "danger");
+  assert.equal((await verdictFor([{ job_type: "noise-5min", status: "bootstrap_required" }])).health.tone, "stale");
 });
 
 test("being unable to ask never clears a red, whichever question failed", async () => {
-  assert.equal((await verdictFor(SUNDAY, { failure: "both" })).health.tone, "danger", "a 500 from both");
-  assert.equal((await verdictFor(SUNDAY, { failure: "throw" })).health.tone, "danger", "a timeout");
+  assert.equal((await verdictFor(SUNDAY, { failure: "both" })).health.tone, "stale", "a 500 from both");
+  assert.equal((await verdictFor(SUNDAY, { failure: "throw" })).health.tone, "stale", "a timeout");
   // Each alone. A failing producer question returns an empty list, which reads as
   // "the scrape did not run" — the one answer that clears a red — so the STATUS
   // has to be checked, not just the body.
-  assert.equal((await verdictFor(SUNDAY, { failure: "producer" })).health.tone, "danger", "only the producer question failed");
-  assert.equal((await verdictFor(SUNDAY, { failure: "newest" })).health.tone, "danger", "only the newest-runs question failed");
+  assert.equal((await verdictFor(SUNDAY, { failure: "producer" })).health.tone, "stale", "only the producer question failed");
+  assert.equal((await verdictFor(SUNDAY, { failure: "newest" })).health.tone, "stale", "only the newest-runs question failed");
 });
 
 test("a merely delayed project is explained too, not only a red one", async () => {
@@ -201,7 +201,7 @@ test("a merely delayed project is explained too, not only a red one", async () =
   // Without an explanation it really is the delayed band, so the test is about
   // the rule and not about a project that was never going to be flagged.
   const unexplained = await stale([{ job_type: "scrape-noiselynx", status: "completed" }, ...SUNDAY]);
-  assert.equal(unexplained.get(healthKey("noise", "ZRB"))?.tone, "warn");
+  assert.equal(unexplained.get(healthKey("noise", "ZRB"))?.tone, "stale");
 
   const explained = await stale(SUNDAY);
   assert.equal(explained.get(healthKey("noise", "ZRB"))?.tone, "neutral");
@@ -234,5 +234,5 @@ test("WBGT is explained from its own run log, naming its own scrape", async () =
 
   // And a WBGT scrape that ran and produced nothing stays red.
   const scraped = await verdictFor([skipped, { job_type: "scrape-wbgt", status: "completed_with_issues" }], { service: "wbgt", code: "C 991" });
-  assert.equal(scraped.health.tone, "danger");
+  assert.equal(scraped.health.tone, "stale");
 });

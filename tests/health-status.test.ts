@@ -236,11 +236,11 @@ test("a contract cannot smuggle a colour the UI does not have", () => {
   // to the convention is the safe answer.
   const stray = contractHealthColour("noise", "completed");
   assert.equal(stray, null, "nothing is declared, so nothing is returned");
-  // The declared path is only taken for exactly the three colours — asserted on
+  // The declared path is only taken for exactly the four colours — asserted on
   // the reader's own source, since no contract exercises it yet.
   const reader = "lib/service-contracts.ts";
   return readFile(resolve(reader), "utf8").then((text) => {
-    assert.match(text, /colour === "green" \|\| colour === "amber" \|\| colour === "red" \? colour : null/);
+    assert.match(text, /colour === "green" \|\| colour === "stale" \|\| colour === "amber" \|\| colour === "red" \? colour : null/);
   });
 });
 
@@ -324,7 +324,7 @@ test("a service HALO cannot read is reported, never counted as healthy", () => {
 });
 
 test("the quiet line never overstates health", () => {
-  const quiet = { red: 0, amber: 0, green: 0, idle: 12, uncovered: [], exceptions: [], incidents: [] };
+  const quiet = { red: 0, amber: 0, green: 0, idle: 12, uncovered: [], exceptions: [], incidents: [], stale: 0, late: [] };
   // Not "all healthy": most of the estate is outside its cadence hours for most
   // of the day, and claiming health for a project nothing asked of is the same
   // overstatement the colours were fixed to avoid.

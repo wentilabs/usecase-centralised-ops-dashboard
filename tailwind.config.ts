@@ -16,6 +16,8 @@ const config: Config = {
         on: "hsl(var(--on))",
         warn: "hsl(var(--warn))",
         danger: "hsl(var(--danger))",
+        stale: "hsl(var(--stale))",
+        "stale-text": "hsl(var(--stale-text))",
       },
       boxShadow: {
         soft: "0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.06)",

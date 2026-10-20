@@ -16,6 +16,11 @@
   --on: 152 62% 52%;
   --warn: 38 92% 60%;
   --danger: 0 84% 68%;
+  /* Late readings: dark green. A fill that is clearly green but clearly not the
+     bright "working" green, and a lighter companion for text, which at the fill's
+     lightness would not be readable on the card. */
+  --stale: 151 44% 33%;
+  --stale-text: 151 38% 62%;
 }
 
 * {

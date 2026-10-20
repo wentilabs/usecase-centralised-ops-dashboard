@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
+import { LoadStamps } from "./LoadStamps";
 import { RefreshHealthButton } from "./RefreshHealthButton";
+import type { Load } from "@/lib/load-stamps";
 
 import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
@@ -48,11 +50,13 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRefresh, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
   /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
   onRefresh?: () => void;
+  /** What has loaded, when, and how long it took: the board is where someone decides whether to trust what they see. */
+  loads?: { label: string; load: Load; hint: string }[];
   refreshing?: boolean;
   refreshedAt?: string | null;
   refreshFailed?: boolean;
@@ -98,6 +102,11 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                   rather than wondering whether it was ever configured. */}
               <span className="opacity-70">Every covered project is automatically monitored.</span>
             </p>
+            {loads ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                <LoadStamps loads={loads} />
+              </p>
+            ) : null}
           </div>
           <div className="ml-auto flex flex-wrap items-start justify-end gap-2">
             {onRefresh ? (
@@ -121,14 +130,17 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
           </div>
         </header>
 
-        <div className="overflow-y-auto p-5">
+        {/* The sections are separated by a gap of their own, and the last one has room beneath it.
+            Without both, the incident list sat flush against the panel above it and against the
+            bottom edge of the dialog. */}
+        <div className="flex flex-col gap-7 overflow-y-auto px-5 pb-7 pt-5">
           {errorProcessCount ? (
             <div>
               <h3 className="mb-3 text-sm font-semibold">Process errors · last 48 hours</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {[...errorsByService.entries()].map(([service, projects]) => (
                   <section key={service} className="flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-card">
-                    <header className="flex items-baseline justify-between gap-3 border-b border-border px-3 py-2.5">
+                    <header className="flex items-baseline justify-between gap-3 border-b border-border px-3.5 py-3">
                       <h4 className="text-sm font-semibold">{SERVICES[service].label}</h4>
                       <span className="text-[11px] text-muted-foreground">
                         {projects.reduce((total, project) => total + project.bars.length, 0)} process errors
@@ -138,9 +150,9 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                       <table className="w-full table-fixed text-left text-xs">
                         <thead className="sticky top-0 z-10 bg-card text-[10px] uppercase tracking-wide text-muted-foreground">
                           <tr>
-                            <th className="w-[27%] px-3 py-2 font-medium">Project / process</th>
-                            <th className="w-[53%] px-3 py-2 font-medium">Error</th>
-                            <th className="w-[20%] px-3 py-2 font-medium">Last run</th>
+                            <th className="w-[27%] px-3.5 py-2.5 font-medium">Project / process</th>
+                            <th className="w-[47%] px-3.5 py-2.5 font-medium">Error</th>
+                            <th className="w-[26%] px-3.5 py-2.5 font-medium">Last run</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -148,7 +160,7 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                             const red = bar.colour === "red";
                             return (
                               <tr key={`${project.service}|${project.projectCode}|${bar.at}|${bar.kind ?? ""}|${index}`} className="align-top">
-                                <td className="break-words px-3 py-2.5">
+                                <td className="break-words px-3.5 py-3">
                                   <button
                                     type="button"
                                     onClick={() => onOpenProject?.(project.service, project.projectCode)}
@@ -158,7 +170,7 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                                   </button>
                                   {bar.kind ? <div className="mt-1 break-all font-mono text-[10px] text-muted-foreground">{bar.kind}</div> : null}
                                 </td>
-                                <td className="break-words px-3 py-2.5">
+                                <td className="break-words px-3.5 py-3">
                                   <div className={`font-medium ${red ? "text-danger" : "text-warn"}`}>{bar.status}</div>
                                   {bar.log.length ? (
                                     <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] text-muted-foreground">
@@ -166,8 +178,18 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                                     </ul>
                                   ) : <div className="mt-1 text-[11px] text-muted-foreground">No reason recorded</div>}
                                 </td>
-                                <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[10px] text-muted-foreground">
-                                  {processTime(bar.at)} SGT
+                                {/* Date over time, not one nowrap line: "20 Oct, 18:05 SGT" overflowed its
+                                    column and was cut off at "20 Oct, 18". */}
+                                <td className="px-3.5 py-3 font-mono text-[10px] leading-snug text-muted-foreground">
+                                  {(() => {
+                                    const [day, clock] = processTime(bar.at).split(", ");
+                                    return (
+                                      <>
+                                        <div>{day}</div>
+                                        <div>{clock ? `${clock} SGT` : "SGT"}</div>
+                                      </>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             );
@@ -182,7 +204,10 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
           ) : null}
 
           {summary.incidents.length ? (
-            <ul className="flex flex-col gap-2">
+            <div>
+              {/* Named like the section above it: two lists on one screen with only one heading read as one list. */}
+              {errorProcessCount ? <h3 className="mb-3 text-sm font-semibold">Issues by service</h3> : null}
+              <ul className="flex flex-col gap-2.5">
               {summary.incidents.map((incident) => {
                 const red = incident.colour === "red";
                 const stamp = when(incident);
@@ -237,7 +262,8 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                   </li>
                 );
               })}
-            </ul>
+              </ul>
+            </div>
           ) : !errorProcessCount ? (
             <p className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">
               {summary.green} project{summary.green === 1 ? "" : "s"} reporting, {summary.idle} idle outside their
@@ -249,7 +275,7 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
               calm section of their own, after everything that needs acting on and
               in their own colour, so they are findable without being a to-do. */}
           {summary.late.length ? (
-            <div className="mt-4 border-t border-border pt-3">
+            <div className="border-t border-border pt-4">
               <h3 className="text-[12px] font-medium text-stale-text">
                 Late readings — {summary.stale} project{summary.stale === 1 ? "" : "s"}
               </h3>
@@ -301,7 +327,7 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
               not a healthy service, and leaving it out of the list entirely
               would read as a clean bill of health. */}
           {summary.uncovered.length ? (
-            <p className="mt-4 border-t border-border pt-3 text-[12px] leading-snug text-muted-foreground">
+            <p className="border-t border-border pt-4 text-[12px] leading-snug text-muted-foreground">
               <span className="font-medium">Not covered:</span>{" "}
               {summary.uncovered.map((service) => SERVICES[service].label).join(", ")} — each declares what it would
               report, but nothing reads it yet, so HALO cannot say whether they are healthy. See{" "}

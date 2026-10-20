@@ -758,6 +758,22 @@ paths:
                 type: object
                 additionalProperties: true
         "401": *a1
+  /api/data-health:
+    get:
+      operationId: listReadingsAgeHealth
+      tags:
+        - discovery
+      summary: Each Noise and WBGT project's readings-age verdict, loaded after the page
+      description: "The newest row of each active project's own readings table, judged against the project's schedule (site hours, cadence, a muted Sunday), as `health` — one entry per project with a tone, a label and, for anything that is not healthy, the evidence behind it. It is the slowest read the dashboard makes (one query per active project), so the page does not wait for it: it is loaded after first paint, held for a minute and shared by everyone who asks. `tookMs` is how long this call took and `fetchedAt` when it finished. `health` is `null` when the read failed, never an empty list, so a caller cannot mistake 'could not look' for 'nothing is wrong'."
+      responses:
+        "200":
+          description: The verdicts, timed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
   /api/data-health/refresh:
     post:
       operationId: refreshDataHealth

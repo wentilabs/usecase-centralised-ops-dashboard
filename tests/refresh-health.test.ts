@@ -56,7 +56,7 @@ test("the reset forgets every layer that remembers, before anything is read", as
   const repository = await source("lib/config-repository.ts");
   const forget = repository.slice(repository.indexOf("export function forgetHealthCaches"));
   const body = forget.slice(0, forget.indexOf("\n}\n"));
-  for (const cache of ["stripCache", "faultCache", "lightningCache", "configCache"]) {
+  for (const cache of ["stripCache", "faultCache", "lightningCache", "healthCache", "configCache"]) {
     assert.match(body, new RegExp(`${cache}\\.forget\\(\\)`), `${cache} must be forgotten or a refresh reads stale`);
   }
 
@@ -64,7 +64,7 @@ test("the reset forgets every layer that remembers, before anything is read", as
   const forgotten = route.indexOf("forgetHealthCaches()");
   // Asserted present first: a missing call would make every comparison below pass on -1.
   assert.ok(forgotten >= 0, "the route must actually forget the caches");
-  assert.ok(forgotten < route.indexOf("listConfigs("), "forgotten before the rows are re-read");
+  assert.ok(forgotten < route.indexOf("listEstateHealth("), "forgotten before the health is re-read");
   assert.ok(forgotten < route.indexOf("listProjectStrips()"), "and before the strips");
   assert.match(route, /export async function POST/, "it discards state, so it is a POST");
   assert.match(route, /Unauthorized[\s\S]*401/, "behind the same session as the rest");
@@ -72,7 +72,7 @@ test("the reset forgets every layer that remembers, before anything is read", as
 
 test("a failed read is reported as null, never as an empty answer", async () => {
   const route = await source("app/api/data-health/refresh/route.ts");
-  for (const read of ["listProjectHealth", "listProjectStrips", "listProjectFaults", "listServiceNotices"]) {
+  for (const read of ["listEstateHealth", "listProjectStrips", "listProjectFaults", "listServiceNotices"]) {
     assert.match(route, new RegExp(`${read}\\([^)]*\\)[^\\n]*catch\\(\\(\\) => null\\)`), `${read} must answer null on failure`);
   }
   assert.doesNotMatch(route, /catch\(\(\) => \(\{\}\)\)|catch\(\(\) => \[\]\)/, "an empty answer would be applied as 'nothing wrong'");

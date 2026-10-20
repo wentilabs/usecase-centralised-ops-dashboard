@@ -13,7 +13,8 @@ import {
 import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, type ServiceFieldSpec } from "./field-spec";
 import { FAULT_SERVICES, PROCESS_SERVICES, readProcessWindow, readProjectFaults } from "./process-log";
 import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline";
-import { healthKey } from "./data-health";
+import { healthKey, type ProjectHealth } from "./data-health";
+import { listProjectHealth } from "./data-health-repository";
 import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
 import { describePostgrestError } from "./postgrest-error";
 import {
@@ -24,7 +25,7 @@ import {
   type MeterLimits,
 } from "./noise-limits";
 import type { CanonicalProject, CanonicalProjectDraft } from "./canonical-projects";
-import { SERVICES, type ProjectConfigRow, type ServiceKey } from "./services";
+import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "./services";
 
 /**
  * Typed data access for the six config tables, plus the shared audit trail.
@@ -978,6 +979,10 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
  */
 const faultCache = createTtlCache<"estate", Record<string, string>>(60_000);
 const lightningCache = createTtlCache<"estate", LightningHealth>(60_000);
+// The readings-age verdicts cost 63 reads (one newest-row query per project), which is by far the
+// slowest thing Data Health does — measured at 3.6 s of a 3.7 s page render. A minute is short
+// enough that a fixed sheet clears promptly and "Refresh health" can still force it.
+const healthCache = createTtlCache<"estate", ProjectHealth[]>(60_000);
 
 /**
  * Lightning's heartbeat and per-project standing faults, from three small reads.
@@ -1031,7 +1036,28 @@ export function forgetHealthCaches() {
   stripCache.forget();
   faultCache.forget();
   lightningCache.forget();
+  healthCache.forget();
   configCache.forget();
+}
+
+/**
+ * Every project's readings-age verdict (Noise and WBGT), from the project's own table.
+ *
+ * Judged against each project's configuration, so it reads the config rows first (cached for a few
+ * seconds) and then one newest-row query per active project. Held for a minute and shared by the
+ * page, the deferred load and "Refresh health", so two people opening the dashboard together pay
+ * for one read. A failed read is not remembered: the next ask tries again.
+ */
+export async function listEstateHealth(): Promise<ProjectHealth[]> {
+  const cached = healthCache.get("estate");
+  if (cached) return cached;
+  const rows = await Promise.allSettled(SERVICE_KEYS.map((key) => listConfigs(key)));
+  const configured = Object.fromEntries(
+    SERVICE_KEYS.map((key, index) => [key, rows[index].status === "fulfilled" ? rows[index].value : []]),
+  );
+  const health = Array.from((await listProjectHealth(configured)).values());
+  healthCache.set("estate", health);
+  return health;
 }
 
 /** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */

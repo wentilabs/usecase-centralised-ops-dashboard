@@ -12,10 +12,16 @@ test("the dashboard composes server health into the matching source card below i
     source("components/ProjectCard.tsx"),
   ]);
 
-  assert.match(page, /listProjectHealth/, "the server page must read automatic health");
-  assert.match(page, /projectHealth=\{/, "the page must pass health to the client shell");
+  // The readings-age health is NOT awaited by the page. On 20 Oct it was 3.6 s of a 3.7 s render — one
+  // newest-row query for each of 63 active projects — against about 120 ms for everything else on the
+  // page together. It loads after first paint instead, so this asserts the absence as firmly as the old
+  // test asserted the presence: a page that reads it again brings the wait back with it.
+  assert.doesNotMatch(page, /listProjectHealth|listEstateHealth/, "the server page must not wait for health");
+  assert.doesNotMatch(page, /projectHealth=\{/, "and so has nothing to pass");
+  assert.match(shell, /fetch\(path\)/, "the shell loads health after paint");
+  assert.match(shell, /fetchedPage\("\/api\/data-health"/, "from its own route");
+  assert.match(shell, /useState<ProjectHealth\[\]>\(\[\]\)/, "and starts with neutral cards rather than none");
   assert.match(shell, /healthKey\(/, "the shell must resolve health with service plus project code");
-  assert.match(shell, /projectHealth\s*=\s*\[\]/, "the shell must preserve neutral cards when a stale client render lacks health");
   assert.match(shell, /health=\{/, "the shell must supply the card's health result");
   assert.match(card, /health\?: ProjectHealth/, "the card must accept its own health result");
   assert.match(card, /<DataHealthRow[\s\S]{0,80}health=\{health\}/, "the card must render the supplied result");

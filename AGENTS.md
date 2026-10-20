@@ -760,10 +760,17 @@ the card; a late NEA feed is stale and turns amber once sites were told the warn
 threshold is a named constant with a test at its edge. Every strip bar also carries the service's own
 `job_type`/`event_type`, so a red says which process it was.
 
-**"Refresh health" forgets four caches and rereads together** (`forgetHealthCaches` in
+**Loading performance is measured, not guessed — `docs/PERFORMANCE.md`, `node scripts/measure-load.mjs`.** The page's first
+byte went from 3.6–4.0 s to 0.06–0.13 s by NOT awaiting the readings-age health in `app/page.tsx` (3.6 s of a 3.7 s render was that
+one read); it loads after paint from `/api/data-health`, and `tests/data-health-ui-contract.test.ts` fails if the page reads it again.
+Every load is stamped with when it finished and how long it took (`lib/load-stamps.ts`). The largest cost left is not HALO's: the
+Noise and WBGT run logs have no index on `started_at`, so each 1000-row page sorts the whole table (1.15 s vs 0.09 s unordered) —
+the two `create index` statements are in `docs/PERFORMANCE.md`. Do not "fix" the 1 MB document: it is 83 KB over the wire.
+
+**"Refresh health" forgets five caches and rereads together** (`forgetHealthCaches` in
 `lib/config-repository.ts`, `POST /api/data-health/refresh`). If you add a cache that Data Health reads, add it
-to `forgetHealthCaches` — `tests/refresh-health.test.ts` fails if one of the four is dropped, but cannot know
-about a fifth. A read that fails must answer `null`, never an empty value, and the client applies only what
+to `forgetHealthCaches` — `tests/refresh-health.test.ts` fails if one of the five is dropped, but cannot know
+about a sixth. A read that fails must answer `null`, never an empty value, and the client applies only what
 `refreshUpdates` accepts; see `docs/DATA_HEALTH.md`.
 
 **`queued` is not delivered, and HALO cannot see the difference.** A message the

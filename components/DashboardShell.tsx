@@ -23,6 +23,8 @@ import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
 import { RefreshHealthButton } from "./RefreshHealthButton";
 import { refreshUpdates } from "@/lib/health-refresh";
+import { LOADING, failed, finished, type Load } from "@/lib/load-stamps";
+import { LoadStamps } from "./LoadStamps";
 import { boardEntries, deliveryEntries, faultEntries, noticeEntries, summarise } from "@/lib/health-board";
 import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
@@ -72,8 +74,8 @@ function onScreen(inputs: (HTMLInputElement | null)[]): HTMLInputElement | null 
 
 export function DashboardShell({
   services,
-  projectHealth = [],
   fetchedAt,
+  serverRenderMs,
   session,
   initialGroupNames,
   groupNamesMeta,
@@ -83,9 +85,10 @@ export function DashboardShell({
   focusPropose = false,
 }: {
   services: ServiceData[];
-  projectHealth: ProjectHealth[];
   /** Newest delivery attempt per project, for services that record one. */
   fetchedAt: string;
+  /** How long the server took to build this document, in milliseconds. */
+  serverRenderMs?: number;
   session: SessionInfo;
   initialGroupNames: Record<string, string>;
   /** Opened from another page's ⌘P, so land in the propose bar. */
@@ -124,25 +127,45 @@ export function DashboardShell({
   const [projectFaults, setProjectFaults] = useState<Record<string, string>>({});
   // Whole-service findings — the Lightning tick, the NEA feed — which belong to no project card.
   const [serviceNotices, setServiceNotices] = useState<Parameters<typeof noticeEntries>[0]>([]);
+  // The readings-age verdicts, loaded after first paint. They are not part of the document because they
+  // were the whole of the wait (3.6 s of a 3.7 s render): a newest-row query for each active project.
+  const [liveHealth, setLiveHealth] = useState<ProjectHealth[]>([]);
+
+  // What has loaded, when, and how long it took. The document carries the configuration; the other two
+  // arrive after it, together, and each says what it is doing rather than leaving a card to look unfinished.
+  const [healthLoad, setHealthLoad] = useState<Load>(LOADING);
+  const [historyLoad, setHistoryLoad] = useState<Load>(LOADING);
   useEffect(() => {
     let live = true;
-    void fetch("/api/project-strips")
-      .then((response) => (response.ok ? response.json() : { strips: {} }))
-      .then((body) => {
-        if (!live) return;
-        setProjectStrips(body?.strips ?? {});
-        setProjectFaults(body?.faults ?? {});
-        setServiceNotices(Array.isArray(body?.notices) ? body.notices : []);
-      })
-      .catch(() => {});
+    const fetchedPage = (path: string, apply: (body: Record<string, unknown>) => void, record: (load: Load) => void) => {
+      const started = performance.now();
+      void fetch(path)
+        .then((response) => {
+          if (!response.ok) throw new Error(String(response.status));
+          return response.json() as Promise<Record<string, unknown>>;
+        })
+        .then((body) => {
+          if (!live) return;
+          apply(body);
+          record(finished(started));
+        })
+        // A failed load leaves what is on screen alone — an empty answer in its place would read as "nothing
+        // is wrong" — and says it failed, so the card without a strip is not mistaken for one still arriving.
+        .catch(() => live && record(failed()));
+    };
+    fetchedPage("/api/data-health", (body) => {
+      if (Array.isArray(body.health)) setLiveHealth(body.health as ProjectHealth[]);
+      else throw new Error("no health");
+    }, setHealthLoad);
+    fetchedPage("/api/project-strips", (body) => {
+      setProjectStrips((body.strips as Record<string, Bar[]>) ?? {});
+      setProjectFaults((body.faults as Record<string, string>) ?? {});
+      setServiceNotices(Array.isArray(body.notices) ? (body.notices as Parameters<typeof noticeEntries>[0]) : []);
+    }, setHistoryLoad);
     return () => {
       live = false;
     };
   }, []);
-
-  // The server renders the first reading; "Refresh data health" replaces it without a page reload.
-  const [liveHealth, setLiveHealth] = useState(projectHealth);
-  useEffect(() => setLiveHealth(projectHealth), [projectHealth]);
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [healthRefreshedAt, setHealthRefreshedAt] = useState<string | null>(null);
   const [healthRefreshFailed, setHealthRefreshFailed] = useState(false);
@@ -156,6 +179,7 @@ export function DashboardShell({
   const refreshHealth = useCallback(async () => {
     setRefreshingHealth(true);
     setHealthRefreshFailed(false);
+    const startedAt = performance.now();
     try {
       const response = await fetch("/api/data-health/refresh", { method: "POST" });
       if (!response.ok) throw new Error(String(response.status));
@@ -165,12 +189,38 @@ export function DashboardShell({
       if (updates.faults) setProjectFaults(updates.faults);
       if (updates.notices) setServiceNotices(updates.notices);
       setHealthRefreshedAt(updates.refreshedAt);
+      // One request replaced both, so both loads are now this one, timed together.
+      const took = finished(startedAt);
+      setHealthLoad(updates.health ? took : (previous) => previous);
+      setHistoryLoad(updates.strips ? took : (previous) => previous);
     } catch {
       setHealthRefreshFailed(true);
     } finally {
       setRefreshingHealth(false);
     }
   }, []);
+
+  // One list of what has loaded, shared by the header and the board, so the two can never disagree about it.
+  const loadItems = useMemo(
+    () => [
+      {
+        label: "configs",
+        load: { state: "done", at: fetchedAt, ms: serverRenderMs } as Load,
+        hint: "Project configuration, read by the server and sent with this page. The time is when the server finished; the duration is how long it took to build the page.",
+      },
+      {
+        label: "health",
+        load: healthLoad,
+        hint: "Each Noise and WBGT project's newest reading, judged against its schedule. Loaded after the page, because it is the slowest read.",
+      },
+      {
+        label: "history",
+        load: historyLoad,
+        hint: "Each card's last hundred processes, the standing faults and Lightning's heartbeat. Loaded after the page.",
+      },
+    ],
+    [fetchedAt, serverRenderMs, healthLoad, historyLoad],
+  );
 
   const healthByProject = useMemo(
     () => new Map(liveHealth.map((health) => [healthKey(health.service, health.projectCode), health])),
@@ -600,8 +650,8 @@ export function DashboardShell({
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
           <span>
-            {services.map((service) => `${(rows[service.key] ?? []).length} ${service.label}`).join(" · ")} · fetched{" "}
-            {formatSgt(fetchedAt)} SGT
+            {services.map((service) => `${(rows[service.key] ?? []).length} ${service.label}`).join(" · ")} ·{" "}
+            <LoadStamps loads={loadItems} />
           </span>
           <span className="flex items-center gap-1.5">
             <button
@@ -798,6 +848,7 @@ export function DashboardShell({
         <DataHealthBoard
           summary={healthSummary}
           strips={projectStrips}
+          loads={loadItems}
           onRefresh={() => void refreshHealth()}
           refreshing={refreshingHealth}
           refreshedAt={healthRefreshedAt}

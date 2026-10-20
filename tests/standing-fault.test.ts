@@ -126,5 +126,5 @@ test("the card shows the fault above the strip, and the API carries it", async (
 
   assert.match(route, /listProjectFaults\(\)\.catch\(\(\) => \(\{\}\)\)/, "a failing fault read must not take the strips down");
   assert.match(route, /NextResponse\.json\(\{ strips, faults, notices \}\)/);
-  assert.match(shell, /setProjectFaults\(body\?\.faults \?\? \{\}\)/);
+  assert.match(shell, /setProjectFaults\(\(body\.faults as Record<string, string>\) \?\? \{\}\)/);
 });

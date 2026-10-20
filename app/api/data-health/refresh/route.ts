@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 
 import {
   forgetHealthCaches,
-  listConfigs,
+  listEstateHealth,
   listProjectFaults,
   listProjectStrips,
   listServiceNotices,
 } from "@/lib/config-repository";
-import { listProjectHealth } from "@/lib/data-health-repository";
-import { SERVICE_KEYS } from "@/lib/services";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -35,18 +33,13 @@ export async function POST() {
 
   forgetHealthCaches();
 
-  // Rows first: the ingestion verdict is judged against each project's cadence, so it needs them.
-  const rows = await Promise.allSettled(SERVICE_KEYS.map((key) => listConfigs(key)));
-  const configured = Object.fromEntries(
-    SERVICE_KEYS.map((key, index) => [key, rows[index].status === "fulfilled" ? rows[index].value : []]),
-  );
-
+  const started = Date.now();
   const [health, strips, faults, notices] = await Promise.all([
-    listProjectHealth(configured).then((map) => Array.from(map.values())).catch(() => null),
+    listEstateHealth().catch(() => null),
     listProjectStrips().catch(() => null),
     listProjectFaults().catch(() => null),
     listServiceNotices().catch(() => null),
   ]);
 
-  return NextResponse.json({ health, strips, faults, notices, fetchedAt: new Date().toISOString() });
+  return NextResponse.json({ health, strips, faults, notices, fetchedAt: new Date().toISOString(), tookMs: Date.now() - started });
 }

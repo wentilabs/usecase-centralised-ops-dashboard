@@ -757,10 +757,10 @@ Health is remembered for a while on purpose, because the reads behind it are not
 | The strips (each card's hundred bars) | 5 minutes | A second of keyset paging per service |
 | Standing faults, and Lightning's heartbeat and per-project runtime | 1 minute | Three small reads, shared |
 | The configuration rows health is judged against | a few seconds | Every card needs them |
-| The readings-age verdict (Noise, WBGT) | not held | Re-read on every page load |
+| The readings-age verdict (Noise, WBGT) | 1 minute | 63 reads, the slowest thing here; loaded after the page (see [`PERFORMANCE.md`](./PERFORMANCE.md)) |
 
 That is right for a page left open and wrong for "I just fixed the sheet — has it cleared?". **Refresh health**
-(beside the estate strip, and in the board's header) forgets all four, reads everything again together, and
+(beside the estate strip, and in the board's header) forgets all five, reads everything again together, and
 shows when it finished (`POST /api/data-health/refresh`). It is labelled *Refresh health* because the header's
 own *Refresh* reloads configuration, and two buttons with one name leave nobody sure which they pressed.
 

@@ -58,6 +58,14 @@ type Source = {
    * went wrong.
    */
   errorColumn: string;
+  /**
+   * Which kind of process this row is: a run log's `job_type`, a ledger's `event_type`.
+   *
+   * A bar said only that something ended `failed`, not WHICH thing — so a red on a Lightning
+   * strip could be the RED alert, the all-clear or the daily kickoff, and a red on a WBGT strip
+   * the hourly or the five-minute job. Read, never interpreted: it is the service's own word.
+   */
+  kindColumn?: string;
   /** Additional fields needed to read the service's existing error text. */
   extraColumns?: readonly string[];
   signal: "delivery" | "run";
@@ -113,6 +121,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     board: true,
     fallback: {
@@ -133,6 +142,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "delivery_status",
     timeColumn: "created_at",
     errorColumn: "last_delivery_error",
+    kindColumn: "event_type",
     extraColumns: ["delivery_attempts"],
     signal: "delivery",
     board: true,
@@ -146,6 +156,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     board: true,
     fallback: {
@@ -168,6 +179,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     board: true,
   },
@@ -178,6 +190,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     // Ingestion is reported from the readings-age check; see `Source.board`.
@@ -190,6 +203,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     board: false,
@@ -201,6 +215,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     statusColumn: "status",
     timeColumn: "started_at",
     errorColumn: "errors",
+    kindColumn: "job_type",
     signal: "run",
     // No readings-age check covers subcon, so a failed run has to reach the board
     // from here or nowhere.
@@ -266,6 +281,8 @@ export type ProcessSample = {
   /** The service's own word, never rewritten — this is what a reader greps. */
   status: string;
   log: string[];
+  /** Which kind of process, in the service's own word — a job type or an event type. Absent when unrecorded. */
+  kind?: string;
 };
 
 /**
@@ -288,11 +305,11 @@ export async function readProcessWindow(
   // is empty" — see `Source.fallback`.
   if (source.fallback && !(await tableReadable(source, request))) source = source.fallback;
 
-  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, extraColumns = [] } = source;
+  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, kindColumn, extraColumns = [] } = source;
   const rows = await readPaged(
     request,
     (before, limit) =>
-      `${table}?select=${[projectColumn, statusColumn, timeColumn, errorColumn, ...extraColumns].join(",")}` +
+      `${table}?select=${[projectColumn, statusColumn, timeColumn, errorColumn, ...(kindColumn ? [kindColumn] : []), ...extraColumns].join(",")}` +
       `&${timeColumn}=gte.${sinceIso}` +
       `&order=${timeColumn}.desc&limit=${limit}` +
       // Encoded: PostgREST returns timestamps as `2026-10-16T20:13:34.12+08:00`,
@@ -324,7 +341,8 @@ export async function readProcessWindow(
       : logLines(row[errorColumn]);
     // The colour reads what the run wrote as well as its status: a run that only
     // reported late readings is `stale`, not amber (see `colourForRun`).
-    return [{ projectCode, at, colour: colourForRun(service, status, log).colour, status, log }];
+    const kind = kindColumn ? String(row[kindColumn] ?? "").trim() : "";
+    return [{ projectCode, at, colour: colourForRun(service, status, log).colour, status, log, ...(kind ? { kind } : {}) }];
   });
 }
 

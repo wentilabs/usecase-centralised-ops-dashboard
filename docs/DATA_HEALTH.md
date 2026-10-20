@@ -748,6 +748,51 @@ status and declares it in its contract — `completed_with_stale_readings` — w
 so HALO then stops reading the wording at all. Nothing about the sentence has to change
 either way.
 
+## Lightning: every alert, the tick, and the feed
+
+Lightning is not like the services that run on a schedule. Its tick (`/api/lightning-tick`) runs
+**every minute** and sends nothing unless something changes, so a quiet strip is the same picture
+whether the sky is calm or the service has stopped. The goal is that any message sent has a recorded
+outcome and any failed process is visible, **without a process of HALO's own per minute**:
+
+> HALO never follows the tick. It reads, when the dashboard asks, three small tables the service
+> already writes on every tick — from a 60-second cache, with no cron and no new rows.
+
+| What | Where it comes from | Shown as |
+| --- | --- | --- |
+| **Every message sent, and whether it worked** — `RED`, `AMBER`, `ALL_CLEAR`, `DEGRADED`, `KICKOFF`, SMS | `lightning_events.delivery_status`, one row per event | A bar per event, labelled with its type. `SENT`, `QUEUED` green; `UNCONFIRMED`, `PARTIAL` amber; `FAILED` red; `SUPPRESSED_…` green. KICKOFF stays on the strip like any other event. |
+| **The tick stopped, or finished badly** | `lightning_service_runtime` (one row, `service_key = 'nea'`) | A service-wide board entry: amber from 5 minutes since the last tick finished, red from 15; amber when it finished `COMPLETED_WITH_ERRORS` (with the failed-projects count); red when it `FAILED`. `SKIPPED_LOCK` is two ticks overlapping and is ignored. |
+| **The NEA feed is behind** | the same row: `last_fetch_success_at`, `consecutive_fetch_failures`, `last_fetch_error` | **Stale (dark green)** while it is merely behind; **amber** once any enabled project's `last_notified_degraded` is true — Lightning has told sites "the warning service is down", and from then on workers are being told they are not covered. |
+| **A project that stopped being evaluated** | `lightning_project_runtime.last_evaluated_at` | A standing fault above its strip (red) after 15 minutes, while the tick itself is alive. |
+| **A STOP whose all-clear never went** | `last_notified_state = 'STOP'` and `active_stop_until_at` | A standing fault (red) 30 minutes past the clearance time: workers were told to stop and never told to resume. |
+| **A project that cannot be evaluated** | `last_error` | The standing fault it always was, and it outranks the two above on that card. |
+
+Rules that keep it honest, each with a test:
+
+- **The per-project checks run only while the tick is alive.** If the tick has stopped, every project is
+  "not evaluated"; the single tick notice says it better than twenty-eight cards.
+- **A disabled project is never a fault.** It keeps its last evaluation time for ever. Enabled comes from
+  the project's config, not the runtime row.
+- **WATCH is not "stuck".** An amber warning clears silently, with no all-clear to miss, so only STOP is
+  judged. A STOP with no recorded clearance time cannot be judged either.
+- **A table that cannot be read says nothing**, rather than something wrong: an absent finding proves
+  nothing, and the page says so.
+- **Never `lightning_tick_audit`.** It holds one row per minute (about 43,000 over its 30 days). Nothing here
+  needs it; the heartbeat row already says what the last tick did.
+
+Whole-service findings carry a name where a project code would be (`tick`, `NEA feed`) and
+`scope: "service"`, so the board lists them with the same wording and colours but does not offer to open a
+project editor for them. Late-feed notices go to the board's calm "late readings" section, not to what needs
+acting on.
+
+**Still the estate-wide gap.** A `QUEUED` alert is green until the service checks it later with
+`outbound/status` (see [Queued is not delivered](#queued-is-not-delivered-the-drop-nobody-sees)); Lightning
+does not yet, so a queued RED the listener later drops would still read as accepted.
+
+**For the Lightning contract** (a service-side follow-up, not done here): declare `ingestion: service` and
+`run: service` under `health.granularity`, so the board's "not covered" note stops describing Lightning as
+delivery-only.
+
 ## What each service writes today
 
 Run `node scripts/audit-service-health.mjs [days]` to regenerate this from the live
@@ -767,7 +812,7 @@ it says.
 | **Issue Chaser** | Run log per project and style; ledger with queue ids. | `failed_unhandled_error` ×3 `Requested entity was not found.` names no sheet, tab or operation. A listener 502 recorded only `Request failed with status code 502`; the listener's own `code`/`error`/`queueId` were discarded (fixed in the repo, awaiting commit). `skipped_feature_disabled` is 70% of all rows (7,056 of 10,080). Four sends recorded `queued` were later dropped by the listener. |
 | **Ailytics** | Run log per project. | `failed_unhandled_error` ×2 `The caller does not have permission` (ZRA, `status_summary`, daily at the same hour) names no sheet, tab or Google call. |
 | **Subcon** | Run log per project; clean, and 243 of 279 rows are `skipped_project_disabled`. | No failure in the window, so the quality of its errors is untested. |
-| **Lightning** | Delivery ledger with the service's own declared statuses. | `FAILED` ×21 `timeout of Nms exceeded` names no endpoint. 26 `UNCONFIRMED` rows carry the older `did not confirm the requested recipient` wording (a digest of what was seen was added afterwards). |
+| **Lightning** | Delivery ledger with the service's own declared statuses; a heartbeat row and per-project runtime rows on every tick (read by HALO, see above). | `FAILED` ×21 `timeout of Nms exceeded` names no endpoint. 26 `UNCONFIRMED` rows carry the older `did not confirm the requested recipient` wording (a digest of what was seen was added afterwards). |
 
 ### What HALO cannot capture yet
 
@@ -775,7 +820,7 @@ it says.
 | --- | --- | --- |
 | A queued send the listener later dropped or failed | The outcome exists only in the listener's queue; HALO has no key for it and must not get one. | Services reconcile queue ids through `outbound/status` and write `dropped` / `failed` back. See [Queued is not delivered](#queued-is-not-delivered-the-drop-nobody-sees). |
 | Whether a standing error is new | An error text is a string with no recurrence. | Stable wording (above). HALO can then group by text; not built yet. |
-| Which job produced a bar | A strip bar carries status and lines, not the job name. | Add `job_type` to the bar and the modal row. Not built yet. |
+| Which job produced a bar | — | Built. Every bar and modal row carries the service's own `job_type` (a ledger's `event_type`), so a red says whether it was the RED alert, the all-clear or the kickoff. |
 | A reading that is late *and* its run was clean | Only the age check sees it, and only for Noise and WBGT. | Other services do not store readings; nothing to age. |
 
 The contract for what a service must write so that none of this needs guessing is

@@ -751,6 +751,15 @@ What a service must write for any of this to be accurate is
 [`docs/DATA_HEALTH.md`](./docs/DATA_HEALTH.md). To see what each service actually writes
 today against that contract: `node scripts/audit-service-health.mjs`.
 
+**Lightning is judged by reading, never by following.** Its tick runs every minute, so HALO does not
+check on it per minute: `lib/lightning-health.ts` reads the service's own heartbeat row, its per-project
+runtime rows and the project configs when the dashboard asks (60-second cache, three small requests,
+never `lightning_tick_audit`). A stalled tick is a service-wide board entry (`scope: "service"`, not a
+project and not clickable); a stuck STOP and a project that stopped being evaluated are standing faults on
+the card; a late NEA feed is stale and turns amber once sites were told the warning service is down. Every
+threshold is a named constant with a test at its edge. Every strip bar also carries the service's own
+`job_type`/`event_type`, so a red says which process it was.
+
 **`queued` is not delivered, and HALO cannot see the difference.** A message the
 listener accepted and later dropped (`NOT_PARTICIPANT`) is still `queued`, green, in the
 service that sent it. HALO has no key for the listener's queue and will not be given

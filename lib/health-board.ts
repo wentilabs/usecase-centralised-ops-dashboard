@@ -37,6 +37,11 @@ export type BoardEntry = {
   detail: string | null;
   /** Expected behaviour, but nothing ran — shown quietly, never as a success. */
   idle: boolean;
+  /**
+   * `service` when this is about the whole service and not one project: the Lightning tick or the NEA
+   * feed. The code is then a name, not a project, so it must not offer to open an editor.
+   */
+  scope?: "service";
 };
 
 /**
@@ -200,6 +205,26 @@ export function faultEntries(faults: Record<string, string>): BoardEntry[] {
   return entries;
 }
 
+/**
+ * Whole-service findings as board entries.
+ *
+ * The Lightning tick and the NEA feed are not any one project's, so they carry a name where a project
+ * code would be and `scope: "service"`. `signal` says which question they answer: the tick is "did it
+ * run", the feed is ingestion.
+ */
+export function noticeEntries(notices: { id: "tick" | "feed"; colour: HealthColour; label: string; detail: string | null }[]): BoardEntry[] {
+  return notices.map((notice) => ({
+    service: "lightning" as const,
+    projectCode: notice.id === "tick" ? "tick" : "NEA feed",
+    signal: notice.id === "tick" ? ("run" as const) : ("ingestion" as const),
+    colour: notice.colour,
+    label: notice.label,
+    detail: notice.detail,
+    idle: false,
+    scope: "service" as const,
+  }));
+}
+
 export type BoardSummary = {
   red: number;
   amber: number;
@@ -265,6 +290,8 @@ export function summaryLine(summary: BoardSummary): string {
 
 export type Incident = {
   service: ServiceKey;
+  /** Set when every entry in the group is about the whole service, not a project. */
+  scope?: "service";
   signal: BoardEntry["signal"];
   colour: HealthColour;
   /** The service's own status word, shared by every project in the group. */
@@ -312,6 +339,7 @@ export function incidentsFrom(entries: BoardEntry[]): Incident[] {
       projects: [entry.projectCode],
       from: entry.detail,
       to: entry.detail,
+      ...(entry.scope ? { scope: entry.scope } : {}),
     });
   }
 

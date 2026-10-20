@@ -34,6 +34,11 @@ export type Sample = {
    * read as separate findings.
    */
   log: string[];
+  /**
+   * Which kind of process this was, in the service's own word: `status_summary`,
+   * `wbgt-hourly`, `RED`, `KICKOFF`. A strip says something failed; this says what.
+   */
+  kind?: string;
 };
 
 export type Bar = Sample;

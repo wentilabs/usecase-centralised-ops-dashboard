@@ -14,6 +14,7 @@ import { auditChangesWithoutJobState, buildFieldSpec, type IntrospectedColumn, t
 import { FAULT_SERVICES, PROCESS_SERVICES, readProcessWindow, readProjectFaults } from "./process-log";
 import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline";
 import { healthKey } from "./data-health";
+import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
 import { describePostgrestError } from "./postgrest-error";
 import {
   MANUAL_SOURCE_MARKER,
@@ -957,6 +958,7 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
         colour: sample.colour,
         status: sample.status,
         log: sample.log,
+        ...(sample.kind ? { kind: sample.kind } : {}),
       })),
     ),
   );
@@ -975,6 +977,23 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
  * from the dashboard promptly rather than sit there for five minutes.
  */
 const faultCache = createTtlCache<"estate", Record<string, string>>(60_000);
+const lightningCache = createTtlCache<"estate", LightningHealth>(60_000);
+
+/**
+ * Lightning's heartbeat and per-project standing faults, from three small reads.
+ *
+ * Cached for a minute like the faults beside it, and shared by both: the faults and the service
+ * notices come from the same rows, so they must be the same answer. It is read when the dashboard
+ * asks, never on a schedule — the tick runs every minute and nothing here follows it.
+ */
+async function lightningHealth(): Promise<LightningHealth> {
+  const cached = lightningCache.get("estate");
+  if (cached) return cached;
+  const read = (path: string, init: { schema: string }) => request(path, { schema: init.schema });
+  const health = await readLightningHealth(read).catch(() => ({ notices: [], faults: {} }) as LightningHealth);
+  lightningCache.set("estate", health);
+  return health;
+}
 
 export async function listProjectFaults(): Promise<Record<string, string>> {
   const cached = faultCache.get("estate");
@@ -987,6 +1006,19 @@ export async function listProjectFaults(): Promise<Record<string, string>> {
     ),
   );
   const faults = Object.fromEntries(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
+
+  // Lightning's other standing faults — a STOP whose all-clear never went, a project that stopped
+  // being evaluated. The service's own `last_error`, read above, wins: it is the more specific.
+  const lightning = await lightningHealth();
+  for (const [projectCode, message] of Object.entries(lightning.faults)) {
+    const key = healthKey("lightning", projectCode);
+    if (!(key in faults)) faults[key] = message;
+  }
   faultCache.set("estate", faults);
   return faults;
+}
+
+/** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */
+export async function listServiceNotices(): Promise<LightningNotice[]> {
+  return (await lightningHealth()).notices;
 }

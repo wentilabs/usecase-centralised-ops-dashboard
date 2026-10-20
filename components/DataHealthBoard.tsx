@@ -98,16 +98,23 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
                         problem, but WHICH thirty is what tells a reader whether
                         it is the whole estate or one client. */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {incident.projects.map((projectCode) => (
-                        <button
-                          key={projectCode}
-                          type="button"
-                          onClick={() => onOpenProject?.(incident.service, projectCode)}
-                          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
-                        >
-                          {projectCode}
-                        </button>
-                      ))}
+                      {incident.projects.map((projectCode) =>
+                        incident.scope === "service" ? (
+                          // A whole-service finding (the tick, the feed) is not a project: there is no editor to open.
+                          <span key={projectCode} className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+                            {projectCode}
+                          </span>
+                        ) : (
+                          <button
+                            key={projectCode}
+                            type="button"
+                            onClick={() => onOpenProject?.(incident.service, projectCode)}
+                            className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
+                          >
+                            {projectCode}
+                          </button>
+                        ),
+                      )}
                     </div>
                   </li>
                 );
@@ -148,16 +155,23 @@ export function DataHealthBoard({ summary, onClose, onOpenProject }: {
                       </span>
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {incident.projects.map((projectCode) => (
-                        <button
-                          key={projectCode}
-                          type="button"
-                          onClick={() => onOpenProject?.(incident.service, projectCode)}
-                          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
-                        >
-                          {projectCode}
-                        </button>
-                      ))}
+                      {incident.projects.map((projectCode) =>
+                        incident.scope === "service" ? (
+                          // A whole-service finding (the tick, the feed) is not a project: there is no editor to open.
+                          <span key={projectCode} className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+                            {projectCode}
+                          </span>
+                        ) : (
+                          <button
+                            key={projectCode}
+                            type="button"
+                            onClick={() => onOpenProject?.(incident.service, projectCode)}
+                            className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] transition-colors hover:border-primary"
+                          >
+                            {projectCode}
+                          </button>
+                        ),
+                      )}
                     </div>
                   </li>
                 ))}

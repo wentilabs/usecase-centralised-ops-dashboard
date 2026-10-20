@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listProjectFaults, listProjectStrips } from "@/lib/config-repository";
+import { listProjectFaults, listProjectStrips, listServiceNotices } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +27,12 @@ export async function GET() {
 
   // In parallel, and a failure of one must not take the other down: the faults
   // are a handful of rows and the strips are the slow read.
-  const [strips, faults] = await Promise.all([
+  const [strips, faults, notices] = await Promise.all([
     listProjectStrips(),
     listProjectFaults().catch(() => ({})),
+    // Whole-service findings (the Lightning tick, the NEA feed): three small reads, cached for a
+    // minute, and a failure here must not take the strips down.
+    listServiceNotices().catch(() => []),
   ]);
-  return NextResponse.json({ strips, faults });
+  return NextResponse.json({ strips, faults, notices });
 }

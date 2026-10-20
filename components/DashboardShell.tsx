@@ -21,7 +21,7 @@ import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
 import { HealthStrip } from "./HealthStrip";
-import { boardEntries, deliveryEntries, faultEntries, summarise } from "@/lib/health-board";
+import { boardEntries, deliveryEntries, faultEntries, noticeEntries, summarise } from "@/lib/health-board";
 import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
@@ -120,6 +120,8 @@ export function DashboardShell({
   // Standing faults arrive with the strips but are not part of them: a project
   // stuck in one often has no processes at all, so there is no bar to draw.
   const [projectFaults, setProjectFaults] = useState<Record<string, string>>({});
+  // Whole-service findings — the Lightning tick, the NEA feed — which belong to no project card.
+  const [serviceNotices, setServiceNotices] = useState<Parameters<typeof noticeEntries>[0]>([]);
   useEffect(() => {
     let live = true;
     void fetch("/api/project-strips")
@@ -128,6 +130,7 @@ export function DashboardShell({
         if (!live) return;
         setProjectStrips(body?.strips ?? {});
         setProjectFaults(body?.faults ?? {});
+        setServiceNotices(Array.isArray(body?.notices) ? body.notices : []);
       })
       .catch(() => {});
     return () => {
@@ -156,8 +159,9 @@ export function DashboardShell({
         ...boardEntries(rows, healthByProject),
         ...deliveryEntries(projectStrips, boardSignalFor),
         ...faultEntries(projectFaults),
+        ...noticeEntries(serviceNotices),
       ]),
-    [rows, healthByProject, projectStrips, projectFaults],
+    [rows, healthByProject, projectStrips, projectFaults, serviceNotices],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;

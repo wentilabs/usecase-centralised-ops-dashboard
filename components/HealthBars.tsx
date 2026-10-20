@@ -97,7 +97,7 @@ export function HealthBars({ projectCode, bars }: { projectCode: string; bars: B
           {bars.map((bar, index) => (
             <span
               key={`${bar.at}-${index}`}
-              title={`${formatSgt(bar.at)} SGT — ${bar.status}`}
+              title={`${formatSgt(bar.at)} SGT — ${bar.kind ? `${bar.kind} · ` : ""}${bar.status}`}
               className={`min-w-0 flex-1 rounded-[1px] ${FILL[bar.colour]}`}
             />
           ))}
@@ -207,6 +207,13 @@ function TroubleDialog({
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className={bar.colour === "red" ? "text-danger" : bar.colour === "stale" ? "text-stale-text" : "text-warn"}>●</span>
                 <span className="font-mono text-[13px] font-medium">{bar.status}</span>
+                {/* Which process, in the service's own word: the same status means
+                    different things for a RED alert and a daily kickoff. */}
+                {bar.kind ? (
+                  <span className="rounded border border-border px-1 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {bar.kind}
+                  </span>
+                ) : null}
                 <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-muted-foreground">
                   {formatSgt(bar.at)} SGT
                 </span>

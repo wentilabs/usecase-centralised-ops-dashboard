@@ -18,7 +18,8 @@ dashboard as a whole does and splits the slow part by service.
 | of which: configs, field specs, group names, session | ~0.12 s | ~0.12 s |
 | of which: the readings-age health | **3.6 s** | — (loaded after paint) |
 | Health, loaded after paint | — | 3 s cold, 15 ms from cache |
-| History strips, loaded after paint | 8 s | 8 s cold, 20 ms from cache |
+| History strips, loaded after paint | 8 s | **2.0 s cold** (after the index), 20 ms from cache |
+| Everything, cold (`Refresh health`) | 10.4 s | **3.9 s** — now almost all of it is the 63 health reads |
 
 The page was waiting for a signal the cards do not need to be useful. Of a 3.7 s server render, 3.6 s was one read: a newest-row
 query for each of 63 active Noise and WBGT projects. Configuration, field specs, group names and the session together were
@@ -61,18 +62,28 @@ create index if not exists wbgt_job_runs_started_at_idx
 Plain `create index`, not `concurrently`: the Supabase SQL editor runs in a transaction, where `concurrently` is refused, and these tables are
 tens of thousands of rows, so the build takes moments. Writes to the table wait for that moment.
 
-Expected effect, from the unordered timing above: Noise 4.0 s → under half a second, WBGT 3.0 s → about the same, and the cold history load
-from about 8 s to about 1.5 s. **This is an estimate, not a result** — run `node scripts/measure-load.mjs` after applying it and section 3 and 4
-say what actually happened. The other run logs (Issue Chaser 0.45 s, Haze 0.43 s) are not worth indexing for this.
+**Applied on 20 Oct 2026, and measured:**
+
+| | Before | After |
+| --- | ---: | ---: |
+| Noise strips | 4,012 ms | **588 ms** |
+| WBGT strips | 3,012 ms | **443 ms** |
+| All seven services, summed | 8,204 ms | **1,986 ms** |
+| `order by started_at`, 1000 rows | 1,160 ms | **33–186 ms** |
+| Newest row, ordered | 1,066 ms | **51 ms** |
+
+The estimate was Noise "under half a second" and the cold history load about 1.5 s; it came in at 0.6 s and 2.0 s, the rest being Issue Chaser
+(0.36 s) and Haze (0.32 s), which were never the problem. The other run logs (Issue Chaser 0.45 s, Haze 0.43 s) are not worth indexing for this.
 
 Each service's own `supabase/setup.sql` should carry the same statement, so a new environment does not lose it; that is a change in each
 service repository.
 
 ## Next iterations, in order of value
 
-1. **Apply the index** (above). By far the largest remaining cost.
+1. ~~Apply the index~~ — done, above.
 2. **Single-flight.** Two requests for the strips at the same moment each repeat the whole 8 s read. Share the in-flight promise.
-3. **Stale-while-revalidate.** After the five-minute window expires, the next visitor waits the full cold read. Serving the last answer
+3. **Stale-while-revalidate.** Now that the cold read is 2 s, this matters less for the strips; the cold health read (3 s) is the bigger beneficiary.
+   Original reasoning:  After the five-minute window expires, the next visitor waits the full cold read. Serving the last answer
    immediately (with its time, which the load stamps now show) and refreshing behind it would make every visit after the first instant.
 4. **Fewer, larger health reads.** 63 queries is the floor while each project has its own table; only a database-side view or function
    could fold them into one.

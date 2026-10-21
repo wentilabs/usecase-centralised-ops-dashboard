@@ -375,7 +375,7 @@ _Reading from NEA (South) 08 Oct 2026 11:00 SGT_`,
   {
     service: "haze",
     column: "advisory_format",
-    value: "wohhup-2.5and1h-format",
+    value: "wohhup-2.5+forecast",
     summary:
       "Uses the current regional 1-hour PM2.5 band for immediate activity guidance and appends the daily PSI forecast from NEA's dated haze update.",
     kind: "message",
@@ -449,9 +449,22 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
 _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
       },
     ],
-    source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5and1h-format)",
+    source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5+forecast)",
   },
 ];
+
+const forecastPreview = HAZE_PREVIEWS.find(({ value }) => value === "wohhup-2.5+forecast");
+if (!forecastPreview) throw new Error("The wohhup-2.5+forecast preview is required to build its 24-hour PSI variant");
+HAZE_PREVIEWS.push({
+  ...forecastPreview,
+  value: "wohhup-2.5+forecast+24",
+  summary: "Adds the current 24-hour PSI reading and band to the 1-hour PM2.5 and NEA forecast message.",
+  bubbles: forecastPreview.bubbles.map((bubble) => ({
+    ...bubble,
+    text: bubble.text.replace("\n\n*Haze health advisory*", "\n24H PSI Reading: 116 (Unhealthy: 101–200)\n\n*Haze health advisory*"),
+  })),
+  source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5+forecast+24)",
+});
 
 
 /**

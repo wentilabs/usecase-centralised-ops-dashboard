@@ -53,7 +53,7 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:hourly_message_formatter": ["wohhup_full", "pentaocean_full"],
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
-  "haze:advisory_format": ["default", "wohhup", "wohhup-tsc", "wohhup-2.5and1h-format"],
+  "haze:advisory_format": ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast+24"],
   // Not formatters, but columns that choose between message shapes all the
   // same — which is what this inventory is really about. Booleans, so their
   // "values" are the two states.

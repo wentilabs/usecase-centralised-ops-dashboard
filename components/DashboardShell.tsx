@@ -506,7 +506,7 @@ export function DashboardShell({
        * search box (the primary way to find a project code on a phone), and a
        * refresh. Everything else lives in the drawer.
        * ------------------------------------------------------------------- */}
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 px-3 pb-2 backdrop-blur pt-safe md:hidden">
+      <header className="sticky top-0 z-[35] flex items-center gap-2 border-b border-border bg-background/95 px-3 pb-2 backdrop-blur pt-safe md:hidden">
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -563,7 +563,7 @@ export function DashboardShell({
       {/* ---------------------------------------------------------------------
        * Desktop header — unchanged.
        * ------------------------------------------------------------------- */}
-      <header className="sticky top-0 z-30 hidden flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 px-5 py-2.5 backdrop-blur md:flex">
+      <header className="sticky top-0 z-[35] hidden flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 px-5 py-2.5 backdrop-blur md:flex">
         <h1 className="mr-1 whitespace-nowrap text-base font-semibold">🗂️ HALO Centralised Services</h1>
 
         <nav className="flex gap-1">

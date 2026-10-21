@@ -55,7 +55,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
     advisory_format: {
       label: "Advisory format",
-      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `wohhup-2.5and1h-format` uses current regional 1-hour PM2.5 bands and the forecast on NEA's dated haze update page.",
+      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `wohhup-tsc` adds TSC's chronic lung/heart and seek-medical-attention advice from Unhealthy upward; `wohhup-2.5and1h-format` uses current regional 1-hour PM2.5 bands and the forecast on NEA's dated haze update page.",
     },
 
     enable_poc_mentions: {

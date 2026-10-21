@@ -323,6 +323,58 @@ _Reading from NEA (West) 22 Aug 2026 15:19 SGT_`,
   {
     service: "haze",
     column: "advisory_format",
+    value: "wohhup-tsc",
+    summary:
+      "Keeps Wohhup's PSI tiers, adding TSC's chronic lung/heart and seek-medical-attention advice from Unhealthy upward.",
+    kind: "message",
+    bubbles: [
+      {
+        caption: "PSI 75 — Good (same advisory as Wohhup)",
+        text: `🌫️🟢 *HAZE (TSC) — GOOD* 🟢🌫️
+
+*24H PSI Reading:* 75 (Good: 0–50)
+
+*Haze health advisory*
+• Healthy and vulnerable employees may carry out normal activities.
+• Continue monitoring the haze situation.
+
+_Reading from NEA (South) 08 Oct 2026 11:00 SGT_`,
+      },
+      {
+        caption: "PSI 117 — Unhealthy (TSC-specific advice)",
+        text: `🌫️🟡 *HAZE (TSC) — UNHEALTHY* 🟡🌫️
+
+*24H PSI Reading:* 117 (Unhealthy: 101–200)
+
+*Haze health advisory*
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+• Employees with chronic lung diseases or heart diseases working outdoors should wear their N95 masks.
+• Employees who are not feeling well should seek medical attention.
+
+_Reading from NEA (South) 08 Oct 2026 11:00 SGT_`,
+      },
+      {
+        caption: "PSI 320 — Hazardous (Wohhup advice plus TSC advice)",
+        text: `🌫️🔴 *HAZE (TSC) — HAZARDOUS* 🔴🌫️
+
+*24H PSI Reading:* 320 (Hazardous: 301–400)
+
+*Haze health advisory*
+• All employees carrying out outdoor work shall wear suitable respirators.
+• Susceptible employees should remain indoors and avoid strenuous work.
+• Lifting team to stop all lifting activities, re-assess the risk due to poor visibility and seek site management's approval before commencement.
+• Tower Crane Operators shall assess the visibility of his work area and inform the lifting supervisor on the need for stop work.
+• Employees with chronic lung diseases or heart diseases working outdoors should wear their N95 masks.
+• Employees who are not feeling well should seek medical attention.
+
+_Reading from NEA (South) 08 Oct 2026 11:00 SGT_`,
+      },
+    ],
+    source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-tsc)",
+  },
+  {
+    service: "haze",
+    column: "advisory_format",
     value: "wohhup-2.5and1h-format",
     summary:
       "Uses the current regional 1-hour PM2.5 band for immediate activity guidance and appends the daily PSI forecast from NEA's dated haze update.",

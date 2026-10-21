@@ -15,7 +15,7 @@ import { tagLabel, type ServiceKey } from "@/lib/services";
  * of these.
  *
  * Lives here rather than in ProjectCard because the canonical projects grid
- * shows the same seven services: a second copy of this table would drift, and
+ * shows the same eight services: a second copy of this table would drift, and
  * the whole point of the colour is that a service looks the same wherever you
  * meet it.
  */
@@ -27,10 +27,11 @@ const TAG_TONE: Record<ServiceKey, string> = {
   ailytics: "bg-cyan-400/15 text-cyan-300",
   subcon: "bg-lime-400/15 text-lime-300",
   issueChaser: "bg-rose-400/15 text-rose-300",
+  vibration: "bg-teal-400/15 text-teal-300",
 };
 
 /**
- * The same seven hues as CSS colours, for a chart.
+ * The same eight hues as CSS colours, for a chart.
  *
  * Here rather than in the chart for the reason above: one table, so a service
  * is the same colour wherever you meet it. These are the literal values behind
@@ -51,6 +52,7 @@ export const SERVICE_COLOR: Record<ServiceKey, string> = {
   ailytics: "#22d3ee",
   subcon: "#a3e635",
   issueChaser: "#fb7185",
+  vibration: "#2dd4bf",
 };
 
 /**

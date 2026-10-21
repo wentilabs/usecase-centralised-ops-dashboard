@@ -32,11 +32,13 @@ function config(options: HealthReadOptions) {
 }
 
 function selectFor(target: HealthTarget): string {
+  if (target.service === "vibration") return "ingested_at,observed_at";
   return target.service === "wbgt" ? "created_at,reading_timestamp" : "created_at,date,time_hhmm";
 }
 
 function sourceEventAt(target: HealthTarget, row: Record<string, unknown>): unknown {
   if (target.service === "wbgt") return row.reading_timestamp;
+  if (target.service === "vibration") return row.observed_at;
   const date = typeof row.date === "string" ? row.date : "";
   const time = typeof row.time_hhmm === "string" ? row.time_hhmm : "";
   return date && time ? `${date}T${time.length === 5 ? `${time}:00` : time}+08:00` : null;
@@ -46,7 +48,7 @@ async function newestEvidence(target: HealthTarget, options: Required<Pick<Healt
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
   try {
-    const query = new URLSearchParams({ select: selectFor(target), order: "created_at.desc", limit: "1" });
+    const query = new URLSearchParams({ select: selectFor(target), order: `${target.receivedField ?? "created_at"}.desc`, limit: "1" });
     const response = await options.fetchImpl(`${options.url}/rest/v1/${encodeURIComponent(target.table)}?${query}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -64,7 +66,7 @@ async function newestEvidence(target: HealthTarget, options: Required<Pick<Healt
     if (!Array.isArray(rows)) return { kind: "monitor_error" };
     if (!rows.length || !rows[0] || typeof rows[0] !== "object") return { kind: "empty" };
     const row = rows[0] as Record<string, unknown>;
-    return { kind: "row", createdAt: row.created_at, sourceEventAt: sourceEventAt(target, row) };
+    return { kind: "row", createdAt: row[target.receivedField ?? "created_at"], sourceEventAt: sourceEventAt(target, row) };
   } catch {
     return { kind: "monitor_error" };
   } finally {
@@ -271,7 +273,7 @@ export async function listProjectHealth(
   };
   // The row travels with its target: the verdict needs to know what this
   // project is supposed to be doing right now, and only the row can say.
-  const targets = (["wbgt", "noise"] as const).flatMap((service) =>
+  const targets = (["wbgt", "noise", "vibration"] as const).flatMap((service) =>
     (configured[service] ?? []).flatMap((row) => {
       const target = healthTarget(service, String(row.project_code ?? ""));
       return target ? [{ target, activity: activityFor(service, row, readOptions.now) }] : [];

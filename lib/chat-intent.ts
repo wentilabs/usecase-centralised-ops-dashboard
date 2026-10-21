@@ -80,6 +80,7 @@ export function serviceHintsIn(prompt: string): ServiceKey[] {
     ailytics: /\bailytics\b|\bcctv\b/,
     subcon: /\bsubcon\b|housekeeping|manpower/,
     issueChaser: /\bchaser\b|issue chaser|safety issue/,
+    vibration: /\bvibration\b|\bppv\b|\bpvs\b|\bwirs\b|pro-?tec/,
   };
   return SERVICE_KEYS.filter((key) => hints[key].test(text));
 }

@@ -9,7 +9,7 @@ expensive to debug.
 ## What this repo is
 
 **HALO Centralised Services** — the control surface for the project
-configuration behind seven centralised services that share one Supabase project:
+configuration behind eight centralised services that share one Supabase project:
 
 | Service | Key | Schema | Table | Row identity |
 |---|---|---|---|---|
@@ -20,6 +20,7 @@ configuration behind seven centralised services that share one Supabase project:
 | Ailytics | `ailytics` | `ailytics` | `project_configs` | **`id` (uuid)** |
 | Subcon Activities | `subcon` | `manpower_activity` | `project_configs` | **`id` (uuid)** |
 | Issue Chaser | `issueChaser` | `issue_chaser` | `project_configs` | `project_code` |
+| Vibration | `vibration` | `vibration` | `vibration_project_configs` | `project_code`, **site rows only** |
 
 Each service has its own repo (`usecase-*-alerts`, `mdw-lambda-ailytics`,
 `usecase-issue-chaser`, `usecase-wohhup-coy-housekeeping-waterparade`) that reads
@@ -1600,3 +1601,31 @@ editor, onboarding, schedule summary and load labels. The service migration must
 before rollout and schema caches refreshed. Source: `lib/field-spec/providers/issue-chaser.ts`,
 `lib/card-summary/schedule-providers/issue-chaser.ts`, `tests/issue-formats.test.ts`, and
 Issue Chaser's `supabase/migrate_issues_format.sql`.
+
+## Vibration
+
+The eighth service, added from the vibration repo's `docs/HALO_ONBOARDING.md`
+(contract pinned from its `master`, not `main`). It differs from the other seven in
+ways that are easy to get wrong:
+
+- **The table holds two kinds of row.** `vibration_project_configs` has 277 legacy WIRS
+  targets (`config_kind = 'legacy_target'`) beside the site rows. `SERVICES.vibration.rowFilter`
+  (`config_kind = 'site'`) is applied on list, get and update, and `insertConfig` forces the
+  kind on create — `tests/vibration.test.ts` pins all four. A read without it lists 277 cards.
+- **`enabled` does not pause anything.** The scraper writes every source target whose site row
+  exists. The field is labelled "Diagnostic notification" because it only gates the
+  operator-run `/test-notification`. `tests/auth-policy.test.ts` exempts it from the
+  "`enabled` is the first control" rule for exactly that reason.
+- **Nothing is sent on a schedule**, so there are no mutes, no delivery groups at creation,
+  no formatter previews (`NO_PREVIEWS`) and no outbound load (`vibrationLoadProvider`).
+- **Creation needs a prepared source target.** The insert trigger refuses a site whose code has
+  no enabled row in `vibration_source_targets`; HALO cannot create one and holds no portal
+  credentials. The dialog says so.
+- **Health is ingestion only.** `healthTarget("vibration", code)` reads
+  `<code>_vibration_data_daily` on `ingested_at` (`HealthTarget.receivedField`), always active
+  (`activityFor`) because the scrape runs round the clock. Budgets are 6 h delayed / 12 h no
+  recent data — a recommendation, since the schedule lives outside the database. Its run log,
+  `vibration_job_runs`, has one row per invocation with no `project_code`, so it feeds no
+  project bar yet.
+- **The audit trigger is SQL for a human to run**: `supabase/config_audit_setup.sql` now has
+  the vibration trigger; re-run it in the Supabase editor.

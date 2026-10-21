@@ -1,6 +1,6 @@
 -- =============================================================================
 -- ops.config_audit — one shared history of every project-config change across
--- all seven centralised services, creations included.
+-- all eight centralised services, creations included.
 --
 -- Design: the TRIGGER is the only writer of audit rows, so a change made
 -- directly in the Supabase table editor is captured just as faithfully as one
@@ -197,6 +197,13 @@ drop trigger if exists config_audit_trg on "issue_chaser".project_configs;
 create trigger config_audit_trg after insert or update on "issue_chaser".project_configs
   for each row execute function ops.record_config_change('project_code');
 
+-- Vibration. The table also holds legacy WIRS target rows, so a change to one of
+-- those is audited too; HALO lists only config_kind = 'site' rows, so its history
+-- view never asks for them.
+drop trigger if exists config_audit_trg on "vibration".vibration_project_configs;
+create trigger config_audit_trg after insert or update on "vibration".vibration_project_configs
+  for each row execute function ops.record_config_change('project_code');
+
 -- -----------------------------------------------------------------------------
 -- Access. The dashboard reads the history and annotates its own rows; nobody
 -- may insert or delete through the API (the trigger owns inserts).
@@ -245,7 +252,7 @@ create policy whatsapp_group_names_read on ops.whatsapp_group_names
 
 -- Expose the schema to PostgREST (Supabase → Settings → API → Exposed schemas),
 -- or run:
---   alter role authenticator set pgrst.db_schemas = 'public,graphql_public,wbgts,noise-meters,haze,lightning,ailytics,manpower_activity,issue_chaser,ops';
+--   alter role authenticator set pgrst.db_schemas = 'public,graphql_public,wbgts,noise-meters,haze,lightning,ailytics,manpower_activity,issue_chaser,vibration,ops';
 --   notify pgrst, 'reload config';
 
 -- Sanity check:

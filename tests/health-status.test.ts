@@ -184,6 +184,9 @@ test("every service declares its own colours, and only the three", () => {
       assert.equal(contractHealthColour(service, status), colour, `${service}.${status}`);
       assert.equal(contractHealthColour(service, status.toUpperCase()), colour, `${service}.${status} upper`);
     }
+    // Vibration delivers nothing (its only message is an operator-run diagnostic),
+    // so it declares the colours of its own run words instead.
+    if (service === "vibration") continue;
     // The four shared delivery outcomes are the ones every service agreed on.
     const lower = Object.fromEntries(
       Object.entries(declared.statuses ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
@@ -211,17 +214,18 @@ test("granularity is declared per signal, and an undeclared one is not covered",
   // Ingestion, run and delivery do not share a granularity, so each is
   // declared separately. Delivery is the one every service can answer.
   for (const service of SERVICE_KEYS) {
-    assert.equal(contractHealthGranularity(service, "delivery"), "project", `${service} delivery`);
+    // Vibration has no delivery signal; the undeclared answer is "not covered".
+    assert.equal(contractHealthGranularity(service, "delivery"), service === "vibration" ? "none" : "project", `${service} delivery`);
   }
   // Haze and Lightning fetch one public feed, so ingestion has no per-project
   // answer; Lightning records it estate-wide, Haze records nothing at all.
   assert.equal(contractHealthGranularity("lightning", "ingestion"), "service");
   assert.equal(contractHealthGranularity("haze", "ingestion"), "none");
   assert.equal(contractHealthGranularity("subcon", "run"), "project");
-  // Only the two that keep their own readings answer ingestion per project.
+  // Only the services that keep their own readings answer ingestion per project.
   assert.deepEqual(
     SERVICE_KEYS.filter((s) => contractHealthGranularity(s, "ingestion") === "project"),
-    ["wbgt", "noise"],
+    ["wbgt", "noise", "vibration"],
   );
   // The rule itself: anything undeclared is "not covered", never "project".
   // A service with no contract at all is the clearest case.

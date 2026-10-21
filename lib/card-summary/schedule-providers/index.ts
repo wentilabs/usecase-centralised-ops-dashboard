@@ -6,6 +6,7 @@ import { issueChaserScheduleProvider } from "./issue-chaser";
 import { lightningScheduleProvider } from "./lightning";
 import { noiseScheduleProvider } from "./noise";
 import { subconScheduleProvider } from "./subcon";
+import { vibrationScheduleProvider } from "./vibration";
 import { wbgtScheduleProvider } from "./wbgt";
 
 export const SCHEDULE_PROVIDERS: Record<ServiceKey, ScheduleProvider> = {
@@ -16,4 +17,5 @@ export const SCHEDULE_PROVIDERS: Record<ServiceKey, ScheduleProvider> = {
   ailytics: ailyticsScheduleProvider,
   subcon: subconScheduleProvider,
   issueChaser: issueChaserScheduleProvider,
+  vibration: vibrationScheduleProvider,
 };

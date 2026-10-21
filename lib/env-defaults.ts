@@ -46,6 +46,7 @@ export const ENV_DEFAULTS: Record<ServiceKey, Record<string, string>> = {
   },
   subcon: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
   issueChaser: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
+  vibration: { lambda_url: "DEFAULT_LAMBDA_URL_SEND" },
 };
 
 /**

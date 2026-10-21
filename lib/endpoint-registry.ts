@@ -327,6 +327,7 @@ export const NOT_A_MESSAGE: Record<string, string> = {
   "subcon:/housekeeping-intake": "Inbound WhatsApp envelopes.",
   "subcon:/daily-housekeeping-sheet": "Projects housekeeping state into the workbook.",
   "subcon:/refresh-housekeeping-photos": "Refreshes stored photo links.",
+  "vibration:/api/vibration-scrape": "Scrapes the portal into each site's readings table. It sends no WhatsApp message.",
   "wbgt:/api/wbgt-scrape": "Ingests readings.",
   "wbgt:/api/wbgt-sheet-fill": "Writes readings to the workbook.",
   "wbgt:/api/wbgt-sheet-export": "Writes readings to the workbook.",

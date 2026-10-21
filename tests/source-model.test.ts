@@ -198,10 +198,10 @@ test("the table name is the services' own rule, not an approximation", () => {
   }
 });
 
-test("only the two services that keep their own readings say they do", () => {
+test("only the services that keep their own readings say they do", () => {
   // The point the page exists to make, and the one it must not overstate:
-  // "check the table first" is right for two services and meaningless for five.
-  assert.deepEqual(SERVICE_KEYS.filter(storesReadings), ["wbgt", "noise"]);
+  // "check the table first" is right for three services and meaningless for five.
+  assert.deepEqual(SERVICE_KEYS.filter(storesReadings), ["wbgt", "noise", "vibration"]);
 
   for (const service of SERVICE_KEYS) {
     const storage = SERVICE_STORAGE[service];

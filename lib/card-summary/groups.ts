@@ -88,6 +88,8 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
     { column: "daily_safety_chatgroup_summary_whatsapp_group_ids", role: "chat-group summary" },
     { column: "novade_name_list_check_whatsapp_group_ids", role: "Novade reminder" },
   ],
+  // Only the diagnostic notification reads this; scraping never messages a group.
+  vibration: [{ column: "wa_group_ids", role: "diagnostic only" }],
 };
 
 export type DeliveryGroup = { chatId: string; role?: string };

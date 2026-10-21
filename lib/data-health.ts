@@ -1,4 +1,4 @@
-import { noiseTableForProject, wbgtTableForProject } from "./onboarding/naming";
+import { noiseTableForProject, vibrationTableForProject, wbgtTableForProject } from "./onboarding/naming";
 import { activityLabel, type Activity } from "./data-health-activity";
 import type { ServiceKey } from "./services";
 
@@ -11,9 +11,11 @@ export type HealthTone = "good" | "stale" | "warn" | "danger" | "neutral";
 export type DeliveryOutcome = "provider_accepted" | "provider_pending" | "transport_failed" | "device_delivered" | "read" | "not_monitored";
 
 export type HealthTarget = {
-  service: "wbgt" | "noise";
+  service: "wbgt" | "noise" | "vibration";
   projectCode: string;
-  schema: "wbgts" | "noise-meters";
+  schema: "wbgts" | "noise-meters" | "vibration";
+  /** The column holding when HALO's source wrote the row; `created_at` unless the table says otherwise. */
+  receivedField?: string;
   table: string;
   warningAfterMs: number;
   criticalAfterMs: number;
@@ -80,6 +82,24 @@ export function healthTarget(service: ServiceKey, projectCode: string): HealthTa
       warningAfterMs: 1 * HOUR,
       criticalAfterMs: 4 * HOUR,
       sourceTimeFields: ["date", "time_hhmm"],
+    };
+  }
+
+  if (service === "vibration") {
+    const table = vibrationTableForProject(trimmed);
+    if (!table) return null;
+    return {
+      service,
+      projectCode: trimmed,
+      schema: "vibration",
+      table,
+      // The scrape is scheduled outside the database and its interval is not
+      // stored, so these are a recommendation, not a measurement: a source that
+      // posts nothing for half a working day is worth a look.
+      warningAfterMs: 6 * HOUR,
+      criticalAfterMs: 12 * HOUR,
+      receivedField: "ingested_at",
+      sourceTimeFields: ["observed_at"],
     };
   }
 

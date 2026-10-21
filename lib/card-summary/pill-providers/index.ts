@@ -6,6 +6,7 @@ import { issueChaserPills } from "./issue-chaser";
 import { lightningPills } from "./lightning";
 import { noisePills } from "./noise";
 import { subconPills } from "./subcon";
+import { vibrationPills } from "./vibration";
 import { wbgtPills } from "./wbgt";
 
 export const PILL_PROVIDERS: Record<ServiceKey, PillProvider> = {
@@ -16,4 +17,5 @@ export const PILL_PROVIDERS: Record<ServiceKey, PillProvider> = {
   ailytics: ailyticsPills,
   subcon: subconPills,
   issueChaser: issueChaserPills,
+  vibration: vibrationPills,
 };

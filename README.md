@@ -1,7 +1,7 @@
 # Centralised Services Dashboard
 
-Next.js control surface for the project configs behind all six centralised
-services — **WBGT, Noise, Haze, Lightning, Ailytics and Subcon Activities** — in
+Next.js control surface for the project configs behind all eight centralised
+services — **WBGT, Noise, Haze, Lightning, Ailytics, Subcon Activities, Issue Chaser and Vibration** — in
 one place.
 It reads them live from Supabase and writes edits back, validated against the
 live schema, with a shared change history.

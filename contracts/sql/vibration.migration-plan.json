@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "schema": "vibration",
+  "freshInstall": "legacy/setup.sql",
+  "freshInstallAllowedDestructiveOperations": ["drop-column", "drop-table"],
+  "freshInstallPrecondition": "legacy/setup.sql includes destructive cleanup; use it only on an empty schema and then apply every upgrade below in order.",
+  "upgrades": [
+    { "id": "source-agnostic-foundation", "file": "source-agnostic-foundation.sql", "requires": [] },
+    { "id": "one-step-project-onboarding", "file": "migrate_one_step_project_onboarding.sql", "requires": ["source-agnostic-foundation"] },
+    { "id": "project-reading-tables", "file": "migrate_project_reading_tables.sql", "requires": ["one-step-project-onboarding"] }
+  ],
+  "operationalUtilities": [
+    "checks/prepared-targets.sql",
+    "checks/skw-project-readiness.sql"
+  ],
+  "destructiveUtilities": [
+    {
+      "id": "cleanup-shared-observations",
+      "file": "cleanup_shared_observations.sql",
+      "allowedDestructiveOperations": ["drop-table"],
+      "precondition": "Run only after the project-table writer is deployed and a project scrape succeeded; it deletes shared source observations."
+    }
+  ]
+}

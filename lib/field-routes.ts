@@ -298,6 +298,14 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
     // useful thing to name rather than all fifteen routes.
     { routes: ["POST /api/issue-chaser-project-check"], columns: ["safety_sheet_id"] },
   ],
+  // Scraping reads no configuration column of its own — it follows source
+  // targets whose site row exists. Only the diagnostic notification reads these.
+  vibration: [
+    {
+      routes: ["POST /test-notification", "POST /api/test-notification"],
+      columns: ["enabled", "wa_group_ids"],
+    },
+  ],
 };
 
 /** Columns read by every outbound route rather than by one in particular. */

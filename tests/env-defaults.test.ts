@@ -44,8 +44,8 @@ test("every column given an env default is a column its service actually has", (
   }
   assert.equal(
     checked,
-    10,
-    "seven send URLs, ailytics' reply and image, and WBGT's document URL for the monthly report",
+    11,
+    "eight send URLs, ailytics' reply and image, and WBGT's document URL for the monthly report",
   );
 });
 

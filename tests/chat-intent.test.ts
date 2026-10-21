@@ -219,7 +219,7 @@ test("a hyphenated code matches however it is spaced", () => {
 
 test("the two kinds of ambiguity get two different answers", () => {
   const label = (service: ServiceKey) =>
-    ({ wbgt: "WBGT", noise: "Noise", haze: "Haze", lightning: "Lightning", ailytics: "Ailytics", subcon: "Subcon Activities", issueChaser: "Issue Chaser" })[service];
+    ({ wbgt: "WBGT", noise: "Noise", haze: "Haze", lightning: "Lightning", ailytics: "Ailytics", subcon: "Subcon Activities", issueChaser: "Issue Chaser", vibration: "Vibration" })[service];
 
   // One code under several services: the question is which service.
   const shared = describeAmbiguity(

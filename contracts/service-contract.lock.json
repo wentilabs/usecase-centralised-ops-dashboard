@@ -64,6 +64,16 @@
       "vendoredPath": "contracts/services/wbgt.contract.json",
       "sqlPath": "supabase/migration-plan.json",
       "vendoredSqlPath": "contracts/sql/wbgt.migration-plan.json"
+    },
+    "vibration": {
+      "repository": "wentilabs/usecase-wohhup-vibration",
+      "localDirectory": "usecase-wohhup-vibration",
+      "branch": "master",
+      "commit": "0eb67cb55dcc61312225dbdcc979039cef4e3c33",
+      "path": "contracts/service.contract.json",
+      "vendoredPath": "contracts/services/vibration.contract.json",
+      "sqlPath": "supabase/migration-plan.json",
+      "vendoredSqlPath": "contracts/sql/vibration.migration-plan.json"
     }
   }
 }

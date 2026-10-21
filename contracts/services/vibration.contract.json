@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "service": {
+    "key": "vibration",
+    "displayName": "Vibration"
+  },
+  "runtime": {
+    "handler": "index.handler",
+    "language": "javascript",
+    "moduleFormat": "commonjs"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "kind": "diagnostic",
+      "authentication": "none"
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "kind": "diagnostic",
+      "authentication": "none"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vibration-scrape",
+      "kind": "scheduled",
+      "authentication": "optional-service-key"
+    },
+    {
+      "method": "POST",
+      "path": "/test-notification",
+      "kind": "diagnostic",
+      "authentication": "optional-service-key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/test-notification",
+      "kind": "diagnostic",
+      "authentication": "optional-service-key"
+    }
+  ],
+  "configuration": {
+    "schema": "vibration",
+    "table": "vibration_project_configs",
+    "identityColumn": "project_code",
+    "fields": {
+      "project_code": {
+        "label": "Project code",
+        "group": "identity",
+        "mutable": false,
+        "role": "identity",
+        "help": "Stable site identity; it names the project's physical readings table <code>_vibration_data_daily."
+      },
+      "company": {
+        "label": "Company",
+        "group": "identity",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Operator-facing identity only; scraping does not read it."
+      },
+      "site_name": {
+        "label": "Site name",
+        "group": "identity",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Human name of the site shown to operators."
+      },
+      "timezone": {
+        "label": "Timezone",
+        "group": "identity",
+        "mutable": true,
+        "role": "configuration",
+        "help": "IANA timezone used to interpret the site's reading times."
+      },
+      "config_kind": {
+        "label": "Row kind",
+        "group": "runtime",
+        "mutable": false,
+        "role": "runtime-state",
+        "help": "'site' rows are HALO cards; 'legacy_target' rows are WIRS inputs and are never listed."
+      },
+      "enabled": {
+        "label": "Enabled",
+        "group": "delivery",
+        "mutable": true,
+        "role": "feature-flag",
+        "help": "Does not stop source-target scraping: the scraper writes every target whose site row exists."
+      },
+      "client_id": {
+        "label": "Client ID",
+        "group": "delivery",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Sending-account identifier for the diagnostic notification."
+      },
+      "instance_name": {
+        "label": "WhatsApp instance",
+        "group": "delivery",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Listener instance used by the diagnostic notification."
+      },
+      "lambda_url": {
+        "label": "Send-message URL",
+        "group": "delivery",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Listener text endpoint used by the diagnostic notification."
+      },
+      "wa_group_ids": {
+        "label": "Notification groups",
+        "group": "delivery",
+        "mutable": true,
+        "role": "configuration",
+        "help": "Groups receiving the diagnostic notification; scraping never messages them."
+      },
+      "created_at": {
+        "label": "Created at",
+        "group": "runtime",
+        "mutable": false,
+        "role": "runtime-state",
+        "help": "Database-owned audit timestamp."
+      },
+      "updated_at": {
+        "label": "Updated at",
+        "group": "runtime",
+        "mutable": false,
+        "role": "runtime-state",
+        "help": "HALO-managed optimistic-concurrency timestamp."
+      }
+    },
+    "constraints": []
+  },
+  "health": {
+    "granularity": {
+      "ingestion": "project",
+      "run": "service",
+      "delivery": "none"
+    },
+    "statuses": {
+      "scraped": "green",
+      "discovered": "green",
+      "awaiting_otp": "amber"
+    }
+  }
+}

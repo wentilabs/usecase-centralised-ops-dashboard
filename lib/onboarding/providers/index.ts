@@ -6,6 +6,7 @@ import { issueChaserOnboarding } from "./issue-chaser";
 import { lightningOnboarding } from "./lightning";
 import { noiseOnboarding } from "./noise";
 import { subconOnboarding } from "./subcon";
+import { vibrationOnboarding } from "./vibration";
 import { wbgtOnboarding } from "./wbgt";
 
 export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
@@ -16,4 +17,5 @@ export const ONBOARDING: Partial<Record<ServiceKey, OnboardDefinition>> = {
   issueChaser: issueChaserOnboarding,
   wbgt: wbgtOnboarding,
   ailytics: ailyticsOnboarding,
+  vibration: vibrationOnboarding,
 };

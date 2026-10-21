@@ -567,6 +567,7 @@ paths:
               - ailytics
               - subcon
               - issueChaser
+              - vibration
         - name: rowId
           in: path
           required: true
@@ -645,6 +646,7 @@ paths:
               - ailytics
               - subcon
               - issueChaser
+              - vibration
           description: Restrict to one service's config table.
         - name: table
           in: query
@@ -1158,6 +1160,7 @@ paths:
               - ailytics
               - subcon
               - issueChaser
+              - vibration
       responses:
         "200":
           description: Every settable column, the defaults, and any prerequisite.
@@ -1276,6 +1279,7 @@ paths:
               - ailytics
               - subcon
               - issueChaser
+              - vibration
       requestBody:
         required: true
         content:

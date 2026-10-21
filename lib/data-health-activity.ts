@@ -116,6 +116,12 @@ function toleranceFrom(hours: number[], row: ProjectConfigRow, now: Date): numbe
 }
 
 export function activityFor(service: ServiceKey, row: ProjectConfigRow, now: Date): Activity {
+  // Vibration's scrape is scheduled outside the database and does not read
+  // `enabled`, so neither a switched-off row nor an empty cadence list means
+  // nothing is expected: the portal is scraped round the clock.
+  if (service === "vibration") {
+    return { state: "active", cadence: "scraping on an external schedule", activeHours: Array.from({ length: 24 }, (_, hour) => hour), toleranceMs: 6 * HOUR_MS };
+  }
   if (row.enabled === false) return { state: "disabled" };
 
   const { hours, cadenceByHour } = activeHoursFor(service, row);

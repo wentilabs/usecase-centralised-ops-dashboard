@@ -6,6 +6,7 @@ import { issueChaserLoadProvider } from "./issue-chaser";
 import { lightningLoadProvider } from "./lightning";
 import { noiseLoadProvider } from "./noise";
 import { subconLoadProvider } from "./subcon";
+import { vibrationLoadProvider } from "./vibration";
 import { wbgtLoadProvider } from "./wbgt";
 
 export const LOAD_PROVIDERS: Record<ServiceKey, LoadProvider> = {
@@ -16,4 +17,5 @@ export const LOAD_PROVIDERS: Record<ServiceKey, LoadProvider> = {
   ailytics: ailyticsLoadProvider,
   subcon: subconLoadProvider,
   issueChaser: issueChaserLoadProvider,
+  vibration: vibrationLoadProvider,
 };

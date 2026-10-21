@@ -138,6 +138,16 @@ export function cachedConfigServices(): ServiceKey[] {
   return configCache.fresh();
 }
 
+/**
+ * `&column=eq.value` for a service that keeps rows besides its projects in the same
+ * table, or nothing. A read without it would list Vibration's 277 legacy WIRS targets
+ * as project cards.
+ */
+function rowFilterParam(service: ServiceKey): string {
+  const only = SERVICES[service].rowFilter;
+  return only ? `&${only.column}=eq.${encodeURIComponent(only.value)}` : "";
+}
+
 export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow[]> {
   const cached = configCache.get(service);
   // The hit rate is the only evidence that the six-second window is worth
@@ -146,7 +156,7 @@ export async function listConfigs(service: ServiceKey): Promise<ProjectConfigRow
   if (cached) return cached;
 
   const { table, schema } = SERVICES[service];
-  const res = await request(`${table}?select=*&order=project_code.asc`, { schema });
+  const res = await request(`${table}?select=*${rowFilterParam(service)}&order=project_code.asc`, { schema });
   if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
   const rows = res.body as ProjectConfigRow[];
   configCache.set(service, rows);
@@ -548,7 +558,7 @@ export async function listNoiseMeters(projectCode: string): Promise<{ recId: str
 
 export async function getConfig(service: ServiceKey, rowId: string): Promise<ProjectConfigRow | null> {
   const { table, schema, idColumn } = SERVICES[service];
-  const res = await request(`${table}?select=*&${idColumn}=eq.${encodeURIComponent(rowId)}`, { schema });
+  const res = await request(`${table}?select=*&${idColumn}=eq.${encodeURIComponent(rowId)}${rowFilterParam(service)}`, { schema });
   if (!res.ok) throw new Error(`${service}: ${res.status} ${res.text.slice(0, 200)}`);
   return (res.body as ProjectConfigRow[])[0] ?? null;
 }
@@ -570,6 +580,8 @@ export async function updateConfig(
   invalidateConfigs(service);
   const { table, schema, idColumn } = SERVICES[service];
   const params = [`${idColumn}=eq.${encodeURIComponent(rowId)}`];
+  const only = SERVICES[service].rowFilter;
+  if (only) params.push(`${only.column}=eq.${encodeURIComponent(only.value)}`);
   if (baseUpdatedAt) params.push(`updated_at=eq.${encodeURIComponent(baseUpdatedAt)}`);
 
   const res = await request(`${table}?${params.join("&")}`, {
@@ -597,12 +609,14 @@ export async function insertConfig(
   // cached as if nothing had happened, and a successful one must not be read
   // back from a snapshot taken before it.
   invalidateConfigs(service);
-  const { table, schema } = SERVICES[service];
+  const { table, schema, rowFilter } = SERVICES[service];
   const res = await request(table, {
     schema,
     method: "POST",
     headers: { Prefer: "return=representation" },
-    body: JSON.stringify(row),
+    // A new row is created as the kind this service lists, whatever the caller sent:
+    // a row of another kind would be written and then never appear as a card.
+    body: JSON.stringify(rowFilter ? { ...row, [rowFilter.column]: rowFilter.value } : row),
   });
   if (!res.ok) throw new Error(describePostgrestError(`${res.status} ${res.text}`));
   return res.body as ProjectConfigRow[];

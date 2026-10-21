@@ -382,7 +382,9 @@ test("every lightning preview names the file it came from", () => {
  * Their previews are not composed: `scripts/build-endpoint-previews.mjs` runs each
  * service's own message builder, as the WBGT and Haze previews always have.
  */
-const NO_PREVIEWS: Record<string, string> = {};
+const NO_PREVIEWS: Record<string, string> = {
+  vibration: "Sends no scheduled message. The only message is the operator-run /test-notification diagnostic, which reports scrape activity and has no formatter column to preview.",
+};
 
 test("every service either shows a real message or says why it cannot", () => {
   const withPreviews = new Set(MESSAGE_PREVIEWS.map((preview) => preview.service));
@@ -392,7 +394,7 @@ test("every service either shows a real message or says why it cannot", () => {
     assert.notEqual(has, excused, `${service} is both previewed and excused, or neither`);
   }
   assert.deepEqual([...withPreviews].sort(), ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "wbgt"]);
-  assert.deepEqual(Object.keys(NO_PREVIEWS), []);
+  assert.deepEqual(Object.keys(NO_PREVIEWS), ["vibration"]);
 });
 
 test("help text never carries markdown the renderer cannot show", async () => {

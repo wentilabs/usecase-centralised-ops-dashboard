@@ -5,6 +5,7 @@ import { issueChaserFieldProvider } from "./issue-chaser";
 import { lightningFieldProvider } from "./lightning";
 import { noiseFieldProvider } from "./noise";
 import { subconFieldProvider } from "./subcon";
+import { vibrationFieldProvider } from "./vibration";
 import { wbgtFieldProvider } from "./wbgt";
 
 export const FIELD_PROVIDERS: Record<string, ServiceFieldProvider> = {
@@ -15,4 +16,5 @@ export const FIELD_PROVIDERS: Record<string, ServiceFieldProvider> = {
   ailytics: ailyticsFieldProvider,
   subcon: subconFieldProvider,
   issueChaser: issueChaserFieldProvider,
+  vibration: vibrationFieldProvider,
 };

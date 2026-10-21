@@ -195,6 +195,21 @@ export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
     inbound: [],
     breaks: "Chasing stops for that project alone; the run names the workbook. Usually a sharing change.",
   },
+  vibration: {
+    upstream: "PRO-TEC vibration monitor (protecvibmonitor.com)",
+    transport: "browser",
+    how: "Browserbase signs in to the portal, then reads its sensorreport JSON for the current Singapore day. A sign-in that needs an SMS one-time code waits for the SMS webhook.",
+    loginUrl: "https://protecvibmonitor.com/",
+    inbound: ["POST /api/vibration-scrape"],
+    breaks: "Readings stop for every site on that portal at once, not one project. A login wall, an unanswered OTP or a Browserbase outage all look the same from the table: nothing new.",
+    alsoFrom: [
+      {
+        label: "SMS one-time code",
+        how: "The portal asks for a code by SMS; the gateway posts it, signed, to the same route and the waiting scrape resumes.",
+        env: ["SMS_GATEWAY_SIGNING_KEY", "SMS_WEBHOOK_MAX_AGE_SECONDS", "OTP_CHALLENGE_TTL_SECONDS"],
+      },
+    ],
+  },
 };
 
 /**
@@ -489,6 +504,20 @@ export const SERVICE_STORAGE: Record<ServiceKey, Storage> = {
     debugOrder: [
       "The Safety workbook is the store. Open safety_sheet_id and check the rows are there.",
       "Then run ◇ Diagnose project on the Issue Chaser tab — it checks a project against its workbook and names what it cannot read.",
+    ],
+  },
+  vibration: {
+    schema: "vibration",
+    readingsTable: "<code>_vibration_data_daily",
+    supporting: [
+      { table: "vibration_source_targets", holds: "which portal sensors map to which project and meter, and whether each is enabled" },
+      { table: "vibration_job_runs", holds: "every scrape invocation, with its status and errors — one row per run, not per project" },
+      { table: "vibration_project_configs", holds: "the site row HALO writes (config_kind = 'site'); legacy WIRS targets share the table" },
+    ],
+    debugOrder: [
+      "Does the site's table hold rows from the last few hours? Newest ingested_at tells you when HALO's source last wrote.",
+      "No new rows? Read vibration_job_runs: did a scrape run, and did it finish or wait for an OTP?",
+      "Scrape ran but this site is missing? Check vibration_source_targets for the site — enabled, and prepared for this project_code. The site row's enabled switch does not stop scraping.",
     ],
   },
 };

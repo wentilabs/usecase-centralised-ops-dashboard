@@ -522,6 +522,9 @@ test("every onboarding flow picks WhatsApp groups, never types them", () => {
   // editor has always used the picker; onboarding was still a plain text box.
   const groupColumns = new Set(CHAT_ID_COLUMNS);
   for (const key of SERVICE_KEYS) {
+    // Vibration's site row carries no delivery at creation: it sends nothing on a
+    // schedule, and its notification groups belong to an operator-run diagnostic.
+    if (key === "vibration") continue;
     const definition = onboardingFor(key)!;
     const groupFields = definition.fields.filter((f) => groupColumns.has(f.column));
     assert.ok(groupFields.length >= 1, `${key} should collect at least one group column`);
@@ -717,7 +720,7 @@ test("a new project of any service starts muted on Sundays and public holidays",
   // ailytics" rather than a set someone has to remember to extend. It was
   // "wbgt, noise, haze, lightning" until subcon and issue-chaser gained the
   // columns, which is exactly the drift the derivation below removes.
-  for (const key of SERVICE_KEYS.filter((k) => k !== "ailytics")) {
+  for (const key of SERVICE_KEYS.filter((k) => k !== "ailytics" && k !== "vibration")) {
     const definition = onboardingFor(key)!;
     const row = buildInsertRow(definition, { project_code: "ZZT" });
     assert.equal(row.remove_sunday_notifications, true, `${key} Sundays`);

@@ -38,6 +38,10 @@ export function hazePills(config: ProjectConfigRow): Pill[] {
         : "every band",
       on: true,
     },
+    ...(config["pm2.5_alert_only_when_at_least"] ? [{
+      label: `PM2.5 ≥ ${String(config["pm2.5_alert_only_when_at_least"]).replace(/_/g, " ")}`,
+      on: true,
+    }] : []),
     { label: "Sundays", on: !on(config.remove_sunday_notifications) },
     { label: "PH", on: !on(config.remove_ph_notifications) },
     { label: "POC mentions", on: on(config.enable_poc_mentions) },

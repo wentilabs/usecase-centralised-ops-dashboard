@@ -13,7 +13,7 @@
     "haze": {
       "repository": "wentilabs/usecase-haze-alerts",
       "branch": "main",
-      "commit": "b6664447d0e02bf01900eda60331ca086aa1573c",
+      "commit": "0694ef6f82ba77b322874c81b07c3077d27f271a",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/haze.contract.json",
       "sqlPath": "supabase/migration-plan.json",

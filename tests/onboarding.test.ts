@@ -691,9 +691,11 @@ test("haze and lightning can be configured at creation; noise and wbgt stay mini
   assert.deepEqual(cadenceish("haze"), [
     "four_hourly",
     "alert_only_when_at_least",
+    "pm2.5_alert_only_when_at_least",
     "advisory_format",
     "enable_poc_mentions",
     "poc_mentions_at_least",
+    "poc_mentions_pm2.5_at_least",
   ]);
   assert.deepEqual(cadenceish("lightning"), ["amber_enabled"]);
   // Noise and WBGT are asked nothing about cadence — but they are still given

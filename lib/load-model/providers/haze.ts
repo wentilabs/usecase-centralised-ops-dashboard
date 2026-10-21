@@ -27,7 +27,7 @@ export const hazeLoadProvider: LoadProvider = {
     const override = config.four_hourly === true;
     // A PSI floor makes the advisory conditional: below the band nothing is
     // sent. Blank means every hour in the window really does send.
-    const gated = Boolean(String(config.alert_only_when_at_least ?? "").trim());
+    const gated = Boolean(String(config.alert_only_when_at_least ?? "").trim() || String(config["pm2.5_alert_only_when_at_least"] ?? "").trim());
 
     const add = (hour: number, cadence: string, certainty: Occurrence["certainty"]) => {
       occurrences.push({ service: "haze", projectCode, cadence, hour, sends: groups, certainty });

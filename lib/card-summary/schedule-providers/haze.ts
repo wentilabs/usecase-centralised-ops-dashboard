@@ -12,6 +12,9 @@ export const hazeScheduleProvider: ScheduleProvider = {
     const gate = config.alert_only_when_at_least
           ? ` — only when PSI ≥ ${String(config.alert_only_when_at_least).replace(/_/g, " ")}`
           : "";
+    const pm25Gate = config["pm2.5_alert_only_when_at_least"]
+          ? `${gate ? " and" : " — only when"} PM2.5 ≥ ${String(config["pm2.5_alert_only_when_at_least"]).replace(/_/g, " ")}`
+          : "";
     if (config.four_hourly) {
           // Every two hours since ca13cbd, not four — the column name did not
           // change with the behaviour. Listed as a range rather than seven times,
@@ -22,11 +25,11 @@ export const hazeScheduleProvider: ScheduleProvider = {
           // whose window closes at 19:00. Every other hour follows the ordinary
           // gates, so the floor is still quoted — dropping it would imply the
           // whole day ignores it.
-          return `hourly advisory during ${hours}${gate}, plus a guaranteed send every 2 hours from 08:00 to 20:00 whatever the band and outside those hours — no daily kickoff${mutesSuffix(
+          return `hourly advisory during ${hours}${gate}${pm25Gate}, plus a guaranteed send every 2 hours from 08:00 to 20:00 whatever the band and outside those hours — no daily kickoff${mutesSuffix(
             config,
           )}`;
         }
-    return `hourly advisory during ${hours}${gate}${mutesSuffix(config)}`;
+    return `hourly advisory during ${hours}${gate}${pm25Gate}${mutesSuffix(config)}`;
   },
   hasCadence(config: ProjectConfigRow): boolean {
     return config.enabled !== false;

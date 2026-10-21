@@ -84,7 +84,7 @@ export const hazeOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "false",
-        help: "A guaranteed send at 08, 10, 12, 14, 16, 18 and 20 SGT, on top of the hourly advisory, ignoring the floor below and the working-hours window. Every other hour follows the ordinary rules.",
+        help: "A guaranteed send at 08, 10, 12, 14, 16, 18 and 20 SGT, on top of the hourly advisory, ignoring both PSI and PM2.5 floors and the working-hours window. Every other hour follows the ordinary rules.",
       },
       {
         column: "alert_only_when_at_least",
@@ -96,6 +96,15 @@ export const hazeOnboarding: OnboardDefinition = {
         // the lowest band, so choosing it is the same thing said louder.
         options: ["", "good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
         help: "Suppresses the hourly advisory below this band. Unset sends every hour; `good` is the lowest band, so it is identical to unset.",
+      },
+      {
+        column: "pm2.5_alert_only_when_at_least",
+        label: "PM2.5 alert only when at least",
+        kind: "select",
+        required: false,
+        notNull: false,
+        options: ["", "normal", "elevated", "high", "very_high"],
+        help: "Independent one-hour PM2.5 floor, applied only to advisory formats carrying a PM2.5 reading. When both PSI and PM2.5 floors are set, both must pass.",
       },
       {
         column: "advisory_format",
@@ -168,6 +177,15 @@ export const hazeOnboarding: OnboardDefinition = {
         notNull: false,
         options: ["", "good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
         help: "Lowest band that triggers a mention. Checked independently of the alert floor above, so a mention floor below it can never fire — the message it would ride on is not sent.",
+      },
+      {
+        column: "poc_mentions_pm2.5_at_least",
+        label: "Mention from PM2.5 band",
+        kind: "select",
+        required: false,
+        notNull: false,
+        options: ["", "normal", "elevated", "high", "very_high"],
+        help: "Independent one-hour PM2.5 floor for POC mentions on PM2.5 formats. If both mention floors are set, both must pass.",
       },
       {
         column: "poc_phone_numbers",

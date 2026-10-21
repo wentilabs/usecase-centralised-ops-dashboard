@@ -21,6 +21,26 @@
       ]
     },
     {
+      "id": "advisory-format-wohhup-2.5and1h",
+      "file": "advisory-format-wohhup-2.5and1h.sql",
+      "requires": ["advisory-format"]
+    },
+    {
+      "id": "enable-wohhup-2.5and1h-tri-tsc",
+      "file": "enable-wohhup-2.5and1h-tri-tsc.sql",
+      "requires": ["advisory-format-wohhup-2.5and1h"]
+    },
+    {
+      "id": "rename-wohhup-pm25-forecast-format",
+      "file": "rename-wohhup-pm25-forecast-format.sql",
+      "requires": ["enable-wohhup-2.5and1h-tri-tsc"]
+    },
+    {
+      "id": "advisory-format-wohhup-2.5-forecast-24",
+      "file": "advisory-format-wohhup-2.5-forecast-24.sql",
+      "requires": ["rename-wohhup-pm25-forecast-format"]
+    },
+    {
       "id": "poc-mentions",
       "file": "poc-mentions.sql",
       "requires": []
@@ -60,6 +80,11 @@
       "requires": [
         "listener-queue-acceptance"
       ]
+    },
+    {
+      "id": "pm25-thresholds",
+      "file": "pm25-thresholds.sql",
+      "requires": []
     }
   ],
   "destructiveUtilities": []

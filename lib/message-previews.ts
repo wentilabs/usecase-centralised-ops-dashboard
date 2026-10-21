@@ -461,7 +461,7 @@ HAZE_PREVIEWS.push({
   summary: "Adds the current 24-hour PSI reading and band to the 1-hour PM2.5 and NEA forecast message.",
   bubbles: forecastPreview.bubbles.map((bubble) => ({
     ...bubble,
-    text: bubble.text.replace("\n\n*Haze health advisory*", "\n24H PSI Reading: 116 (Unhealthy: 101–200)\n\n*Haze health advisory*"),
+    text: bubble.text.replace("\n\n*Haze health advisory*", "\n24H PSI Reading: 116 🟡 (Unhealthy: 101–200)\n\n*Haze health advisory*"),
   })),
   source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5+forecast+24)",
 });

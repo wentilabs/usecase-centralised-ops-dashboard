@@ -320,6 +320,79 @@ _Reading from NEA (West) 22 Aug 2026 15:19 SGT_`,
     ],
     source: "haze lib/haze-messages.js — buildWohhupMessage",
   },
+  {
+    service: "haze",
+    column: "advisory_format",
+    value: "wohhup-2.5and1h-format",
+    summary:
+      "Uses the current regional 1-hour PM2.5 band for immediate activity guidance and appends the daily PSI forecast from NEA's dated haze update.",
+    kind: "message",
+    bubbles: [
+      {
+        caption: "Band 1 — Normal (51 µg/m³)",
+        text: `🌫️🟢 *HAZE UPDATE (TRI) — Normal* 🟢🌫️
+
+*1H PM2.5 Reading:* 51 µg/m³ (Band 1: 0–55)
+
+*Haze health advisory*
+• Healthy and vulnerable employees may carry out normal activities.
+• Continue monitoring the haze situation.
+
+*PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
+
+_PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
+      },
+      {
+        caption: "Band 2 — Elevated (100 µg/m³)",
+        text: `🌫️🟡 *HAZE UPDATE (TRI) — Elevated* 🟡🌫️
+
+*1H PM2.5 Reading:* 100 µg/m³ (Band 2: 56–150)
+
+*Haze health advisory*
+• Healthy employees should reduce strenuous outdoor activities.
+• Vulnerable employees should avoid strenuous outdoor activities.
+• Employees working outdoors should wear N95 masks.
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+
+*PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
+
+_PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
+      },
+      {
+        caption: "Band 3 — High (200 µg/m³)",
+        text: `🌫️🟠 *HAZE UPDATE (TRI) — High* 🟠🌫️
+
+*1H PM2.5 Reading:* 200 µg/m³ (Band 3: 151–250)
+
+*Haze health advisory*
+• Healthy employees should avoid strenuous outdoor activities.
+• Vulnerable employees should only work indoors, preferably doing work which is not physically strenuous.
+• Employees working outdoors should wear N95 masks.
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+
+*PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
+
+_PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
+      },
+      {
+        caption: "Band 4 — Very High (300 µg/m³)",
+        text: `🌫️🔴 *HAZE UPDATE (TRI) — Very High* 🔴🌫️
+
+*1H PM2.5 Reading:* 300 µg/m³ (Band 4: >=251)
+
+*Haze health advisory*
+• All employees should remain indoors and avoid strenuous work.
+• Employees carrying out unavoidable outdoor work must wear N95 or equivalent masks.
+• Lifting teams shall stop all lifting activities, reassess the risk due to poor visibility and seek site management approval before restarting.
+• Tower crane operators shall assess visibility in their work area and inform the lifting supervisor if work needs to stop.
+
+*PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
+
+_PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
+      },
+    ],
+    source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5and1h-format)",
+  },
 ];
 
 

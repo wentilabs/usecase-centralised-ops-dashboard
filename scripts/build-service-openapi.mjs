@@ -96,7 +96,7 @@ function parseDoc(block) {
     if (/^(WARNING|NOTE|Returns|It never|A body)/i.test(line)) { mode = "notes"; notes.push(line); continue; }
 
     if (mode === "params") {
-      const m = line.match(/^-\s+([A-Za-z0-9_\s/]+?)\s*:\s*(.*)$/);
+      const m = line.match(/^-\s+([A-Za-z0-9_.\s/]+?)\s*:\s*(.*)$/);
       if (m) {
         const names = m[1].split("/").map((n) => n.trim()).filter(Boolean);
         const rest = m[2].trim();

@@ -405,6 +405,8 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
 • Vulnerable employees should avoid strenuous outdoor activities.
 • Employees working outdoors should wear N95 masks.
 • Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
 
 *PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
 
@@ -421,6 +423,8 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
 • Vulnerable employees should only work indoors, preferably doing work which is not physically strenuous.
 • Employees working outdoors should wear N95 masks.
 • Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
 
 *PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
 
@@ -437,6 +441,8 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
 • Employees carrying out unavoidable outdoor work must wear N95 or equivalent masks.
 • Lifting teams shall stop all lifting activities, reassess the risk due to poor visibility and seek site management approval before restarting.
 • Tower crane operators shall assess visibility in their work area and inform the lifting supervisor if work needs to stop.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
 
 *PSI Forecast for 21 Oct 2026:* 110–180 🟡 (Unhealthy: 101–200)
 

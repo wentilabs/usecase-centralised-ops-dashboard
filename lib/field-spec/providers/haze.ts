@@ -34,7 +34,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     },
     ["pm2.5_alert_only_when_at_least"]: {
       label: "PM2.5 alert only when at least",
-      help: "Independent 1-hour PM2.5 floor, used only when the selected advisory format includes a PM2.5 reading. With both floors configured, both the 24-hour PSI and 1-hour PM2.5 floors must pass.",
+      help: "Independent 1-hour PM2.5 floor, used only when the selected advisory format includes a PM2.5 reading. When both applicable floors are configured, either the 24-hour PSI or 1-hour PM2.5 floor can trigger delivery; both must fail to suppress.",
     },
     timezone: { label: "Timezone" },
 
@@ -75,7 +75,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     },
     ["poc_mentions_pm2.5_at_least"]: {
       label: "Mention from PM2.5 band",
-      help: "Independent 1-hour PM2.5 mention floor for PM2.5 formats. If both mention floors are set, both must pass.",
+      help: "Independent 1-hour PM2.5 mention floor for PM2.5 formats. `high` is Band 3 (151–250 µg/m³, orange); Band 3 or Band 4 qualifies. If both mention floors apply, either passing floor triggers a mention.",
       showIf: { field: "enable_poc_mentions", equals: true },
     },
     poc_phone_numbers: {

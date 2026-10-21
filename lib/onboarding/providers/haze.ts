@@ -104,7 +104,7 @@ export const hazeOnboarding: OnboardDefinition = {
         required: false,
         notNull: false,
         options: ["", "normal", "elevated", "high", "very_high"],
-        help: "Independent one-hour PM2.5 floor, applied only to advisory formats carrying a PM2.5 reading. When both PSI and PM2.5 floors are set, both must pass.",
+        help: "Independent one-hour PM2.5 floor, applied only to advisory formats carrying a PM2.5 reading. When both PSI and PM2.5 floors apply, either can trigger delivery; both must fail to suppress.",
       },
       {
         column: "advisory_format",
@@ -185,7 +185,7 @@ export const hazeOnboarding: OnboardDefinition = {
         required: false,
         notNull: false,
         options: ["", "normal", "elevated", "high", "very_high"],
-        help: "Independent one-hour PM2.5 floor for POC mentions on PM2.5 formats. If both mention floors are set, both must pass.",
+        help: "Independent one-hour PM2.5 floor for POC mentions on PM2.5 formats. `high` means Band 3 (151–250 µg/m³, orange), so Band 3 or Band 4 qualifies. If both mention floors apply, either can trigger a mention.",
       },
       {
         column: "poc_phone_numbers",

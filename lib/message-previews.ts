@@ -414,7 +414,7 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
       },
       {
         caption: "Band 3 — High (200 µg/m³)",
-        text: `🌫️🟠 *HAZE UPDATE (TRI) — High* 🟠🌫️
+        text: `🌫️🔴 *HAZE UPDATE (TRI) — High* 🔴🌫️
 
 *1H PM2.5 Reading:* 200 µg/m³ (Band 3: 151–250)
 
@@ -432,7 +432,7 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
       },
       {
         caption: "Band 4 — Very High (300 µg/m³)",
-        text: `🌫️🔴 *HAZE UPDATE (TRI) — Very High* 🔴🌫️
+        text: `🌫️🟣 *HAZE UPDATE (TRI) — Very High* 🟣🌫️
 
 *1H PM2.5 Reading:* 300 µg/m³ (Band 4: >=251)
 

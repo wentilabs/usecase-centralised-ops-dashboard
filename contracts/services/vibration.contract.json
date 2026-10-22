@@ -44,7 +44,13 @@
       "method": "POST",
       "path": "/api/vibration-report",
       "kind": "operator",
-      "authentication": "required-service-key"
+      "authentication": "optional-service-key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vibration-alert-preview",
+      "kind": "operator",
+      "authentication": "optional-service-key"
     }
   ],
   "configuration": {

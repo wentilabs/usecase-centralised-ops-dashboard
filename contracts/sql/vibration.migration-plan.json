@@ -40,12 +40,21 @@
       "requires": [
         "project-reading-tables"
       ]
+    },
+    {
+      "id": "ppv-alert-delivery",
+      "file": "migrate_ppv_alert_delivery.sql",
+      "requires": [
+        "meter-ppv-limits",
+        "site-enabled-gates-scraping"
+      ]
     }
   ],
   "operationalUtilities": [
     "checks/prepared-targets.sql",
     "checks/skw-project-readiness.sql",
-    "checks/skw-meter-ppv-limits.sql"
+    "checks/skw-meter-ppv-limits.sql",
+    "checks/ppv-alert-readiness.sql"
   ],
   "destructiveUtilities": [
     {

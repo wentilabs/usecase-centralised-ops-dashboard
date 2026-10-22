@@ -277,10 +277,20 @@ export const ENDPOINT_PREVIEWS: EndpointPreview[] = [
 
   // ── Vibration ────────────────────────────────────────────────────────────
   {
+    service: "vibration", path: "/api/vibration-scrape", title: "PPV threshold alerts", sends: "text",
+    summary: "After scraping, a meter entering or rising to a warning band sends one alert when the Lambda alert switch is on. Same-band readings stay silent.",
+    enabledBy: null, sources: [{ sample: "vibration.ppv-alert" }],
+  },
+  {
     service: "vibration", path: "/api/vibration-report", title: "Latest PPV report", sends: "text",
     summary: "Manual only. Previews each prepared meter's latest stored PPV; send: true delivers to the site's configured groups.",
     enabledBy: null, sources: [],
     gap: "The message is built from the latest persisted PPV and observation time per meter, so no static sample can stand in for live readings.",
+  },
+  {
+    service: "vibration", path: "/api/vibration-alert-preview", title: "Alert format preview and test", sends: "text",
+    summary: "Previews all three tiers using one meter's saved limits. An explicit test send targets one configured group and labels each message as a test.",
+    enabledBy: null, sources: [{ sample: "vibration.ppv-alert" }],
   },
 ];
 
@@ -335,7 +345,6 @@ export const NOT_A_MESSAGE: Record<string, string> = {
   "subcon:/housekeeping-intake": "Inbound WhatsApp envelopes.",
   "subcon:/daily-housekeeping-sheet": "Projects housekeeping state into the workbook.",
   "subcon:/refresh-housekeeping-photos": "Refreshes stored photo links.",
-  "vibration:/api/vibration-scrape": "Scrapes the portal into each site's readings table. It sends no WhatsApp message.",
   "wbgt:/api/wbgt-scrape": "Ingests readings.",
   "wbgt:/api/wbgt-sheet-fill": "Writes readings to the workbook.",
   "wbgt:/api/wbgt-sheet-export": "Writes readings to the workbook.",

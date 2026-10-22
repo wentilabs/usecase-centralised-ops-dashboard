@@ -244,6 +244,20 @@ try {
       source: "ailytics usecases/ailytics_yesterday_summary buildYesterdaySummaryMessage, run on the counts its own test uses",
     });
   }
+
+  // ── Vibration ────────────────────────────────────────────────────────────
+  {
+    const repo = "usecase-wohhup-vibration";
+    const { samplePpvAlertMessages } = load(repo, "lib/generated-boundaries/application/ppv-alert-preview.js");
+    const examples = samplePpvAlertMessages("Seletar West Road-3", "SKW", "VM01", {
+      approved_ppv_mm_s: 5, warning_percent: 80, critical_percent: 90, limit_percent: 100,
+    }, "2026-10-22T11:30:00Z");
+    const names = ["Warning · 4.0 mm/s", "Critical warning · 4.5 mm/s", "Limit reached · 5.0 mm/s"];
+    examples.forEach((example, index) => add("vibration.ppv-alert", {
+      caption: names[index], text: example.message,
+      source: "vibration ppv-alert-preview samplePpvAlertMessages, provisional SKW/VM01 limits",
+    }));
+  }
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

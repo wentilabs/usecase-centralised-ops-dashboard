@@ -1357,6 +1357,42 @@ paths:
                           type: boolean
         "400": *a3
         "401": *a1
+  /api/vibration/limits:
+    get:
+      operationId: getVibrationMeterLimits
+      tags:
+        - discovery
+      summary: Read provisional PPV limits per Vibration meter
+      description: Returns the approved PPV limit and warning, critical and reached percentages for each meter in one site. The Vibration Lambda applies these values to new valid readings when automatic alerts are enabled there.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Meter limit rows.
+        "401": *a1
+    patch:
+      operationId: updateVibrationMeterLimit
+      tags:
+        - configuration
+      summary: Update one Vibration meter's PPV limit and percentages
+      description: Changes the real PPV thresholds used by subsequent automatic Vibration alerts. Requires an editor session and the row's current updated_at; a concurrent edit returns 409. Limits remain provisional until the client confirms them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated meter limit.
+        "400": *a3
+        "401": *a1
+        "403": *a2
   /api/onboard/{service}/prerequisites:
     get:
       operationId: checkOnboardingPrerequisites

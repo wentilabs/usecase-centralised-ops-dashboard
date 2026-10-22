@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+/** GET getVibrationMeterLimits reads one site's per-meter policy. PATCH
+ * updateVibrationMeterLimit saves an editor's change with the row's updated_at guard. */
+
 import { listVibrationMeterLimits, updateVibrationMeterLimit, type VibrationMeterLimitRow } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 

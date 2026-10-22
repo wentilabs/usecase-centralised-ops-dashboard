@@ -78,7 +78,7 @@ export function VibrationMeterLimits({ code, canEdit }: { code: string; canEdit:
         PPV limits by meter
       </h3>
       <p className="px-2 text-xs text-muted-foreground">
-        Provisional approved limit: 5.0 mm/s. Warning, critical and reached levels are percentages of each meter&apos;s approved limit. These settings do not send alerts yet.
+        Provisional approved limit: 5.0 mm/s. Warning, critical and reached levels are percentages of each meter&apos;s approved limit. When alerts are enabled on the Vibration Lambda, new readings that enter or rise to a band send to the configured groups. A reading below warning resets the meter.
       </p>
       {error ? <p className="px-2 py-2 text-xs text-danger">{error}</p> : null}
       {rows === null && !error ? <p className="px-2 py-2 text-xs text-muted-foreground">Loading meter limits…</p> : null}

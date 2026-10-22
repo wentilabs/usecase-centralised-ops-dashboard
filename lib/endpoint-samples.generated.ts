@@ -167,5 +167,22 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
       }
     ],
     "source": "ailytics usecases/ailytics_yesterday_summary buildYesterdaySummaryMessage, run on the counts its own test uses"
+  },
+  "vibration.ppv-alert": {
+    "bubbles": [
+      {
+        "caption": "Warning · 4.0 mm/s",
+        "text": "*Vibration alert · Seletar West Road-3*\n🟡 Warning\nMeter: VM01\nPPV: 4 mm/s\nApproved limit: 5 mm/s\nShare of limit: 80.0%\nReading time: 22 Oct 2026, 19:30 SGT"
+      },
+      {
+        "caption": "Critical warning · 4.5 mm/s",
+        "text": "*Vibration alert · Seletar West Road-3*\n🟠 Critical warning\nMeter: VM01\nPPV: 4.5 mm/s\nApproved limit: 5 mm/s\nShare of limit: 90.0%\nReading time: 22 Oct 2026, 19:30 SGT"
+      },
+      {
+        "caption": "Limit reached · 5.0 mm/s",
+        "text": "*Vibration alert · Seletar West Road-3*\n🔴 Limit reached/exceeded · immediate attention\nMeter: VM01\nPPV: 5 mm/s\nApproved limit: 5 mm/s\nShare of limit: 100.0%\nReading time: 22 Oct 2026, 19:30 SGT"
+      }
+    ],
+    "source": "vibration ppv-alert-preview samplePpvAlertMessages, provisional SKW/VM01 limits"
   }
 };

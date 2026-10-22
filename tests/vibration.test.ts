@@ -103,11 +103,10 @@ test("Data Health recipients are not drawn as delivery chips, but stay a group c
   }
 });
 
-test("the modal shows where a site's readings come from, and claims no message it does not send", async () => {
+test("the modal shows where a site's readings come from and exposes PPV alert delivery", async () => {
   const { hasPreview } = await import("../lib/message-previews");
   const { buildFieldSpec } = await import("../lib/field-spec");
-  // The service's only message reads legacy WIRS rows, never a site row, so there is no
-  // `?` to offer: a preview here would describe something a site cannot send.
+  // Endpoint samples show alert shapes; there is no formatter option on enabled.
   assert.equal(hasPreview("vibration", "enabled"), false);
 
   // `enabled` is the first control, as everywhere, and says what it gates: scraping.
@@ -117,12 +116,14 @@ test("the modal shows where a site's readings come from, and claims no message i
   assert.equal(spec.groups[0].fields[0], "enabled");
   assert.equal(spec.fields.enabled.label, "Project enabled");
   assert.match(spec.fields.enabled.help, /Master switch for scraping/);
-  assert.match(spec.fields.enabled.help, /sends no WhatsApp message/);
-  // Delivery columns nothing reads for a site are not offered for editing.
-  assert.equal(spec.fields.wa_group_ids.hidden && spec.fields.lambda_url.hidden, true);
+  assert.match(spec.fields.wa_group_ids.help, /automatic PPV threshold alerts/);
+  assert.equal(spec.fields.wa_group_ids.hidden, false);
+  assert.equal(spec.fields.lambda_url.hidden, false);
 
   const editor = await readFile(resolve("components/ConfigEditor.tsx"), "utf8");
-  assert.match(editor, /service === "vibration" \? <VibrationSource code=\{rowId\} \/>/);
+  assert.match(editor, /service === "vibration" \? <>/);
+  assert.match(editor, /<VibrationSource code=\{rowId\} \/>/);
+  assert.match(editor, /<VibrationMeterLimits code=\{rowId\} canEdit=\{canEdit\} \/>/);
   // A failed read is its own line, and never says there is no source.
   const panel = await readFile(resolve("components/VibrationSource.tsx"), "utf8");
   assert.match(panel, /Could not read this site's source targets/);

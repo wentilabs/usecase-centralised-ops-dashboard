@@ -31,6 +31,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const siblings = process.env.SERVICE_REPOSITORY_ROOT || path.dirname(root);
 const scratch = mkdtempSync(path.join(tmpdir(), "endpoint-previews-"));
 
+/** The default branch of each service repo; vibration's is master, the rest main. */
+const refOf = (repo) => (repo === "usecase-wohhup-vibration" ? "origin/master" : "origin/main");
+
 const git = (repo, ...args) =>
   execFileSync("git", ["-C", path.join(siblings, repo), ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
@@ -40,7 +43,7 @@ function snapshot(repo) {
   if (snapshots.has(repo)) return snapshots.get(repo);
   const dir = path.join(scratch, repo);
   execFileSync("mkdir", ["-p", dir]);
-  const archive = execFileSync("git", ["-C", path.join(siblings, repo), "archive", "origin/main"], { maxBuffer: 256 * 1024 * 1024 });
+  const archive = execFileSync("git", ["-C", path.join(siblings, repo), "archive", refOf(repo)], { maxBuffer: 256 * 1024 * 1024 });
   execFileSync("tar", ["-x", "-C", dir], { input: archive });
   const modules = path.join(siblings, repo, "node_modules");
   if (existsSync(modules)) symlinkSync(modules, path.join(dir, "node_modules"));
@@ -51,7 +54,7 @@ function snapshot(repo) {
 const documents = new Map();
 const documentOf = (repo, file) => {
   const key = `${repo}:${file}`;
-  if (!documents.has(key)) documents.set(key, git(repo, "show", `origin/main:${file}`));
+  if (!documents.has(key)) documents.set(key, git(repo, "show", `${refOf(repo)}:${file}`));
   return documents.get(key);
 };
 
@@ -224,6 +227,24 @@ try {
         { displayName: "Promatrix", picPhone: "6581234567", submitted: false, excused: true },
       ]),
       source: "subcon usecases/housekeeping/report.js buildHousekeepingReport, run on its own test fixture",
+    });
+  }
+
+  // ── Vibration ────────────────────────────────────────────────────────────
+  {
+    const vibrationRepo = "usecase-wohhup-vibration";
+    const { formatActivityMessage } = load(vibrationRepo, "usecases/vibration/test-notification.js");
+    // The fixture is the shape loadScrapeActivity returns, with the clock fixed so the
+    // sample does not change between runs.
+    add("vibration.test-notification", {
+      text: formatActivityMessage(
+        {
+          readings: [{ instrument_id: "VM01", reading_at: "2026-10-21T09:30:00+08:00" }, { instrument_id: "VM02", reading_at: "2026-10-21T09:25:00+08:00" }],
+          latest_job: { status: "scraped", records_upserted: 20, finished_at: "2026-10-21T09:35:00+08:00" },
+        },
+        new Date("2026-10-21T01:40:00Z"),
+      ),
+      source: "vibration usecases/vibration/test-notification.js formatActivityMessage, run on illustrative activity",
     });
   }
 

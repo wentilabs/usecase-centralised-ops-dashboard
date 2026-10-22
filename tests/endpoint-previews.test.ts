@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   ENDPOINT_PREVIEWS,
   HELP_COLUMNS,
+  DIAGNOSTICS_THAT_SEND,
   NOT_A_MESSAGE,
   QUIET_KINDS,
   endpointPreviewsFor,
@@ -54,7 +55,7 @@ test("nothing in the registry names a route the contract does not have", () => {
     const [service, path] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
     const route = SERVICE_CONTRACTS[service]?.routes.find((candidate) => candidate.path === path);
     if (!route) stale.push(`${key} is not in the ${service} contract`);
-    else if (QUIET_KINDS.has(route.kind)) stale.push(`${key} is a ${route.kind} route, which needs no entry`);
+    else if (QUIET_KINDS.has(route.kind) && !(key in DIAGNOSTICS_THAT_SEND)) stale.push(`${key} is a ${route.kind} route, which needs no entry`);
   }
   assert.deepEqual(stale, []);
 });
@@ -167,12 +168,12 @@ test("the generated samples match what the services' own origin/main produces", 
   const siblings = resolve("..");
   const repos = [
     "usecase-wohhup-noise-meter-alerts", "usecase-wohhup-wbgt-alerts", "usecase-lightning-alerts",
-    "usecase-haze-alerts", "usecase-subcon-manpower-activities", "mdw-lambda-ailytics",
+    "usecase-haze-alerts", "usecase-subcon-manpower-activities", "mdw-lambda-ailytics", "usecase-wohhup-vibration",
   ];
   const ready = repos.every((repo) => {
     if (!existsSync(resolve(siblings, repo, ".git"))) return false;
     try {
-      execFileSync("git", ["-C", resolve(siblings, repo), "rev-parse", "--verify", "origin/main"], { stdio: "ignore" });
+      execFileSync("git", ["-C", resolve(siblings, repo), "rev-parse", "--verify", repo === "usecase-wohhup-vibration" ? "origin/master" : "origin/main"], { stdio: "ignore" });
       return true;
     } catch {
       return false;

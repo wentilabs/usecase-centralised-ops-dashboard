@@ -83,6 +83,7 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:data_health_group_ids": ["set"],
   "wbgt:water_parade_reminders_enabled": ["true"],
   "wbgt:water_parade_daily_summary_enabled": ["true"],
+  "vibration:enabled": ["true"],
   "subcon:enable_activity_summary": ["true"],
   "subcon:enable_housekeeping": ["true"],
   "ailytics:status_summary_enabled": ["true"],
@@ -382,9 +383,7 @@ test("every lightning preview names the file it came from", () => {
  * Their previews are not composed: `scripts/build-endpoint-previews.mjs` runs each
  * service's own message builder, as the WBGT and Haze previews always have.
  */
-const NO_PREVIEWS: Record<string, string> = {
-  vibration: "Sends no scheduled message. The only message is the operator-run /test-notification diagnostic, which reports scrape activity and has no formatter column to preview.",
-};
+const NO_PREVIEWS: Record<string, string> = {};
 
 test("every service either shows a real message or says why it cannot", () => {
   const withPreviews = new Set(MESSAGE_PREVIEWS.map((preview) => preview.service));
@@ -393,8 +392,8 @@ test("every service either shows a real message or says why it cannot", () => {
     const excused = Boolean(NO_PREVIEWS[service]);
     assert.notEqual(has, excused, `${service} is both previewed and excused, or neither`);
   }
-  assert.deepEqual([...withPreviews].sort(), ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "wbgt"]);
-  assert.deepEqual(Object.keys(NO_PREVIEWS), ["vibration"]);
+  assert.deepEqual([...withPreviews].sort(), ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "vibration", "wbgt"]);
+  assert.deepEqual(Object.keys(NO_PREVIEWS), []);
 });
 
 test("help text never carries markdown the renderer cannot show", async () => {

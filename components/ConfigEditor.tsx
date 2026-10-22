@@ -7,6 +7,7 @@ import { EnvDefaultHint } from "./EnvDefaultHint";
 import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
+import { VibrationSource } from "./VibrationSource";
 import { SensorGroupPicker } from "./SensorGroupPicker";
 import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
@@ -604,7 +605,9 @@ export function ConfigEditor({
               )}
             </section>
           ) : (
-            spec.groups.map((group) => {
+            <>
+              {service === "vibration" ? <VibrationSource code={rowId} /> : null}
+              {spec.groups.map((group) => {
               const visible = group.fields.filter((name) =>
                 spec.fields[name]?.widget !== "mention-targets" && isVisible(spec.fields[name], values),
               );
@@ -693,7 +696,8 @@ export function ConfigEditor({
                   })}
                 </section>
               );
-            })
+            })}
+            </>
           )}
           {!history && service === "wbgt" ? (
             <WbgtSensorLabelEditor

@@ -102,3 +102,21 @@ test("Data Health recipients are not drawn as delivery chips, but stay a group c
     assert.ok(groupColumnsFor(service).some((entry) => entry.column === "data_health_group_ids"), service);
   }
 });
+
+test("the modal shows where a site's readings come from, and the test message has a `?`", async () => {
+  const { hasPreview, previewsFor } = await import("../lib/message-previews");
+  // The `?` sits beside the switch that gates the test notification, and shows the
+  // service's own formatter output rather than a hand-written example.
+  assert.equal(hasPreview("vibration", "enabled"), true);
+  const text = previewsFor("vibration", "enabled").flatMap((option) => option.bubbles.map((bubble) => bubble.text)).join("\n");
+  assert.match(text, /WIRS vibration scraper test notification/);
+  assert.match(text, /latest_scrape: scraped \(20 rows upserted\)/);
+
+  const editor = await readFile(resolve("components/ConfigEditor.tsx"), "utf8");
+  assert.match(editor, /service === "vibration" \? <VibrationSource code=\{rowId\} \/>/);
+  // A failed read is its own line, and never says there is no source.
+  const panel = await readFile(resolve("components/VibrationSource.tsx"), "utf8");
+  assert.match(panel, /Could not read this site's source targets/);
+  assert.match(panel, /sources === null/);
+  assert.doesNotMatch(panel, /credential_profile\}\s*<\/span>\s*[^<]*(password|secret|key)/i, "only the profile name is shown");
+});

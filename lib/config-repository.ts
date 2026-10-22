@@ -673,6 +673,32 @@ export async function callRpc(
   });
 }
 
+export type VibrationSourceRow = {
+  meter_code: string;
+  source_key: string;
+  source_type: string;
+  credential_profile: string;
+  enabled: boolean;
+  ppv_verified: boolean;
+};
+
+/**
+ * The source targets feeding one onboarded Vibration site, one per meter.
+ *
+ * Read from the view the scraper itself reads, so this is what WILL be scraped, not what a
+ * site row claims. Only names the credential PROFILE; the credentials are environment
+ * variables on the service and never pass through here.
+ */
+export async function listVibrationSources(projectCode: string): Promise<VibrationSourceRow[] | null> {
+  const query = `select=meter_code,source_key,source_type,credential_profile,enabled,ppv_verified&project_code=eq.${encodeURIComponent(projectCode)}&order=meter_code.asc`;
+  try {
+    const res = await request(`vibration_project_source_targets?${query}`, { schema: SERVICES.vibration.schema });
+    return res.ok && Array.isArray(res.body) ? (res.body as VibrationSourceRow[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether any row matches, or null when HALO could not ask.
  *

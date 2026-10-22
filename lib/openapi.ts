@@ -977,6 +977,49 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/vibration/sources": {
+      get: {
+        operationId: "getVibrationSources",
+        tags: ["discovery"],
+        summary: "The source targets the scraper reads for a Vibration site",
+        description:
+          "Read-only. One entry per meter: which upstream (`source_type`, e.g. `protec`), which target (`source_key`), the credential PROFILE it signs in with (a name, never a secret), and whether it is enabled and PPV-verified. This is the view the scraper itself reads, so it is what will be scraped. `sources` is `null` when HALO could not read it, which is not the same as an empty list: an empty list means no meter is bound to the site.",
+        parameters: [{ name: "code", in: "query", required: true, schema: { type: "string" }, description: "The Vibration project code, e.g. SKW." }],
+        responses: {
+          "200": {
+            description: "The site's source targets.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    ok: { type: "boolean" },
+                    code: { type: "string" },
+                    sources: {
+                      type: "array",
+                      nullable: true,
+                      items: {
+                        type: "object",
+                        properties: {
+                          meter_code: { type: "string" },
+                          source_key: { type: "string" },
+                          source_type: { type: "string" },
+                          credential_profile: { type: "string" },
+                          enabled: { type: "boolean" },
+                          ppv_verified: { type: "boolean" },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": errorResponses["400"],
+          "401": errorResponses["401"],
+        },
+      },
+    },
     "/api/onboard/{service}/prerequisites": {
       get: {
         operationId: "checkOnboardingPrerequisites",

@@ -109,6 +109,22 @@ export type OnboardField = {
   schemaDefault?: string;
 };
 
+/**
+ * A row that must exist for a project code, described as a PostgREST filter so HALO
+ * can ask without a bespoke query per service.
+ */
+export type OnboardPrerequisite = {
+  id: string;
+  /** Said when it is there: "Source target prepared". */
+  met: string;
+  /** Said when it is not: what is missing and where it is made. */
+  missing: string;
+  schema: string;
+  table: string;
+  /** Column filters for this code, e.g. `{ prepared_project_code: "eq.SKW" }`. */
+  filter: (projectCode: string) => Record<string, string>;
+};
+
 export type OnboardDefinition = {
   service: ServiceKey;
   label: string;
@@ -149,6 +165,15 @@ export type OnboardDefinition = {
    * means that migration has not been run, which the dialog reports as a missing
    * prerequisite rather than a failed insert.
    */
+  /**
+   * Something that must already exist for the new project to work, found by a read.
+   *
+   * Warned about, never blocking: HALO cannot create these, and the service's own
+   * refusal (a database trigger, or a project that simply measures nothing) is the
+   * authority. The point is that the warning names the missing thing BEFORE the form
+   * is filled in, rather than as a bare constraint error after it.
+   */
+  prerequisites?: OnboardPrerequisite[];
   rpc?: {
     fn: string;
     /** Argument object, PostgREST style — named after the function's parameter. */

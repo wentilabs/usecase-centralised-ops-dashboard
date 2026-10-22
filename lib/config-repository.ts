@@ -673,6 +673,22 @@ export async function callRpc(
   });
 }
 
+/**
+ * Whether any row matches, or null when HALO could not ask.
+ *
+ * Null is its own answer: a failed read must never be reported as "missing", or the
+ * dialog would tell someone to prepare something that is already there.
+ */
+export async function rowExists(schema: string, table: string, filter: Record<string, string>): Promise<boolean | null> {
+  const query = Object.entries(filter).map(([column, value]) => `${encodeURIComponent(column)}=${encodeURIComponent(value)}`).join("&");
+  try {
+    const res = await request(`${table}?select=*&${query}&limit=1`, { schema });
+    return res.ok ? Array.isArray(res.body) && res.body.length > 0 : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Insert rows into a companion table in the same schema, e.g. `wbgt_sensors`. */
 export async function insertRows(
   schema: string,

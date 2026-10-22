@@ -977,6 +977,49 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/onboard/{service}/prerequisites": {
+      get: {
+        operationId: "checkOnboardingPrerequisites",
+        tags: ["onboarding"],
+        summary: "Whether what a new project of this service needs already exists for a code",
+        description:
+          "Read-only. Some services cannot work for a project until something else is made first: Vibration needs an enabled source target prepared for the code, and Noise needs limits in `noise_limits`. HALO cannot create either, so this reports whether each is there. Call it before `createProject` and relay `missingText` for any entry whose `met` is `false`; the create call is not blocked, because the service's own refusal is the authority. `met` is `null` when HALO could not read the table, and must be reported as \"could not check\", never as missing. A service with nothing to check, or a code that does not match its pattern, returns an empty list.",
+        parameters: [
+          { name: "service", in: "path", required: true, schema: { type: "string" } },
+          { name: "code", in: "query", required: true, schema: { type: "string" }, description: "The project code being onboarded." },
+        ],
+        responses: {
+          "200": {
+            description: "One entry per prerequisite the service declares.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    ok: { type: "boolean" },
+                    code: { type: "string" },
+                    prerequisites: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          met: { type: "boolean", nullable: true, description: "true when present, false when missing, null when it could not be read." },
+                          metText: { type: "string" },
+                          missingText: { type: "string", description: "What is missing and where it is made." },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": errorResponses["401"],
+          "404": { description: "Unknown service, or one with no onboarding flow.", content: { "application/json": { schema: { $ref: "#/components/schemas/Problem" } } } },
+        },
+      },
+    },
     "/api/onboard/geocode": {
       get: {
         operationId: "geocodeAddress",

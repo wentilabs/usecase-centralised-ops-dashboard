@@ -1629,3 +1629,16 @@ ways that are easy to get wrong:
   project bar yet.
 - **The audit trigger is SQL for a human to run**: `supabase/config_audit_setup.sql` now has
   the vibration trigger; re-run it in the Supabase editor.
+
+## Onboarding prerequisites
+
+Some services cannot work for a new project until something HALO cannot create exists:
+Vibration needs an enabled source target prepared for the code, Noise needs limits in
+`noise_limits`. An `OnboardDefinition` declares these as `prerequisites` (a table and a
+PostgREST filter per code); `GET /api/onboard/{service}/prerequisites?code=` reads them and
+the dialog shows a ✓ line or an amber warning as the code is typed. It **warns and never
+blocks** — the service's own refusal is the authority — and a table HALO could not read
+answers `null`, shown as "could not check", never as missing. To add one, add an entry to
+the service's onboarding provider; no UI change is needed. `tests/vibration.test.ts` pins
+which services declare one.
+

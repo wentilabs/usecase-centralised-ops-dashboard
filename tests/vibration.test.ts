@@ -64,3 +64,31 @@ test("a new site is a disabled site row with the identity the contract asks for"
   // The kind is forced where the row is written, not asked for in the form.
   assert.equal(vibrationOnboarding.fields.some((field) => field.column === "config_kind"), false);
 });
+
+test("services whose projects need something made first say so, and only those", async () => {
+  const { onboardingFor } = await import("../lib/onboarding");
+  const { SERVICE_KEYS } = await import("../lib/services");
+  const declared = SERVICE_KEYS.filter((key) => onboardingFor(key)?.prerequisites?.length);
+  assert.deepEqual(declared, ["noise", "vibration"]);
+
+  const source = vibrationOnboarding.prerequisites![0];
+  assert.deepEqual(source.filter("SKW"), { prepared_project_code: "eq.SKW", enabled: "eq.true" });
+  assert.match(source.missing, /vibration_source_targets/);
+
+  const noise = onboardingFor("noise")!.prerequisites![0];
+  assert.deepEqual(noise.filter("CR106"), { project_code: "eq.CR106", active: "eq.true" });
+  assert.match(noise.missing, /noise_limits/);
+});
+
+test("a prerequisite warns and never blocks, and a failed read is not reported as missing", async () => {
+  const dialog = await readFile(resolve("components/OnboardDialog.tsx"), "utf8");
+  // Missing, met and could-not-check are three different lines.
+  for (const state of ["missing", "met", "unknown"]) assert.match(dialog, new RegExp(`data-prerequisite="${state}"`));
+  assert.match(dialog, /item\.met === false/);
+  assert.doesNotMatch(dialog, /disabled=\{[^}]*prereq/, "a prerequisite must not disable the create button");
+
+  const repo = await readFile(resolve("lib/config-repository.ts"), "utf8");
+  assert.match(repo, /return res\.ok \? [^;]*: null;/, "an unreadable table answers null, not false");
+  const route = await readFile(resolve("app/api/onboard/[service]/prerequisites/route.ts"), "utf8");
+  assert.match(route, /definition\.codePattern\.test\(code\)/, "a malformed code is never sent to the database");
+});

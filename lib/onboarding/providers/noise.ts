@@ -13,6 +13,17 @@ export const noiseOnboarding: OnboardDefinition = {
     title: "Add a new Noise project",
     description:
       "Creates the project's readings table and one disabled config row. Limits are separate — this does not touch noise_limits.",
+    prerequisites: [
+      {
+        id: "noise-limits",
+        met: "Limits are imported for this code.",
+        missing:
+          "No active limits are imported for this project code in noise_limits. The project can be created, but nothing is measured against anything until they exist — import one row per meter, per hour band, per day type.",
+        schema: "noise-meters",
+        table: "noise_limits",
+        filter: (code) => ({ project_code: `eq.${code}`, active: "eq.true" }),
+      },
+    ],
     outsideHalo: [
       "Import the project's limits into noise_limits — one row per meter, per hour band, per day type. Nothing is measured against anything until they exist, and this dialog deliberately does not invent them.",
       "Meter RecIDs are discovered by the scraper, so the meter names on the card only appear after a successful scrape.",

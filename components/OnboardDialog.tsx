@@ -59,6 +59,9 @@ export function OnboardDialog({
   const [rpc, setRpc] = useState<{ fn: string; describes: string; installed: boolean | null } | null>(null);
   const [steps, setSteps] = useState<{ step: string; detail: string }[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  const [prereqs, setPrereqs] = useState<
+    { id: string; met: boolean | null; metText: string; missingText: string }[]
+  >([]);
   /** Fields a human has edited. Autofill stops touching these. */
   const [edited, setEdited] = useState<Set<string>>(() => new Set());
   const [lookup, setLookup] = useState("");
@@ -127,6 +130,32 @@ export function OnboardDialog({
   }, [definition.service]);
 
   const code = String(draft.project_code ?? "").trim();
+
+  // Asked of the server once the code stops changing: it is a read per keystroke otherwise.
+  // A prerequisite the code does not satisfy is a warning, not a block, so a failed or
+  // stale answer can only ever withhold a line.
+  useEffect(() => {
+    if (!definition.prerequisites?.length || !code) {
+      setPrereqs([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/onboard/${definition.service}/prerequisites?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+          const body = await res.json();
+          if (!cancelled) setPrereqs(Array.isArray(body.prerequisites) ? body.prerequisites : []);
+        } catch {
+          if (!cancelled) setPrereqs([]);
+        }
+      })();
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [definition.service, definition.prerequisites, code]);
   const configuredTelegramChatIds = useMemo(
     () => new Set(rows.map((row) => String(row.telegram_chat_id ?? "").trim()).filter(Boolean)),
     [rows],
@@ -489,6 +518,22 @@ export function OnboardDialog({
                 in the service repo first.
               </p>
             ) : null}
+
+            {prereqs.map((item) =>
+              item.met === false ? (
+                <p key={item.id} data-prerequisite="missing" className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">
+                  <span className="font-semibold">{code}:</span> {item.missingText}
+                </p>
+              ) : item.met === true ? (
+                <p key={item.id} data-prerequisite="met" className="mt-3 text-[11px] text-on">
+                  ✓ {code}: {item.metText}
+                </p>
+              ) : (
+                <p key={item.id} data-prerequisite="unknown" className="mt-3 text-[11px] text-muted-foreground">
+                  Could not check whether {code} is ready: {item.missingText}
+                </p>
+              ),
+            )}
 
             {missingEnv.length ? (
               <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 p-2.5 text-[11px] text-warn">

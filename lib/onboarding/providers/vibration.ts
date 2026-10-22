@@ -15,6 +15,17 @@ export const vibrationOnboarding: OnboardDefinition = {
   title: "Add a new Vibration site",
   description:
     "Creates one disabled site row in vibration.vibration_project_configs. The database then creates the site's readings table in the same transaction. HALO creates no meters and holds no portal credentials.",
+  prerequisites: [
+    {
+      id: "source-target",
+      met: "A source target is prepared and enabled for this code.",
+      missing:
+        "No enabled source target is prepared for this project code. The database refuses the site row without one — add it to vibration_source_targets (prepared_project_code, prepared_meter_code) in the vibration repo first.",
+      schema: "vibration",
+      table: "vibration_source_targets",
+      filter: (code) => ({ prepared_project_code: `eq.${code}`, enabled: "eq.true" }),
+    },
+  ],
   outsideHalo: [
     "Prepare the source target first: the insert is refused unless an enabled row in vibration_source_targets already has this project code in prepared_project_code (see supabase/checks/prepared-targets.sql in the vibration repo).",
     "Portal credentials and the Browserbase context are environment variables on the vibration Lambda, named by the target's credential_profile — HALO never sees them.",

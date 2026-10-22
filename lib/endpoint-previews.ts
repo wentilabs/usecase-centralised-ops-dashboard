@@ -7,7 +7,7 @@ import {
 import { previewContext, previewsFor, type PreviewBubble } from "./message-previews";
 import type { ProjectConfigRow, ServiceKey } from "./services";
 
-export { DIAGNOSTICS_THAT_SEND, ENDPOINT_PREVIEWS, HELP_COLUMNS, NOT_A_MESSAGE, QUIET_KINDS } from "./endpoint-registry";
+export { ENDPOINT_PREVIEWS, HELP_COLUMNS, NOT_A_MESSAGE, QUIET_KINDS } from "./endpoint-registry";
 export type { EndpointPreview, EndpointSource, SwitchRule } from "./endpoint-registry";
 
 /**

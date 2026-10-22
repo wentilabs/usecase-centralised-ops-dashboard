@@ -1612,12 +1612,14 @@ ways that are easy to get wrong:
   targets (`config_kind = 'legacy_target'`) beside the site rows. `SERVICES.vibration.rowFilter`
   (`config_kind = 'site'`) is applied on list, get and update, and `insertConfig` forces the
   kind on create — `tests/vibration.test.ts` pins all four. A read without it lists 277 cards.
-- **`enabled` does not pause anything.** The scraper writes every source target whose site row
-  exists. The field is labelled "Diagnostic notification" because it only gates the
-  operator-run `/test-notification`. `tests/auth-policy.test.ts` exempts it from the
-  "`enabled` is the first control" rule for exactly that reason.
-- **Nothing is sent on a schedule**, so there are no mutes, no delivery groups at creation,
-  no formatter previews (`NO_PREVIEWS`) and no outbound load (`vibrationLoadProvider`).
+- **`enabled` is read by nothing for a site.** Verified in the vibration repo: the scraper reads
+  `vibration_source_targets` (per-meter `enabled`), the test notification reads only
+  `config_kind = 'legacy_target'` rows, and a site row is read by HALO and the insert trigger
+  alone. So the switch is shown as "Project enabled" like every service, first in the card, with
+  help saying it does NOT stop scraping. Making it mean something is a vibration-repo change
+  (gate `vibration_project_source_targets` on the site's `enabled`), not a HALO one.
+- **A site sends nothing**, so there are no mutes, no delivery groups (the columns exist and are
+  hidden), no `?` preview (`NO_PREVIEWS`) and no outbound load (`vibrationLoadProvider`).
 - **Creation needs a prepared source target.** The insert trigger refuses a site whose code has
   no enabled row in `vibration_source_targets`; HALO cannot create one and holds no portal
   credentials. The dialog says so.

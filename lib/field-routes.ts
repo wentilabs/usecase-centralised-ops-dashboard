@@ -298,14 +298,10 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
     // useful thing to name rather than all fifteen routes.
     { routes: ["POST /api/issue-chaser-project-check"], columns: ["safety_sheet_id"] },
   ],
-  // Scraping reads no configuration column of its own — it follows source
-  // targets whose site row exists. Only the diagnostic notification reads these.
-  vibration: [
-    {
-      routes: ["POST /test-notification", "POST /api/test-notification"],
-      columns: ["enabled", "wa_group_ids"],
-    },
-  ],
+  // Scraping reads no setting of a site row — it follows source targets — and the one
+  // message route reads legacy rows. The only thing a site row gives the scrape is its
+  // existence: the source-target view joins to it, and `project_code` selects one site.
+  vibration: [{ routes: ["POST /api/vibration-scrape"], columns: ["project_code"] }],
 };
 
 /** Columns read by every outbound route rather than by one in particular. */

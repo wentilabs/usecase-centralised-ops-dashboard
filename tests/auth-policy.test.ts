@@ -1651,7 +1651,7 @@ test("capability search works across every service", () => {
     { service: "ailytics" as const, row: { forward_pending_to_whatsapp: true }, needle: "forward pending" },
     { service: "subcon" as const, row: { enable_housekeeping: true }, needle: "housekeeping" },
     { service: "issueChaser" as const, row: { severity_cadence_chaser_enabled: true }, needle: "severity cadence" },
-    { service: "vibration" as const, row: { enabled: true }, needle: "diagnostic notification" },
+    { service: "vibration" as const, row: { timezone: "Asia/Singapore" }, needle: "asia/singapore" },
   ];
   for (const { service, row, needle } of cases) {
     assert.equal(matchesQuery(service, row, needle), true, `${service} should match "${needle}"`);
@@ -2846,10 +2846,6 @@ test("`enabled` is the first control on every service", () => {
   const bool = { type: "boolean" as const, format: "boolean", enum: null, default: true };
   const text = { type: "string" as const, format: "text", enum: null, default: null };
   for (const service of SERVICE_KEYS) {
-    // Vibration is the exception on purpose: its `enabled` does NOT mean "off sends
-    // nothing" — scraping ignores it — so it is labelled for what it gates (the
-    // diagnostic notification) and sits with that group instead of heading the card.
-    if (service === "vibration") continue;
     const columns = (GROUPS[service] ?? []).flatMap((group) => group.fields);
     const spec = buildFieldSpec(
       service,

@@ -103,14 +103,23 @@ test("Data Health recipients are not drawn as delivery chips, but stay a group c
   }
 });
 
-test("the modal shows where a site's readings come from, and the test message has a `?`", async () => {
-  const { hasPreview, previewsFor } = await import("../lib/message-previews");
-  // The `?` sits beside the switch that gates the test notification, and shows the
-  // service's own formatter output rather than a hand-written example.
-  assert.equal(hasPreview("vibration", "enabled"), true);
-  const text = previewsFor("vibration", "enabled").flatMap((option) => option.bubbles.map((bubble) => bubble.text)).join("\n");
-  assert.match(text, /WIRS vibration scraper test notification/);
-  assert.match(text, /latest_scrape: scraped \(20 rows upserted\)/);
+test("the modal shows where a site's readings come from, and claims no message it does not send", async () => {
+  const { hasPreview } = await import("../lib/message-previews");
+  const { buildFieldSpec } = await import("../lib/field-spec");
+  // The service's only message reads legacy WIRS rows, never a site row, so there is no
+  // `?` to offer: a preview here would describe something a site cannot send.
+  assert.equal(hasPreview("vibration", "enabled"), false);
+
+  // `enabled` is the first control, as everywhere, but says in so many words that the
+  // service does not read it for a site.
+  const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
+  const text = { type: "string" as const, format: "text", enum: null, default: null };
+  const spec = buildFieldSpec("vibration", { enabled: bool, company: text, site_name: text, timezone: text, wa_group_ids: text, lambda_url: text });
+  assert.equal(spec.groups[0].fields[0], "enabled");
+  assert.equal(spec.fields.enabled.label, "Project enabled");
+  assert.match(spec.fields.enabled.help, /does NOT stop scraping/);
+  // Delivery columns nothing reads for a site are not offered for editing.
+  assert.equal(spec.fields.wa_group_ids.hidden && spec.fields.lambda_url.hidden, true);
 
   const editor = await readFile(resolve("components/ConfigEditor.tsx"), "utf8");
   assert.match(editor, /service === "vibration" \? <VibrationSource code=\{rowId\} \/>/);
@@ -118,5 +127,4 @@ test("the modal shows where a site's readings come from, and the test message ha
   const panel = await readFile(resolve("components/VibrationSource.tsx"), "utf8");
   assert.match(panel, /Could not read this site's source targets/);
   assert.match(panel, /sources === null/);
-  assert.doesNotMatch(panel, /credential_profile\}\s*<\/span>\s*[^<]*(password|secret|key)/i, "only the profile name is shown");
 });

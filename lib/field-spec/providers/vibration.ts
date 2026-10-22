@@ -6,8 +6,8 @@ import { COMPANIES } from "../types";
  *
  * The table also holds legacy WIRS target rows (`config_kind = 'legacy_target'`),
  * which HALO never lists; their selector columns are null on a site row and hidden
- * here. Scraping is driven by `vibration_source_targets`, not by this row, so almost
- * nothing on it changes what the service does.
+ * here. Scraping is driven by `vibration_source_targets`, not by this row, so nothing
+ * on it changes what the service does.
  */
 export const vibrationFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "config_kind", "created_at", "updated_at"],
@@ -26,23 +26,21 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
       help: "IANA timezone used to read the site's timestamps, e.g. Asia/Singapore.",
     },
     enabled: {
-      label: "Diagnostic notification",
-      // The word "enabled" means "paused" everywhere else on this page. Here it
-      // does not, and that is the mistake worth preventing.
-      help: "Does NOT pause scraping: the scraper writes every source target whose site row exists, enabled or not. This only decides whether the operator-run test notification includes the project. To stop a site's readings, disable its source target in vibration_source_targets.",
+      label: "Project enabled",
+      // Said plainly because the word means "off stops it" everywhere else on this page.
+      // Verified against the vibration repo: site rows are read by HALO and by the
+      // insert trigger only. The scraper reads vibration_source_targets, and the test
+      // notification reads legacy WIRS rows, so nothing consults this switch.
+      help: "Recorded, but the vibration service does not read it for a site: turning it off does NOT stop scraping or any message. Scraping follows each meter's source target (`enabled` on vibration_source_targets, in the vibration repo). Shown so the site reads like every other project, and so it can start to mean something if the service is changed to honour it.",
     },
-    wa_group_ids: {
-      label: "Notification groups",
-      widget: "groups",
-      help: "Used only by the operator-run test notification. Scraping never messages a group.",
-    },
-    instance_name: { label: "WhatsApp instance", help: "Listener instance for the test notification." },
-    client_id: { label: "Client ID", help: "Sending-account identifier for the test notification." },
-    lambda_url: { label: "Send-message URL", help: "Listener text endpoint for the test notification." },
-
     project_code: { hidden: true },
     config_kind: { hidden: true },
     meter_label: { hidden: true },
+    // Read by the legacy-target test notification only; a site row never sends one.
+    wa_group_ids: { hidden: true },
+    instance_name: { hidden: true },
+    client_id: { hidden: true },
+    lambda_url: { hidden: true },
     wirs_project: { hidden: true },
     wirs_zone: { hidden: true },
     wirs_instrument_type: { hidden: true },
@@ -51,7 +49,6 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
     updated_at: { hidden: true },
   },
   groups: [
-    { title: "Site", fields: ["company", "site_name", "timezone"] },
-    { title: "Diagnostic notification", fields: ["enabled", "wa_group_ids", "instance_name", "client_id", "lambda_url"] },
+    { title: "Status", fields: ["enabled", "company", "site_name", "timezone"] },
   ],
 };

@@ -150,15 +150,6 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
     ],
     "source": "subcon usecases/housekeeping/report.js buildHousekeepingReport, run on its own test fixture"
   },
-  "vibration.test-notification": {
-    "bubbles": [
-      {
-        "caption": null,
-        "text": "WIRS vibration scraper test notification\nchecked_at: 2026-10-21T01:40:00.000Z\nreadings_last_24h: 2\nlatest_reading: VM01 at 2026-10-21T09:30:00+08:00\nlatest_scrape: scraped (20 rows upserted)\nlatest_scrape_finished_at: 2026-10-21T09:35:00+08:00"
-      }
-    ],
-    "source": "vibration usecases/vibration/test-notification.js formatActivityMessage, run on illustrative activity"
-  },
   "ailytics.status-summary": {
     "bubbles": [
       {

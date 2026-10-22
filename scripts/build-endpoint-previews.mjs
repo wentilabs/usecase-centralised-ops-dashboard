@@ -230,24 +230,6 @@ try {
     });
   }
 
-  // ── Vibration ────────────────────────────────────────────────────────────
-  {
-    const vibrationRepo = "usecase-wohhup-vibration";
-    const { formatActivityMessage } = load(vibrationRepo, "usecases/vibration/test-notification.js");
-    // The fixture is the shape loadScrapeActivity returns, with the clock fixed so the
-    // sample does not change between runs.
-    add("vibration.test-notification", {
-      text: formatActivityMessage(
-        {
-          readings: [{ instrument_id: "VM01", reading_at: "2026-10-21T09:30:00+08:00" }, { instrument_id: "VM02", reading_at: "2026-10-21T09:25:00+08:00" }],
-          latest_job: { status: "scraped", records_upserted: 20, finished_at: "2026-10-21T09:35:00+08:00" },
-        },
-        new Date("2026-10-21T01:40:00Z"),
-      ),
-      source: "vibration usecases/vibration/test-notification.js formatActivityMessage, run on illustrative activity",
-    });
-  }
-
   // ── Ailytics ─────────────────────────────────────────────────────────────
   const ailyticsRepo = "mdw-lambda-ailytics";
   {

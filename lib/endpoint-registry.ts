@@ -269,11 +269,6 @@ export const ENDPOINT_PREVIEWS: EndpointPreview[] = [
     enabledBy: [flag("novade_name_list_check_enabled")], sources: [{ column: "novade_name_list_check_enabled" }],
   },
   {
-    service: "vibration", path: "/test-notification", title: "Test notification", sends: "text",
-    summary: "Operator-run only, never scheduled: reports recent scrape activity to the groups of every enabled site row (or the one named). The same handler also answers /api/test-notification.",
-    enabledBy: [flag("enabled"), text("wa_group_ids")], sources: [{ sample: "vibration.test-notification" }],
-  },
-  {
     service: "issueChaser", path: "/api/issue-chaser-operator-send", title: "Operator send", sends: "text",
     summary: "The one operator route that delivers to real groups: it sends a run built by the operator preview.",
     enabledBy: [], sources: [],
@@ -301,7 +296,6 @@ export const HELP_COLUMNS: Record<string, string> = {
   "subcon:/daily-housekeeping-report": "enable_housekeeping",
   "ailytics:/ailytics-safety/status-summary": "status_summary_enabled",
   "ailytics:/ailytics-safety/yesterday-24h-summary": "yesterday_summary_enabled",
-  "vibration:/test-notification": "enabled",
 };
 
 /**
@@ -348,12 +342,4 @@ export const NOT_A_MESSAGE: Record<string, string> = {
 /** The route kinds that never need an entry: they answer a caller, they do not deliver. */
 export const QUIET_KINDS: ReadonlySet<string> = new Set(["diagnostic", "read"]);
 
-/**
- * Routes a contract files as `diagnostic` that nevertheless deliver a WhatsApp message,
- * with the reason. They are shown like any other message; the contract's word is left
- * alone because it describes who calls the route (an operator, never a schedule).
- */
-export const DIAGNOSTICS_THAT_SEND: Record<string, string> = {
-  "vibration:/test-notification": "Sends a text report of recent scrape activity to the enabled site rows' groups.",
-};
 

@@ -22,13 +22,14 @@ const SERVICES = {
   ailytics: ["ailytics", "project_configs"],
   subcon: ["manpower_activity", "project_configs"],
   issueChaser: ["issue_chaser", "project_configs"],
+  vibration: ["vibration", "vibration_project_configs"],
 };
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SECRET_KEY;
 const rows = [];
 for (const [service, [schema, table]] of Object.entries(SERVICES)) {
-  const response = await fetch(`${url}/rest/v1/${table}?select=*&limit=1000`, {
+  const response = await fetch(`${url}/rest/v1/${table}?select=*&limit=1000${service === "vibration" ? "&config_kind=eq.site" : ""}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}`, "accept-profile": schema },
   });
   if (!response.ok) throw new Error(`${service}: HTTP ${response.status}`);

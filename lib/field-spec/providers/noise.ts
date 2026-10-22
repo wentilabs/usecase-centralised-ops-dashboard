@@ -62,19 +62,18 @@ export const noiseFieldProvider: ServiceFieldProvider = {
       help: "Minutes past the hour the half-hourly assessment fires, e.g. 35,45,55.",
       showIf: { field: "enable_half_hourly", equals: true },
     },
-    // Routing, not a cadence. The message forwarded is the same one the
-    // ordinary groups already received; there is no second scrape and no extra
-    // run, which is why it sits with the half-hourly settings rather than among
-    // the cadence toggles where it would read as another thing that fires.
+    // Routing, not a cadence. With a primary group this adds a warning-only
+    // destination; without one it is the sole half-hourly destination. Either
+    // way this adds no scrape or run, so keep it with the cadence settings.
     half_hourly_send_if_exceed: {
       label: "Relay warnings to extra groups",
-      help: "Only when the half-hourly message carries a 🟠 or 🔴. Clean all-✅ messages are not relayed, and the ordinary groups still receive every message either way.",
+      help: "When the half-hourly message carries a 🟠 or 🔴, send it to the warning relay groups. If ordinary WhatsApp groups are blank, these are the only half-hourly recipients; clean messages are skipped. Otherwise the relay groups are additional, with duplicates removed.",
       showIf: { field: "enable_half_hourly", equals: true },
     },
     exceedance_half_hourly_wa_groups: {
       label: "Warning relay groups",
       widget: "groups",
-      help: "Extra recipients for warning-bearing half-hourly messages only. A group already on the ordinary list is not sent to twice.",
+      help: "Recipients for warning-bearing half-hourly messages only. These can be the sole half-hourly route when ordinary groups are blank; a group already on the ordinary list is not sent twice.",
       showIf: { field: "half_hourly_send_if_exceed", equals: true },
     },
 
@@ -156,7 +155,11 @@ export const noiseFieldProvider: ServiceFieldProvider = {
 
     instance_name: { label: "WhatsApp instance", row: "wa_identity" },
     client_id: { label: "Client ID", row: "wa_identity" },
-    whatsapp_group_id: { label: "WhatsApp group IDs", widget: "groups" },
+    whatsapp_group_id: {
+      label: "WhatsApp group IDs",
+      widget: "groups",
+      help: "Primary destination for ordinary Noise alerts. Half-hourly may omit this only when warning relay is enabled with recipients; other ordinary-route jobs still require a group.",
+    },
     data_health_group_ids: {
       label: "Data Health groups",
       widget: "groups",

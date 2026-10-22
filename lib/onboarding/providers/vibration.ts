@@ -31,6 +31,7 @@ export const vibrationOnboarding: OnboardDefinition = {
     "Portal credentials and the Browserbase context are environment variables on the vibration Lambda, named by the target's credential_profile — HALO never sees them.",
     "Readings begin with the next scrape after the site exists. After enabling, run POST /api/vibration-scrape with {\"mode\":\"source-targets\",\"project_code\":\"<code>\"} or wait for the schedule, then check the table.",
     "The site is created disabled, and the scraper skips disabled sites: enable it in HALO before its first scrape (needs the vibration repo's migrate_site_enabled_gates_scraping.sql applied).",
+    "Apply the vibration repo's migrate_meter_ppv_limits.sql to create provisional, editable PPV-limit rows for each prepared meter. It does not enable alert delivery.",
   ],
   fields: [
     {

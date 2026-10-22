@@ -39,6 +39,12 @@
       "path": "/api/test-notification",
       "kind": "diagnostic",
       "authentication": "optional-service-key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vibration-report",
+      "kind": "operator",
+      "authentication": "required-service-key"
     }
   ],
   "configuration": {
@@ -93,28 +99,28 @@
         "group": "delivery",
         "mutable": true,
         "role": "configuration",
-        "help": "Sending-account identifier for the diagnostic notification."
+        "help": "Sending-account identifier for the manual site PPV report or legacy diagnostic notification."
       },
       "instance_name": {
         "label": "WhatsApp instance",
         "group": "delivery",
         "mutable": true,
         "role": "configuration",
-        "help": "Listener instance used by the diagnostic notification."
+        "help": "Listener instance used by the manual site PPV report or legacy diagnostic notification."
       },
       "lambda_url": {
         "label": "Send-message URL",
         "group": "delivery",
         "mutable": true,
         "role": "configuration",
-        "help": "Listener text endpoint used by the diagnostic notification."
+        "help": "Listener text endpoint used by the manual site PPV report or legacy diagnostic notification."
       },
       "wa_group_ids": {
         "label": "Notification groups",
         "group": "delivery",
         "mutable": true,
         "role": "configuration",
-        "help": "Groups receiving the diagnostic notification; scraping never messages them."
+        "help": "Groups receiving an explicitly sent site PPV report or legacy diagnostic notification; scraping never messages them."
       },
       "created_at": {
         "label": "Created at",

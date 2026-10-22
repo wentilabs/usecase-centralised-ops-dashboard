@@ -1020,6 +1020,24 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/vibration/limits": {
+      get: {
+        operationId: "getVibrationMeterLimits",
+        tags: ["discovery"],
+        summary: "Read provisional PPV limits per Vibration meter",
+        description: "Returns the approved PPV limit and warning, critical and reached percentages for each meter in one site. These stored limits do not themselves send alerts.",
+        parameters: [{ name: "code", in: "query", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Meter limit rows." }, "401": errorResponses["401"] },
+      },
+      patch: {
+        operationId: "updateVibrationMeterLimit",
+        tags: ["configuration"],
+        summary: "Update one Vibration meter's PPV limit and percentages",
+        description: "Requires an editor session and the row's current updated_at; a concurrent edit returns 409. Limits remain provisional until the client confirms them.",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+        responses: { "200": { description: "Updated meter limit." }, "400": errorResponses["400"], "401": errorResponses["401"], "403": errorResponses["403"] },
+      },
+    },
     "/api/onboard/{service}/prerequisites": {
       get: {
         operationId: "checkOnboardingPrerequisites",

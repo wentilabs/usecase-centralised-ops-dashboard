@@ -8,6 +8,7 @@ import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { VibrationSource } from "./VibrationSource";
+import { VibrationMeterLimits } from "./VibrationMeterLimits";
 import { SensorGroupPicker } from "./SensorGroupPicker";
 import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
 import { formatSgt, groupDelta, sensorGroupDelta } from "@/lib/card-summary";
@@ -606,7 +607,7 @@ export function ConfigEditor({
             </section>
           ) : (
             <>
-              {service === "vibration" ? <VibrationSource code={rowId} /> : null}
+              {service === "vibration" ? <><VibrationSource code={rowId} /><VibrationMeterLimits code={rowId} canEdit={canEdit} /></> : null}
               {spec.groups.map((group) => {
               const visible = group.fields.filter((name) =>
                 spec.fields[name]?.widget !== "mention-targets" && isVisible(spec.fields[name], values),

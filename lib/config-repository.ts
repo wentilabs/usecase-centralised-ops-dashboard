@@ -701,6 +701,44 @@ export async function listVibrationSources(projectCode: string): Promise<Vibrati
   }
 }
 
+export type VibrationMeterLimitRow = {
+  project_code: string;
+  meter_code: string;
+  approved_ppv_mm_s: number;
+  warning_percent: number;
+  critical_percent: number;
+  limit_percent: number;
+  updated_at: string;
+};
+
+export async function listVibrationMeterLimits(projectCode: string): Promise<VibrationMeterLimitRow[]> {
+  const query = `vibration_meter_ppv_limits?project_code=eq.${encodeURIComponent(projectCode)}&order=meter_code.asc`;
+  const res = await request(query, { schema: SERVICES.vibration.schema });
+  if (!res.ok || !Array.isArray(res.body)) throw new Error(`Vibration meter limits: ${res.status} ${res.text.slice(0, 200)}`);
+  return res.body as VibrationMeterLimitRow[];
+}
+
+export async function updateVibrationMeterLimit(row: VibrationMeterLimitRow): Promise<VibrationMeterLimitRow | null> {
+  const query = `vibration_meter_ppv_limits?project_code=eq.${encodeURIComponent(row.project_code)}` +
+    `&meter_code=eq.${encodeURIComponent(row.meter_code)}` +
+    `&updated_at=eq.${encodeURIComponent(row.updated_at)}` +
+    `&select=*`;
+  const res = await request(query, {
+    schema: SERVICES.vibration.schema,
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      approved_ppv_mm_s: row.approved_ppv_mm_s,
+      warning_percent: row.warning_percent,
+      critical_percent: row.critical_percent,
+      limit_percent: row.limit_percent,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!res.ok || !Array.isArray(res.body)) throw new Error(`Vibration meter limit update: ${res.status} ${res.text.slice(0, 200)}`);
+  return (res.body as VibrationMeterLimitRow[])[0] ?? null;
+}
+
 /**
  * Whether any row matches, or null when HALO could not ask.
  *

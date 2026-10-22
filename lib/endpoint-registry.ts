@@ -274,6 +274,14 @@ export const ENDPOINT_PREVIEWS: EndpointPreview[] = [
     enabledBy: [], sources: [],
     gap: "It sends whatever the operator preview built, so its messages are the ones from the styles above.",
   },
+
+  // ── Vibration ────────────────────────────────────────────────────────────
+  {
+    service: "vibration", path: "/api/vibration-report", title: "Latest PPV report", sends: "text",
+    summary: "Manual only. Previews each prepared meter's latest stored PPV; send: true delivers to the site's configured groups.",
+    enabledBy: null, sources: [],
+    gap: "The message is built from the latest persisted PPV and observation time per meter, so no static sample can stand in for live readings.",
+  },
 ];
 
 /**

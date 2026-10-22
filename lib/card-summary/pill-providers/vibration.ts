@@ -4,9 +4,8 @@ import type { Pill } from "../pill-types";
 /**
  * Service-owned capability pills for the project card.
  *
- * Vibration messages nobody for a site: it scrapes portals into the site's own
- * readings table, and the site row is read by nothing that sends. So the pills say
- * only where the site is.
+ * A site scrapes into its own readings table. Its WhatsApp report is invoked
+ * manually, so it does not add a scheduled cadence pill.
  */
 export function vibrationPills(config: ProjectConfigRow): Pill[] {
   const site = String(config.site_name ?? "").trim();

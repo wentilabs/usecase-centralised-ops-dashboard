@@ -33,11 +33,19 @@
       "requires": [
         "project-reading-tables"
       ]
+    },
+    {
+      "id": "meter-ppv-limits",
+      "file": "migrate_meter_ppv_limits.sql",
+      "requires": [
+        "project-reading-tables"
+      ]
     }
   ],
   "operationalUtilities": [
     "checks/prepared-targets.sql",
-    "checks/skw-project-readiness.sql"
+    "checks/skw-project-readiness.sql",
+    "checks/skw-meter-ppv-limits.sql"
   ],
   "destructiveUtilities": [
     {

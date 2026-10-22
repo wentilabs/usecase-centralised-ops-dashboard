@@ -17,10 +17,10 @@ export function splitList(value: unknown): string[] {
  * with several group columns that mean different things — showing them as one
  * undifferentiated list would lose that, hence the roles.
  */
-const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
+const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string; chip?: false }[]> = {
   wbgt: [
     { column: "whatsapp_group_id" },
-    { column: "data_health_group_ids", role: "data health" },
+    { column: "data_health_group_ids", role: "data health", chip: false },
     // This was a `single` column: the service read it with a bare
     // `String(...).trim()` and posted the whole value as one chatId, so a second
     // id corrupted the send rather than adding a recipient. `ff2ec70` in the
@@ -37,7 +37,7 @@ const GROUP_COLUMNS: Record<ServiceKey, { column: string; role?: string }[]> = {
   ],
   noise: [
     { column: "whatsapp_group_id" },
-    { column: "data_health_group_ids", role: "data health" },
+    { column: "data_health_group_ids", role: "data health", chip: false },
     // A real destination, not a setting: the expiry warning goes here and
     // nowhere else, so a card that omitted it showed a project as talking to
     // one group when it talks to two.
@@ -108,13 +108,17 @@ export type DeliveryGroup = { chatId: string; role?: string };
  * and the way it would drift is by missing one — leaving a group in place on a
  * column nobody remembered.
  */
-export function groupColumnsFor(service: ServiceKey): { column: string; role?: string }[] {
+export function groupColumnsFor(service: ServiceKey): { column: string; role?: string; chip?: false }[] {
   return GROUP_COLUMNS[service] ?? [];
 }
 
 export function deliveryGroups(service: ServiceKey, config: ProjectConfigRow): DeliveryGroup[] {
   const roles = new Map<string, string[]>();
-  for (const { column, role } of GROUP_COLUMNS[service] ?? []) {
+  for (const { column, role, chip } of GROUP_COLUMNS[service] ?? []) {
+    // The Data Health recipients are the developers watching a project, not a
+    // destination of its messages. Their ids are still resolved to names and still
+    // bulk-editable through groupColumnsFor; they just are not a chip on the card.
+    if (chip === false) continue;
     const ids = splitList(config[column]);
     for (const [index, chatId] of ids.entries()) {
       const existing = roles.get(chatId) ?? [];

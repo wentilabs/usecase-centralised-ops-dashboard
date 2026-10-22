@@ -92,3 +92,13 @@ test("a prerequisite warns and never blocks, and a failed read is not reported a
   const route = await readFile(resolve("app/api/onboard/[service]/prerequisites/route.ts"), "utf8");
   assert.match(route, /definition\.codePattern\.test\(code\)/, "a malformed code is never sent to the database");
 });
+
+test("Data Health recipients are not drawn as delivery chips, but stay a group column", async () => {
+  const { deliveryGroups, groupColumnsFor } = await import("../lib/card-summary/groups");
+  for (const service of ["wbgt", "noise"] as const) {
+    const groups = deliveryGroups(service, { whatsapp_group_id: "site@g.us", data_health_group_ids: "dev@g.us" });
+    assert.deepEqual(groups.map((group) => group.chatId), ["site@g.us"], service);
+    // Still registered, so names resolve and a chat-driven bulk edit still reaches them.
+    assert.ok(groupColumnsFor(service).some((entry) => entry.column === "data_health_group_ids"), service);
+  }
+});

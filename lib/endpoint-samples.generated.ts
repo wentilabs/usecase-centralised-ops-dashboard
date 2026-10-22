@@ -31,7 +31,7 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
     "bubbles": [
       {
         "caption": null,
-        "text": "⚠️ Data Health — ZRA (Noise)\nStatus: No recent data\nLatest receipt: 28 Sept, 15:14 SGT"
+        "text": "🟠 CPW · Noise — Stale reading\n• CPW NM02: amber; latest 2026-10-22T04:00:00Z (4 h)"
       }
     ],
     "source": "noise MESSAGE_SHAPES.md, Data Health Reminder (placeholders filled with the values WBGT's own example uses)"
@@ -40,7 +40,7 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
     "bubbles": [
       {
         "caption": null,
-        "text": "⚠️ Data Health — TEST (WBGT)\nStatus: No recent data\nLatest receipt: 28 Sept, 15:14 SGT"
+        "text": "🔴 TEST · WBGT — Stale reading\n• WBGT TEST (WC-1): red; latest 2026-09-28T07:14:00Z (4 h)"
       }
     ],
     "source": "wbgt MESSAGE_SHAPES.md, Data Health Reminders"

@@ -13,5 +13,7 @@ export function vibrationPills(config: ProjectConfigRow): Pill[] {
   return [
     { label: site || "no site name", on: true, ...(site ? {} : { tone: "warn" as const }) },
     { label: String(config.timezone ?? "").trim() || "no timezone", on: Boolean(config.timezone) },
+    // The one switch on the row that does something: it gates scraping of the site's meters.
+    { label: "scraping", on: config.enabled === true },
   ];
 }

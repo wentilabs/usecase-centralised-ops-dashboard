@@ -685,14 +685,16 @@ export type VibrationSourceRow = {
 /**
  * The source targets feeding one onboarded Vibration site, one per meter.
  *
- * Read from the view the scraper itself reads, so this is what WILL be scraped, not what a
- * site row claims. Only names the credential PROFILE; the credentials are environment
+ * Read from the registry the scraper's view is built on. A target listed here is scraped only
+ * while the site is enabled AND the target is. Only names the credential PROFILE; the credentials are environment
  * variables on the service and never pass through here.
  */
 export async function listVibrationSources(projectCode: string): Promise<VibrationSourceRow[] | null> {
-  const query = `select=meter_code,source_key,source_type,credential_profile,enabled,ppv_verified&project_code=eq.${encodeURIComponent(projectCode)}&order=meter_code.asc`;
+  // The base table, not vibration_project_source_targets: that view now also requires the
+  // site to be enabled, so a disabled site would read as having no source at all.
+  const query = `select=meter_code:prepared_meter_code,source_key,source_type,credential_profile,enabled,ppv_verified&prepared_project_code=eq.${encodeURIComponent(projectCode)}&prepared_meter_code=not.is.null&order=prepared_meter_code.asc`;
   try {
-    const res = await request(`vibration_project_source_targets?${query}`, { schema: SERVICES.vibration.schema });
+    const res = await request(`vibration_source_targets?${query}`, { schema: SERVICES.vibration.schema });
     return res.ok && Array.isArray(res.body) ? (res.body as VibrationSourceRow[]) : null;
   } catch {
     return null;

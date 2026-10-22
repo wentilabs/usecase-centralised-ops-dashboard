@@ -1612,12 +1612,13 @@ ways that are easy to get wrong:
   targets (`config_kind = 'legacy_target'`) beside the site rows. `SERVICES.vibration.rowFilter`
   (`config_kind = 'site'`) is applied on list, get and update, and `insertConfig` forces the
   kind on create — `tests/vibration.test.ts` pins all four. A read without it lists 277 cards.
-- **`enabled` is read by nothing for a site.** Verified in the vibration repo: the scraper reads
-  `vibration_source_targets` (per-meter `enabled`), the test notification reads only
-  `config_kind = 'legacy_target'` rows, and a site row is read by HALO and the insert trigger
-  alone. So the switch is shown as "Project enabled" like every service, first in the card, with
-  help saying it does NOT stop scraping. Making it mean something is a vibration-repo change
-  (gate `vibration_project_source_targets` on the site's `enabled`), not a HALO one.
+- **`enabled` gates scraping — once the vibration repo's `migrate_site_enabled_gates_scraping.sql`
+  is applied.** The scraper reads `vibration_project_source_targets`, which now also requires the
+  site to be enabled; it is shown as "Project enabled", first in the card, like every service. It
+  gates scraping only: the test notification reads `config_kind = 'legacy_target'` rows and a site
+  row never sends anything. A new site is created disabled, so it is enabled before its first
+  scrape. The sources panel reads `vibration_source_targets` directly, because a disabled site
+  vanishes from the gated view and would otherwise read as having no source.
 - **A site sends nothing**, so there are no mutes, no delivery groups (the columns exist and are
   hidden), no `?` preview (`NO_PREVIEWS`) and no outbound load (`vibrationLoadProvider`).
 - **Creation needs a prepared source target.** The insert trigger refuses a site whose code has

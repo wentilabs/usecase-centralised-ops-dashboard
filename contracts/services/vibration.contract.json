@@ -82,11 +82,11 @@
         "help": "'site' rows are HALO cards; 'legacy_target' rows are WIRS inputs and are never listed."
       },
       "enabled": {
-        "label": "Enabled",
-        "group": "delivery",
+        "label": "Project enabled",
+        "group": "status",
         "mutable": true,
         "role": "feature-flag",
-        "help": "Does not stop source-target scraping: the scraper writes every target whose site row exists."
+        "help": "Gates scraping: the scraper reads only the source targets of enabled site rows (see supabase/migrate_site_enabled_gates_scraping.sql). A new site is created disabled, so enable it before its first scrape. Disabling stops scraping; the site's readings table and rows stay."
       },
       "client_id": {
         "label": "Client ID",

@@ -87,8 +87,8 @@ export function VibrationSource({ code }: { code: string }) {
         </>
       )}
       <p className="mt-2 px-2 text-[11px] text-muted-foreground">
-        Not a setting: a site has no source of its own. Each meter is bound to a source target in the vibration repo, and
-        the site's Enabled switch does not stop it being scraped.
+        Not a setting: a site has no source of its own. Each meter is bound to a source target in the vibration repo. A
+        meter is scraped only while the site (Project enabled, above) and its target are both enabled.
       </p>
     </section>
   );

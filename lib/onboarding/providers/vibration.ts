@@ -29,8 +29,8 @@ export const vibrationOnboarding: OnboardDefinition = {
   outsideHalo: [
     "Prepare the source target first: the insert is refused unless an enabled row in vibration_source_targets already has this project code in prepared_project_code (see supabase/checks/prepared-targets.sql in the vibration repo).",
     "Portal credentials and the Browserbase context are environment variables on the vibration Lambda, named by the target's credential_profile — HALO never sees them.",
-    "Readings begin with the next scrape after the site exists. Run POST /api/vibration-scrape with {\"mode\":\"source-targets\",\"project_code\":\"<code>\"} or wait for the schedule, then check the table.",
-    "The enabled switch does not pause scraping: the scraper writes every source target whose site row exists.",
+    "Readings begin with the next scrape after the site exists. After enabling, run POST /api/vibration-scrape with {\"mode\":\"source-targets\",\"project_code\":\"<code>\"} or wait for the schedule, then check the table.",
+    "The site is created disabled, and the scraper skips disabled sites: enable it in HALO before its first scrape (needs the vibration repo's migrate_site_enabled_gates_scraping.sql applied).",
   ],
   fields: [
     {

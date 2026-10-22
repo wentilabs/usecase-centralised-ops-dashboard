@@ -6,8 +6,8 @@ import { COMPANIES } from "../types";
  *
  * The table also holds legacy WIRS target rows (`config_kind = 'legacy_target'`),
  * which HALO never lists; their selector columns are null on a site row and hidden
- * here. Scraping is driven by `vibration_source_targets`, not by this row, so nothing
- * on it changes what the service does.
+ * here. Scraping reads `vibration_source_targets`, and a site row contributes exactly one
+ * thing to it: whether the site is enabled.
  */
 export const vibrationFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "config_kind", "created_at", "updated_at"],
@@ -27,11 +27,10 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
     },
     enabled: {
       label: "Project enabled",
-      // Said plainly because the word means "off stops it" everywhere else on this page.
-      // Verified against the vibration repo: site rows are read by HALO and by the
-      // insert trigger only. The scraper reads vibration_source_targets, and the test
-      // notification reads legacy WIRS rows, so nothing consults this switch.
-      help: "Recorded, but the vibration service does not read it for a site: turning it off does NOT stop scraping or any message. Scraping follows each meter's source target (`enabled` on vibration_source_targets, in the vibration repo). Shown so the site reads like every other project, and so it can start to mean something if the service is changed to honour it.",
+      // Gates the scrape since the vibration repo's migrate_site_enabled_gates_scraping.sql:
+      // the scraper reads source targets through a view that requires an enabled site.
+      // Still worth saying what it does NOT touch, because nothing here sends a message.
+      help: "Master switch for scraping this site. Off, the scraper skips the site's meters; the readings table and its rows stay. A new site is created off, so enable it before its first scrape. It gates scraping only: a site sends no WhatsApp message either way. Each meter's own source target also has to be enabled (vibration_source_targets, in the vibration repo). Needs vibration's migrate_site_enabled_gates_scraping.sql applied.",
     },
     project_code: { hidden: true },
     config_kind: { hidden: true },

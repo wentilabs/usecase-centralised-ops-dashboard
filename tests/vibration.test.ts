@@ -110,14 +110,14 @@ test("the modal shows where a site's readings come from, and claims no message i
   // `?` to offer: a preview here would describe something a site cannot send.
   assert.equal(hasPreview("vibration", "enabled"), false);
 
-  // `enabled` is the first control, as everywhere, but says in so many words that the
-  // service does not read it for a site.
+  // `enabled` is the first control, as everywhere, and says what it gates: scraping.
   const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
   const text = { type: "string" as const, format: "text", enum: null, default: null };
   const spec = buildFieldSpec("vibration", { enabled: bool, company: text, site_name: text, timezone: text, wa_group_ids: text, lambda_url: text });
   assert.equal(spec.groups[0].fields[0], "enabled");
   assert.equal(spec.fields.enabled.label, "Project enabled");
-  assert.match(spec.fields.enabled.help, /does NOT stop scraping/);
+  assert.match(spec.fields.enabled.help, /Master switch for scraping/);
+  assert.match(spec.fields.enabled.help, /sends no WhatsApp message/);
   // Delivery columns nothing reads for a site are not offered for editing.
   assert.equal(spec.fields.wa_group_ids.hidden && spec.fields.lambda_url.hidden, true);
 
@@ -127,4 +127,23 @@ test("the modal shows where a site's readings come from, and claims no message i
   const panel = await readFile(resolve("components/VibrationSource.tsx"), "utf8");
   assert.match(panel, /Could not read this site's source targets/);
   assert.match(panel, /sources === null/);
+});
+
+test("the card says whether a site is being scraped, and the sources panel survives a disabled site", async () => {
+  const { vibrationPills } = await import("../lib/card-summary/pill-providers/vibration");
+  const { vibrationScheduleProvider } = await import("../lib/card-summary/schedule-providers/vibration");
+  const on = vibrationPills({ project_code: "SKW", enabled: true, site_name: "Seletar West Road-3", timezone: "Asia/Singapore" });
+  const off = vibrationPills({ project_code: "SKW", enabled: false, site_name: "Seletar West Road-3", timezone: "Asia/Singapore" });
+  assert.equal(on.find((pill) => pill.label === "scraping")?.on, true);
+  assert.equal(off.find((pill) => pill.label === "scraping")?.on, false);
+  assert.match(vibrationScheduleProvider.firesAt({ project_code: "SKW", enabled: false }), /not scraped while the project is disabled/);
+  assert.doesNotMatch(vibrationScheduleProvider.firesAt({ project_code: "SKW", enabled: true }), /not scraped/);
+
+  // The gated view drops a disabled site, so the panel must read the registry itself or it
+  // would report "no source" for exactly the site you are about to enable.
+  const repo = await readFile(resolve("lib/config-repository.ts"), "utf8");
+  const reader = repo.slice(repo.indexOf("export async function listVibrationSources"));
+  const call = reader.split("\n").find((line) => line.includes("await request("));
+  assert.match(call ?? "", /`vibration_source_targets\?\$\{query\}`/);
+  assert.doesNotMatch(call ?? "", /vibration_project_source_targets/);
 });

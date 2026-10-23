@@ -128,6 +128,14 @@
         "role": "configuration",
         "help": "Groups receiving an explicitly sent site PPV report or legacy diagnostic notification; scraping never messages them."
       },
+      "vibration_formatter": {
+        "label": "Vibration alert format",
+        "group": "alerts",
+        "mutable": true,
+        "role": "configuration",
+        "options": ["SKW_format"],
+        "help": "Formatter used by automatic PPV threshold alerts. SKW_format is the current alert wording."
+      },
       "created_at": {
         "label": "Created at",
         "group": "runtime",

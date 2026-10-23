@@ -112,12 +112,23 @@ test("the modal shows where a site's readings come from and exposes PPV alert de
   // `enabled` is the first control, as everywhere, and says what it gates: scraping.
   const bool = { type: "boolean" as const, format: "boolean", enum: null, default: false };
   const text = { type: "string" as const, format: "text", enum: null, default: null };
-  const spec = buildFieldSpec("vibration", { enabled: bool, company: text, site_name: text, timezone: text, wa_group_ids: text, lambda_url: text });
+  const spec = buildFieldSpec("vibration", {
+    enabled: bool,
+    company: text,
+    site_name: text,
+    timezone: text,
+    wa_group_ids: text,
+    lambda_url: text,
+    vibration_formatter: { ...text, default: "SKW_format" },
+  });
   assert.equal(spec.groups[0].fields[0], "enabled");
   assert.equal(spec.fields.enabled.label, "Project enabled");
   assert.match(spec.fields.enabled.help, /Master switch for scraping/);
   assert.match(spec.fields.wa_group_ids.help, /automatic PPV threshold alerts/);
   assert.equal(spec.fields.wa_group_ids.hidden, false);
+  assert.equal(spec.fields.vibration_formatter.widget, "select");
+  assert.deepEqual(spec.fields.vibration_formatter.options, ["SKW_format"]);
+  assert.equal(spec.fields.vibration_formatter.hasPreview, true);
   assert.equal(spec.fields.lambda_url.hidden, false);
 
   const editor = await readFile(resolve("components/ConfigEditor.tsx"), "utf8");

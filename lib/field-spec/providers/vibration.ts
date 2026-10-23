@@ -11,7 +11,7 @@ import { COMPANIES } from "../types";
  */
 export const vibrationFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "config_kind", "created_at", "updated_at"],
-  checkEnums: { company: [...COMPANIES] },
+  checkEnums: { company: [...COMPANIES], vibration_formatter: ["SKW_format"] },
   fields: {
     company: {
       label: "Company",
@@ -36,6 +36,10 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
       widget: "groups",
       help: "Recipients for manual latest-PPV reports and automatic PPV threshold alerts when the Lambda alert switch is on. Blank prevents delivery.",
     },
+    vibration_formatter: {
+      label: "Vibration alert format",
+      help: "Format used for automatic PPV threshold alerts after each scrape. SKW_format is the current format; use the ? preview to see all three alert tiers.",
+    },
     client_id: { label: "WhatsApp client ID", help: "Sending account used by reports and PPV alerts." },
     instance_name: { label: "WhatsApp instance", help: "Listener instance used by reports and PPV alerts; defaults to the client ID." },
     lambda_url: { label: "Send-message URL", help: "Listener endpoint used by reports and PPV alerts." },
@@ -51,6 +55,7 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
   },
   groups: [
     { title: "Status", fields: ["enabled", "company", "site_name", "timezone"] },
+    { title: "Alert messages", fields: ["vibration_formatter"] },
     { title: "WhatsApp delivery", fields: ["wa_group_ids", "client_id", "instance_name", "lambda_url"] },
   ],
 };

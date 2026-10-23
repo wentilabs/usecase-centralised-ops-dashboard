@@ -809,6 +809,18 @@ function endpointHelpPreviews(taken: ReadonlySet<string>): { previews: Formatter
 
 const HAND_WRITTEN_AND_GENERATED: FormatterPreview[] = [
   ...NOISE_PREVIEWS,
+  ...(ENDPOINT_SAMPLES["vibration.ppv-alert"]
+    ? [{
+        service: "vibration" as const,
+        column: "vibration_formatter",
+        value: "SKW_format",
+        summary: "The current Vibration PPV threshold alert wording, shown at warning, critical warning, and limit reached.",
+        kind: "message" as const,
+        bubbles: ENDPOINT_SAMPLES["vibration.ppv-alert"].bubbles,
+        isFallback: true,
+        source: ENDPOINT_SAMPLES["vibration.ppv-alert"].source,
+      }]
+    : []),
   ...ISSUE_FORMAT_PREVIEWS,
   ...WBGT_PREVIEWS,
   ...HAZE_PREVIEWS,
@@ -824,6 +836,10 @@ const ENDPOINT_HELP = endpointHelpPreviews(
 export const MESSAGE_PREVIEWS: FormatterPreview[] = [...HAND_WRITTEN_AND_GENERATED, ...ENDPOINT_HELP.previews];
 
 const PREVIEW_CONTEXT: Record<string, PreviewContext> = {
+  "vibration:vibration_formatter": {
+    intro:
+      "Sent after POST /api/vibration-scrape when a meter enters or rises to a warning band and automatic PPV alerts are enabled. A same-band reading does not send again.",
+  },
   "wbgt:intermittent_reports_formatter": {
     intro:
       "Both options send the same message — this column only decides how often. The body below is the hourly WBGT advisory; the tables show which quarter-hours it repeats on.",

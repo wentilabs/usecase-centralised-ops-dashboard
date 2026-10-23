@@ -48,6 +48,13 @@
         "meter-ppv-limits",
         "site-enabled-gates-scraping"
       ]
+    },
+    {
+      "id": "vibration-formatter",
+      "file": "migrate_vibration_formatter.sql",
+      "requires": [
+        "ppv-alert-delivery"
+      ]
     }
   ],
   "operationalUtilities": [

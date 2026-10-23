@@ -1788,12 +1788,20 @@ test("every API route authenticates and gates on an allowed session", async () =
    * needs it: someone who has been refused and is trying to find out why.
    */
   const ANSWERS_BEFORE_ALLOWED = new Set(["app/api/session/route.ts"]);
+  const MACHINE_TOKEN_ROUTES = new Set(["app/api/data-health/notify/route.ts"]);
 
   for (const route of routes) {
     const source = await readFile(resolve(process.cwd(), route), "utf8");
     // Comments are stripped first: a route whose only mention of the guard is a
     // note explaining it is a route with no guard.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+    if (MACHINE_TOKEN_ROUTES.has(route)) {
+      assert.match(code, /timingSafeEqual\(/, `${route} must compare the machine token safely`);
+      assert.match(code, /HALO_DATA_HEALTH_TOKEN/, `${route} must require the dedicated token`);
+      assert.match(code, /if \(!authorized\(request\)\)/, `${route} must reject unauthenticated calls`);
+      continue;
+    }
 
     assert.match(code, /getDashboardSession\(\)/, `${route} does not establish a session`);
     if (ANSWERS_BEFORE_ALLOWED.has(route)) continue;

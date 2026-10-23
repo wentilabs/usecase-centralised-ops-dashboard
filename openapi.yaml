@@ -776,6 +776,24 @@ paths:
                 type: object
                 additionalProperties: true
         "401": *a1
+  /api/data-health/notify:
+    post:
+      operationId: notifyDataHealth
+      tags:
+        - discovery
+      summary: Evaluate current Data Health and notify the internal group
+      description: Machine route called by the scheduled Noise Lambda relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token; only current amber/red findings and occasional stale readings are eligible. A unique event claim prevents duplicate sends. Calling this route can send real WhatsApp messages to the internal Data Health group in production.
+      responses:
+        "200":
+          description: Evaluation and delivery counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+        "500":
+          description: Health read, ledger, or delivery failed.
   /api/data-health/refresh:
     post:
       operationId: refreshDataHealth

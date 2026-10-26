@@ -51,7 +51,7 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:hourly_message_formatter": ["wohhup_full", "pentaocean_full"],
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
-  "haze:advisory_format": ["default", "wohhup"],
+  "haze:advisory_format": ["default", "wohhup", "ir2"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */
@@ -119,6 +119,23 @@ test("every preview carries a summary, a source, and something to show", () => {
       // is the whole difference, so it is the thing that must be present.
       assert.ok(preview.cadence?.length, `${id} is a cadence formatter with no timing table`);
     }
+  }
+});
+
+test("HALO's IR2 preview shows all four PM2.5 and PSI color-band pairings", () => {
+  const preview = previewsFor("haze", "advisory_format").find(({ value }) => value === "ir2");
+  assert.ok(preview);
+  assert.equal(preview.bubbles.length, 4);
+  const captions = preview.bubbles.map(({ caption }) => caption);
+  assert.match(captions[0]!, /Band 1 green .* Good green/);
+  assert.match(captions[1]!, /Band 2 yellow .* Unhealthy yellow/);
+  assert.match(captions[2]!, /Band 3 red .* Very Unhealthy orange/);
+  assert.match(captions[3]!, /Band 4 purple .* Hazardous red/);
+  for (const bubble of preview.bubbles) {
+    assert.match(bubble.text, /Haze health advisory \(Based on 1H PM2\.5\)/);
+    assert.match(bubble.text, /Haze health advisory \(Based on 24H PSI\)/);
+    assert.match(bubble.text, /Reading from NEA \(South\)/);
+    assert.doesNotMatch(bubble.text, /Forecast/);
   }
 });
 

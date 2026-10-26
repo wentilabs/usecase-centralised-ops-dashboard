@@ -8,6 +8,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     nea_region: ["north", "south", "east", "west", "central"],
     poc_mentions_at_least: ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
+    advisory_format: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast+24", "ir2"],
   },
   fields: {
     company: {
@@ -24,6 +25,10 @@ export const hazeFieldProvider: ServiceFieldProvider = {
       label: "Four-hourly override (now every 2 hours)",
       help:
         "A guaranteed send at 08:00, 10:00, 12:00, 14:00, 16:00, 18:00 and 20:00 SGT, on top of the hourly advisory, landing two minutes past the hour. These seven ignore the band gate below and the working-hours window, so 20:00 fires even on a site that closes at 19:00; every other hour follows the ordinary rules. The project is also left out of the daily kickoff message. Seven slots despite the `four_hourly` name, which was widened for high-haze periods.",
+    },
+    hourly_always: {
+      label: "Always send hourly",
+      help: "Send the hourly haze advisory regardless of the configured PSI and PM2.5 severity floors. Working hours, Sunday/public-holiday mutes, reading freshness, and duplicate-send protection still apply.",
     },
     alert_only_when_at_least: {
       label: "Alert only when at least",
@@ -55,7 +60,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
     advisory_format: {
       label: "Advisory format",
-      help: "Message template. `wohhup` is the Woh Hup house wording; `default` is the generic advisory.",
+      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `ir2` combines 1-hour PM2.5 and 24-hour PSI advice without a forecast.",
     },
 
     enable_poc_mentions: {
@@ -95,7 +100,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     { title: "Site", fields: ["site_address", "latitude", "longitude", "nea_region"] },
     {
       title: "When it sends",
-      fields: ["alert_only_when_at_least", "four_hourly", "advisory_format"],
+      fields: ["alert_only_when_at_least", "four_hourly", "hourly_always", "advisory_format"],
     },
     { title: "Working hours & mutes", fields: ["working_hours_start_hhmm", "working_hours_end_hhmm", "remove_sunday_notifications", "remove_ph_notifications"] },
     { title: "Delivery", fields: ["wa_group_ids", "instance_name", "client_id", "lambda_url"] },

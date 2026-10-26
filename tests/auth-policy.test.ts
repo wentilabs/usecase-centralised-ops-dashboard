@@ -2610,6 +2610,20 @@ test("columns the services added recently are explained and placed", () => {
   // estate, because none has that report on.
 });
 
+test("Ailytics Compliant reaction switch is labelled and grouped with outbound behavior", () => {
+  const spec = buildFieldSpec("ailytics", {
+    reply_closed_in_wa_when_compliant: { type: "boolean", format: "boolean", enum: null, default: false },
+  });
+  const field = spec.fields.reply_closed_in_wa_when_compliant;
+  assert.equal(field.label, "React ✅ when Compliant");
+  assert.match(field.help, /COMPLIANT remains a non-issue/);
+  assert.equal(field.widget, "toggle");
+  const behavior = spec.groups.find((group) => group.title === "What gets sent");
+  assert.ok(behavior?.fields.includes("reply_closed_in_wa_when_compliant"));
+  const other = spec.groups.find((group) => group.title === "Other");
+  assert.ok(!other?.fields.includes("reply_closed_in_wa_when_compliant"));
+});
+
 test("a report's help names the destination it now has", () => {
   // Both summaries and the weekly Novade reminder used to say "at least one
   // WhatsApp group ID", which was the only destination they had. Since 807adfc

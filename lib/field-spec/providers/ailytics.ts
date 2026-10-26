@@ -33,6 +33,10 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
       label: "Forward PENDING alerts",
       help: "Outbound attempt only (INV-AIL-14/19): every matching alert is captured either way. A pending alert starts as PENDING_DELIVERY and becomes client-facing PENDING only after at least one retained-image delivery is confirmed.",
     },
+    reply_closed_in_wa_when_compliant: {
+      label: "React ✅ when Compliant",
+      help: "When Telegram marks a pending activity COMPLIANT, react ✅ to its previously forwarded WhatsApp message. COMPLIANT remains a non-issue and never creates a safety-sheet row (INV-AIL-22).",
+    },
     // Added by supabase/migrate_status_summary.sql in the ailytics repo.
     status_summary_enabled: {
       label: "Daily status summary",
@@ -76,7 +80,7 @@ export const ailyticsFieldProvider: ServiceFieldProvider = {
     // behaviour reads as one more piece of wiring.
     {
       title: "What gets sent",
-      fields: ["forward_pending_to_whatsapp", "status_summary_enabled", "yesterday_summary_enabled", "yesterday_summary_hour", "whatsapp_group_ids", "yesterday_summary_group_ids"],
+      fields: ["forward_pending_to_whatsapp", "reply_closed_in_wa_when_compliant", "status_summary_enabled", "yesterday_summary_enabled", "yesterday_summary_hour", "whatsapp_group_ids", "yesterday_summary_group_ids"],
     },
     // The section names the feature, the field names the control. Titling both
     // "Mention targets" made the heading read as a rendering fault — a section

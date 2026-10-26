@@ -51,7 +51,7 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:hourly_message_formatter": ["wohhup_full", "pentaocean_full"],
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
-  "haze:advisory_format": ["default", "wohhup", "wohhup-2.5+forecast_TRI", "ir2"],
+  "haze:advisory_format": ["default", "wohhup", "wohhup-2.5+forecast_TRI", "ir2-24h+2.5"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */
@@ -122,8 +122,8 @@ test("every preview carries a summary, a source, and something to show", () => {
   }
 });
 
-test("HALO's IR2 preview shows all four PM2.5 and PSI color-band pairings", () => {
-  const preview = previewsFor("haze", "advisory_format").find(({ value }) => value === "ir2");
+test("HALO's ir2-24h+2.5 preview shows all four PM2.5 and PSI color-band pairings", () => {
+  const preview = previewsFor("haze", "advisory_format").find(({ value }) => value === "ir2-24h+2.5");
   assert.ok(preview);
   assert.equal(preview.bubbles.length, 4);
   const captions = preview.bubbles.map(({ caption }) => caption);

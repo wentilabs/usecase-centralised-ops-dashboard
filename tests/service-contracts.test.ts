@@ -168,7 +168,7 @@ test("service semantics enrich introspection without displacing HALO curation", 
     alert_only_when_at_least: { type: "text" },
     four_hourly: { type: "boolean" },
     hourly_always: { type: "boolean" },
-    advisory_format: { type: "text" },
+    advisory_format: { type: "enum", enum: ["default", "wohhup", "ir2"] },
   });
 
   assert.equal(spec.fields.project_code.readonly, true, "contract-owned identity stays read-only");
@@ -184,8 +184,8 @@ test("service semantics enrich introspection without displacing HALO curation", 
     "HALO's more detailed, operator-tested wording must continue to win");
   assert.equal(spec.fields.hourly_always.label, "Always send hourly");
   assert.match(spec.fields.hourly_always.help, /regardless of the configured PSI and PM2.5 severity floors/);
-  assert.deepEqual(spec.fields.advisory_format.options, ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast+24", "ir2"]);
-  assert.match(spec.fields.advisory_format.help, /`ir2` combines 1-hour PM2\.5 and 24-hour PSI advice/);
+  assert.deepEqual(spec.fields.advisory_format.options, ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2-24h+2.5"]);
+  assert.match(spec.fields.advisory_format.help, /`ir2-24h\+2\.5` combines 1-hour PM2\.5 and 24-hour PSI advice/);
 });
 
 test("the contract and local policy agree on Haze-owned columns", () => {

@@ -531,6 +531,102 @@ _PSI Forecast and Reading from NEA (South) 21 Oct 2026 12:00 SGT_`,
     ],
     source: "haze usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (wohhup-2.5+forecast_TRI)",
   },
+  {
+    service: "haze",
+    column: "advisory_format",
+    value: "ir2",
+    summary:
+      "Combines the 1-hour PM2.5 advice and the 24-hour PSI Wohhup advice, using separate IR2 color bands and no forecast.",
+    kind: "message",
+    bubbles: [
+      {
+        caption: "PM2.5 55 — Band 1 green · PSI 100 — Good green",
+        text: `🌫️*HAZE (IR2)* 🌫️
+
+1H PM2.5 Reading: 55 µg/m³ (Band 1: 0–55)🟢
+
+Haze health advisory (Based on 1H PM2.5)
+• Healthy and vulnerable employees may carry out normal activities.
+• Continue monitoring the haze situation.
+
+*24H PSI Reading:* 100 (Good: 0–100)🟢
+
+Haze health advisory (Based on 24H PSI)
+• Normal activities.
+
+_Reading from NEA (South) 24 Oct 2026 17:45 SGT_`,
+      },
+      {
+        caption: "PM2.5 56 — Band 2 yellow · PSI 101 — Unhealthy yellow",
+        text: `🌫️*HAZE (IR2)* 🌫️
+
+1H PM2.5 Reading: 56 µg/m³ (Band 2: 56–150)🟡
+
+Haze health advisory (Based on 1H PM2.5)
+• Healthy employees should reduce strenuous outdoor activities.
+• Vulnerable employees should avoid strenuous outdoor activities.
+• Employees working outdoors should wear N95 masks.
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
+
+*24H PSI Reading:* 101 (Unhealthy: 101–200)🟡
+
+Haze health advisory (Based on 24H PSI)
+• Employees working outdoors should wear their N95 masks.
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+
+_Reading from NEA (South) 24 Oct 2026 17:45 SGT_`,
+      },
+      {
+        caption: "PM2.5 151 — Band 3 red · PSI 201 — Very Unhealthy orange",
+        text: `🌫️*HAZE (IR2)* 🌫️
+
+1H PM2.5 Reading: 151 µg/m³ (Band 3: 151–250)🔴
+
+Haze health advisory (Based on 1H PM2.5)
+• Healthy employees should avoid strenuous outdoor activities.
+• Vulnerable employees should only work indoors, preferably doing work which is not physically strenuous.
+• Employees working outdoors should wear N95 masks.
+• Tower crane cabins shall be sealed and provided with an internal circulating air conditioner to reduce the hazardous effect of haze.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
+
+*24H PSI Reading:* 201 (Very Unhealthy: 201–300)🟠
+
+Haze health advisory (Based on 24H PSI)
+• All employees working outdoors shall wear their N95 masks.
+• Susceptible employees should only work indoor, preferably doing work which is not physically strenuous.
+
+_Reading from NEA (South) 24 Oct 2026 17:45 SGT_`,
+      },
+      {
+        caption: "PM2.5 251 — Band 4 purple · PSI 301 — Hazardous red",
+        text: `🌫️*HAZE (IR2)* 🌫️
+
+1H PM2.5 Reading: 251 µg/m³ (Band 4: >=251)🟣
+
+Haze health advisory (Based on 1H PM2.5)
+• All employees should remain indoors and avoid strenuous work.
+• Employees carrying out unavoidable outdoor work must wear N95 or equivalent masks.
+• Lifting teams shall stop all lifting activities, reassess the risk due to poor visibility and seek site management approval before restarting.
+• Tower crane operators shall assess visibility in their work area and inform the lifting supervisor if work needs to stop.
+• Employees who are not feeling well should seek medical attention.
+• Hydrate and have adequate rest.
+
+*24H PSI Reading:* 301 (Hazardous: 301+)🔴
+
+Haze health advisory (Based on 24H PSI)
+• All employees carrying out outdoor work shall wear suitable respirators.
+• Susceptible employees should remain indoors and avoid strenuous work.
+• Lifting team to stop all lifting activities, re-assess the risk due to poor visibility and seek site management's approval before commencement.
+• Tower Crane Operators shall assess the visibility of his work area and inform the lifting supervisor on the need for stop work.
+
+_Reading from NEA (South) 24 Oct 2026 17:45 SGT_`,
+      },
+    ],
+    source: "haze MESSAGE_SHAPES.md §1; usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (ir2)",
+  },
 ];
 
 const forecastPreview = HAZE_PREVIEWS.find(({ value }) => value === "wohhup-2.5+forecast");

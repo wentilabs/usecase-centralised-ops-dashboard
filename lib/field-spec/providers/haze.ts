@@ -8,6 +8,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     nea_region: ["north", "south", "east", "west", "central"],
     poc_mentions_at_least: ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
+    advisory_format: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2"],
     ["pm2.5_alert_only_when_at_least"]: ["normal", "elevated", "high", "very_high"],
     ["poc_mentions_pm2.5_at_least"]: ["normal", "elevated", "high", "very_high"],
   },
@@ -61,7 +62,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
     advisory_format: {
       label: "Advisory format",
-      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `wohhup-tsc` adds TSC's chronic lung/heart and seek-medical-attention advice from Unhealthy upward; `wohhup-2.5+forecast` uses 1-hour PM2.5 bands and NEA's daily forecast; `wohhup-2.5+forecast+24` also shows the current 24-hour PSI reading and band.",
+      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `wohhup-tsc` adds TSC's chronic lung/heart and seek-medical-attention advice from Unhealthy upward; `wohhup-2.5+forecast` uses 1-hour PM2.5 bands and NEA's daily forecast; `wohhup-2.5+forecast+24` also shows the current 24-hour PSI reading and band; `ir2` combines 1-hour PM2.5 and 24-hour PSI advice without a forecast.",
     },
 
     enable_poc_mentions: {

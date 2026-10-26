@@ -288,6 +288,11 @@ export const ENDPOINT_PREVIEWS: EndpointPreview[] = [
     gap: "The message is built from the latest persisted PPV and observation time per meter, so no static sample can stand in for live readings.",
   },
   {
+    service: "vibration", path: "/api/vibration-kickoff", title: "Morning scrape and PPV check", sends: "text",
+    summary: "Once each morning, reports the latest project scrape outcome and stored PPV for every prepared meter.",
+    enabledBy: [flag("vibration_kickoff_enabled")], sources: [{ sample: "vibration.kickoff" }],
+  },
+  {
     service: "vibration", path: "/api/vibration-alert-preview", title: "Alert format preview and test", sends: "text",
     summary: "Previews all three tiers using one meter's saved limits. An explicit test send targets one configured group and labels each message as a test.",
     enabledBy: null, sources: [{ sample: "vibration.ppv-alert" }],
@@ -314,6 +319,7 @@ export const HELP_COLUMNS: Record<string, string> = {
   "subcon:/daily-housekeeping-report": "enable_housekeeping",
   "ailytics:/ailytics-safety/status-summary": "status_summary_enabled",
   "ailytics:/ailytics-safety/yesterday-24h-summary": "yesterday_summary_enabled",
+  "vibration:/api/vibration-kickoff": "vibration_kickoff_enabled",
 };
 
 /**

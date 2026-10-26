@@ -168,6 +168,7 @@ test("the generated samples match what the services' own origin/main produces", 
   const repos = [
     "usecase-wohhup-noise-meter-alerts", "usecase-wohhup-wbgt-alerts", "usecase-lightning-alerts",
     "usecase-haze-alerts", "usecase-subcon-manpower-activities", "mdw-lambda-ailytics",
+    "usecase-wohhup-vibration",
   ];
   const ready = repos.every((repo) => {
     if (!existsSync(resolve(siblings, repo, ".git"))) return false;

@@ -48,6 +48,12 @@
     },
     {
       "method": "POST",
+      "path": "/api/vibration-kickoff",
+      "kind": "scheduled",
+      "authentication": "optional-service-key"
+    },
+    {
+      "method": "POST",
       "path": "/api/vibration-alert-preview",
       "kind": "operator",
       "authentication": "optional-service-key"
@@ -99,6 +105,13 @@
         "mutable": true,
         "role": "feature-flag",
         "help": "Gates scraping: the scraper reads only the source targets of enabled site rows (see supabase/migrate_site_enabled_gates_scraping.sql). A new site is created disabled, so enable it before its first scrape. Disabling stops scraping; the site's readings table and rows stay."
+      },
+      "vibration_kickoff_enabled": {
+        "label": "Morning vibration kickoff",
+        "group": "delivery",
+        "mutable": true,
+        "role": "feature-flag",
+        "help": "Include this enabled project in the morning kickoff report. The report sends the latest per-meter PPV and most recent project scrape status to the project's configured WhatsApp groups; it does not trigger a scrape."
       },
       "client_id": {
         "label": "Client ID",

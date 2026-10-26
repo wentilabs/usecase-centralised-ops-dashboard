@@ -7,7 +7,7 @@ import { COMPANIES } from "../types";
  * The table also holds legacy WIRS target rows (`config_kind = 'legacy_target'`),
  * which HALO never lists; their selector columns are null on a site row and hidden
  * here. Scraping reads `vibration_source_targets`; site delivery settings serve
- * manual PPV reports and enabled PPV threshold alerts.
+ * manual PPV reports, morning kickoff reports and enabled PPV threshold alerts.
  */
 export const vibrationFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "config_kind", "created_at", "updated_at"],
@@ -40,6 +40,10 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
       label: "Vibration alert format",
       help: "Format used for automatic PPV threshold alerts after each scrape. SKW_format is the current format; use the ? preview to see all three alert tiers.",
     },
+    vibration_kickoff_enabled: {
+      label: "Morning vibration kickoff",
+      help: "Send this project a morning WhatsApp check with the latest scrape status and stored PPV for each meter. This does not trigger scraping. Requires configured WhatsApp groups and delivery settings.",
+    },
     client_id: { label: "WhatsApp client ID", help: "Sending account used by reports and PPV alerts." },
     instance_name: { label: "WhatsApp instance", help: "Listener instance used by reports and PPV alerts; defaults to the client ID." },
     lambda_url: { label: "Send-message URL", help: "Listener endpoint used by reports and PPV alerts." },
@@ -56,6 +60,7 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
   groups: [
     { title: "Status", fields: ["enabled", "company", "site_name", "timezone"] },
     { title: "Alert messages", fields: ["vibration_formatter"] },
+    { title: "Morning check", fields: ["vibration_kickoff_enabled"] },
     { title: "WhatsApp delivery", fields: ["wa_group_ids", "client_id", "instance_name", "lambda_url"] },
   ],
 };

@@ -69,7 +69,7 @@
       "repository": "wentilabs/usecase-wohhup-vibration",
       "localDirectory": "usecase-wohhup-vibration",
       "branch": "master",
-      "commit": "5c595c809832ba82632c6df8725bebc08d06ccfa",
+      "commit": "aa2d1ce199307dc56b8fa5177d7cc0de3dcb751d",
       "path": "contracts/service.contract.json",
       "vendoredPath": "contracts/services/vibration.contract.json",
       "sqlPath": "supabase/migration-plan.json",

@@ -101,7 +101,7 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
     "bubbles": [
       {
         "caption": null,
-        "text": "🌫️ Haze service live and started for the day 🌫️\nCurrent PSI(24H): 75 🔵 (Moderate)"
+        "text": "🌫️ Haze service live and started for the day 🌫️\nCurrent PSI(24H): 75 🔵 (Moderate)\nCurrent PM2.5(1H): unavailable"
       }
     ],
     "source": "haze lib/haze-messages.js buildKickoffMessage, run on the PSI the repo's own test uses"
@@ -184,5 +184,14 @@ export const ENDPOINT_SAMPLES: Record<string, { bubbles: PreviewBubble[]; source
       }
     ],
     "source": "vibration ppv-alert-preview samplePpvAlertMessages, provisional SKW/VM01 limits"
+  },
+  "vibration.kickoff": {
+    "bubbles": [
+      {
+        "caption": null,
+        "text": "Vibration morning check · 26 Oct 2026, 08:01 SGT\nProject: SKW · Seletar West Road-3\nScraping: scraped · 26 Oct 2026, 08:00 SGT\nLatest PPV (mm/s)\nVM01: 0 · 26 Oct 2026, 08:00 SGT\nVM02: 0.24 · 26 Oct 2026, 08:00 SGT"
+      }
+    ],
+    "source": "vibration domain formatKickoffReport, SKW morning sample with stored VM01/VM02 readings"
   }
 };

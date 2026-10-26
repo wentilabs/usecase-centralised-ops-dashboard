@@ -257,6 +257,19 @@ try {
       caption: names[index], text: example.message,
       source: "vibration ppv-alert-preview samplePpvAlertMessages, provisional SKW/VM01 limits",
     }));
+    const { formatKickoffReport } = load(repo, "lib/generated-boundaries/domain/kickoff-report.js");
+    add("vibration.kickoff", {
+      text: formatKickoffReport({
+        projectCode: "SKW", siteName: "Seletar West Road-3", timezone: "Asia/Singapore",
+        scrapeStatus: "scraped", scrapeAttemptedAt: "2026-10-26T00:00:00Z",
+        readings: [
+          { meter_code: "VM01", observed_at: "2026-10-26T00:00:00Z", ppv_mm_s: 0, quality: "valid" },
+          { meter_code: "VM02", observed_at: "2026-10-26T00:00:00Z", ppv_mm_s: 0.24, quality: "valid" },
+        ],
+        reportedAt: new Date("2026-10-26T00:01:00Z"),
+      }),
+      source: "vibration domain formatKickoffReport, SKW morning sample with stored VM01/VM02 readings",
+    });
   }
 } finally {
   rmSync(scratch, { recursive: true, force: true });

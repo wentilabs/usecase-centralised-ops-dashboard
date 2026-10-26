@@ -55,6 +55,13 @@
       "requires": [
         "ppv-alert-delivery"
       ]
+    },
+    {
+      "id": "vibration-kickoff",
+      "file": "migrate_vibration_kickoff.sql",
+      "requires": [
+        "vibration-formatter"
+      ]
     }
   ],
   "operationalUtilities": [

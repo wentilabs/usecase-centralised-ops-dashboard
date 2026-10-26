@@ -41,6 +41,21 @@
       "requires": ["rename-wohhup-pm25-forecast-format"]
     },
     {
+      "id": "ir2-haze-template",
+      "file": "ir2-haze-template.sql",
+      "requires": ["advisory-format-wohhup-2.5-forecast-24"]
+    },
+    {
+      "id": "advisory-format-wohhup-2.5-forecast-tri",
+      "file": "advisory-format-wohhup-2.5-forecast-tri.sql",
+      "requires": ["ir2-haze-template"]
+    },
+    {
+      "id": "rename-ir2-advisory-format",
+      "file": "rename-ir2-advisory-format.sql",
+      "requires": ["advisory-format-wohhup-2.5-forecast-tri"]
+    },
+    {
       "id": "poc-mentions",
       "file": "poc-mentions.sql",
       "requires": []

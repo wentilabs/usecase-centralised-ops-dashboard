@@ -177,14 +177,10 @@ function parseHealthKey(key: string): [ServiceKey | null, string] {
 /**
  * Standing faults, as board entries.
  *
- * Always red. A project that cannot be evaluated is not merely degraded: it is
- * not covered at all, and in Lightning's case that means a site with no
- * protection. Its own words are the label, so the reader can grep for them.
- *
- * Its own `config` signal rather than `delivery` or `ingestion`, because it is
- * neither — and the three are different people's problems: a stale reading is
- * the vendor, a failed send is the listener, a rejected configuration is
- * whoever last edited the project.
+ * Always red. A standing fault is current state, not an event to age out of a
+ * strip. Its own words are the label, so the reader can grep for them. The
+ * signal follows the source: a rejected Lightning configuration is `config`,
+ * while an Ailytics listener queue fault is `delivery`.
  */
 export function faultEntries(faults: Record<string, string>): BoardEntry[] {
   const entries: BoardEntry[] = [];
@@ -194,7 +190,7 @@ export function faultEntries(faults: Record<string, string>): BoardEntry[] {
     entries.push({
       service,
       projectCode,
-      signal: "config",
+      signal: service === "ailytics" ? "delivery" : "config",
       colour: "red",
       label: message,
       // No instant to report: the state is current, not an event.

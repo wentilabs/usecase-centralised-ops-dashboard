@@ -33,7 +33,67 @@ test("a standing fault is read as state, from the column the service writes it t
   assert.match(path, /^lightning_project_runtime\?/, "the per-project runtime table");
   assert.match(path, /last_error=not\.is\.null/, "only projects that actually have one");
   assert.deepEqual(faults, [{ projectCode: "SGK", message: SGK }], "in the service's own words, unrewritten");
-  assert.deepEqual(FAULT_SERVICES, ["lightning"]);
+  assert.deepEqual(FAULT_SERVICES, ["lightning", "ailytics"]);
+});
+
+test("an explicit Ailytics listener notFound is a standing project fault", async () => {
+  let requestedPath = "";
+  let requestedSchema = "";
+  const fault = {
+    id: "link-1",
+    listener_queue_id: "48713",
+    whatsapp_group_id: "1203@g.us",
+    send_response: {
+      queueReconciliation: {
+        latest: {
+          outcome: "not_found",
+          queueId: "48713",
+          checkedAt: "2026-10-26T09:00:00.000Z",
+          retentionDays: 7,
+          notFound: { queueIds: [48713], idempotencyKeys: [] },
+        },
+      },
+    },
+    activity: { project_config: { project_code: "PENTA" } },
+  };
+
+  const faults = await readProjectFaults("ailytics", async (path, init) => {
+    requestedPath = path;
+    requestedSchema = init.schema;
+    return { ok: true, body: [fault] };
+  });
+
+  assert.equal(requestedSchema, "ailytics");
+  const query = new URLSearchParams(requestedPath.split("?")[1]);
+  assert.equal(requestedPath.split("?")[0], "whatsapp_activity_links");
+  assert.equal(query.get("delivery_status"), "eq.unconfirmed");
+  assert.equal(query.get("send_response->queueReconciliation->latest->>outcome"), "eq.not_found");
+  assert.match(query.get("select") ?? "", /activity:cctv_activity_events!inner\(project_config:project_configs!inner\(project_code\)\)/);
+  assert.equal(faults.length, 1);
+  assert.equal(faults[0].projectCode, "PENTA");
+  assert.match(faults[0].message, /queue ID 48713 notFound for 1203@g\.us/);
+
+  const entries = faultEntries({ [healthKey("ailytics", "PENTA")]: faults[0].message });
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].colour, "red");
+  assert.equal(entries[0].signal, "delivery");
+  assert.match(entries[0].label, /listenerNotFound.*48713/);
+  assert.match(entries[0].label, /retentionDays.*7/);
+});
+
+test("legacy unconfirmed Ailytics deliveries without explicit notFound evidence are ignored", async () => {
+  const faults = await readProjectFaults("ailytics", async () => ({
+    ok: true,
+    body: [{
+      id: "legacy-link",
+      listener_queue_id: "48714",
+      whatsapp_group_id: "1203@g.us",
+      send_response: { queueReconciliation: { latest: { outcome: "missing_from_status_response" } } },
+      activity: { project_config: { project_code: "PENTA" } },
+    }],
+  }));
+
+  assert.deepEqual(faults, []);
 });
 
 test("a service with no fault source asks nothing, and an unreadable table reports nothing", async () => {

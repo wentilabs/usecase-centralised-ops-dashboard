@@ -48,7 +48,7 @@ export function buildFieldSpec(
   for (const [name, col] of Object.entries(introspected)) {
     const hint = hints[name] || {};
     const contractHint = contractFieldFor(usecase, name);
-    const options = hint.options || col.enum || checkEnums[name] || null;
+    const options = col.enum || checkEnums[name] || null;
     let widget: FieldWidget | undefined = hint.widget;
     if (!widget) {
       if (col.type === "boolean") widget = "toggle";

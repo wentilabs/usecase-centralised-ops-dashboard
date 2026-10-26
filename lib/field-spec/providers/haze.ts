@@ -8,7 +8,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     company: [...COMPANIES],
     nea_region: ["north", "south", "east", "west", "central"],
     poc_mentions_at_least: ["good", "moderate", "unhealthy", "very_unhealthy", "hazardous"],
-    advisory_format: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2-24h+2.5"],
+    advisory_format: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast+24", "ir2"],
   },
   fields: {
     company: {
@@ -60,8 +60,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message proxy URL" },
     advisory_format: {
       label: "Advisory format",
-      options: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2-24h+2.5"],
-      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `ir2-24h+2.5` combines 1-hour PM2.5 and 24-hour PSI advice without a forecast.",
+      help: "Message template. `default` is the generic PSI advisory; `wohhup` is the house PSI wording; `ir2` combines 1-hour PM2.5 and 24-hour PSI advice without a forecast.",
     },
 
     enable_poc_mentions: {

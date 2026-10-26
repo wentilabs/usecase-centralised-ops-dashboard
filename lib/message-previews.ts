@@ -311,9 +311,9 @@ _Reading from NEA (West) 22 Aug 2026 15:19 SGT_`,
   {
     service: "haze",
     column: "advisory_format",
-    value: "ir2-24h+2.5",
+    value: "ir2",
     summary:
-      "`ir2-24h+2.5` combines the 1-hour PM2.5 advice and the 24-hour PSI Wohhup advice, using separate IR2 color bands and no forecast.",
+      "Combines the 1-hour PM2.5 advice and the 24-hour PSI Wohhup advice, using separate IR2 color bands and no forecast.",
     kind: "message",
     bubbles: [
       {
@@ -402,7 +402,7 @@ Haze health advisory (Based on 24H PSI)
 _Reading from NEA (South) 24 Oct 2026 17:45 SGT_`,
       },
     ],
-    source: "haze MESSAGE_SHAPES.md; usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (ir2-24h+2.5)",
+    source: "haze MESSAGE_SHAPES.md §1; usecase-haze-alerts/src/domain/haze-messages.ts — buildHazeMessage (ir2)",
   },
 ];
 

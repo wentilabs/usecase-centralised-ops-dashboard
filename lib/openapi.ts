@@ -624,8 +624,8 @@ export const openapiDocument = {
       post: {
         operationId: "notifyDataHealth",
         tags: ["discovery"],
-        summary: "Evaluate current Data Health and notify the internal group",
-        description: "Machine route called by the scheduled Noise Lambda relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token; only current amber/red findings and occasional stale readings are eligible. A unique event claim prevents duplicate sends. Calling this route can send real WhatsApp messages to the internal Data Health group in production.",
+        summary: "Send the eight-hour estate Data Health summary to the internal group",
+        description: "Machine route called by the five-minute Noise Lambda relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token. One service-grouped summary is eligible near 00:00, 08:00 and 16:00 SGT, covering process issues in the preceding eight hours and current standing findings. A unique window claim prevents duplicate sends. Calling this route can send a real WhatsApp message to the internal Data Health group in production.",
         responses: {
           "200": { description: "Evaluation and delivery counts.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
           "401": errorResponses["401"],

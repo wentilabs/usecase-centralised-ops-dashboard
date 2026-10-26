@@ -296,6 +296,7 @@ export async function readProcessWindow(
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
   perProject: number,
   sinceIso: string,
+  options: { maxPages?: number; requireComplete?: boolean } = {},
 ): Promise<ProcessSample[]> {
   let source = SOURCES[service];
   if (!source) return [];
@@ -324,7 +325,8 @@ export async function readProcessWindow(
       // target — the window floor usually ends the walk first, and on a
       // high-volume service a sparse project may show fewer bars than the window
       // holds rather than hold the read open for them.
-      maxPages: Math.ceil((perProject * 40) / 1000),
+      maxPages: options.maxPages ?? Math.ceil((perProject * 40) / 1000),
+      requireComplete: options.requireComplete,
       cursorOf: (row) => String(row[timeColumn] ?? ""),
     },
   );

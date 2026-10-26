@@ -95,3 +95,15 @@ test("a page with no usable cursor stops the read instead of asking again foreve
     assert.equal(rows.length, 1000, "one page, then it stops");
   });
 });
+
+test("a notification history refuses partial pages and page-limit truncation", async () => {
+  await assert.rejects(
+    readPaged(async () => ({ ok: false, body: [] }), pathFor, { schema: "s", cursorOf, requireComplete: true }),
+    /Incomplete paged read/,
+  );
+  const { request } = pagedServer(3_000);
+  await assert.rejects(
+    readPaged(request, pathFor, { schema: "s", cursorOf, maxPages: 1, requireComplete: true }),
+    /exceeded its page limit/,
+  );
+});

@@ -44,6 +44,7 @@ export async function readPaged(
      * sliced off. Checked after each page, never before the first.
      */
     enough,
+    requireComplete = false,
     /** Reads the keyset value from a row — the column `pathFor` orders by. */
     cursorOf,
   }: {
@@ -51,6 +52,7 @@ export async function readPaged(
     pageSize?: number;
     maxPages?: number;
     enough?: (rows: Record<string, unknown>[]) => boolean;
+    requireComplete?: boolean;
     cursorOf: (row: Record<string, unknown>) => string;
   },
 ): Promise<Record<string, unknown>[]> {
@@ -62,7 +64,10 @@ export async function readPaged(
     // A failed page discards everything rather than returning a partial window:
     // half a window is indistinguishable on a strip from a half-idle service,
     // and that is the reading this module exists to prevent.
-    if (!res.ok || !Array.isArray(res.body)) return [];
+    if (!res.ok || !Array.isArray(res.body)) {
+      if (requireComplete) throw new Error(`Incomplete paged read in ${schema}`);
+      return [];
+    }
 
     const batch = res.body as Record<string, unknown>[];
     rows.push(...batch);
@@ -73,9 +78,13 @@ export async function readPaged(
     const last = cursorOf(batch[batch.length - 1]);
     // No cursor means no safe way to ask for the next page: asking again
     // without one would re-read the same rows forever.
-    if (!last || last === before) return rows;
+    if (!last || last === before) {
+      if (requireComplete) throw new Error(`Paged read cursor stalled in ${schema}`);
+      return rows;
+    }
     before = last;
   }
 
+  if (requireComplete) throw new Error(`Paged read exceeded its page limit in ${schema}`);
   return rows;
 }

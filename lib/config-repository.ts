@@ -1066,6 +1066,25 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
   return strips;
 }
 
+/** Full process history for one notification window; an incomplete read must not produce a healthy summary. */
+export async function listNotificationProcessWindow(since: Date): Promise<Record<string, Bar[]>> {
+  const read = (path: string, init: { schema: string }) => request(path, { schema: init.schema });
+  const groups = new Map<string, Bar[]>();
+  const windows = await Promise.all(PROCESS_SERVICES.map((service) =>
+    readProcessWindow(service, read, 500, since.toISOString(), { maxPages: 20, requireComplete: true })
+      .then((samples) => ({ service, samples })),
+  ));
+  for (const { service, samples } of windows) {
+    for (const sample of samples) {
+      const key = healthKey(service, sample.projectCode);
+      const bars = groups.get(key) ?? [];
+      bars.push({ at: sample.at, colour: sample.colour, status: sample.status, log: sample.log, ...(sample.kind ? { kind: sample.kind } : {}) });
+      groups.set(key, bars);
+    }
+  }
+  return Object.fromEntries([...groups].map(([key, bars]) => [key, bars.sort((a, b) => a.at.localeCompare(b.at))]));
+}
+
 /**
  * Projects stuck in a standing fault, keyed like the strips.
  *
@@ -1154,6 +1173,13 @@ export async function listEstateHealth(): Promise<ProjectHealth[]> {
   const health = Array.from((await listProjectHealth(configured)).values());
   healthCache.set("estate", health);
   return health;
+}
+
+/** The scheduled digest cannot treat an unreadable service configuration as an empty service. */
+export async function listNotificationEstateHealth(): Promise<ProjectHealth[]> {
+  const rows = await Promise.all(SERVICE_KEYS.map((key) => listConfigs(key)));
+  const configured = Object.fromEntries(SERVICE_KEYS.map((key, index) => [key, rows[index]]));
+  return Array.from((await listProjectHealth(configured)).values());
 }
 
 /** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */

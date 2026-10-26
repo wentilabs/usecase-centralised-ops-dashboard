@@ -51,7 +51,7 @@ const EXPECTED: Record<string, string[]> = {
   "wbgt:hourly_message_formatter": ["wohhup_full", "pentaocean_full"],
   "wbgt:five_min_alert_formatter": ["short", "full"],
   "wbgt:intermittent_reports_formatter": ["red15", "red30"],
-  "haze:advisory_format": ["default", "wohhup", "ir2"],
+  "haze:advisory_format": ["default", "wohhup", "wohhup-2.5+forecast_TRI", "ir2"],
 };
 
 /** The value a blank column resolves to, from each service's own fallback table. */

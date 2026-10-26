@@ -304,7 +304,7 @@ export async function listProjectHealth(
     // estate pays nothing and the request count for a quiet day is unchanged.
     // `evidence.kind === "row"` because the question is "since the last reading",
     // and a project with no reading has no such moment to ask about.
-    if (verdict.tone === "stale" && evidence.kind === "row" && verdict.newestReceivedAt) {
+    if ((verdict.tone === "stale" || (verdict.service === "wbgt" && verdict.label === "Data: sensor faulty")) && evidence.kind === "row" && verdict.newestReceivedAt) {
       const skipped = await skippedSinceReading(target, verdict.newestReceivedAt, readOptions);
       if (skipped) return { target, verdict: idleBecauseSkipped(verdict, skipped) };
       // Still a finding: say what the service itself reported, so the reader has

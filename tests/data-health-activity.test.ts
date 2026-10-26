@@ -140,3 +140,14 @@ test("without an activity the old fixed budgets still apply", () => {
   const stale = { kind: "row" as const, createdAt: "2026-09-26T06:00:00.000Z", sourceEventAt: null };
   assert.equal(assessIngestionHealth(target, stale as never, EVENING).tone, "stale");
 });
+
+test("a WBGT reading more than one day old is red and labeled sensor faulty", () => {
+  const target = healthTarget("wbgt", "TJR")!;
+  const active = { state: "active" as const, cadence: "hourly", activeHours: [10], toleranceMs: 26 * 60 * 60 * 1000 };
+  const exactDay = { kind: "row" as const, createdAt: new Date(MIDMORNING.getTime() - 24 * 60 * 60 * 1000).toISOString() };
+  const overDay = { kind: "row" as const, createdAt: new Date(MIDMORNING.getTime() - 24 * 60 * 60 * 1000 - 1).toISOString() };
+  assert.equal(assessIngestionHealth(target, exactDay as never, MIDMORNING, active).tone, "good");
+  const faulty = assessIngestionHealth(target, overDay as never, MIDMORNING, active);
+  assert.equal(faulty.tone, "danger");
+  assert.equal(faulty.label, "Data: sensor faulty");
+});

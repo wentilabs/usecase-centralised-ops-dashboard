@@ -48,6 +48,7 @@ export type ProjectHealth = {
 };
 
 const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 
 export function healthKey(service: ServiceKey, projectCode: string): string {
   return JSON.stringify([service, String(projectCode).trim()]);
@@ -249,6 +250,12 @@ export function assessIngestionHealth(
       : `Expected: a reading within ${describeAge(target.warningAfterMs)}.`,
     `Seen: the newest reading arrived ${describeAge(ageMs)} ago.`,
   ];
+  // A WBGT reading more than a day old means the sensor/feed is likely faulty,
+  // even when an unusually sparse schedule would otherwise excuse the gap.
+  // Keep this service-specific; daily Noise and Vibration schedules differ.
+  if (target.service === "wbgt" && ageMs > DAY) {
+    return result(target, "danger", "Data: sensor faulty", newestReceivedAt, sourceEventAt, reasons);
+  }
   // Both tiers are `stale`. How late is carried by the label and the evidence, not by
   // escalating the colour: a reading that is four hours late is still the sensor's
   // problem to explain, and red is for what the pipeline did or did not do.

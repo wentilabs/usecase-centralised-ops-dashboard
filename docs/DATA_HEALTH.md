@@ -711,9 +711,10 @@ standing configuration gap), and Google permission failures.
 **Where HALO shows stale, and where it does not**
 
 - *The age of the newest reading* (Noise and WBGT, from the readings table). Past the
-  tolerated gap is `delayed`, past twice it `no recent data`; **both are dark green**,
-  and the label keeps saying how late. The card lists what was expected and what was
-  seen.
+  tolerated gap is `delayed`. Noise and WBGT stay dark green through their ordinary
+  stale windows. For WBGT, a reading more than 24 hours old is red and labeled
+  `sensor faulty`, even if a sparse schedule would otherwise tolerate the gap. The
+  card keeps the expected cadence, age, and available service-run evidence beside it.
 - *A run that only reported late readings.* Its status is still `completed_with_…`
   and its lines are unchanged; the run is drawn dark green because every line it wrote
   was the service saying a reading was late.

@@ -188,6 +188,8 @@ test("service semantics enrich introspection without displacing HALO curation", 
     project_code: { type: "text" },
     alert_only_when_at_least: { type: "text" },
     four_hourly: { type: "boolean" },
+    hourly_always: { type: "boolean" },
+    advisory_format: { type: "enum", enum: ["default", "wohhup", "ir2"] },
   });
 
   assert.equal(spec.fields.project_code.readonly, true, "contract-owned identity stays read-only");
@@ -201,6 +203,17 @@ test("service semantics enrich introspection without displacing HALO curation", 
   assert.equal(spec.fields.alert_only_when_at_least.widget, "select");
   assert.match(spec.fields.four_hourly.help, /08:00, 10:00/,
     "HALO's more detailed, operator-tested wording must continue to win");
+  assert.equal(spec.fields.hourly_always.label, "Always send hourly");
+  assert.match(spec.fields.hourly_always.help, /regardless of the configured PSI and PM2.5 severity floors/);
+  assert.deepEqual(spec.fields.advisory_format.options, [
+    "default",
+    "wohhup",
+    "wohhup-tsc",
+    "wohhup-2.5+forecast",
+    "wohhup-2.5+forecast_TRI",
+    "wohhup-2.5+forecast+24",
+    "ir2-24h+2.5",
+  ], "HALO's canonical options override legacy enum values from live introspection");
 });
 
 test("the contract and local policy agree on Haze-owned columns", () => {

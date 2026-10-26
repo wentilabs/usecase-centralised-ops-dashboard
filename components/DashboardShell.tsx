@@ -30,7 +30,7 @@ import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
 import { emphasisRank, formatSgt, matchesQuery } from "@/lib/card-summary";
-import { bySeverity, severityOf, withFault } from "@/lib/health-timeline";
+import { byRedHealthChip, bySeverity, severityOf, withFault } from "@/lib/health-timeline";
 import { exportsForService, jobsForService, type ExportDefinition, type JobDefinition } from "@/lib/jobs";
 import { onboardingFor, withSchemaFields } from "@/lib/onboarding";
 import { onboardingDraftFromCanonicalProject } from "@/lib/canonical-project-onboarding";
@@ -474,10 +474,17 @@ export function DashboardShell({
         // What needs attention, first. Lexicographic on (red, amber): a single
         // red outranks any number of ambers, so a chronic tolerated amber
         // cannot bury one hard failure.
+        // A red Data Health pill is a current finding, even if the last 100
+        // processes were clean; put it ahead of the run-history ranking.
         // A standing fault counts as one red: a project that cannot be evaluated
         // must not sort among the healthy just because it has no bars to count.
         const keyA = healthKey(active.key, String(a.project_code ?? ""));
         const keyB = healthKey(active.key, String(b.project_code ?? ""));
+        const redChip = byRedHealthChip(
+          healthByProject.get(keyA)?.tone === "danger",
+          healthByProject.get(keyB)?.tone === "danger",
+        );
+        if (redChip) return redChip;
         const severity = bySeverity(
           withFault(severityOf(projectStrips[keyA]), projectFaults[keyA]),
           withFault(severityOf(projectStrips[keyB]), projectFaults[keyB]),
@@ -489,11 +496,9 @@ export function DashboardShell({
         const rank = emphasisRank(active.key, b) - emphasisRank(active.key, a);
         return rank || String(a.project_code ?? "").localeCompare(String(b.project_code ?? ""));
       });
-    // `projectStrips` arrives after first paint, so the list is ordered by
-    // emphasis alone until it does and then settles. Re-sorting once is the
-    // point; it is what puts the failing project in front of a reader who did
-    // not know which tab to open.
-  }, [rows, active, query, projectStrips, projectFaults]);
+    // Health findings and process strips arrive after first paint, so the list
+    // is ordered by emphasis until they do, then re-sorts to surface red cards.
+  }, [rows, active, query, projectStrips, projectFaults, healthByProject]);
 
   function rowIdOf(service: ServiceData, row: ProjectConfigRow) {
     return String(row[service.idColumn as keyof ProjectConfigRow] ?? row.project_code ?? "");

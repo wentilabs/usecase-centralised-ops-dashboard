@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   BAR_COUNT,
+  byRedHealthChip,
   bySeverity,
   severityOf,
   stripFrom,
@@ -423,6 +424,12 @@ test("one red outranks any number of ambers, however many", () => {
   assert.deepEqual(severityOf(undefined), { red: 0, amber: 0, stale: 0, green: 0 }, "a project with no strip is not a problem");
 });
 
+test("a red Data Health chip leads the past-100 process ranking", () => {
+  assert.ok(byRedHealthChip(true, false) < 0, "a red chip comes first, even against a project with many red process bars");
+  assert.ok(byRedHealthChip(false, true) > 0);
+  assert.equal(byRedHealthChip(true, true), 0, "strip severity decides between two red chips");
+});
+
 test("among clean projects, the busiest leads and the barely-run sink", () => {
   const clean = (green: number) => ({ red: 0, amber: 0, stale: 0, green });
 
@@ -437,17 +444,19 @@ test("among clean projects, the busiest leads and the barely-run sink", () => {
   assert.ok(bySeverity({ red: 1, amber: 0, stale: 0, green: 0 }, { red: 0, amber: 99, stale: 0, green: 0 }) < 0);
 });
 
-test("the card list is ordered by severity before anything else", async () => {
+test("a red Data Health chip leads, then process severity and card emphasis decide", async () => {
   const { readFile } = await import("node:fs/promises");
   const { resolve } = await import("node:path");
   const shell = await readFile(resolve("components/DashboardShell.tsx"), "utf8");
 
-  assert.match(shell, /const severity = bySeverity\(/, "severity decides first");
+  assert.match(shell, /const redChip = byRedHealthChip\(/, "a red Data Health pill is checked first");
+  assert.match(shell, /const severity = bySeverity\(/, "the past-100 process severity remains next");
   assert.match(shell, /if \(severity\) return severity;/);
+  assert.ok(shell.indexOf("const redChip = byRedHealthChip(") < shell.indexOf("const severity = bySeverity("));
   // And only then the pre-existing order, which still decides every healthy card.
   assert.ok(
     shell.indexOf("const severity = bySeverity(") < shell.indexOf("const rank = emphasisRank("),
     "emphasis is the tie-break, not the other way round",
   );
-  assert.match(shell, /\}, \[rows, active, query, projectStrips, projectFaults\]\);/, "and it re-sorts when the strips or the faults arrive");
+  assert.match(shell, /\}, \[rows, active, query, projectStrips, projectFaults, healthByProject\]\);/, "and it re-sorts when health, strips or faults arrive");
 });

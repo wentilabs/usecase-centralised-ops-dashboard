@@ -130,6 +130,11 @@ export function staleCount(bars: Bar[]): number {
 
 export type Severity = { red: number; amber: number; stale: number; green: number };
 
+/** A red Data Health pill leads the run-history ranking. */
+export function byRedHealthChip(a: boolean, b: boolean): number {
+  return Number(b) - Number(a);
+}
+
 /** How much of a strip needs looking at, split by how badly, and how much is fine. */
 export function severityOf(bars: Bar[] | undefined): Severity {
   let red = 0;

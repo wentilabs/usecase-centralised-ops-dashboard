@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import test from "node:test";
 
-import { dueHealthWindow, healthSummary, healthSummaryKey } from "../lib/health-notifications";
+import { executeHealthNotification, type HealthNotificationDependencies } from "../lib/health-notification-flow";
+import { currentHealthWindow, dueHealthWindow, healthSummary, healthSummaryKey, parseHealthNotifyOptions } from "../lib/health-notifications";
 import { SERVICE_KEYS, SERVICES } from "../lib/services";
 
 const start = new Date("2026-10-22T16:00:00Z"); // 23 Oct 00:00 SGT
@@ -20,6 +19,19 @@ test("only the first fifteen minutes of 00:00, 08:00 and 16:00 SGT are due", () 
   });
   assert.equal(dueHealthWindow(new Date("2026-10-23T00:15:00Z")), null);
   assert.equal(dueHealthWindow(new Date("2026-10-23T02:00:00Z")), null);
+  assert.deepEqual(currentHealthWindow(new Date("2026-10-23T02:00:00Z")), {
+    start: new Date("2026-10-22T18:00:00Z"), end: new Date("2026-10-23T02:00:00Z"),
+  });
+});
+
+test("manual options require explicit booleans and cannot combine preview with sending", () => {
+  assert.deepEqual(parseHealthNotifyOptions({}), { dryRun: false, force: false });
+  assert.deepEqual(parseHealthNotifyOptions({ dryRun: true }), { dryRun: true, force: false });
+  assert.deepEqual(parseHealthNotifyOptions({ force: true }), { dryRun: false, force: true });
+  assert.throws(() => parseHealthNotifyOptions({ dryRun: "true" }), /boolean/);
+  assert.throws(() => parseHealthNotifyOptions({ force: true, dryRun: true }), /not both/);
+  assert.throws(() => parseHealthNotifyOptions({ force: true, project_code: "TEST" }), /Unknown field/);
+  assert.throws(() => parseHealthNotifyOptions([]), /JSON object/);
 });
 
 test("one healthy digest includes every service and the slot has one stable claim key", () => {
@@ -75,13 +87,67 @@ test("current red and amber findings appear beside historical errors", () => {
   assert.match(summary.message, /🔴 Lightning tick — Current service issue: tick stopped/);
 });
 
-test("the notify route keeps one claim and one listener send per due slot", async () => {
-  const route = await readFile(resolve("app/api/data-health/notify/route.ts"), "utf8");
-  assert.match(route, /dueHealthWindow\(new Date\(\)\)/);
-  assert.ok(route.indexOf("alreadyClaimed(healthSummaryKey(window.end), config)") < route.indexOf("listNotificationProcessWindow(window.start)"));
-  assert.match(route, /listNotificationEstateHealth\(\)/);
-  assert.match(route, /listNotificationProcessWindow\(window\.start\)/);
-  assert.match(route, /claim\(summary\.key, config\)/);
-  assert.match(route, /send\(summary\.message, config\)/);
-  assert.doesNotMatch(route, /for \(const alert of alerts\)/);
+function fakeDependencies(lookup = false) {
+  const calls: string[] = [];
+  const deps: HealthNotificationDependencies = {
+    alreadyClaimed: async () => { calls.push("lookup"); return lookup; },
+    claim: async () => { calls.push("claim"); return true; },
+    read: async () => { calls.push("read"); return { health: [], strips: {}, faults: {}, notices: [] }; },
+    send: async () => { calls.push("send"); return "queued"; },
+    record: async (_key, outcome) => { calls.push(`record:${outcome}`); },
+  };
+  return { calls, deps };
+}
+
+test("dryRun previews outside the schedule without ledger or listener calls", async () => {
+  const { calls, deps } = fakeDependencies();
+  const result = await executeHealthNotification(new Date("2026-10-23T02:00:00Z"), { dryRun: true, force: false }, deps);
+  assert.deepEqual(calls, ["read"]);
+  assert.equal(result.delivered, 0);
+  assert.ok("message" in result);
+  assert.match(result.message ?? "", /HALO Data Health · 2026-10-23 02:00–2026-10-23 10:00 SGT/);
+});
+
+test("force sends outside the schedule and bypasses the ledger", async () => {
+  const { calls, deps } = fakeDependencies(true);
+  const result = await executeHealthNotification(new Date("2026-10-23T02:00:00Z"), { dryRun: false, force: true }, deps);
+  assert.deepEqual(calls, ["read", "send"]);
+  assert.equal(result.delivered, 1);
+  assert.ok("outcome" in result);
+  assert.equal(result.outcome, "queued");
+});
+
+test("the scheduled path skips ordinary ticks and already-claimed windows", async () => {
+  const idle = fakeDependencies();
+  assert.equal((await executeHealthNotification(new Date("2026-10-23T02:00:00Z"), { dryRun: false, force: false }, idle.deps)).delivered, 0);
+  assert.deepEqual(idle.calls, []);
+
+  const duplicate = fakeDependencies(true);
+  assert.equal((await executeHealthNotification(new Date("2026-10-23T00:05:00Z"), { dryRun: false, force: false }, duplicate.deps)).delivered, 0);
+  assert.deepEqual(duplicate.calls, ["lookup"]);
+});
+
+test("a due scheduled window claims once and records the listener outcome", async () => {
+  const { calls, deps } = fakeDependencies();
+  const result = await executeHealthNotification(new Date("2026-10-23T00:05:00Z"), { dryRun: false, force: false }, deps);
+  assert.deepEqual(calls, ["lookup", "read", "claim", "send", "record:queued"]);
+  assert.equal(result.delivered, 1);
+});
+
+test("an uncertain scheduled send stays claimed, while a forced failure writes no claim", async () => {
+  const scheduled = fakeDependencies();
+  scheduled.deps.send = async () => { scheduled.calls.push("send"); throw new Error("listener timeout"); };
+  await assert.rejects(
+    executeHealthNotification(new Date("2026-10-23T00:05:00Z"), { dryRun: false, force: false }, scheduled.deps),
+    /listener timeout/,
+  );
+  assert.deepEqual(scheduled.calls, ["lookup", "read", "claim", "send", "record:unconfirmed"]);
+
+  const forced = fakeDependencies();
+  forced.deps.send = async () => { forced.calls.push("send"); throw new Error("listener timeout"); };
+  await assert.rejects(
+    executeHealthNotification(new Date("2026-10-23T02:00:00Z"), { dryRun: false, force: true }, forced.deps),
+    /listener timeout/,
+  );
+  assert.deepEqual(forced.calls, ["read", "send"]);
 });

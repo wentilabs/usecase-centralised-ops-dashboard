@@ -6,6 +6,18 @@ import type { LightningNotice } from "./lightning-health";
 import { isServiceKey, SERVICE_KEYS, SERVICES, type ServiceKey } from "./services";
 
 export type HealthSummary = { key: string; message: string; windowStart: Date; windowEnd: Date; issueCount: number };
+export type HealthNotifyOptions = { dryRun: boolean; force: boolean };
+
+export function parseHealthNotifyOptions(value: unknown): HealthNotifyOptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a JSON object.");
+  const body = value as Record<string, unknown>;
+  const unknown = Object.keys(body).filter((key) => key !== "dryRun" && key !== "force");
+  if (unknown.length) throw new Error(`Unknown field: ${unknown[0]}.`);
+  if (body.dryRun !== undefined && typeof body.dryRun !== "boolean") throw new Error("dryRun must be a boolean.");
+  if (body.force !== undefined && typeof body.force !== "boolean") throw new Error("force must be a boolean.");
+  if (body.dryRun === true && body.force === true) throw new Error("Use dryRun or force, not both.");
+  return { dryRun: body.dryRun === true, force: body.force === true };
+}
 
 export function healthSummaryKey(windowEnd: Date): string {
   return createHash("sha256").update(`halo-health-summary:${windowEnd.toISOString()}`).digest("hex");
@@ -17,6 +29,11 @@ export function dueHealthWindow(now: Date): { start: Date; end: Date } | null {
   if (sgt.getUTCMinutes() >= 15 || sgt.getUTCHours() % 8 !== 0) return null;
   const end = new Date(Date.UTC(sgt.getUTCFullYear(), sgt.getUTCMonth(), sgt.getUTCDate(), sgt.getUTCHours()) - 8 * 3_600_000);
   return { start: new Date(end.getTime() - 8 * 3_600_000), end };
+}
+
+/** Manual inspection and forced delivery use the eight hours immediately before invocation. */
+export function currentHealthWindow(now: Date): { start: Date; end: Date } {
+  return { start: new Date(now.getTime() - 8 * 3_600_000), end: now };
 }
 
 type Issue = { service: ServiceKey; code: string; severity: "red" | "amber"; kind: string; error: string };

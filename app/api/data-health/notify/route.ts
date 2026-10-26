@@ -2,7 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { listNotificationEstateHealth, listNotificationProcessWindow, listProjectFaults, listServiceNotices } from "@/lib/config-repository";
-import { dueHealthWindow, healthSummary, healthSummaryKey } from "@/lib/health-notifications";
+import { executeHealthNotification } from "@/lib/health-notification-flow";
+import { parseHealthNotifyOptions } from "@/lib/health-notifications";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,6 +15,24 @@ function authorized(request: NextRequest): boolean {
   const a = Buffer.from(expected);
   const b = Buffer.from(supplied);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+class BadRequestError extends Error {}
+
+async function readNotifyOptions(request: NextRequest) {
+  const text = await request.text();
+  if (text.length > 1024) throw new BadRequestError("Request body is too large.");
+  let value: unknown;
+  try {
+    value = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    throw new BadRequestError("Request body must be valid JSON.");
+  }
+  try {
+    return parseHealthNotifyOptions(value);
+  } catch (error) {
+    throw new BadRequestError(error instanceof Error ? error.message : "Invalid request body.");
+  }
 }
 
 function settings() {
@@ -102,28 +121,24 @@ async function send(message: string, config: ReturnType<typeof settings>): Promi
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   try {
-    const window = dueHealthWindow(new Date());
-    if (!window) return NextResponse.json({ success: true, due: false, delivered: 0 });
-    const config = settings();
-    if (await alreadyClaimed(healthSummaryKey(window.end), config)) {
-      return NextResponse.json({ success: true, due: true, delivered: 0, duplicates: 1 });
-    }
-    const [health, strips, faults, notices] = await Promise.all([
-      listNotificationEstateHealth(), listNotificationProcessWindow(window.start), listProjectFaults(), listServiceNotices(),
-    ]);
-    const summary = healthSummary({ windowStart: window.start, windowEnd: window.end, health, strips, faults, notices });
-    if (!await claim(summary.key, config)) {
-      return NextResponse.json({ success: true, due: true, evaluated: summary.issueCount, delivered: 0, duplicates: 1 });
-    }
-    try {
-      const outcome = await send(summary.message, config);
-      await record(summary.key, outcome, config);
-    } catch (error) {
-      await record(summary.key, "unconfirmed", config);
-      throw error;
-    }
-    return NextResponse.json({ success: true, due: true, evaluated: summary.issueCount, delivered: 1, duplicates: 0 });
+    const options = await readNotifyOptions(request);
+    let config: ReturnType<typeof settings> | null = null;
+    const senderSettings = () => config ??= settings();
+    const result = await executeHealthNotification(new Date(), options, {
+      alreadyClaimed: (key) => alreadyClaimed(key, senderSettings()),
+      claim: (key) => claim(key, senderSettings()),
+      read: async (since) => {
+        const [health, strips, faults, notices] = await Promise.all([
+          listNotificationEstateHealth(), listNotificationProcessWindow(since), listProjectFaults(), listServiceNotices(),
+        ]);
+        return { health, strips, faults, notices };
+      },
+      send: (message) => send(message, senderSettings()),
+      record: (key, outcome) => record(key, outcome, senderSettings()),
+    });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
+    if (error instanceof BadRequestError) return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     console.error("[ERROR][halo-data-health] notification failed", error);
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unknown failure" }, { status: 500 });
   }

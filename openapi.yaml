@@ -782,15 +782,29 @@ paths:
       tags:
         - discovery
       summary: Send the eight-hour estate Data Health summary to the internal group
-      description: Machine route called by the five-minute Noise Lambda relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token. One service-grouped summary is eligible near 00:00, 08:00 and 16:00 SGT, covering process issues in the preceding eight hours and current standing findings. A unique window claim prevents duplicate sends. Calling this route can send a real WhatsApp message to the internal Data Health group in production.
+      description: Machine route called by the five-minute Noise Lambda relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token. An empty body preserves the scheduled summary near 00:00, 08:00 and 16:00 SGT. dryRun previews the latest eight hours without sending or claiming; force sends that summary immediately without the time or repeat gates. Manual modes must be called directly on HALO, not through the unauthenticated Noise relay. A forced call can send a real WhatsApp message.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dryRun:
+                  type: boolean
+                force:
+                  type: boolean
+              additionalProperties: false
       responses:
         "200":
-          description: Evaluation and delivery counts.
+          description: Scheduled counts, preview message, or forced delivery outcome.
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
+        "400":
+          description: Invalid JSON or unsupported option.
         "401": *a1
         "500":
           description: Health read, ledger, or delivery failed.

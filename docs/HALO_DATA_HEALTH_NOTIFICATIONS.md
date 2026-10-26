@@ -9,3 +9,15 @@ The route sends one estate summary for each eight-hour window ending at 00:00, 0
 The message has a header for every HALO service. Each red or orange line names its project code, process/status, and error. Identical findings across runs or projects are combined on one line, with a repeat count. A service with no reported issues has a ✅ line; when none of the services has an issue, the message also starts with ✅. The sender requires all service configuration reads and the full bounded process-history read before claiming a window, so a failed read cannot silently produce a healthy report.
 
 `ops.data_health_notifications` is a durable unique-key claim before delivery. One key per window allows one message at most, even if the relay invokes HALO several times in the fifteen-minute eligibility period. Later ticks check that key before making the expensive health reads. Outside the eligibility period HALO returns before any database read. An ambiguous listener result remains `unconfirmed` and is not retried blindly, because the listener may already have queued it. Inspect the ledger and listener queue when a relay run fails. Removing the EventBridge rule immediately stops new evaluations. Existing service-owned Noise and WBGT Data Health crons remain separate until the HALO path has been verified live and deliberately cut over.
+
+## Manual inspection
+
+Send a direct `POST` to HALO's `/api/data-health/notify` with `Authorization: Bearer <HALO_DATA_HEALTH_TOKEN>` and `Content-Type: application/json`. The Noise relay accepts only `{}` and does not expose these manual modes.
+
+| JSON body | Result |
+| --- | --- |
+| `{}` | Normal scheduled behavior; outside the three send windows it returns `due: false`. |
+| `{"dryRun":true}` | Reads the latest eight hours and returns `message`, `windowStart`, `windowEnd`, and the grouped issue count. No listener send or ledger read/write. |
+| `{"force":true}` | Sends the latest-eight-hour message immediately and returns it with the listener outcome. It bypasses the time and repeat gates and makes no ledger claim, so another manual or scheduled send can follow. |
+
+Only boolean `dryRun` and `force` fields are accepted. Setting both to `true` is rejected. Authentication is required for every mode. A failed or uncertain forced send can already have reached the listener; do not assume a manual retry is duplicate-safe.

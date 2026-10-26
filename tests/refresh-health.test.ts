@@ -95,5 +95,6 @@ test("the button is on the strip and in the board, says what it is doing, and ca
   assert.doesNotMatch(shell, /new Map\(projectHealth\.map\(/);
 
   const board = await source("components/DataHealthBoard.tsx");
-  assert.match(board, /<RefreshHealthButton onRefresh=\{onRefresh\}/, "and in the board's header, where a fix is checked");
+  assert.match(board, /<RefreshHealthButton onRefresh=\{refreshBoard\}/, "and in the board's header, where a fix is checked");
+  assert.match(board, /const refreshBoard = \(\) => \{ onRefresh\?\.\(\); setHandlerReadRevision/, "refresh rereads both health and handler records");
 });

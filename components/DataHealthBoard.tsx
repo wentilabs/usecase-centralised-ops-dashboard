@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { LoadStamps } from "./LoadStamps";
 import { RefreshHealthButton } from "./RefreshHealthButton";
@@ -10,6 +10,7 @@ import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
 import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects, standaloneHealthIncidents } from "@/lib/health-report";
 import type { Bar } from "@/lib/health-timeline";
+import type { HandlerFailureReport } from "@/lib/handler-failures";
 
 /** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
 function when(incident: Incident): string | null {
@@ -50,9 +51,10 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
+  hazeHourlyCheckUnavailable?: boolean;
   /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
   onRefresh?: () => void;
   /** What has loaded, when, and how long it took: the board is where someone decides whether to trust what they see. */
@@ -83,6 +85,27 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
   const servicesWithIssues = [...new Set([...errorsByService.keys(), ...issuesByService.keys()])]
     .sort((a, b) => SERVICES[a].label.localeCompare(SERVICES[b].label));
   const [copyStatus, setCopyStatus] = useState("");
+  const [handlerReport, setHandlerReport] = useState<HandlerFailureReport | null>(null);
+  const [handlerReadState, setHandlerReadState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [handlerReadRevision, setHandlerReadRevision] = useState(0);
+  const refreshBoard = () => { onRefresh?.(); setHandlerReadRevision((value) => value + 1); };
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/handler-failures", { cache: "no-store" });
+        if (!response.ok) throw new Error(String(response.status));
+        const body = await response.json() as HandlerFailureReport & { unavailable?: boolean };
+        if (body.unavailable || !Array.isArray(body.failures)) throw new Error("unavailable");
+        if (active) { setHandlerReport(body); setHandlerReadState("ready"); }
+      } catch {
+        if (active) { setHandlerReport(null); setHandlerReadState("unavailable"); }
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 5 * 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [handlerReadRevision]);
   const copyErrors = async () => {
     try {
       const processReport = formatHealthErrorReport(strips);
@@ -91,7 +114,10 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
       const report = issueReport
         ? hasProcessErrors ? `${processReport}\n\n${issueReport}` : `HALO Data Health report\n\n${issueReport}`
         : processReport;
-      await navigator.clipboard.writeText(report);
+      const handlerLines = handlerReport?.failures.map((failure) =>
+        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"} | handler_failed | ${failure.reason}`,
+      ) ?? [];
+      await navigator.clipboard.writeText(handlerLines.length ? `${report}\n\nRecent handler failures (service records)\n${handlerLines.join("\n")}` : report);
       setCopyStatus("Copied");
     } catch {
       setCopyStatus("Copy unavailable");
@@ -117,6 +143,9 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
                   rather than wondering whether it was ever configured. */}
               <span className="opacity-70">Every covered project is automatically monitored.</span>
             </p>
+            {hazeHourlyCheckUnavailable ? (
+              <p className="mt-1 text-xs text-muted-foreground">Haze scheduled-run check unavailable. Current issues cannot rule out a missed hourly run.</p>
+            ) : null}
             {loads ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
                 <LoadStamps loads={loads} />
@@ -125,7 +154,7 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
           </div>
           <div className="ml-auto flex flex-wrap items-start justify-end gap-2">
             {onRefresh ? (
-              <RefreshHealthButton onRefresh={onRefresh} refreshing={refreshing} refreshedAt={refreshedAt} failed={refreshFailed} />
+              <RefreshHealthButton onRefresh={refreshBoard} refreshing={refreshing} refreshedAt={refreshedAt} failed={refreshFailed} />
             ) : null}
             <button
               type="button"
@@ -247,6 +276,34 @@ export function DataHealthBoard({ summary, strips, onClose, onOpenProject, onRef
               </div>
             </div>
           ) : null}
+
+          <section className="border-t border-border pt-4" aria-label="Recent handler failures">
+            <h3 className="text-sm font-semibold">Recent handler failures</h3>
+            <p className="mt-1 text-[11px] text-muted-foreground">Service-recorded errors from the last 48 hours. A recorded error may already have recovered; current health is shown above.</p>
+            {handlerReadState === "loading" ? <p className="mt-2 text-xs text-muted-foreground">Checking service failure records…</p> : null}
+            {handlerReadState === "unavailable" ? <p className="mt-2 text-xs text-muted-foreground">Failure records unavailable. This does not mean there were no failures.</p> : null}
+            {handlerReadState === "ready" && handlerReport ? (
+              <>
+                {!handlerReport.failures.length ? (
+                  <p className="mt-2 text-xs text-muted-foreground">No recorded handler failures in the last 48 hours. Coverage begins when each service adopts the shared writer.</p>
+                ) : null}
+                {handlerReport.failures.length ? (
+                  <ul className="mt-3 max-h-80 divide-y divide-border overflow-auto rounded-lg border border-border bg-card">
+                    {handlerReport.failures.map((failure, index) => (
+                      <li key={`${failure.service}|${failure.at}|${index}`} className="px-3 py-2 text-xs">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-semibold">{SERVICES[failure.service].label}</span>
+                          <span className="font-mono text-muted-foreground">{failure.route ?? "route unknown"}</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground">{processTime(failure.at)} SGT</span>
+                        </div>
+                        <p className="mt-1 break-words font-mono text-danger">{failure.reason}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : null}
+          </section>
 
           {!errorProcessCount && !currentIssues.length ? (
             <p className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">

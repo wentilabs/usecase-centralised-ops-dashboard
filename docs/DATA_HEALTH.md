@@ -18,11 +18,46 @@ These fail differently and point at different people, so they are three
 signals, not one. A project's pill shows the worst of them; the breakdown says
 which.
 
-**Cadence dependence is not computed anywhere.** The job already knows whether
-it was due, and says so by writing `skipped_outside_project_cadence_window` (or
-its service's equivalent). HALO reads that decision rather than reconstructing
-it from configuration — the service is the source, and a second derivation would
-disagree with it on exactly the hours that decide whether someone is woken up.
+For an invocation that **has a run row**, HALO reads the job's own decision
+(`skipped_outside_project_cadence_window`, for example) rather than guessing
+whether a message was due from configuration. For Haze's hourly invocation,
+HALO separately checks that a row exists at all: an enabled project with an
+outbound group and no
+`hourly` run in either of the last two completed hourly slots gets a current
+issue. This catches a configuration parse failure before per-project processing,
+the failure mode seen on 26 Oct 2026. A 15-minute grace period allows the run to
+finish and be recorded. A newly edited project is excluded until two complete
+slots have passed since its edit.
+
+The missing-run check reads `haze.haze_job_runs` independently of the history
+strip's 100-bar limit. If that read fails or is truncated, HALO has no evidence
+and does not infer a missed run; the Data Health board says the check is
+unavailable. An open dashboard refreshes this small check
+every five minutes and when its tab becomes visible. It creates a HALO current
+issue only; it sends no WhatsApp notification. At present this independent
+missing-run coverage is implemented for Haze hourly only. The other services'
+run and delivery rows still show recorded failures, but a completely absent
+scheduled run is not yet detected for them.
+Set `HALO_HAZE_MISSING_RUN_MONITOR=false` in the HALO host environment and
+redeploy to disable this inference without changing any service or database row.
+
+### Handler failure reasons from service records
+
+A service can write a bounded failure reason to `ops.service_handler_failures`
+when its outer handler catches an error. HALO reads the latest 48 hours from
+that table and shows the service, route, time and reason. These are historical
+events; a later successful run may have recovered. HALO shows a failed read as
+unavailable and does not treat an empty table as proof that every service ran.
+The separate missing-run check above covers invocations with no handler row.
+
+Apply `supabase/handler_failures.sql` in the shared config Supabase project before
+enabling service writers. Haze, Lightning and Noise write from their outer
+failure handlers. Other services need to add the same best-effort write before
+HALO can show their reasons. The writer must not change the handler's response
+or delivery.
+Reasons are limited to one line and 500 characters, with credential-shaped
+values redacted. The table has an index for recent reads; arrange a 30-day
+retention cleanup in database operations.
 
 ## What a service records
 

@@ -1,6 +1,7 @@
 import type { LightningNotice } from "./lightning-health";
 import type { ProjectHealth } from "./data-health";
 import type { Bar } from "./health-timeline";
+import type { HazeHourlyEvidence } from "./scheduled-run-health";
 
 /**
  * What "Refresh data health" is allowed to change on screen.
@@ -19,6 +20,7 @@ export type RefreshUpdates = {
   strips?: Record<string, Bar[]>;
   faults?: Record<string, string>;
   notices?: LightningNotice[];
+  hazeHourlyEvidence?: HazeHourlyEvidence | null;
   /** When the answer was read, from the server; the browser's clock only if it did not say. */
   refreshedAt: string;
 };
@@ -35,5 +37,9 @@ export function refreshUpdates(body: unknown, fallbackNow: () => string = () => 
   if (isPlainObject(source.strips)) updates.strips = source.strips as Record<string, Bar[]>;
   if (isPlainObject(source.faults)) updates.faults = source.faults as Record<string, string>;
   if (Array.isArray(source.notices)) updates.notices = source.notices as LightningNotice[];
+  if (source.hazeHourlyEvidence === null) updates.hazeHourlyEvidence = null;
+  else if (isPlainObject(source.hazeHourlyEvidence)
+    && typeof source.hazeHourlyEvidence.checkedAt === "string"
+    && Array.isArray(source.hazeHourlyEvidence.runs)) updates.hazeHourlyEvidence = source.hazeHourlyEvidence as HazeHourlyEvidence;
   return updates;
 }

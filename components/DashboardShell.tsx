@@ -26,6 +26,7 @@ import { refreshUpdates } from "@/lib/health-refresh";
 import { LOADING, failed, finished, type Load } from "@/lib/load-stamps";
 import { LoadStamps } from "./LoadStamps";
 import { boardEntries, deliveryEntries, faultEntries, noticeEntries, summarise } from "@/lib/health-board";
+import { missingHazeHourlyEntries, type HazeHourlyEvidence } from "@/lib/scheduled-run-health";
 import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
@@ -127,6 +128,7 @@ export function DashboardShell({
   const [projectFaults, setProjectFaults] = useState<Record<string, string>>({});
   // Whole-service findings — the Lightning tick, the NEA feed — which belong to no project card.
   const [serviceNotices, setServiceNotices] = useState<Parameters<typeof noticeEntries>[0]>([]);
+  const [hazeHourlyEvidence, setHazeHourlyEvidence] = useState<HazeHourlyEvidence | null>(null);
   // The readings-age verdicts, loaded after first paint. They are not part of the document because they
   // were the whole of the wait (3.6 s of a 3.7 s render): a newest-row query for each active project.
   const [liveHealth, setLiveHealth] = useState<ProjectHealth[]>([]);
@@ -161,9 +163,32 @@ export function DashboardShell({
       setProjectStrips((body.strips as Record<string, Bar[]>) ?? {});
       setProjectFaults((body.faults as Record<string, string>) ?? {});
       setServiceNotices(Array.isArray(body.notices) ? (body.notices as Parameters<typeof noticeEntries>[0]) : []);
+      setHazeHourlyEvidence(body.hazeHourlyEvidence && typeof body.hazeHourlyEvidence === "object"
+        ? body.hazeHourlyEvidence as HazeHourlyEvidence : null);
     }, setHistoryLoad);
     return () => {
       live = false;
+    };
+  }, []);
+  useEffect(() => {
+    const refreshScheduledRuns = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch("/api/scheduled-run-health", { cache: "no-store" });
+        if (!response.ok) throw new Error(String(response.status));
+        const body = await response.json() as { hazeHourlyEvidence?: HazeHourlyEvidence | null };
+        setHazeHourlyEvidence(body.hazeHourlyEvidence ?? null);
+      } catch {
+        // A failed read removes the inferred issue rather than treating silence as proof.
+        setHazeHourlyEvidence(null);
+      }
+    };
+    const timer = window.setInterval(() => void refreshScheduledRuns(), 5 * 60_000);
+    const onVisible = () => { if (document.visibilityState === "visible") void refreshScheduledRuns(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
   const [refreshingHealth, setRefreshingHealth] = useState(false);
@@ -188,6 +213,7 @@ export function DashboardShell({
       if (updates.strips) setProjectStrips(updates.strips);
       if (updates.faults) setProjectFaults(updates.faults);
       if (updates.notices) setServiceNotices(updates.notices);
+      if (updates.hazeHourlyEvidence !== undefined) setHazeHourlyEvidence(updates.hazeHourlyEvidence);
       setHealthRefreshedAt(updates.refreshedAt);
       // One request replaced both, so both loads are now this one, timed together.
       const took = finished(startedAt);
@@ -244,8 +270,9 @@ export function DashboardShell({
         ...deliveryEntries(projectStrips, boardSignalFor),
         ...faultEntries(projectFaults),
         ...noticeEntries(serviceNotices),
+        ...missingHazeHourlyEntries(rows.haze ?? [], hazeHourlyEvidence),
       ]),
-    [rows, healthByProject, projectStrips, projectFaults, serviceNotices],
+    [rows, healthByProject, projectStrips, projectFaults, serviceNotices, hazeHourlyEvidence],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -853,6 +880,7 @@ export function DashboardShell({
         <DataHealthBoard
           summary={healthSummary}
           strips={projectStrips}
+          hazeHourlyCheckUnavailable={historyLoad.state === "done" && hazeHourlyEvidence === null}
           loads={loadItems}
           onRefresh={() => void refreshHealth()}
           refreshing={refreshingHealth}

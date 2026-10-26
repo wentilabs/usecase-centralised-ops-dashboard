@@ -750,10 +750,42 @@ paths:
       tags:
         - discovery
       summary: Recent process history per project, for the health strips
-      description: "The last 100 processes per project within the past 48 hours, keyed by service and project code. A process is one run or one delivery attempt, each carrying the service's own status word and whatever it logged about a failure. Noise, WBGT, Subcon, Ailytics, Haze and Issue Chaser answer from their per-project run logs (one row per project per scheduled run, including runs that correctly did nothing); Lightning answers from its delivery ledger. Haze and Issue Chaser fall back to their delivery ledger only while their run-log table cannot be read at all, never when it is merely empty. Haze's NEA scrape is one public feed for the whole estate and is not tracked. Services with no readable source are absent rather than reported healthy. The response also carries `faults`: projects stuck in a standing state with no instant to draw on a strip — today Lightning's `last_error`, e.g. a rejected configuration — keyed the same way, in the service's own words — and `notices`: findings about a whole service rather than a project (the Lightning tick not finishing, the NEA feed behind), each with a colour, a sentence and the time it concerns. Every process also carries `kind`, the service's own job or event type."
+      description: "The last 100 processes per project within the past 48 hours, keyed by service and project code. A process is one run or one delivery attempt, each carrying the service's own status word and whatever it logged about a failure. Noise, WBGT, Subcon, Ailytics, Haze and Issue Chaser answer from their per-project run logs (one row per project per scheduled run, including runs that correctly did nothing); Lightning answers from its delivery ledger. Haze and Issue Chaser fall back to their delivery ledger only while their run-log table cannot be read at all, never when it is merely empty. Haze's NEA scrape is one public feed for the whole estate and is not tracked. Services with no readable source are absent rather than reported healthy. The response also carries `faults`: projects stuck in a standing state with no instant to draw on a strip — today Lightning's `last_error`, e.g. a rejected configuration — keyed the same way, in the service's own words — and `notices`: findings about a whole service rather than a project (the Lightning tick not finishing, the NEA feed behind), each with a colour, a sentence and the time it concerns. `hazeHourlyEvidence` is a separate bounded read for detecting absent hourly runs and is null when unreadable. Every process also carries `kind`, the service's own job or event type."
       responses:
         "200":
           description: Bars per project, oldest first within each strip.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+  /api/scheduled-run-health:
+    get:
+      operationId: listScheduledRunHealth
+      tags:
+        - discovery
+      summary: Recent Haze hourly run evidence for an open HALO dashboard
+      description: Reads the two most recent completed hourly slots from Haze's per-project run log. A null `hazeHourlyEvidence` means the table was unreadable, truncated, or the check is disabled, and cannot prove a missed run. The dashboard polls this while visible. No WhatsApp message is sent.
+      responses:
+        "200":
+          description: Haze hourly evidence or null when unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+  /api/handler-failures:
+    get:
+      operationId: listHandlerFailures
+      tags:
+        - discovery
+      summary: Recent service-recorded handler failure reasons
+      description: Reads the last 48 hours of service-written failure rows from ops.service_handler_failures. Each result includes service, route, timestamp and a bounded reason. An unavailable read is explicit. An empty list covers only services that write to this table and is not proof that all services ran. Any signed-in HALO viewer may read these historical events.
+      responses:
+        "200":
+          description: Recent failures and read availability.
           content:
             application/json:
               schema:
@@ -814,7 +846,7 @@ paths:
       tags:
         - discovery
       summary: Forget what Data Health remembers and read it all again
-      description: "Clears the four things Data Health holds for a while — the strips (five minutes), the standing faults and Lightning's heartbeat (a minute) and the configuration rows health is judged against (a few seconds) — then reads every one again together and answers with all of it: `health` (the per-project readings-age verdicts), `strips`, `faults`, `notices` (whole-service findings such as the Lightning tick and the NEA feed) and `fetchedAt`. A part that could not be read is `null`, never empty, so a caller cannot mistake 'could not look' for 'nothing is wrong'. Changes nothing durable; any signed-in viewer may call it, including a read-only one."
+      description: "Clears the four things Data Health holds for a while — the strips (five minutes), the standing faults and Lightning's heartbeat (a minute) and the configuration rows health is judged against (a few seconds) — then reads every one again together and answers with all of it: `health` (the per-project readings-age verdicts), `strips`, `faults`, `notices` (whole-service findings such as the Lightning tick and the NEA feed), `hazeHourlyEvidence` (null if the run log could not be read), and `fetchedAt`. A part that could not be read is `null`, never empty, so a caller cannot mistake 'could not look' for 'nothing is wrong'. Changes nothing durable; any signed-in viewer may call it, including a read-only one."
       responses:
         "200":
           description: Everything the board and the cards draw from, freshly read.

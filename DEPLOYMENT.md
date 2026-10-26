@@ -63,6 +63,10 @@ dependency bump could silently break — run `npm test` before every deploy.
    redirect allow-list, so OTP sign-in completes on the deployed origin.
 4. **Deploy**, then verify below.
 
+To show service failure reasons, apply `supabase/handler_failures.sql` to the
+shared config Supabase project before deploying the Haze writer. HALO reads this
+table with its existing `SUPABASE_SECRET_KEY`; no AWS log access is needed.
+
 ## Verify after deploy
 
 ```bash

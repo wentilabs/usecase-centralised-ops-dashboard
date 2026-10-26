@@ -43,7 +43,7 @@ test("a finished load is timed from when it started", () => {
 test("the header and the board show the same stamps, and a failed load never replaces what was on screen", async () => {
   const shell = await readFile(resolve("components/DashboardShell.tsx"), "utf8");
   assert.match(shell, /<LoadStamps loads=\{loadItems\} \/>/, "the header");
-  assert.match(shell, /strips=\{projectStrips\}\s+loads=\{loadItems\}/, "handed to the board from the same list, so the two cannot disagree");
+  assert.match(shell, /strips=\{projectStrips\}\s+hazeHourlyCheckUnavailable=\{[^}]+\}\s+loads=\{loadItems\}/, "handed to the board from the same list, so the two cannot disagree");
   assert.match(shell, /\.catch\(\(\) => live && record\(failed\(\)\)\)/, "a failure is recorded as one");
   const loader = shell.slice(shell.indexOf("const fetchedPage"), shell.indexOf("fetchedPage(\"/api/data-health\""));
   assert.doesNotMatch(loader, /setProjectStrips\(\{\}\)|setLiveHealth\(\[\]\)/, "and never blanks what was already there");

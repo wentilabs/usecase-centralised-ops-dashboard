@@ -17,6 +17,7 @@ import { healthKey, type ProjectHealth } from "./data-health";
 import { listProjectHealth } from "./data-health-repository";
 import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
 import { describePostgrestError } from "./postgrest-error";
+import { completedHazeHourlySlots, type HazeHourlyEvidence } from "./scheduled-run-health";
 import {
   MANUAL_SOURCE_MARKER,
   groupLimitsByMeter,
@@ -1037,6 +1038,34 @@ export async function attachCanonicalServiceAlias(
  * ten-page time window this replaced.
  */
 const stripCache = createTtlCache<"estate", Record<string, Bar[]>>(5 * 60_000);
+
+/** Independent of the strip's 100-bar quota, so old green bars cannot hide absent hourly rows. */
+export async function listHazeHourlyEvidence(): Promise<HazeHourlyEvidence | null> {
+  if (process.env.HALO_HAZE_MISSING_RUN_MONITOR === "false") return null;
+  const checkedAt = new Date().toISOString();
+  const slots = completedHazeHourlySlots(checkedAt);
+  if (!slots) return null;
+  const query = new URLSearchParams({
+    select: "project_code,started_at",
+    job_type: "eq.hourly",
+    started_at: `gte.${slots[0]}`,
+    order: "started_at.desc",
+    limit: "1001",
+  });
+  try {
+    const result = await request(`haze_job_runs?${query}`, { schema: "haze" });
+    // An unreadable or truncated answer is unknown, never evidence of silence.
+    if (!result.ok || !Array.isArray(result.body) || result.body.length >= 1000) return null;
+    const runs = (result.body as Record<string, unknown>[]).flatMap((row) => {
+      const projectCode = String(row.project_code ?? "").trim();
+      const at = String(row.started_at ?? "");
+      return projectCode && Number.isFinite(Date.parse(at)) ? [{ projectCode, at }] : [];
+    });
+    return { checkedAt, runs };
+  } catch {
+    return null;
+  }
+}
 
 export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
   const cached = stripCache.get("estate");

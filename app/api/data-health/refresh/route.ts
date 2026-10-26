@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   forgetHealthCaches,
+  listHazeHourlyEvidence,
   listEstateHealth,
   listProjectFaults,
   listProjectStrips,
@@ -34,12 +35,13 @@ export async function POST() {
   forgetHealthCaches();
 
   const started = Date.now();
-  const [health, strips, faults, notices] = await Promise.all([
+  const [health, strips, faults, notices, hazeHourlyEvidence] = await Promise.all([
     listEstateHealth().catch(() => null),
     listProjectStrips().catch(() => null),
     listProjectFaults().catch(() => null),
     listServiceNotices().catch(() => null),
+    listHazeHourlyEvidence(),
   ]);
 
-  return NextResponse.json({ health, strips, faults, notices, fetchedAt: new Date().toISOString(), tookMs: Date.now() - started });
+  return NextResponse.json({ health, strips, faults, notices, hazeHourlyEvidence, fetchedAt: new Date().toISOString(), tookMs: Date.now() - started });
 }

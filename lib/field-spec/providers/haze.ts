@@ -30,7 +30,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     },
     hourly_always: {
       label: "Always send hourly",
-      help: "Send the hourly haze advisory regardless of the configured PSI and PM2.5 severity floors. Working hours, Sunday/public-holiday mutes, reading freshness, and duplicate-send protection still apply.",
+      help: "Send the hourly haze advisory regardless of the configured PSI and PM2.5 severity floors. Working hours, Sunday/public-holiday mutes, reading freshness, and duplicate-send protection still apply. Projects with this flag are excluded from the daily kickoff message.",
     },
     alert_only_when_at_least: {
       label: "Alert only when at least",

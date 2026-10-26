@@ -160,7 +160,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
         "manpower_sheet_id",
       ],
     },
-    { routes: ["POST /api/haze-kickoff"], columns: ["four_hourly"] },
+    { routes: ["POST /api/haze-kickoff"], columns: ["four_hourly", "hourly_always"] },
     { routes: ["POST /api/haze-ingest", "GET /api/haze-readings"], columns: ["nea_region", "latitude", "longitude", "site_address"] },
   ],
 

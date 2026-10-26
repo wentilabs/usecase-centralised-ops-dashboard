@@ -166,7 +166,7 @@ export const ENDPOINT_PREVIEWS: EndpointPreview[] = [
   },
   {
     service: "haze", path: "/api/haze-kickoff", title: "Daily kickoff", sends: "text",
-    summary: "Once a day. Skips four-hourly projects and ignores working hours.",
+    summary: "Once a day for enabled projects except those with four_hourly or hourly_always. Ignores working hours and severity floors, but honors calendar mutes and fresh-reading checks.",
     enabledBy: [], sources: [{ sample: "haze.kickoff" }],
   },
   {

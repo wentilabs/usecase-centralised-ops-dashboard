@@ -149,6 +149,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
         "pm2.5_alert_only_when_at_least",
         "advisory_format",
         "four_hourly",
+        "hourly_always",
         "working_hours_start_hhmm",
         "working_hours_end_hhmm",
         "enable_poc_mentions",

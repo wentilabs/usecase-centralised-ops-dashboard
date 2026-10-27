@@ -4,6 +4,7 @@ import test from "node:test";
 import { completedHazeHourlySlots, missingFrequentRunEntries, missingHazeHourlyEntries } from "../lib/scheduled-run-health";
 import { summarise } from "../lib/health-board";
 import { formatHealthCurrentIssues } from "../lib/health-report";
+import { completedNoiseTicks, missingNoiseScheduleEntries, NOISE_SCHEDULES } from "../lib/noise-schedule-health";
 
 test("two completed haze hours with no project run become one current issue", () => {
   const evidence = {
@@ -69,4 +70,32 @@ test("frequent run inference requires readable recent baseline, active config, a
   assert.deepEqual(missingFrequentRunEntries({ wbgt: [{ enabled: true }], vibration: [{ enabled: false }] }, evidence), []);
   assert.deepEqual(missingFrequentRunEntries({ vibration: [{ enabled: true, updated_at: "2026-10-26T06:30:00.000Z" }] }, evidence), []);
   assert.deepEqual(missingFrequentRunEntries({}, null), []);
+});
+
+test("Noise screenshot schedules use UTC and cover all sixteen scheduled routes", () => {
+  assert.equal(NOISE_SCHEDULES.length, 16);
+  const scrape = NOISE_SCHEDULES.find((schedule) => schedule.route === "/api/scrape-noiselynx")!;
+  assert.deepEqual(completedNoiseTicks("2026-10-27T10:25:00.000Z", scrape), [
+    "2026-10-27T10:02:00.000Z", "2026-10-27T10:07:00.000Z",
+  ]);
+  const sunday = NOISE_SCHEDULES.find((schedule) => schedule.route === "/api/noise-limit-refresh")!;
+  assert.deepEqual(completedNoiseTicks("2026-10-27T10:25:00.000Z", sunday), [
+    "2026-10-18T02:00:00.000Z", "2026-10-25T02:00:00.000Z",
+  ]);
+  const monthly = NOISE_SCHEDULES.find((schedule) => schedule.route === "/api/noise-monthly-report")!;
+  assert.deepEqual(completedNoiseTicks("2026-10-27T10:25:00.000Z", monthly), [
+    "2026-09-01T04:45:00.000Z", "2026-10-01T04:45:00.000Z",
+  ]);
+});
+
+test("Noise needs a baseline and two completed due times before a missed route is flagged", () => {
+  const route = "/api/scrape-noiselynx";
+  assert.deepEqual(missingNoiseScheduleEntries(null), []);
+  assert.deepEqual(missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "unavailable", routes: [{ route, lastSeenAt: "2026-10-27T10:01:00Z" }] }), []);
+  assert.deepEqual(missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "ready", routes: [] }), []);
+  assert.deepEqual(missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "ready", routes: [{ route, lastSeenAt: "2026-10-27T10:02:00Z" }] }), []);
+  const entries = missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "ready", routes: [{ route, lastSeenAt: "2026-10-27T10:01:00Z" }] });
+  assert.deepEqual(entries.map((entry) => entry.projectCode), [route]);
+  assert.equal(entries[0]?.scope, "service");
+  assert.equal(entries[0]?.colour, "red");
 });

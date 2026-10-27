@@ -766,7 +766,7 @@ paths:
       tags:
         - discovery
       summary: Recent scheduled run evidence for an open HALO dashboard
-      description: Reads the two most recent scheduled hourly checkpoints from Haze's per-project run log, plus the newest run of WBGT scrape, Ailytics hourly summary, Issue Chaser severity check, and Vibration scrape. A null or unavailable source cannot prove a missed run; a source without a historical baseline is also not treated as a confirmed missed run. The dashboard polls this while visible. No WhatsApp message is sent.
+      description: Reads the two most recent scheduled hourly checkpoints from Haze's per-project run log, the newest run of WBGT scrape, Ailytics hourly summary, Issue Chaser severity check and Vibration scrape, and one completion watermark for each of Noise's 16 verified UTC routes. A null or unavailable source cannot prove a missed run; a source without a historical baseline is also not treated as a confirmed missed run. Noise route completions and handler errors are separate evidence. The dashboard polls this while visible. No WhatsApp message is sent.
       responses:
         "200":
           description: Per-service scheduled run evidence and explicit read states.

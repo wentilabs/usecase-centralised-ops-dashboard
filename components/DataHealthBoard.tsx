@@ -12,6 +12,7 @@ import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects
 import type { Bar } from "@/lib/health-timeline";
 import type { HandlerFailureReport } from "@/lib/handler-failures";
 import type { FrequentRunEvidence } from "@/lib/scheduled-run-health";
+import { NOISE_SCHEDULES, type NoiseScheduleEvidence } from "@/lib/noise-schedule-health";
 
 /** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
 function when(incident: Incident): string | null {
@@ -52,11 +53,12 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, noiseScheduleEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
   hazeHourlyCheckUnavailable?: boolean;
   frequentRunEvidence?: FrequentRunEvidence | null;
+  noiseScheduleEvidence?: NoiseScheduleEvidence | null;
   /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
   onRefresh?: () => void;
   /** What has loaded, when, and how long it took: the board is where someone decides whether to trust what they see. */
@@ -151,7 +153,12 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
             {frequentRunEvidence?.sources.some((source) => source.state !== "ready") ? (
               <p className="mt-1 text-xs text-muted-foreground">Scheduled-run evidence incomplete: {frequentRunEvidence.sources.filter((source) => source.state !== "ready").map((source) => `${SERVICES[source.service].label} (${source.state === "no_history" ? "no recorded baseline" : "unavailable"})`).join(", ")}. Silence is not treated as a confirmed missed run for these sources.</p>
             ) : null}
-            <p className="mt-1 text-xs text-muted-foreground">Noise and Subcon missed-run timing checks await verification of their live schedules. Their recorded run errors are still shown.</p>
+            {noiseScheduleEvidence?.state === "ready" ? (() => {
+              const observed = new Set(noiseScheduleEvidence.routes.map((row) => row.route));
+              const missing = NOISE_SCHEDULES.filter((schedule) => !observed.has(schedule.route));
+              return missing.length ? <p className="mt-1 text-xs text-muted-foreground">Noise schedule coverage pending first recorded completion for {missing.length} route{missing.length === 1 ? "" : "s"}: {missing.map((route) => route.name).join(", ")}. No missed-run inference is made for them yet.</p> : null;
+            })() : <p className="mt-1 text-xs text-muted-foreground">Noise scheduled-run evidence unavailable. Current issues cannot rule out missed routes.</p>}
+            <p className="mt-1 text-xs text-muted-foreground">Subcon missed-run timing checks await verification of its live schedule. Recorded run errors remain visible.</p>
             {loads ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
                 <LoadStamps loads={loads} />

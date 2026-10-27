@@ -18,6 +18,7 @@ import { listProjectHealth } from "./data-health-repository";
 import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
 import { describePostgrestError } from "./postgrest-error";
 import { completedHazeHourlySlots, type FrequentRunEvidence, type HazeHourlyEvidence } from "./scheduled-run-health";
+import type { NoiseScheduleEvidence } from "./noise-schedule-health";
 import {
   MANUAL_SOURCE_MARKER,
   groupLimitsByMeter,
@@ -1091,6 +1092,21 @@ export async function listFrequentRunEvidence(): Promise<FrequentRunEvidence> {
     }
   }));
   return { checkedAt, sources };
+}
+
+/** One bounded read for every scheduled Noise route; missing rows remain unproven coverage. */
+export async function listNoiseScheduleEvidence(): Promise<NoiseScheduleEvidence> {
+  const checkedAt = new Date().toISOString();
+  try {
+    const result = await request("noise_schedule_heartbeats?select=route,last_seen_at&limit=100", { schema: "noise-meters" });
+    if (!result.ok || !Array.isArray(result.body) || result.body.length >= 100) return { checkedAt, state: "unavailable", routes: [] };
+    const routes = (result.body as Record<string, unknown>[]).flatMap((row) =>
+      typeof row.route === "string" && typeof row.last_seen_at === "string" && Number.isFinite(Date.parse(row.last_seen_at))
+        ? [{ route: row.route, lastSeenAt: row.last_seen_at }] : []);
+    return { checkedAt, state: "ready", routes };
+  } catch {
+    return { checkedAt, state: "unavailable", routes: [] };
+  }
 }
 
 export async function listProjectStrips(): Promise<Record<string, Bar[]>> {

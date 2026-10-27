@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listFrequentRunEvidence, listHazeHourlyEvidence } from "@/lib/config-repository";
+import { listFrequentRunEvidence, listHazeHourlyEvidence, listNoiseScheduleEvidence } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const [hazeHourlyEvidence, frequentRunEvidence] = await Promise.all([listHazeHourlyEvidence(), listFrequentRunEvidence()]);
-  return NextResponse.json({ hazeHourlyEvidence, frequentRunEvidence });
+  const [hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence] = await Promise.all([listHazeHourlyEvidence(), listFrequentRunEvidence(), listNoiseScheduleEvidence()]);
+  return NextResponse.json({ hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence });
 }

@@ -41,8 +41,18 @@ with active configuration and no run after two scheduled hourly checkpoints
 gets a service-level current issue. An unreadable table or a job with no
 recorded baseline is shown as incomplete evidence rather than a missed run.
 The checks use each service's own run table and do not depend on the anomaly
-event writer. Noise and Subcon missed-run inference awaits verification of
-their live external schedules; their recorded run failures remain visible.
+event writer. Noise additionally reads its service-owned
+`noise-meters.noise_schedule_heartbeats` table, with one completion watermark per
+scheduled route. Its 16 UTC rules were verified against the live scheduler on
+27 Oct 2026. A route becomes a current issue only after an observed baseline and
+two due invocations with no newer completion, allowing 15 minutes for a handler
+to return. A missing baseline or unreadable table is shown as incomplete
+coverage, never inferred as a missed run. A heartbeat proves a route returned;
+recorded handler errors and project run errors remain separate anomalies. Apply
+Noise's `supabase/migrate_schedule_heartbeats.sql` before deploying its writer;
+the first scheduled return then establishes each route's baseline. Subcon
+missed-run inference awaits verification of its live external schedule; its
+recorded run failures remain visible.
 Set `HALO_HAZE_MISSING_RUN_MONITOR=false` in the HALO host environment and
 redeploy to disable this inference without changing any service or database row.
 

@@ -121,7 +121,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
         ? hasProcessErrors ? `${processReport}\n\n${issueReport}` : `HALO Data Health report\n\n${issueReport}`
         : processReport;
       const handlerLines = handlerReport?.failures.map((failure) =>
-        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"} | ${failure.eventType} | ${failure.reason}`,
+        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"}${failure.projectCode ? ` | ${failure.projectCode}` : ""} | ${failure.eventType} | ${failure.reason}`,
       ) ?? [];
       await navigator.clipboard.writeText(handlerLines.length ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}` : report);
       setCopyStatus("Copied");

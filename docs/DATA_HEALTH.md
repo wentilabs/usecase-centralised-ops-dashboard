@@ -40,6 +40,10 @@ and Vibration scrape. Once one of these jobs has a recorded baseline, a service
 with active configuration and no run after two scheduled hourly checkpoints
 gets a service-level current issue. An unreadable table or a job with no
 recorded baseline is shown as incomplete evidence rather than a missed run.
+Vibration's external per-minute HTTP schedule reaches `/api/vibration-scrape`;
+that handler labels these runs `manual`, while direct EventBridge events are
+labelled `cron`. HALO reads the newest of both to check whether any scrape ran.
+This proves scrape activity, not which external scheduler triggered it.
 The checks use each service's own run table and do not depend on the anomaly
 event writer. Noise additionally reads its service-owned
 `noise-meters.noise_schedule_heartbeats` table, with one completion watermark per

@@ -18,6 +18,7 @@ import { listProjectHealth } from "./data-health-repository";
 import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
 import { describePostgrestError } from "./postgrest-error";
 import { completedHazeHourlySlots, type FrequentRunEvidence, type HazeHourlyEvidence } from "./scheduled-run-health";
+import { collectFrequentRunEvidence } from "./frequent-run-evidence";
 import type { NoiseScheduleEvidence } from "./noise-schedule-health";
 import type { SubconScheduleEvidence } from "./subcon-schedule-health";
 import {
@@ -1071,28 +1072,7 @@ export async function listHazeHourlyEvidence(): Promise<HazeHourlyEvidence | nul
 
 /** One indexed newest-row read per proven frequent job. No row means unknown coverage. */
 export async function listFrequentRunEvidence(): Promise<FrequentRunEvidence> {
-  const checkedAt = new Date().toISOString();
-  const jobs = [
-    { service: "wbgt", schema: "wbgts", table: "wbgt_job_runs", column: "job_type", value: "scrape-wbgt", job: "WBGT scrape" },
-    { service: "ailytics", schema: "ailytics", table: "job_runs", column: "job_type", value: "yesterday_summary", job: "Ailytics hourly summary" },
-    { service: "issueChaser", schema: "issue_chaser", table: "job_runs", column: "job_type", value: "severity_cadence_chaser", job: "Issue Chaser severity check" },
-    { service: "vibration", schema: "vibration", table: "vibration_job_runs", column: "invocation_type", value: "cron", job: "Vibration scrape" },
-  ] as const;
-  const sources = await Promise.all(jobs.map(async ({ service, schema, table, column, value, job }) => {
-    const query = new URLSearchParams({ select: "started_at", [column]: `eq.${value}`, order: "started_at.desc", limit: "1" });
-    try {
-      const result = await request(`${table}?${query}`, { schema });
-      if (!result.ok || !Array.isArray(result.body)) return { service, job, state: "unavailable" as const, latestAt: null };
-      const latestAt = result.body[0]?.started_at;
-      if (typeof latestAt !== "string" || !Number.isFinite(Date.parse(latestAt))) {
-        return { service, job, state: "no_history" as const, latestAt: null };
-      }
-      return { service, job, state: "ready" as const, latestAt };
-    } catch {
-      return { service, job, state: "unavailable" as const, latestAt: null };
-    }
-  }));
-  return { checkedAt, sources };
+  return collectFrequentRunEvidence(new Date().toISOString(), (path, schema) => request(path, { schema }));
 }
 
 /** One bounded read for every scheduled Noise route; missing rows remain unproven coverage. */

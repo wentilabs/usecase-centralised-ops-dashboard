@@ -41,7 +41,7 @@ export function missingFrequentRunEntries(
       scope: "service" as const,
       signal: "run" as const,
       colour: "red" as const,
-      label: `${source.job} has no recorded run after two scheduled hourly checkpoints`,
+      label: `${source.job} has no recorded run after two hourly checkpoints`,
       detail: source.latestAt,
       idle: false,
     }];

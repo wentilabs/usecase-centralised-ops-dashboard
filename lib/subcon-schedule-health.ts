@@ -1,16 +1,11 @@
 import type { BoardEntry } from "./health-board";
+import subconContract from "../contracts/services/subcon.contract.json";
+import { readHealthSchedules, type HealthSchedule } from "./health-schedules";
 
-type Schedule = { key: string; route: string; name: string; hour: number; minute: number; weekday?: number };
+type Schedule = HealthSchedule;
 
-/** Six live Subcon scheduler rules supplied 27 Oct 2026; times treated as UTC. */
-export const SUBCON_SCHEDULES: readonly Schedule[] = [
-  { key: "housekeeping-photos-saturday-2000", route: "/refresh-housekeeping-photos", name: "Housekeeping photo refresh", hour: 20, minute: 0, weekday: 6 },
-  { key: "housekeeping-sheet-1545", route: "/daily-housekeeping-sheet", name: "Nightly housekeeping sheet", hour: 15, minute: 45 },
-  { key: "manpower-summary-0805", route: "/daily-manpower-summary", name: "4PM manpower summary", hour: 8, minute: 5 },
-  { key: "activity-summary-0405", route: "/daily-activity-summary", name: "Activity summary", hour: 4, minute: 5 },
-  { key: "manpower-summary-0205", route: "/daily-manpower-summary", name: "Manpower summary", hour: 2, minute: 5 },
-  { key: "housekeeping-report-1410", route: "/daily-housekeeping-report", name: "Housekeeping nightly reminder", hour: 14, minute: 10 },
-];
+/** The service owns these UTC identities; the external scheduler must match them. */
+export const SUBCON_SCHEDULES: readonly Schedule[] = readHealthSchedules(subconContract.health);
 
 export type SubconScheduleEvidence = {
   checkedAt: string;
@@ -30,8 +25,9 @@ export function completedSubconTicks(checkedAt: string, schedule: Schedule): [st
   const found: string[] = [];
   for (let i = 0; i < MAX_LOOKBACK_MINUTES && found.length < 2; i++) {
     const date = new Date(start - i * MINUTE_MS);
-    if (date.getUTCHours() !== schedule.hour || date.getUTCMinutes() !== schedule.minute) continue;
-    if (schedule.weekday !== undefined && date.getUTCDay() !== schedule.weekday) continue;
+    if (!schedule.hours.includes(date.getUTCHours()) || !schedule.minutes.includes(date.getUTCMinutes())) continue;
+    if (schedule.weekdays && !schedule.weekdays.includes(date.getUTCDay())) continue;
+    if (schedule.monthDays && !schedule.monthDays.includes(date.getUTCDate())) continue;
     found.push(date.toISOString());
   }
   return found.length === 2 ? [found[1], found[0]] : null;

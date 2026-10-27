@@ -50,6 +50,11 @@
       ]
     },
     {
+      "id": "ppv-health-delivery-evidence",
+      "file": "migrate_ppv_health_delivery_evidence.sql",
+      "requires": ["ppv-alert-delivery"]
+    },
+    {
       "id": "vibration-formatter",
       "file": "migrate_vibration_formatter.sql",
       "requires": [
@@ -62,7 +67,9 @@
       "requires": [
         "vibration-formatter"
       ]
-    }
+    },
+    { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
   ],
   "operationalUtilities": [
     "checks/prepared-targets.sql",

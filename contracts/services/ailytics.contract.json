@@ -36,6 +36,7 @@
       "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier; unknown onboarding values use an empty string rather than null (INV-AIL-09)." },
       "whatsapp_group_ids": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Comma-separated destinations, trimmed and de-duplicated per send (INV-AIL-17)." },
       "forward_pending_to_whatsapp": { "label": "Forward pending alerts", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Gates only the delivery attempt; capture and history writes continue, and PENDING requires confirmed delivery (INV-AIL-14/19)." },
+      "reply_closed_in_wa_when_compliant": { "label": "React ✅ when Compliant", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "When Telegram marks a pending activity COMPLIANT, react ✅ to its previously forwarded WhatsApp message. COMPLIANT remains a non-issue and never creates a safety-sheet row (INV-AIL-22)." },
       "status_summary_enabled": { "label": "Status summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Allows project-local sheet counts to be sent; this is not an estate-wide aggregate (INV-AIL-18)." },
       "yesterday_summary_enabled": { "label": "Yesterday summary enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Enables the hourly previous-local-day Ailytics findings summary route without changing the existing status summary behavior." },
       "yesterday_summary_hour": { "label": "Yesterday summary hour", "group": "behavior", "mutable": true, "role": "configuration", "help": "Local project hour from 0 to 23 at which the hourly route is allowed to send the previous day's summary." },
@@ -50,6 +51,13 @@
     ]
   },
   "health": {
+    "scheduleTimezone": "UTC",
+    "schedules": [
+      {"key":"ailytics-resolve","route":"/ailytics-safety/retry-pending-deliveries","name":"Ailytics resolve queue","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"ailytics-yesterday","route":"/ailytics-safety/yesterday-24h-summary","name":"Ailytics yesterday summary","minutes":[0],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"ailytics-fail-catch","route":"/ailytics-safety/retry-pending-deliveries","name":"Ailytics fail catch","minutes":[35],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]},
+      {"key":"ailytics-status","route":"/ailytics-safety/status-summary","name":"Ailytics issues summary","minutes":[0],"hours":[10]}
+    ],
     "granularity": { "ingestion": "none", "run": "project", "delivery": "project" },
     "statuses": { "pending": "green", "queued": "green", "sent": "green", "unconfirmed": "amber", "failed": "red" }
   }

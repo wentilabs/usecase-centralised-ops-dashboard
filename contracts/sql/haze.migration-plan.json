@@ -100,7 +100,9 @@
       "id": "pm25-thresholds",
       "file": "pm25-thresholds.sql",
       "requires": []
-    }
+    },
+    { "id": "service-health-events", "file": "service-health-events.sql", "requires": [] },
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
   ],
   "destructiveUtilities": []
 }

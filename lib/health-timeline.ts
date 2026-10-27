@@ -39,6 +39,9 @@ export type Sample = {
    * `wbgt-hourly`, `RED`, `KICKOFF`. A strip says something failed; this says what.
    */
   kind?: string;
+  /** Recorded listener acceptance for this run, when the service supplies it. */
+  deliveries?: { destination: string | null; status: string; queueId: string | null; messageId: string | null }[];
+  deliveriesOmitted?: number;
 };
 
 export type Bar = Sample;

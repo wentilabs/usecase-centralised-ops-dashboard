@@ -42,7 +42,7 @@
       "poc_mentions_pm2.5_at_least": { "label": "Minimum mention PM2.5 band", "group": "mentions", "mutable": true, "role": "policy-selector", "help": "Independent 1-hour PM2.5 floor for POC mentions when the advisory format includes PM2.5. When both applicable mention floors are set, either passing floor triggers a mention.", "options": ["normal", "elevated", "high", "very_high"] },
       "advisory_format": { "label": "Advisory format", "group": "behavior", "mutable": true, "role": "renderer-selector", "help": "Named message strategy. Forecast formats use one-hour PM2.5 and the NEA daily PSI forecast; the TRI variant adapts selected Red and Purple advice; ir2-24h+2.5 combines PM2.5 and PSI advice without a forecast.", "options": ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2-24h+2.5"] },
       "enabled": { "label": "Project enabled", "group": "behavior", "mutable": true, "role": "feature-flag", "help": "Master Haze processing switch; the database requires complete delivery configuration before enabling." },
-      "four_hourly": { "label": "Two-hourly override", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Historical column name: guarantees 08:00–20:00 two-hourly slots that bypass band and working-hour gates, but not calendar mutes." },
+      "four_hourly": { "label": "Two-hourly override", "group": "schedule", "mutable": true, "role": "policy-selector", "help": "Historical column name: 08:00–20:00 two-hourly slots bypass working hours but follow the PSI/PM2.5 OR alert floors and calendar mutes." },
       "hourly_always": { "label": "Always send hourly", "group": "schedule", "mutable": true, "role": "feature-flag", "help": "Sends the hourly advisory regardless of configured PSI and PM2.5 severity floors. Working hours, calendar mutes, and reading freshness still apply." },
       "working_hours_start_hhmm": { "label": "Working-hours start", "group": "schedule", "mutable": true, "role": "configuration", "help": "HHMM start; must be set together with the end." },
       "working_hours_end_hhmm": { "label": "Working-hours end", "group": "schedule", "mutable": true, "role": "configuration", "help": "Exclusive HHMM end; an end before start wraps overnight." },
@@ -58,6 +58,13 @@
     ]
   },
   "health": {
+    "scheduleTimezone": "UTC",
+    "schedules": [
+      {"key":"haze-crp-hourly","route":"/api/haze-hourly","name":"Haze CRP hourly","minutes":[2],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"haze-kickoff","route":"/api/haze-kickoff","name":"Haze kickoff","minutes":[45],"hours":[23]},
+      {"key":"haze-hourly","route":"/api/haze-hourly","name":"Haze hourly","minutes":[0],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"haze-ingest","route":"/api/haze-ingest","name":"Haze ingestion","minutes":[1,15,30,45,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]}
+    ],
     "granularity": { "ingestion": "none", "run": "project", "delivery": "project" },
     "statuses": { "PENDING": "green", "SENT": "green", "QUEUED": "green", "UNCONFIRMED": "amber", "FAILED": "red", "SUPPRESSED_STALE": "amber" }
   }

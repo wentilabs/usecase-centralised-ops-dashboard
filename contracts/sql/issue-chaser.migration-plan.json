@@ -143,7 +143,9 @@
       "requires": [
         "listener-queue-acceptance"
       ]
-    }
+    },
+    { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
   ],
   "destructiveUtilities": []
 }

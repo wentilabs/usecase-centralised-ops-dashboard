@@ -75,6 +75,19 @@
     ]
   },
   "health": {
+    "scheduleTimezone": "UTC",
+    "schedules": [
+      {"key":"chaser-company-open","route":"/api/issue-chaser-company-open","name":"Issue Chaser company open","minutes":[30],"hours":[2,5,8]},
+      {"key":"chaser-company-sync","route":"/api/sync-company-names","name":"Company names sync","minutes":[0],"hours":[20],"weekdays":[6]},
+      {"key":"chaser-photo-sync","route":"/api/refresh-safety-image-links","name":"Safety photo sync","minutes":[0],"hours":[20],"monthDays":[4]},
+      {"key":"chaser-chat-summary","route":"/api/past-days-chatgroup-safety-summary","name":"Chatgroup safety summary","minutes":[0],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"chaser-name-reminders","route":"/api/remind-write-novade-names","name":"Novade name reminders","minutes":[0],"hours":[9],"weekdays":[6]},
+      {"key":"chaser-name-sync","route":"/api/sync-novade-names","name":"Novade name sync","minutes":[0],"hours":[20],"weekdays":[6]},
+      {"key":"chaser-company-summary","route":"/api/past-days-company-safety-summary","name":"Company safety summary","minutes":[0],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"chaser-safety-summary","route":"/api/past-days-safety-summary","name":"Safety summary","minutes":[0],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"chaser-same-day","route":"/api/issue-chaser-same-day-open","name":"Same-day issue reminder","minutes":[7],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"chaser-severity","route":"/api/issue-chaser-severity-cadence","name":"Severity issue check","minutes":[0,30],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]}
+    ],
     "granularity": { "ingestion": "none", "run": "project", "delivery": "project" },
     "statuses": { "pending": "green", "sending": "green", "sent": "green", "queued": "green", "unconfirmed": "amber", "failed": "red", "skipped": "green", "partial": "amber", "expired": "amber", "cancelled": "amber", "preview": "green", "completed": "green" }
   }

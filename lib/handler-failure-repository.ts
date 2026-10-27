@@ -64,5 +64,7 @@ export async function listHandlerFailures(): Promise<HandlerFailureReport> {
     const source = sources.find((entry) => entry.service === "vibration");
     if (source && source.state === "ready") source.state = "partial";
   }
-  return { checkedAt, failures: failures.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100), sources };
+  // Each source is already bounded. A global limit lets one noisy service hide
+  // every other service, even when their own reads completed successfully.
+  return { checkedAt, failures: failures.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), sources };
 }

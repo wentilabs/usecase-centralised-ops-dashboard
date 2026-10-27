@@ -236,6 +236,18 @@ function TroubleDialog({
                   no reason recorded
                 </p>
               )}
+              {bar.deliveries?.length ? (
+                <ul className="mt-2 flex flex-col gap-0.5 pl-4 text-[11px] text-muted-foreground">
+                  {bar.deliveries.map((delivery, deliveryIndex) => (
+                    <li key={deliveryIndex} className="break-words font-mono">
+                      {delivery.destination ?? "unknown destination"}: {delivery.status}
+                      {delivery.queueId ? ` · queue ${delivery.queueId}` : ""}
+                      {delivery.messageId ? ` · message ${delivery.messageId}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {bar.deliveriesOmitted ? <p className="mt-1 pl-4 text-[11px] text-muted-foreground">{bar.deliveriesOmitted} further delivery records not shown.</p> : null}
             </li>
           ))}
         </ul>

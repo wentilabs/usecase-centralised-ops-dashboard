@@ -16,6 +16,76 @@ import { PROCESS_SERVICES, boardSignalFor, readProcessWindow } from "../lib/proc
 const sample = (at: string, colour: "green" | "amber" | "red", status: string = colour, log: string[] = []) =>
   ({ at, colour, status, log });
 
+test("Ailytics run evidence retains accepted and failed recipients while old runs remain unknown", async () => {
+  let query = "";
+  const rows = await readProcessWindow("ailytics", async (path) => {
+    query = path;
+    return { ok: true, body: [
+      { project_code: "AST", started_at: "2026-10-27T04:00:00Z", job_type: "status_summary", status: "completed_with_errors", errors: ["destination failed"], health_deliveries: [
+        { destination: "a@g.us", status: "queued", queue_id: "q1", message_id: null },
+        { destination: "b@g.us", status: "failed", queue_id: null, message_id: null },
+      ] },
+      { project_code: "AST", started_at: "2026-10-27T03:00:00Z", job_type: "status_summary", status: "completed", errors: [], health_deliveries: null },
+    ] };
+  }, 100, "2026-10-27T00:00:00Z");
+  assert.match(query, /health_deliveries:details->deliveries/);
+  assert.deepEqual(rows[0].deliveries, [
+    { destination: "a@g.us", status: "queued", queueId: "q1", messageId: null },
+    { destination: "b@g.us", status: "failed", queueId: null, messageId: null },
+  ]);
+  assert.equal(rows[1].deliveries, undefined);
+  assert.doesNotMatch(JSON.stringify(rows), /private/);
+});
+
+test("Noise and WBGT read only the sanitized delivery projection", async () => {
+  for (const service of ["noise", "wbgt"] as const) {
+    let query = "";
+    const rows = await readProcessWindow(service, async (path) => {
+      query = path;
+      return { ok: true, body: [{ project_code: "AST", started_at: "2026-10-27T04:00:00Z",
+        job_type: "hourly", status: "completed_with_errors", errors: ["unconfirmed"], health_deliveries: [
+          { destination: "a@g.us", status: "sent", queue_id: null, message_id: "m1" },
+          { destination: "b@g.us", status: "unconfirmed", queue_id: null, message_id: null },
+        ] }] };
+    }, 100, "2026-10-27T00:00:00Z");
+    assert.match(query, /health_deliveries:details->health_deliveries/);
+    assert.deepEqual(rows[0].deliveries?.map(({ status, messageId }) => [status, messageId]), [["sent", "m1"], ["unconfirmed", null]]);
+  }
+});
+
+test("Issue Chaser exposes when its per-run delivery evidence is truncated", async () => {
+  const rows = await readProcessWindow("issueChaser", async (path) => ({ ok: true, body: path.includes("select=started_at&limit=1") ? [{}] : [{
+    project_code: "AST", started_at: "2026-10-27T04:00:00Z", job_type: "severity_cadence_chaser", status: "completed_with_errors", errors: ["failed"],
+    health_deliveries: [{ destination: "a@g.us", status: "queued", queue_id: "q1", message_id: null }], health_deliveries_omitted: 5,
+  }] }), 100, "2026-10-27T00:00:00Z");
+  assert.equal(rows[0].deliveriesOmitted, 5);
+});
+
+test("Lightning exposes the latest acceptance per target without exposing phone numbers", async () => {
+  const rows = await readProcessWindow("lightning", async () => ({ ok: true, body: [{ project_code: "AST", created_at: "2026-10-27T04:00:00Z", event_type: "RED", delivery_status: "PARTIAL", last_delivery_error: "failure", delivery_attempts: [
+    { target: "a@g.us", delivery_status: "FAILED" }, { target: "a@g.us", delivery_status: "QUEUED", queue_id: "q1" },
+    { target: "+6591234567", delivery_status: "SENT", provider_message_id: "m1", raw: { body: "private" } },
+  ] }] }), 100, "2026-10-27T00:00:00Z");
+  assert.deepEqual(rows[0].deliveries, [
+    { destination: "a@g.us", status: "queued", queueId: "q1", messageId: null },
+    { destination: "recipient …4567", status: "sent", queueId: null, messageId: "m1" },
+  ]);
+  assert.doesNotMatch(JSON.stringify(rows[0].deliveries), /\+6591234567|private/);
+});
+
+test("Vibration falls back to failed alerts when the acceptance evidence migration is absent", async () => {
+  const paths: string[] = [];
+  const rows = await readProcessWindow("vibration", async (path) => {
+    paths.push(path);
+    if (path.includes("select=created_at,health_deliveries&limit=1")) return { ok: false, body: null };
+    return { ok: true, body: [{ project_code: "AST", status: "failed", created_at: "2026-10-27T04:00:00Z", last_error: "unconfirmed" }] };
+  }, 100, "2026-10-27T00:00:00Z");
+  assert.ok(paths.some((path) => path.includes("status=eq.failed")));
+  assert.equal(rows[0].colour, "red");
+  assert.equal(rows[0].kind, "ppv-alert");
+  assert.equal(rows[0].deliveries, undefined);
+});
+
 test("a bar is a process, so a slow cadence fills the strip instead of leaving blanks", () => {
   // The reason this is ordinal. Subcon reports twice a day: on an hourly axis
   // its card was ninety-eight grey gaps and two coloured bars, which reads as a
@@ -185,7 +255,7 @@ test("which services read a run log, which a delivery ledger, and which are not 
   // hour whose correct action was to send nothing becomes visible at all.
   assert.deepEqual(
     PROCESS_SERVICES.slice().sort(),
-    ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "wbgt"],
+    ["ailytics", "haze", "issueChaser", "lightning", "noise", "subcon", "vibration", "wbgt"],
   );
   for (const service of ["haze", "issueChaser", "subcon", "ailytics", "noise", "wbgt"] as const) {
     // `signal` is the PRIMARY source's; board membership is a separate question.

@@ -42,6 +42,15 @@
     ]
   },
   "health": {
+    "scheduleTimezone": "UTC",
+    "schedules": [
+      { "key": "housekeeping-photos-saturday-2000", "route": "/refresh-housekeeping-photos", "name": "Housekeeping photo refresh", "hours": [20], "minutes": [0], "weekdays": [6] },
+      { "key": "housekeeping-sheet-1545", "route": "/daily-housekeeping-sheet", "name": "Nightly housekeeping sheet", "hours": [15], "minutes": [45] },
+      { "key": "manpower-summary-0805", "route": "/daily-manpower-summary", "name": "4PM manpower summary", "hours": [8], "minutes": [5] },
+      { "key": "activity-summary-0405", "route": "/daily-activity-summary", "name": "Activity summary", "hours": [4], "minutes": [5] },
+      { "key": "manpower-summary-0205", "route": "/daily-manpower-summary", "name": "Manpower summary", "hours": [2], "minutes": [5] },
+      { "key": "housekeeping-report-1410", "route": "/daily-housekeeping-report", "name": "Housekeeping nightly reminder", "hours": [14], "minutes": [10] }
+    ],
     "granularity": { "ingestion": "none", "run": "project", "delivery": "project" },
     "statuses": { "sent": "green", "queued": "green", "unconfirmed": "amber", "failed": "red" }
   }

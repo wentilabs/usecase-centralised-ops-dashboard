@@ -15,6 +15,36 @@ export type HandlerFailureReport = {
   sources: { service: ServiceKey; state: "ready" | "legacy" | "partial" | "unavailable" }[];
 };
 
+export type HandlerFailureGroup = Omit<HandlerFailure, "at" | "projectCode"> & {
+  firstAt: string;
+  lastAt: string;
+  occurrences: number;
+  projects: string[];
+  unscoped: boolean;
+};
+
+/** Group matching recorded reasons without claiming that the issue is still active. */
+export function groupHandlerFailures(failures: readonly HandlerFailure[]): HandlerFailureGroup[] {
+  const groups = new Map<string, HandlerFailureGroup>();
+  for (const failure of failures) {
+    const key = JSON.stringify([failure.service, failure.eventType, failure.route, failure.reason]);
+    let group = groups.get(key);
+    if (!group) {
+      group = { service: failure.service, eventType: failure.eventType, route: failure.route,
+        reason: failure.reason, firstAt: failure.at, lastAt: failure.at,
+        occurrences: 0, projects: [], unscoped: false };
+      groups.set(key, group);
+    }
+    group.occurrences++;
+    if (Date.parse(failure.at) < Date.parse(group.firstAt)) group.firstAt = failure.at;
+    if (Date.parse(failure.at) > Date.parse(group.lastAt)) group.lastAt = failure.at;
+    if (failure.projectCode && !group.projects.includes(failure.projectCode)) group.projects.push(failure.projectCode);
+    if (!failure.projectCode) group.unscoped = true;
+  }
+  return [...groups.values()].map((group) => ({ ...group, projects: group.projects.sort() }))
+    .sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+}
+
 export function handlerFailureRows(service: ServiceKey, rows: unknown, legacy = false): HandlerFailure[] {
   if (!Array.isArray(rows)) return [];
   return rows.flatMap((row) => {

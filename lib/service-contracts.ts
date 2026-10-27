@@ -29,6 +29,9 @@ export type ContractField = {
  * two services are allowed to answer differently for the same word.
  */
 export type ContractHealth = {
+  /** Times in a schedule declaration use UTC. */
+  scheduleTimezone?: "UTC";
+  schedules?: import("./health-schedules").HealthSchedule[];
   /**
    * Which signals this service reports, and at what granularity.
    *

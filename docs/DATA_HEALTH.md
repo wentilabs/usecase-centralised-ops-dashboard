@@ -75,6 +75,10 @@ truncated rather than interpreting an unreadable table as healthy. It displays
 recorded failures as **recent anomalies**, not necessarily current faults: a
 later run may have recovered. Run and delivery rows remain the primary current
 health evidence; the separate missed-run check catches silence.
+HALO groups records with the same service, event type, route, and exact reason,
+showing occurrence counts, project codes, and first and last observed times.
+Each source is bounded separately; a busy service cannot consume a global limit
+and hide other services. A truncated source is labelled incomplete.
 For Vibration, HALO also reads `vibration_job_runs.details.errors` from partial
 and failed scrapes, including the project and the service-sanitized reason.
 Those source failures can be isolated inside an otherwise successful handler.
@@ -535,6 +539,26 @@ recipient ledgers. A `completed` run is evidence that the cadence completed;
 inspect its `details` and the relevant recipient ledger before claiming that
 every WhatsApp recipient received a message.
 
+Ailytics' status and yesterday summary jobs write a small per-recipient
+acceptance record into `job_runs.details.deliveries`: destination, status and
+the returned queue or message ID. HALO reads those fields with the project run,
+including accepted recipients alongside failed ones in a partial run. Older
+rows without the field remain unknown; other Ailytics routes do not gain this
+coverage automatically. Apply the service code before expecting new evidence.
+Noise project-runner jobs and WBGT jobs with per-recipient results also record
+`details.health_deliveries` for this purpose. Other routes and older rows remain
+unknown until they write comparable evidence; a missing field is not acceptance.
+Subcon's broadcast activity, manpower and housekeeping reports use the same
+field. Intentional skips and calendar mutes retain their existing meanings.
+Haze's hourly project runs and Issue Chaser's scheduled project runs use this
+field too; Issue Chaser reports the count omitted after its 200-record cap.
+Lightning's existing per-target attempt ledger supplies the same fields, with
+phone destinations masked. Vibration PPV failure events are visible through
+`service_health_events`; after its `migrate_ppv_health_delivery_evidence.sql`
+is applied, new PPV alert rows also retain per-recipient IDs. Before that
+migration HALO reads failed PPV rows but does not treat old sent rows without
+identifiers as proof of acceptance.
+
 **Which table is an integration detail, what the statuses mean is not.** The
 mapping above lives in HALO because only HALO needs it; the colour of
 `UNCONFIRMED` lives in haze's own contract, and HALO reads it from there. A
@@ -570,68 +594,20 @@ needs that reminder's WhatsApp ID. Other service ledgers retain queue IDs for
 audit without polling every message. A final listener `failed` or `dropped`
 outcome is not an instruction to repost a previously accepted submission.
 
-### Queued is not delivered: the drop nobody sees
+### Listener acceptance and Data Health
 
-`queued` is green, correctly, for the question it answers: *did the listener accept
-the message?* It does not answer *did the message reach the group?* — and the
-listener can accept a message and later give up on it for good.
+The agreed Data Health signal is an accepted `queued` response with its queue
+ID, or a `sent` response with its message ID. It is
+shown as acceptance; it does not establish that a recipient received or read a
+message. Services retain rejection and unconfirmed reasons and any partial
+success. HALO does not require a later queue-status reconciliation for this
+signal. If a service independently records a later failure, HALO can still
+surface that evidence.
 
-The listener drops a queued send, final and without retry, when WhatsApp refuses it
-for a reason that will not change: `NOT_PARTICIPANT`, "this number is no longer a
-participant of this group", is the one seen in practice. The row ends
-`status = dropped` in the listener's own queue (`internal.whatsapp_outbound_queue`,
-with `last_code` and `last_error`), and **nothing tells the service that sent it.**
-
-This was found, not predicted. On 19 Oct an Issue Chaser summary for HLD recorded
-`unconfirmed` for two of its seven groups. The listener's queue showed both had been
-dropped with `NOT_PARTICIPANT` — and had been, about eighteen times a day each, since
-the queue's records begin on 13 Oct. Across the estate, 376 drops in seven days hit
-eleven chats, among them groups that C992's WBGT, Noise and Issue Chaser all send to.
-Issue Chaser's ledger was matched against the drops and holds four sends recorded
-`queued`, green, that the listener later dropped; the other services record queue ids
-the same way and were not matched. For a week the Data Health board was green for
-messages that never arrived.
-
-The two HLD groups only showed up because their send happened to fail inside the
-listener's eight-second window, so the answer came back immediately as a 502; a
-queued send fails later, asynchronously, and in silence.
-
-**What HALO can and cannot do.** HALO reads each service's own run logs and
-ledgers, and its only credential for the listener is a read-only key that is refused
-on the queue's schema. It will not be given the service key: by decision HALO holds no
-credentials for the services it watches. So HALO **cannot see a drop** today, and no HALO change can fix that
-alone. The fix belongs where the queue id already is:
-
-> **A service that sends through the listener queue must reconcile its queued sends.**
-> For queue ids older than a few minutes it asks the listener's `outbound/status`
-> endpoint (through the proxy: `POST /proxy/outbound-status`, body `queueIds`, at most
-> 100 per call), reads each item's `status` — `queued`, `sending`, `sent`, `failed` or
-> `dropped` — and `error: { code, text }`, and writes the final outcome back onto its
-> own ledger row, and into its run log's `errors` when it is `failed` or `dropped`.
-
-WBGT (`platform/outbound-status.js`) and Ailytics (`connectors/whatsapp/outbound-status.js`)
-already call that endpoint, to find a message's WhatsApp id; they do not record a
-drop. Noise, Haze, Lightning, Issue Chaser and Subcon do not call it.
-
-What the service writes is the contract with HALO. A reconciled `dropped` send is
-recorded with a status that begins `dropped` (HALO reads that prefix as **red** with
-no further change), and its error follows the standard above — the listener's own
-`last_code` and `last_error`, the chat, the queue id:
-
-```
-status:  dropped
-errors:  ["120363405395020959@g.us: queue 57557 dropped — NOT_PARTICIPANT: WhatsApp rejected the send: this number is no longer a participant of this group"]
-```
-
-A `failed` outcome is already red. `sent` after a `queued` is the confirmation — and
-means WhatsApp's server accepted it, not that anyone's phone received or read it — and is
-green. Until a service reconciles, its `queued` means exactly *accepted*, and the board
-must not be read as delivery.
-
-Noise and WBGT also have **Data Health reminder** routes and recipient ledgers.
-Those internal reminders are distinct from HALO's Data Health dashboard, which
-currently reads their `noise_job_runs` and `wbgt_job_runs` rows. A green run row
-does not independently verify every recipient's WhatsApp delivery.
+Run completion and a send decision are separate facts: a successful run does
+not by itself prove that an expected message was accepted. Existing paths do
+not all expose per-recipient decisions and identifiers to HALO yet; missing
+coverage is unknown rather than a successful send.
 
 ### One failure, one row
 
@@ -877,9 +853,7 @@ Whole-service findings carry a name where a project code would be (`tick`, `NEA 
 project editor for them. Late-feed notices go to the board's calm "late readings" section, not to what needs
 acting on.
 
-**Still the estate-wide gap.** A `QUEUED` alert is green until the service checks it later with
-`outbound/status` (see [Queued is not delivered](#queued-is-not-delivered-the-drop-nobody-sees)); Lightning
-does not yet, so a queued RED the listener later drops would still read as accepted.
+**Listener acceptance.** A `QUEUED` alert records that the listener accepted it; it does not assert that a recipient received or read it. Data Health does not require a later queue-status check.
 
 **For the Lightning contract** (a service-side follow-up, not done here): declare `ingestion: service` and
 `run: service` under `health.granularity`, so the board's "not covered" note stops describing Lightning as
@@ -898,9 +872,9 @@ it says.
 
 | Service | What HALO captures well | Where capture or evidence falls short |
 | --- | --- | --- |
-| **Noise** | Run log per project per cadence; late readings (91% of `completed_with_meter_issues`) now stale. | `suppressed_all_unavailable` (281) and `skipped_google_sheet_not_configured` (40) are amber with **no error written**: the colour has nothing behind it. `bootstrap_required` (8) is an unrecognised status, shown amber by default. `failed_config_validation` is 1,475 rows, 1,472 of them the same standing `Missing delivery config: lambda_url`; the other three (WCP, P105, CR106, failing together at 11:04 on 19 Oct) were table-probe failures whose message ended `…: ` with the reason blank, because the probe was a `HEAD` request and a failed `HEAD` has no body. The cause, found afterwards in the Noise repo (b13f743), was that newly onboarded reading tables had no `service_role` grant. They surfaced once a day because those projects' cadence windows are narrow, so that run was their only evaluation. The probe now keeps the database's own sentence, and adds the HTTP status, the time taken and the usual cause. Queued sends never reconciled. |
-| **WBGT** | Run log per project; late readings (71%) now stale. | One status, `completed_with_issues`, carries both a late sensor and `Missing configured sensors` (854, a standing config gap) — only the wording separates them. `Missing configured sensors: WBGT C? (Manual)` repeats every run. Permission failures name the operation (`monthly sheet sync`) but not the sheet. Queued sends never reconciled beyond the Water Parade lookup. |
-| **Haze** | Run log per project per hourly run, skips included. Clean: no errors in the window. | The NEA scrape is estate-wide and not tracked (by design). Queued sends never reconciled. |
+| **Noise** | Run log per project per cadence; late readings (91% of `completed_with_meter_issues`) now stale. | `suppressed_all_unavailable` (281) and `skipped_google_sheet_not_configured` (40) are amber with **no error written**: the colour has nothing behind it. `bootstrap_required` (8) is an unrecognised status, shown amber by default. `failed_config_validation` is 1,475 rows, 1,472 of them the same standing `Missing delivery config: lambda_url`; the other three (WCP, P105, CR106, failing together at 11:04 on 19 Oct) were table-probe failures whose message ended `…: ` with the reason blank, because the probe was a `HEAD` request and a failed `HEAD` has no body. The cause, found afterwards in the Noise repo (b13f743), was that newly onboarded reading tables had no `service_role` grant. They surfaced once a day because those projects' cadence windows are narrow, so that run was their only evaluation. The probe now keeps the database's own sentence, and adds the HTTP status, the time taken and the usual cause. |
+| **WBGT** | Run log per project; late readings (71%) now stale. | One status, `completed_with_issues`, carries both a late sensor and `Missing configured sensors` (854, a standing config gap) — only the wording separates them. `Missing configured sensors: WBGT C? (Manual)` repeats every run. Permission failures name the operation (`monthly sheet sync`) but not the sheet. |
+| **Haze** | Run log per project per hourly run, skips included. Clean: no errors in the window. | The NEA scrape is estate-wide and not tracked (by design). |
 | **Issue Chaser** | Run log per project and style; ledger with queue ids. | `failed_unhandled_error` ×3 `Requested entity was not found.` names no sheet, tab or operation. A listener 502 recorded only `Request failed with status code 502`; the listener's own `code`/`error`/`queueId` were discarded (fixed in the repo, awaiting commit). `skipped_feature_disabled` is 70% of all rows (7,056 of 10,080). Four sends recorded `queued` were later dropped by the listener. |
 | **Ailytics** | Run log per project. | `failed_unhandled_error` ×2 `The caller does not have permission` (ZRA, `status_summary`, daily at the same hour) names no sheet, tab or Google call. |
 | **Subcon** | Run log per project; clean, and 243 of 279 rows are `skipped_project_disabled`. | No failure in the window, so the quality of its errors is untested. |
@@ -910,7 +884,7 @@ it says.
 
 | Gap | Why | What closes it |
 | --- | --- | --- |
-| A queued send the listener later dropped or failed | The outcome exists only in the listener's queue; HALO has no key for it and must not get one. | Services reconcile queue ids through `outbound/status` and write `dropped` / `failed` back. See [Queued is not delivered](#queued-is-not-delivered-the-drop-nobody-sees). |
+| An expected send with no recorded decision or listener response | A run row alone cannot establish whether a send was due or accepted. | The service records the decision, acceptance or failure, and identifiers returned by the listener. |
 | Whether a standing error is new | An error text is a string with no recurrence. | Stable wording (above). HALO can then group by text; not built yet. |
 | Which job produced a bar | — | Built. Every bar and modal row carries the service's own `job_type` (a ledger's `event_type`), so a red says whether it was the RED alert, the all-clear or the kickoff. |
 | A reading that is late *and* its run was clean | Only the age check sees it, and only for Noise and WBGT. | Other services do not store readings; nothing to age. |
@@ -931,3 +905,9 @@ The contract for what a service must write so that none of this needs guessing i
 
 If a status has to break the convention, add it to `EXCEPTIONS` with the reason
 in the same commit — and consider renaming it in the service instead.
+
+### Service route completion evidence
+
+Haze, WBGT, Ailytics, Issue Chaser, Lightning and Vibration declare their observed UTC scheduler rules in their own contracts and write a bounded per-route completion watermark. After the additive migration `supabase/rollout_service_health_evidence.sql` and service deployments, HALO reads each source independently. A missing or unreadable table is incomplete coverage, not an incident. A route without a prior watermark has no baseline. For an unambiguous rule, HALO flags two elapsed scheduled times with a 15-minute grace and no newer completion. Existing more specific checks retain their own logic.
+
+Multiple rules targeting the same route cannot be distinguished by this evidence and are reported as unverified; manual calls can also update the watermark. Route completion does not establish that a scheduler fired or that a message was accepted. Acceptance requires a queued response with a queue ID or a sent response with a message ID. These checks create Data Health issues only.

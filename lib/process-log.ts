@@ -68,6 +68,11 @@ type Source = {
   kindColumn?: string;
   /** Additional fields needed to read the service's existing error text. */
   extraColumns?: readonly string[];
+  /** Source-specific condition, e.g. rows whose new evidence is present. */
+  filter?: string;
+  /** A migration-dependent field used to choose the compatibility source. */
+  probeColumn?: string;
+  fixedKind?: string;
   signal: "delivery" | "run";
   /**
    * Which job in this run log PRODUCES the readings the health check ages.
@@ -124,6 +129,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     kindColumn: "job_type",
     signal: "run",
     board: true,
+    extraColumns: ["health_deliveries:details->health_deliveries"],
     fallback: {
       schema: "haze",
       table: "haze_notification_events",
@@ -157,6 +163,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     kindColumn: "job_type",
+    extraColumns: ["health_deliveries:details->health_deliveries", "health_deliveries_omitted:details->health_deliveries_omitted"],
     signal: "run",
     board: true,
     fallback: {
@@ -180,6 +187,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     kindColumn: "job_type",
+    extraColumns: ["health_deliveries:details->deliveries"],
     signal: "run",
     board: true,
   },
@@ -191,6 +199,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     kindColumn: "job_type",
+    extraColumns: ["health_deliveries:details->health_deliveries"],
     signal: "run",
     producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     // Ingestion is reported from the readings-age check; see `Source.board`.
@@ -204,6 +213,7 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     kindColumn: "job_type",
+    extraColumns: ["health_deliveries:details->health_deliveries"],
     signal: "run",
     producer: { jobTypeColumn: "job_type", jobTypePrefix: "scrape" },
     board: false,
@@ -216,10 +226,24 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     timeColumn: "started_at",
     errorColumn: "errors",
     kindColumn: "job_type",
+    extraColumns: ["health_deliveries:details->health_deliveries"],
     signal: "run",
     // No readings-age check covers subcon, so a failed run has to reach the board
     // from here or nowhere.
     board: true,
+  },
+  vibration: {
+    schema: "vibration", table: "vibration_alert_deliveries", projectColumn: "project_code",
+    statusColumn: "status", timeColumn: "created_at", errorColumn: "last_error",
+    extraColumns: ["health_deliveries"], probeColumn: "health_deliveries",
+    filter: "or=(status.eq.failed,health_deliveries.not.is.null)", fixedKind: "ppv-alert", signal: "delivery", board: true,
+    // Before the additive migration, failed alerts are still visible; old sent
+    // rows without acceptance IDs cannot prove a successful delivery.
+    fallback: {
+      schema: "vibration", table: "vibration_alert_deliveries", projectColumn: "project_code",
+      statusColumn: "status", timeColumn: "created_at", errorColumn: "last_error",
+      filter: "status=eq.failed", fixedKind: "ppv-alert", signal: "delivery", board: true,
+    },
   },
 };
 
@@ -270,7 +294,7 @@ async function tableReadable(
   source: Source,
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
 ): Promise<boolean> {
-  const res = await request(`${source.table}?select=${source.timeColumn}&limit=1`, { schema: source.schema });
+  const res = await request(`${source.table}?select=${source.timeColumn}${source.probeColumn ? `,${source.probeColumn}` : ""}&limit=1`, { schema: source.schema });
   return res.ok;
 }
 
@@ -283,7 +307,40 @@ export type ProcessSample = {
   log: string[];
   /** Which kind of process, in the service's own word — a job type or an event type. Absent when unrecorded. */
   kind?: string;
+  deliveries?: import("./health-timeline").Sample["deliveries"];
+  deliveriesOmitted?: number;
 };
+
+/** Only return the small, explicit acceptance fields, never arbitrary run details. */
+function healthDeliveries(rows: unknown): ProcessSample["deliveries"] {
+  if (!Array.isArray(rows)) return undefined;
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return [];
+    const value = row as Record<string, unknown>;
+    if (typeof value.status !== "string" || !value.status.trim()) return [];
+    const text = (field: unknown) => typeof field === "string" && field.trim() ? field.trim() : null;
+    return [{ destination: text(value.destination), status: value.status, queueId: text(value.queue_id), messageId: text(value.message_id) }];
+  });
+}
+
+/** Lightning already stores recipient attempts; show only their latest safe fields. */
+function lightningDeliveries(attempts: unknown): ProcessSample["deliveries"] {
+  if (!Array.isArray(attempts)) return undefined;
+  const latest = new Map<string, Record<string, unknown>>();
+  for (const row of attempts) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const value = row as Record<string, unknown>;
+    if (typeof value.target === "string" && value.target.trim()) latest.set(value.target, value);
+  }
+  return [...latest].flatMap(([target, value]) => {
+    const status = typeof value.delivery_status === "string" ? value.delivery_status.toLowerCase() : "";
+    if (!["queued", "sent", "failed", "unconfirmed"].includes(status)) return [];
+    const queueId = typeof value.queue_id === "string" && value.queue_id.trim() ? value.queue_id.trim() : null;
+    const messageId = typeof value.provider_message_id === "string" && value.provider_message_id.trim() ? value.provider_message_id.trim() : null;
+    return [{ destination: target.endsWith("@g.us") ? target : `recipient …${target.slice(-4)}`,
+      status: status === "queued" && !queueId || status === "sent" && !messageId ? "unknown" : status, queueId, messageId }];
+  });
+}
 
 /**
  * The newest `perProject` processes for one service, since `sinceIso`.
@@ -306,12 +363,13 @@ export async function readProcessWindow(
   // is empty" — see `Source.fallback`.
   if (source.fallback && !(await tableReadable(source, request))) source = source.fallback;
 
-  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, kindColumn, extraColumns = [] } = source;
+  const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, kindColumn, extraColumns = [], filter, fixedKind } = source;
   const rows = await readPaged(
     request,
     (before, limit) =>
       `${table}?select=${[projectColumn, statusColumn, timeColumn, errorColumn, ...(kindColumn ? [kindColumn] : []), ...extraColumns].join(",")}` +
       `&${timeColumn}=gte.${sinceIso}` +
+      (filter ? `&${filter}` : "") +
       `&order=${timeColumn}.desc&limit=${limit}` +
       // Encoded: PostgREST returns timestamps as `2026-10-16T20:13:34.12+08:00`,
       // and a raw `+` in a query string decodes to a space — the next page comes
@@ -343,8 +401,11 @@ export async function readProcessWindow(
       : logLines(row[errorColumn]);
     // The colour reads what the run wrote as well as its status: a run that only
     // reported late readings is `stale`, not amber (see `colourForRun`).
-    const kind = kindColumn ? String(row[kindColumn] ?? "").trim() : "";
-    return [{ projectCode, at, colour: colourForRun(service, status, log).colour, status, log, ...(kind ? { kind } : {}) }];
+    const kind = kindColumn ? String(row[kindColumn] ?? "").trim() : fixedKind || "";
+    const deliveries = service === "lightning" ? lightningDeliveries(row.delivery_attempts) : healthDeliveries(row.health_deliveries);
+    const omitted = typeof row.health_deliveries_omitted === "number" && Number.isSafeInteger(row.health_deliveries_omitted) && row.health_deliveries_omitted > 0 ? row.health_deliveries_omitted : 0;
+    return [{ projectCode, at, colour: colourForRun(service, status, log).colour, status, log,
+      ...(kind ? { kind } : {}), ...(deliveries ? { deliveries } : {}), ...(omitted ? { deliveriesOmitted: omitted } : {}) }];
   });
 }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listFrequentRunEvidence, listHazeHourlyEvidence, listNoiseScheduleEvidence, listSubconScheduleEvidence } from "@/lib/config-repository";
+import { listServiceScheduleEvidence, listFrequentRunEvidence, listHazeHourlyEvidence, listNoiseScheduleEvidence, listSubconScheduleEvidence } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const [hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence] = await Promise.all([listHazeHourlyEvidence(), listFrequentRunEvidence(), listNoiseScheduleEvidence(), listSubconScheduleEvidence()]);
-  return NextResponse.json({ hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence });
+  const [hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence, serviceScheduleEvidence] = await Promise.all([listHazeHourlyEvidence(), listFrequentRunEvidence(), listNoiseScheduleEvidence(), listSubconScheduleEvidence(), listServiceScheduleEvidence()]);
+  return NextResponse.json({ hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence, serviceScheduleEvidence });
 }

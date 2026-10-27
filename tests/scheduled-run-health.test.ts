@@ -6,6 +6,15 @@ import { summarise } from "../lib/health-board";
 import { formatHealthCurrentIssues } from "../lib/health-report";
 import { completedNoiseTicks, missingNoiseScheduleEntries, NOISE_SCHEDULES } from "../lib/noise-schedule-health";
 import { completedSubconTicks, missingSubconScheduleEntries, SUBCON_SCHEDULES } from "../lib/subcon-schedule-health";
+import { readHealthSchedules } from "../lib/health-schedules";
+
+test("health schedule declarations reject an unknown timezone and invalid or duplicate rules", () => {
+  const rule = { key: "one", route: "/run", name: "Run", hours: [1], minutes: [5] };
+  assert.equal(readHealthSchedules({ scheduleTimezone: "UTC", schedules: [rule] }).length, 1);
+  assert.throws(() => readHealthSchedules({ scheduleTimezone: "Asia/Singapore", schedules: [rule] }));
+  assert.throws(() => readHealthSchedules({ scheduleTimezone: "UTC", schedules: [rule, rule] }));
+  assert.throws(() => readHealthSchedules({ scheduleTimezone: "UTC", schedules: [{ ...rule, minutes: [60] }] }));
+});
 
 test("two completed haze hours with no project run become one current issue", () => {
   const evidence = {

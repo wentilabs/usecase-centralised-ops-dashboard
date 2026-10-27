@@ -10,10 +10,13 @@
     { "id": "15min-average-exceedance", "file": "migrate_15min_average_exceedance.sql", "requires": [] },
     { "id": "monthly-noise-report", "file": "migrate_monthly_noise_report.sql", "requires": [] },
     { "id": "data-health", "file": "migrate_data_health.sql", "requires": [] },
+    { "id": "data-health-issue-checks", "file": "migrate_data_health_issue_checks.sql", "requires": ["data-health"] },
     { "id": "hourly-app-screenshot", "file": "migrate_hourly_app_screenshot.sql", "requires": [] },
     { "id": "listener-queue-acceptance", "file": "migrate_listener_queue_acceptance.sql", "requires": ["monthly-noise-report", "data-health"] },
     { "id": "repeatable-monthly-reports", "file": "migrate_repeatable_monthly_reports.sql", "requires": ["listener-queue-acceptance"] },
-    { "id": "run-log-started-at-index", "file": "migrate_run_log_started_at_index.sql", "requires": ["repeatable-monthly-reports"] }
+    { "id": "run-log-started-at-index", "file": "migrate_run_log_started_at_index.sql", "requires": ["repeatable-monthly-reports"] },
+    { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
+    { "id": "schedule-heartbeats", "file": "migrate_schedule_heartbeats.sql", "requires": [] }
   ],
   "destructiveUtilities": []
 }

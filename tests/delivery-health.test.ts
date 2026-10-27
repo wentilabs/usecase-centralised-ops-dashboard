@@ -62,11 +62,12 @@ test("the run-log services reach the board under their own signal", () => {
   // ended `completed_with_errors` was red on its card and never reached the
   // estate board — the one place that exists to be looked at first. No readings-
   // age check covers them, so a failed run has to arrive from here or nowhere.
-  assert.deepEqual(BOARD_SERVICES.slice().sort(), ["ailytics", "haze", "issueChaser", "lightning", "subcon"]);
+  assert.deepEqual(BOARD_SERVICES.slice().sort(), ["ailytics", "haze", "issueChaser", "lightning", "subcon", "vibration"]);
   for (const service of ["subcon", "ailytics", "haze", "issueChaser"] as const) {
     assert.equal(boardSignalFor(service), "run", service);
   }
   assert.equal(boardSignalFor("lightning"), "delivery", "lightning has no run log, only a delivery ledger");
+  assert.equal(boardSignalFor("vibration"), "delivery", "PPV alerts have a project delivery ledger");
 
   const [entry] = deliveryEntries(
     { [healthKey("subcon", "ZRB")]: [bar("2026-10-17T08:00:00Z", "amber", "completed_with_errors")] },

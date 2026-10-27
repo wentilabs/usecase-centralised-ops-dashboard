@@ -1,3 +1,5 @@
+import { SCHEDULE_SERVICES, type ServiceScheduleEvidence } from "./service-schedule-health";
+import { serviceContractFor } from "./service-contracts";
 import "server-only";
 import { createTtlCache } from "./ttl-cache";
 import { metrics } from "./server-metrics";
@@ -1123,6 +1125,8 @@ export async function listProjectStrips(): Promise<Record<string, Bar[]>> {
         status: sample.status,
         log: sample.log,
         ...(sample.kind ? { kind: sample.kind } : {}),
+        ...(sample.deliveries ? { deliveries: sample.deliveries } : {}),
+        ...(sample.deliveriesOmitted ? { deliveriesOmitted: sample.deliveriesOmitted } : {}),
       })),
     ),
   );
@@ -1252,4 +1256,20 @@ export async function listNotificationEstateHealth(): Promise<ProjectHealth[]> {
 /** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */
 export async function listServiceNotices(): Promise<LightningNotice[]> {
   return (await lightningHealth()).notices;
+}
+
+/** Independently read bounded route watermarks; an unreadable source is not healthy. */
+export async function listServiceScheduleEvidence(): Promise<ServiceScheduleEvidence> {
+  const checkedAt = new Date().toISOString();
+  const sources = await Promise.all(SCHEDULE_SERVICES.map(async (service) => {
+    try {
+      const schema = serviceContractFor(service)?.configuration.schema;
+      if (!schema) throw new Error("Missing schema");
+      const result = await request("service_schedule_heartbeats?select=route,method,last_finished_at&limit=100", { schema });
+      if (!result.ok || !Array.isArray(result.body) || result.body.length >= 100) throw new Error("Incomplete evidence");
+      const routes = (result.body as Record<string, unknown>[]).flatMap((row) => typeof row.route === "string" && typeof row.method === "string" && typeof row.last_finished_at === "string" && Number.isFinite(Date.parse(row.last_finished_at)) ? [{ route: row.route, method: row.method, lastFinishedAt: row.last_finished_at }] : []);
+      return { service, state: "ready" as const, routes };
+    } catch { return { service, state: "unavailable" as const, routes: [] }; }
+  }));
+  return { checkedAt, sources };
 }

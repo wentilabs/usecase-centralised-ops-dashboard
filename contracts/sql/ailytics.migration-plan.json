@@ -108,7 +108,16 @@
       "requires": [
         "repeatable-yesterday-summary"
       ]
-    }
+    },
+    {
+      "id": "compliant-whatsapp-reaction",
+      "file": "migrate_compliant_whatsapp_reaction.sql",
+      "requires": [
+        "job-runs"
+      ]
+    },
+    { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
   ],
   "destructiveUtilities": [
     {

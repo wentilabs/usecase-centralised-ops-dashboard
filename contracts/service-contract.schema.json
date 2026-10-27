@@ -40,6 +40,41 @@
         }
       }
     },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "granularity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ingestion": { "enum": ["service", "project", "none"] },
+            "run": { "enum": ["service", "project", "none"] },
+            "delivery": { "enum": ["service", "project", "none"] }
+          }
+        },
+        "statuses": { "type": "object", "additionalProperties": { "enum": ["green", "stale", "amber", "red"] } },
+        "scheduleTimezone": { "const": "UTC" },
+        "schedules": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["key", "route", "name", "hours", "minutes"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "route": { "type": "string", "pattern": "^/" },
+              "name": { "type": "string", "minLength": 1 },
+              "method": { "enum": ["GET", "POST"] },
+              "hours": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0, "maximum": 23 } },
+              "minutes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0, "maximum": 59 } },
+              "weekdays": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0, "maximum": 6 } },
+              "monthDays": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 31 } }
+            }
+          }
+        }
+      },
+      "dependentRequired": { "schedules": ["scheduleTimezone"], "scheduleTimezone": ["schedules"] }
+    },
     "configuration": {
       "type": "object",
       "additionalProperties": false,

@@ -73,6 +73,10 @@ export function formatHealthErrorReport(strips: Record<string, Bar[]>): string {
       lines.push(`- ${formatSgt(bar.at)} | ${bar.kind ? `${bar.kind} | ` : ""}${bar.status}`);
       for (const error of bar.log) lines.push(`  ${error}`);
       if (!bar.log.length) lines.push("  no reason recorded");
+      for (const delivery of bar.deliveries ?? []) {
+        lines.push(`  ${delivery.destination ?? "unknown destination"}: ${delivery.status}${delivery.queueId ? ` | queue ${delivery.queueId}` : ""}${delivery.messageId ? ` | message ${delivery.messageId}` : ""}`);
+      }
+      if (bar.deliveriesOmitted) lines.push(`  ${bar.deliveriesOmitted} further delivery records not shown`);
     }
   }
   return lines.join("\n");

@@ -10,7 +10,8 @@ import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
 import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects, standaloneHealthIncidents } from "@/lib/health-report";
 import type { Bar } from "@/lib/health-timeline";
-import type { HandlerFailureReport } from "@/lib/handler-failures";
+import { groupHandlerFailures, type HandlerFailureReport } from "@/lib/handler-failures";
+import { scheduleCoverage, type ServiceScheduleEvidence } from "@/lib/service-schedule-health";
 import type { FrequentRunEvidence } from "@/lib/scheduled-run-health";
 import { NOISE_SCHEDULES, type NoiseScheduleEvidence } from "@/lib/noise-schedule-health";
 import { SUBCON_SCHEDULES, type SubconScheduleEvidence } from "@/lib/subcon-schedule-health";
@@ -54,13 +55,14 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, noiseScheduleEvidence = null, subconScheduleEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, noiseScheduleEvidence = null, subconScheduleEvidence = null, serviceScheduleEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
   hazeHourlyCheckUnavailable?: boolean;
   frequentRunEvidence?: FrequentRunEvidence | null;
   noiseScheduleEvidence?: NoiseScheduleEvidence | null;
   subconScheduleEvidence?: SubconScheduleEvidence | null;
+  serviceScheduleEvidence?: ServiceScheduleEvidence | null;
   /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
   onRefresh?: () => void;
   /** What has loaded, when, and how long it took: the board is where someone decides whether to trust what they see. */
@@ -94,6 +96,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
   const [handlerReport, setHandlerReport] = useState<HandlerFailureReport | null>(null);
   const [handlerReadState, setHandlerReadState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [handlerReadRevision, setHandlerReadRevision] = useState(0);
+  const handlerGroups = groupHandlerFailures(handlerReport?.failures ?? []);
   const refreshBoard = () => { onRefresh?.(); setHandlerReadRevision((value) => value + 1); };
   useEffect(() => {
     let active = true;
@@ -120,10 +123,14 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
       const report = issueReport
         ? hasProcessErrors ? `${processReport}\n\n${issueReport}` : `HALO Data Health report\n\n${issueReport}`
         : processReport;
-      const handlerLines = handlerReport?.failures.map((failure) =>
-        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"}${failure.projectCode ? ` | ${failure.projectCode}` : ""} | ${failure.eventType} | ${failure.reason}`,
-      ) ?? [];
-      await navigator.clipboard.writeText(handlerLines.length ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}` : report);
+      const handlerLines = handlerGroups.map((group) =>
+        `${SERVICES[group.service].label} | ${processTime(group.firstAt)}–${processTime(group.lastAt)} SGT | ${group.route ?? "route unknown"} | ${group.eventType} | ${group.occurrences} record${group.occurrences === 1 ? "" : "s"}${group.projects.length ? ` | Projects: ${group.projects.join(", ")}` : ""}${group.unscoped ? " | Includes unscoped records" : ""} | ${group.reason}`,
+      );
+      const incomplete = handlerReport?.sources.filter((source) => source.state === "unavailable" || source.state === "partial") ?? [];
+      const coverageLine = handlerReadState !== "ready"
+        ? `\nAnomaly evidence ${handlerReadState === "loading" ? "still loading" : "unavailable"}; absence of records is not evidence of health.`
+        : incomplete.length ? `\nIncomplete anomaly evidence: ${incomplete.map((source) => SERVICES[source.service].label).join(", ")}` : "";
+      await navigator.clipboard.writeText(handlerLines.length || coverageLine ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}${coverageLine}` : report);
       setCopyStatus("Copied");
     } catch {
       setCopyStatus("Copy unavailable");
@@ -165,6 +172,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
               const missing = SUBCON_SCHEDULES.filter((schedule) => !observed.has(schedule.key));
               return missing.length ? <p className="mt-1 text-xs text-muted-foreground">Subcon schedule coverage pending first recorded invocation for {missing.length} rule{missing.length === 1 ? "" : "s"}: {missing.map((rule) => rule.name).join(", ")}. No missed-run inference is made for them yet.</p> : null;
             })() : <p className="mt-1 text-xs text-muted-foreground">Subcon scheduled-run evidence unavailable. Current issues cannot rule out missed routes.</p>}
+            {(() => { const coverage = scheduleCoverage(serviceScheduleEvidence); return <p className="mt-1 text-xs text-muted-foreground">Route completion coverage: {coverage.unavailable.length ? `unavailable for ${coverage.unavailable.join(", ")}. ` : ""}{coverage.pending.length ? `${coverage.pending.length} rules awaiting a first completion. ` : ""}{coverage.shared.length ? `${coverage.shared.length} rules share a route and cannot be individually verified. ` : ""}A completion may come from a manual call and does not prove a message was accepted.</p>; })()}
             {loads ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
                 <LoadStamps loads={loads} />
@@ -269,6 +277,14 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
                                       {bar.log.map((line, lineIndex) => <li key={`${lineIndex}|${line}`}>{line}</li>)}
                                     </ul>
                                   ) : <div className="mt-1 text-[11px] text-muted-foreground">No reason recorded</div>}
+                                  {bar.deliveries?.length ? (
+                                    <ul className="mt-2 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                                      {bar.deliveries.map((delivery, deliveryIndex) => (
+                                        <li key={deliveryIndex}>{delivery.destination ?? "unknown destination"}: {delivery.status}{delivery.queueId ? ` · queue ${delivery.queueId}` : ""}{delivery.messageId ? ` · message ${delivery.messageId}` : ""}</li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                  {bar.deliveriesOmitted ? <div className="mt-1 text-[10px] text-muted-foreground">{bar.deliveriesOmitted} further delivery records not shown.</div> : null}
                                 </td>
                                 {/* Date over time, not one nowrap line: "20 Oct, 18:05 SGT" overflowed its
                                     column and was cut off at "20 Oct, 18". */}
@@ -314,16 +330,16 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
                 ) : null}
                 {handlerReport.failures.length ? (
                   <ul className="mt-3 max-h-80 divide-y divide-border overflow-auto rounded-lg border border-border bg-card">
-                    {handlerReport.failures.map((failure, index) => (
-                      <li key={`${failure.service}|${failure.at}|${index}`} className="px-3 py-2 text-xs">
+                    {handlerGroups.map((failure, index) => (
+                      <li key={`${failure.service}|${failure.lastAt}|${index}`} className="px-3 py-2 text-xs">
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="font-semibold">{SERVICES[failure.service].label}</span>
                           <span className="font-mono text-muted-foreground">{failure.route ?? "route unknown"}</span>
-                          {failure.projectCode ? <span className="font-mono text-muted-foreground">{failure.projectCode}</span> : null}
                           <span className="text-muted-foreground">{failure.eventType.replaceAll("_", " ")}</span>
-                          <span className="ml-auto text-[10px] text-muted-foreground">{processTime(failure.at)} SGT</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground">{processTime(failure.firstAt)}–{processTime(failure.lastAt)} SGT</span>
                         </div>
                         <p className="mt-1 break-words font-mono text-danger">{failure.reason}</p>
+                        <p className="mt-1 text-muted-foreground">{failure.occurrences} recorded occurrence{failure.occurrences === 1 ? "" : "s"}{failure.projects.length ? ` · Projects: ${failure.projects.join(", ")}` : ""}{failure.unscoped ? " · Includes unscoped records" : ""}</p>
                       </li>
                     ))}
                   </ul>

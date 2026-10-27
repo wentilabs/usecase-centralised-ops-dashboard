@@ -136,7 +136,9 @@
       "requires": [
         "independent-summary-switches"
       ]
-    }
+    },
+    { "id": "service-health-events", "file": "migrations/20261027_service_health_events.sql", "requires": [] },
+    { "id": "schedule-heartbeats", "file": "migrations/20261027_schedule_heartbeats.sql", "requires": [] }
   ],
   "destructiveUtilities": []
 }

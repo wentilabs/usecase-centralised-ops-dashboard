@@ -25,7 +25,9 @@
     { "id": "lightning-sms", "file": "lightning-sms.sql", "requires": ["notification-calendar"] },
     { "id": "sms-lightning-format", "file": "sms-lightning-format.sql", "requires": ["lightning-sms"] },
     { "id": "single-red-until-green", "file": "single-red-until-green.sql", "requires": ["stop-runtime-safety"] },
-    { "id": "listener-queue-acceptance", "file": "listener-queue-acceptance.sql", "requires": [] }
+    { "id": "listener-queue-acceptance", "file": "listener-queue-acceptance.sql", "requires": [] },
+    { "id": "service-health-events", "file": "service-health-events.sql", "requires": [] },
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
   ],
   "dataMigrations": [
     {

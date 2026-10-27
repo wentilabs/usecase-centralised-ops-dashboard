@@ -34,7 +34,7 @@
       "client_id": { "label": "Client ID", "group": "delivery", "mutable": true, "role": "configuration", "help": "Sending-account identifier required for live delivery." },
       "whatsapp_group_id": { "label": "WhatsApp groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Project-scope comma-separated destinations. Optional in MBS sensor scope, where sensor_delivery_groups is authoritative. Job log rows retain only the first group even when several are sent (INV-WBGT-12)." },
       "data_health_group_ids": { "label": "Data Health groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "Dedicated internal operations groups for Data Health reminders; never falls back to customer alert groups. Blank keeps monitoring silent." },
-      "data_health_message_template": { "label": "Data Health message template", "group": "delivery", "mutable": true, "role": "renderer-selector", "help": "Optional full message using only {{project_code}}, {{service}}, {{status}}, and {{latest_receipt}}; blank uses the safe default." },
+      "data_health_message_template": { "label": "Data Health message template", "group": "delivery", "mutable": true, "role": "renderer-selector", "help": "Optional header using {{project_code}}, {{service}}, {{status}}, {{latest_receipt}}, {{expected_cadence}}, and {{age}}; affected-sensor or process details are always appended." },
       "delivery_scope": { "label": "Delivery scope", "group": "delivery", "mutable": true, "role": "policy-selector", "help": "Use project for the existing fan-out. sensor is available only for MBS and sends each active sensor to its mapped group.", "options": ["project", "sensor"] },
       "sensor_delivery_groups": { "label": "MBS sensor groups", "group": "delivery", "mutable": true, "role": "configuration", "help": "When delivery scope is sensor, map every active MBS sensor label directly to one distinct WhatsApp group. This is authoritative and does not require whatsapp_group_id." },
       "lambda_url": { "label": "Send-message URL", "group": "delivery", "mutable": true, "role": "configuration", "help": "Message proxy URL required for live delivery; POC mentions need a /send-message suffix (INV-WBGT-13)." },
@@ -98,6 +98,20 @@
     ]
   },
   "health": {
+    "scheduleTimezone": "UTC",
+    "schedules": [
+      {"key":"wbgt-health","route":"/api/wbgt-data-health","name":"WBGT data health","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"wbgt-monthly","route":"/api/generate-and-send-monthly-wbgt-report","name":"WBGT monthly report","minutes":[30],"hours":[4],"monthDays":[1]},
+      {"key":"water-summary","route":"/api/water-parade-daily-summary","name":"Water Parade reminder summary","minutes":[5],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"telegram-retry","route":"/api/wbgt-telegram-retry","name":"WBGT Telegram retry","minutes":[0,5,10,15,20,25,30,35,40,45,50,55],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"water-photo","route":"/api/water-parade-photo-refresh","name":"Water Parade photo refresh","minutes":[0],"hours":[20],"weekdays":[6]},
+      {"key":"wbgt-morning-scrape","route":"/api/wbgt-scrape","name":"WBGT morning scrape","minutes":[55],"hours":[23]},
+      {"key":"water-reminders","route":"/api/water-parade-reminder","name":"Water Parade reminders","minutes":[30,56],"hours":[3,4,5,6,7,8,9,10,11]},
+      {"key":"wbgt-sheet-fill","route":"/api/wbgt-sheet-fill","name":"WBGT sheet fill","minutes":[13],"hours":[10]},
+      {"key":"wbgt-5min","route":"/api/wbgt-5min","name":"WBGT five-minute reading","minutes":[0,5,10,15,20,25,30,35,40,45,50,55],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
+      {"key":"wbgt-day-scrape","route":"/api/wbgt-scrape","name":"WBGT daytime scrape","minutes":[0,13,28,43,58],"hours":[0,1,2,3,4,5,6,7,8,9,10,11]},
+      {"key":"wbgt-hourly","route":"/api/wbgt-hourly","name":"WBGT hourly reading","minutes":[1,16,31,46],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]}
+    ],
     "granularity": { "ingestion": "project", "run": "project", "delivery": "project" },
     "statuses": { "pending": "green", "sending": "green", "queued": "green", "sent": "green", "unconfirmed": "amber", "cancelled": "amber", "failed": "red", "suppressed": "green", "expired": "amber" }
   }

@@ -40,8 +40,9 @@ HALO colours a status it has never seen from its prefix (table above), so a serv
 follows the convention is right without HALO being told anything.
 
 - `completed` / `skipped…` / `suppressed…` / `running` — green.
-- `completed_with_…` — amber. Use it only for "it ran and sent, but something needs
-  a developer". Do **not** use it for something a developer cannot act on (see §5).
+- `completed_with_…` — amber. The job made progress but has an actionable issue;
+  the row must say what succeeded and what failed when that distinction matters.
+  Do **not** use it for something a developer cannot act on (see §5).
 - `failed…` — red.
 - `dropped…` — red: the listener accepted a send and then gave up on it for good (§6).
 - Anything else is **amber, by design**, so an unclassified status is visible rather than
@@ -128,47 +129,20 @@ Separately, HALO ages the newest row of each project's readings table (`created_
 what the project's configured cadence, site hours and Sunday mute allow, and calls it
 `delayed` or `no recent data` — both dark green. Nothing for the service to write.
 
-## 6. Queued is not delivered: reconcile your queued sends
+## 6. Record the send decision and listener acceptance
 
-The listener answers a send with `queued` and a queue id, then tries it. It can give up
-for good — `NOT_PARTICIPANT` ("this number is no longer a participant of this group") is
-the case seen — and **it tells nobody**. A service that stops at `queued` reports a message
-that never arrived as accepted, green, indefinitely. In the week to 20 Oct, 376 such drops
-hit eleven chats.
+For every project and scheduled job, record whether a message was expected,
+intentionally skipped, or attempted. For each attempted recipient, record the
+listener's result. A `queued` response with its queue ID, or a `sent` response
+with its message ID, is sufficient Data Health evidence;
+they describe listener acceptance and must not be presented as proof that a
+person received or read a message. A rejected or unconfirmed response retains
+its reason. Partial success must retain both successful and failed recipients.
 
-A service that sends through the queue must therefore, for queue ids older than a few
-minutes that it has not seen finish:
-
-1. Ask `POST /proxy/outbound-status` (direct: `POST /outbound/status`) with
-   `{ instanceName, clientId, queueIds: [...] }` — at most 100 per call, finished rows kept
-   seven days. It reads the queue table only, never returns message content, and answers
-   at once even before WhatsApp is ready. Through the proxy the answer is under `data`.
-2. The answer is `{ success, items[], notFound, allTerminal, retentionDays }`. Each item has
-   `queueId`, `status`, `chatId`, `attempts`, `completedAt`, `messageId` and, when there is
-   something to say, `error: { code, text }`. `status` is one of:
-   - `queued` / `sending` — not finished; leave the send `queued` and ask again later. A
-     `queued` item that carries an `error` is waiting to retry after a failed attempt.
-   - `sent` — WhatsApp's server accepted it (`ack ≥ 1`); not "delivered" or "read". Record
-     `sent` with `messageId`. Green.
-   - `failed` — will not be sent: bad input, a target that stays missing, or not delivered
-     within 24 hours (`error.code` is `EXPIRED`). Record `failed…`. Red.
-   - `dropped` — will not be sent: this number can no longer send to that group
-     (`NOT_PARTICIPANT`, `ADMINS_ONLY`). Record a status beginning **`dropped`**. Red.
-   - An id in `notFound` has aged out of the seven-day retention: say so in the log rather
-     than leaving it `queued` for ever.
-3. Write the outcome onto the ledger row, **and** into the run log's `errors` for the
-   project for anything that is not `sent`, following §3 — the listener's own `error.code`
-   and `error.text`, the chat, the queue id:
-
-   ```
-   120363405395020959@g.us: queue 57557 dropped — NOT_PARTICIPANT: WhatsApp rejected the send: this number is no longer a participant of this group
-   ```
-
-A final `failed` or `dropped` is **not** an instruction to repost: the message was accepted
-and the listener has made its final decision.
-
-Until a service does this, HALO cannot see a drop. It does not hold the key to the
-listener's queue and will not be given it.
+Data Health does not require polling the listener queue to verify the final
+WhatsApp outcome. If a service independently learns that a send failed, it can
+still record the failure. A run completing, by itself, is not proof that a send
+was expected or accepted. Missing or unreadable evidence is unknown, not green.
 
 ## 7. The `health` block of your contract
 
@@ -190,6 +164,36 @@ listener's queue and will not be given it.
   whether your `partial` means "some recipients failed" or "partial by configuration".
 - A value outside those four is ignored, not trusted.
 
+For verified schedules, `health.scheduleTimezone` is `UTC` and `health.schedules`
+contains stable keys, routes, names, and arrays of due `hours` and `minutes`,
+with optional `weekdays` (Sunday = 0) or `monthDays`. Noise and Subcon own the
+declarations already used by HALO. They must be checked against the external
+scheduler when it changes; a contract declaration does not prove a rule is
+enabled or fired. A route with two rules needs two keys. Other services do not
+gain schedule coverage merely by having a run log.
+
+## 8. Evidence to add as services adopt the contract
+
+Each service remains responsible for its own evidence. The target is a stable
+job identity, invocation or run identity, scope (service or project), start and
+completion times, outcome, and a reason for any failure. Record a scheduled
+invocation independently from project decisions, because a handler can fail
+before it reaches a project. A project decision distinguishes expected send,
+accepted send, intentional skip, and failure; correlate any accepted send with
+the identifier returned by its listener. Record stable cause codes and affected
+resources where a service can provide them, alongside a safe human reason.
+
+HALO treats an unreadable source, missing baseline, absent field, or unsupported
+signal as unknown. A recent failure is historical evidence, while a current
+issue requires current run, state, or schedule evidence. It groups matching
+repeated reasons and retains the affected projects, first and last seen times,
+and number of records. Grouping does not prove a shared cause or recovery.
+Existing rows without the newer identifiers remain readable; they do not gain
+invented identifiers or delivery outcomes.
+
+These are adoption requirements, not a claim that every existing route already
+emits every field. Track coverage per service and route as it is added.
+
 ## Checklist
 
 - [ ] A row per project per scheduled run, skips included; no `project_code` is ever blank.
@@ -198,7 +202,7 @@ listener's queue and will not be given it.
 - [ ] Every amber/red/stale status writes an error; no green status writes one.
 - [ ] Each error says what, on what, and why (verbatim), with stable wording and no secrets.
 - [ ] A late reading is a separate line from every other problem.
-- [ ] Queued sends are reconciled, and a dropped one is written as `dropped…`.
+- [ ] Each expected send has a recorded decision and listener acceptance or failure; record a queue ID for `queued` or message ID for `sent`.
 - [ ] `node scripts/audit-service-health.mjs` in HALO shows no `COLOUR-WITHOUT-EVIDENCE`,
       `GREEN-BUT-HAS-ERRORS` or `UNRECOGNISED` for the service.
 
@@ -208,5 +212,4 @@ listener's queue and will not be given it.
 > shows. Follow HALO's [`docs/SERVICE_HEALTH_CONTRACT.md`](../usecase-wohhup-ops-dashboard/docs/SERVICE_HEALTH_CONTRACT.md):
 > one row per project per run (skips included), statuses that follow the prefix convention,
 > an error on every non-green status that says what, on what and why (the upstream's words,
-> verbatim), late readings kept apart from other problems, and queued sends reconciled with
-> `outbound/status`. HALO never asks for wording to change; it asks for enough to act on.
+> verbatim), late readings kept apart from other problems, and a recorded send decision and listener response. HALO never asks for wording to change; it asks for enough to act on.

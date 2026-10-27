@@ -343,6 +343,7 @@ export const NOT_A_MESSAGE: Record<string, string> = {
   "lightning:/api/episodes-list": "A read of stored episodes.",
   "lightning:/api/episodes-evidence": "A read of stored detections.",
   "noise:/api/scrape-noiselynx": "Ingests readings.",
+  "noise:/api/halo-data-health": "Invokes HALO's health notification route; Noise does not render the message.",
   "noise:/api/noise-limit-refresh": "Refreshes limits from the source of record.",
   "noise:/api/noise-sheet-bootstrap": "Creates the project workbook.",
   "noise:/api/noise-sheet-export": "Writes readings to the workbook.",

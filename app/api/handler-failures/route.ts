@@ -12,6 +12,6 @@ export async function GET() {
   try {
     return NextResponse.json(await listHandlerFailures(), { headers: { "Cache-Control": "private, no-store" } });
   } catch {
-    return NextResponse.json({ checkedAt: new Date().toISOString(), failures: [], unavailable: true });
+    return NextResponse.json({ checkedAt: new Date().toISOString(), failures: [], sources: [], unavailable: true });
   }
 }

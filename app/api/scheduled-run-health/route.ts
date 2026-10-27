@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { listHazeHourlyEvidence } from "@/lib/config-repository";
+import { listFrequentRunEvidence, listHazeHourlyEvidence } from "@/lib/config-repository";
 import { getDashboardSession } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-/** `GET /api/scheduled-run-health` — read the last two completed Haze hourly slots. */
+/** `GET /api/scheduled-run-health` — independently read recurring service run evidence. */
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json({ hazeHourlyEvidence: await listHazeHourlyEvidence() });
+  const [hazeHourlyEvidence, frequentRunEvidence] = await Promise.all([listHazeHourlyEvidence(), listFrequentRunEvidence()]);
+  return NextResponse.json({ hazeHourlyEvidence, frequentRunEvidence });
 }

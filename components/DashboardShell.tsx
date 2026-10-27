@@ -26,7 +26,7 @@ import { refreshUpdates } from "@/lib/health-refresh";
 import { LOADING, failed, finished, type Load } from "@/lib/load-stamps";
 import { LoadStamps } from "./LoadStamps";
 import { boardEntries, deliveryEntries, faultEntries, noticeEntries, summarise } from "@/lib/health-board";
-import { missingHazeHourlyEntries, type HazeHourlyEvidence } from "@/lib/scheduled-run-health";
+import { missingFrequentRunEntries, missingHazeHourlyEntries, type FrequentRunEvidence, type HazeHourlyEvidence } from "@/lib/scheduled-run-health";
 import { boardSignalFor } from "@/lib/process-log";
 import type { Bar } from "@/lib/health-timeline";
 import { healthKey, type ProjectHealth } from "@/lib/data-health";
@@ -129,6 +129,7 @@ export function DashboardShell({
   // Whole-service findings — the Lightning tick, the NEA feed — which belong to no project card.
   const [serviceNotices, setServiceNotices] = useState<Parameters<typeof noticeEntries>[0]>([]);
   const [hazeHourlyEvidence, setHazeHourlyEvidence] = useState<HazeHourlyEvidence | null>(null);
+  const [frequentRunEvidence, setFrequentRunEvidence] = useState<FrequentRunEvidence | null>(null);
   // The readings-age verdicts, loaded after first paint. They are not part of the document because they
   // were the whole of the wait (3.6 s of a 3.7 s render): a newest-row query for each active project.
   const [liveHealth, setLiveHealth] = useState<ProjectHealth[]>([]);
@@ -176,13 +177,16 @@ export function DashboardShell({
       try {
         const response = await fetch("/api/scheduled-run-health", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
-        const body = await response.json() as { hazeHourlyEvidence?: HazeHourlyEvidence | null };
+        const body = await response.json() as { hazeHourlyEvidence?: HazeHourlyEvidence | null; frequentRunEvidence?: FrequentRunEvidence | null };
         setHazeHourlyEvidence(body.hazeHourlyEvidence ?? null);
+        setFrequentRunEvidence(body.frequentRunEvidence ?? null);
       } catch {
         // A failed read removes the inferred issue rather than treating silence as proof.
         setHazeHourlyEvidence(null);
+        setFrequentRunEvidence(null);
       }
     };
+    void refreshScheduledRuns();
     const timer = window.setInterval(() => void refreshScheduledRuns(), 5 * 60_000);
     const onVisible = () => { if (document.visibilityState === "visible") void refreshScheduledRuns(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -271,8 +275,9 @@ export function DashboardShell({
         ...faultEntries(projectFaults),
         ...noticeEntries(serviceNotices),
         ...missingHazeHourlyEntries(rows.haze ?? [], hazeHourlyEvidence),
+        ...missingFrequentRunEntries(rows, frequentRunEvidence),
       ]),
-    [rows, healthByProject, projectStrips, projectFaults, serviceNotices, hazeHourlyEvidence],
+    [rows, healthByProject, projectStrips, projectFaults, serviceNotices, hazeHourlyEvidence, frequentRunEvidence],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -881,6 +886,7 @@ export function DashboardShell({
           summary={healthSummary}
           strips={projectStrips}
           hazeHourlyCheckUnavailable={historyLoad.state === "done" && hazeHourlyEvidence === null}
+          frequentRunEvidence={frequentRunEvidence}
           loads={loadItems}
           onRefresh={() => void refreshHealth()}
           refreshing={refreshingHealth}

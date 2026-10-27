@@ -11,6 +11,7 @@ import type { BoardSummary, Incident } from "@/lib/health-board";
 import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects, standaloneHealthIncidents } from "@/lib/health-report";
 import type { Bar } from "@/lib/health-timeline";
 import type { HandlerFailureReport } from "@/lib/handler-failures";
+import type { FrequentRunEvidence } from "@/lib/scheduled-run-health";
 
 /** `2026-10-16T10:00:12+00:00` → `10-16 10:00`, and a range when it spans time. */
 function when(incident: Incident): string | null {
@@ -51,10 +52,11 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
   hazeHourlyCheckUnavailable?: boolean;
+  frequentRunEvidence?: FrequentRunEvidence | null;
   /** Forget what is remembered and read it all again: the board is where someone checks that a fix cleared. */
   onRefresh?: () => void;
   /** What has loaded, when, and how long it took: the board is where someone decides whether to trust what they see. */
@@ -96,7 +98,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
         const response = await fetch("/api/handler-failures", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
         const body = await response.json() as HandlerFailureReport & { unavailable?: boolean };
-        if (body.unavailable || !Array.isArray(body.failures)) throw new Error("unavailable");
+        if (body.unavailable || !Array.isArray(body.failures) || !Array.isArray(body.sources)) throw new Error("unavailable");
         if (active) { setHandlerReport(body); setHandlerReadState("ready"); }
       } catch {
         if (active) { setHandlerReport(null); setHandlerReadState("unavailable"); }
@@ -115,9 +117,9 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
         ? hasProcessErrors ? `${processReport}\n\n${issueReport}` : `HALO Data Health report\n\n${issueReport}`
         : processReport;
       const handlerLines = handlerReport?.failures.map((failure) =>
-        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"} | handler_failed | ${failure.reason}`,
+        `${SERVICES[failure.service].label} | ${processTime(failure.at)} SGT | ${failure.route ?? "route unknown"} | ${failure.eventType} | ${failure.reason}`,
       ) ?? [];
-      await navigator.clipboard.writeText(handlerLines.length ? `${report}\n\nRecent handler failures (service records)\n${handlerLines.join("\n")}` : report);
+      await navigator.clipboard.writeText(handlerLines.length ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}` : report);
       setCopyStatus("Copied");
     } catch {
       setCopyStatus("Copy unavailable");
@@ -141,11 +143,15 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
               {/* Said once, here, rather than on every card: there is nothing to
                   switch on, so a reader seeing a quiet board knows the check ran
                   rather than wondering whether it was ever configured. */}
-              <span className="opacity-70">Every covered project is automatically monitored.</span>
+              <span className="opacity-70">Covered project and service signals are checked automatically.</span>
             </p>
             {hazeHourlyCheckUnavailable ? (
               <p className="mt-1 text-xs text-muted-foreground">Haze scheduled-run check unavailable. Current issues cannot rule out a missed hourly run.</p>
             ) : null}
+            {frequentRunEvidence?.sources.some((source) => source.state !== "ready") ? (
+              <p className="mt-1 text-xs text-muted-foreground">Scheduled-run evidence incomplete: {frequentRunEvidence.sources.filter((source) => source.state !== "ready").map((source) => `${SERVICES[source.service].label} (${source.state === "no_history" ? "no recorded baseline" : "unavailable"})`).join(", ")}. Silence is not treated as a confirmed missed run for these sources.</p>
+            ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">Noise and Subcon missed-run timing checks await verification of their live schedules. Their recorded run errors are still shown.</p>
             {loads ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
                 <LoadStamps loads={loads} />
@@ -277,15 +283,21 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
             </div>
           ) : null}
 
-          <section className="border-t border-border pt-4" aria-label="Recent handler failures">
-            <h3 className="text-sm font-semibold">Recent handler failures</h3>
+          <section className="border-t border-border pt-4" aria-label="Recent service anomalies">
+            <h3 className="text-sm font-semibold">Recent service anomalies</h3>
             <p className="mt-1 text-[11px] text-muted-foreground">Service-recorded errors from the last 48 hours. A recorded error may already have recovered; current health is shown above.</p>
             {handlerReadState === "loading" ? <p className="mt-2 text-xs text-muted-foreground">Checking service failure records…</p> : null}
             {handlerReadState === "unavailable" ? <p className="mt-2 text-xs text-muted-foreground">Failure records unavailable. This does not mean there were no failures.</p> : null}
             {handlerReadState === "ready" && handlerReport ? (
               <>
+                {handlerReport.sources.some((source) => source.state === "unavailable" || source.state === "partial") ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Incomplete evidence: {handlerReport.sources.filter((source) => source.state === "unavailable" || source.state === "partial").map((source) => SERVICES[source.service].label).join(", ")}. An unreadable source never means zero errors.</p>
+                ) : null}
+                {handlerReport.sources.some((source) => source.state === "legacy") ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Using the shared compatibility table for {handlerReport.sources.filter((source) => source.state === "legacy").map((source) => SERVICES[source.service].label).join(", ")} until their service-owned tables are readable.</p>
+                ) : null}
                 {!handlerReport.failures.length ? (
-                  <p className="mt-2 text-xs text-muted-foreground">No recorded handler failures in the last 48 hours. Coverage begins when each service adopts the shared writer.</p>
+                  <p className="mt-2 text-xs text-muted-foreground">No recorded service anomalies in the readable sources over the last 48 hours. This does not prove that scheduled runs occurred.</p>
                 ) : null}
                 {handlerReport.failures.length ? (
                   <ul className="mt-3 max-h-80 divide-y divide-border overflow-auto rounded-lg border border-border bg-card">
@@ -294,6 +306,8 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="font-semibold">{SERVICES[failure.service].label}</span>
                           <span className="font-mono text-muted-foreground">{failure.route ?? "route unknown"}</span>
+                          {failure.projectCode ? <span className="font-mono text-muted-foreground">{failure.projectCode}</span> : null}
+                          <span className="text-muted-foreground">{failure.eventType.replaceAll("_", " ")}</span>
                           <span className="ml-auto text-[10px] text-muted-foreground">{processTime(failure.at)} SGT</span>
                         </div>
                         <p className="mt-1 break-words font-mono text-danger">{failure.reason}</p>

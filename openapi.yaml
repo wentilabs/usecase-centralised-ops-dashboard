@@ -765,11 +765,11 @@ paths:
       operationId: listScheduledRunHealth
       tags:
         - discovery
-      summary: Recent Haze hourly run evidence for an open HALO dashboard
-      description: Reads the two most recent completed hourly slots from Haze's per-project run log. A null `hazeHourlyEvidence` means the table was unreadable, truncated, or the check is disabled, and cannot prove a missed run. The dashboard polls this while visible. No WhatsApp message is sent.
+      summary: Recent scheduled run evidence for an open HALO dashboard
+      description: Reads the two most recent scheduled hourly checkpoints from Haze's per-project run log, plus the newest run of WBGT scrape, Ailytics hourly summary, Issue Chaser severity check, and Vibration scrape. A null or unavailable source cannot prove a missed run; a source without a historical baseline is also not treated as a confirmed missed run. The dashboard polls this while visible. No WhatsApp message is sent.
       responses:
         "200":
-          description: Haze hourly evidence or null when unavailable.
+          description: Per-service scheduled run evidence and explicit read states.
           content:
             application/json:
               schema:
@@ -781,8 +781,8 @@ paths:
       operationId: listHandlerFailures
       tags:
         - discovery
-      summary: Recent service-recorded handler failure reasons
-      description: Reads the last 48 hours of service-written failure rows from ops.service_handler_failures. Each result includes service, route, timestamp and a bounded reason. An unavailable read is explicit. An empty list covers only services that write to this table and is not proof that all services ran. Any signed-in HALO viewer may read these historical events.
+      summary: Recent anomalies from service-owned health tables
+      description: Reads the last 48 hours of service-written rows from each service schema's service_health_events table, plus partial and failed Vibration job rows with their recorded project source errors. Each result includes service, event type, route, optional project, timestamp and a bounded reason. Each source has an explicit ready, legacy, partial or unavailable read state. Legacy means the older ops.service_handler_failures table was read as a migration fallback. These historical events do not prove current health or scheduled invocation. Any signed-in HALO viewer may read them.
       responses:
         "200":
           description: Recent failures and read availability.

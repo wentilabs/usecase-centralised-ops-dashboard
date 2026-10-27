@@ -70,6 +70,13 @@ one-shot bundle for all eight schemas. The prior `supabase/handler_failures.sql`
 table remains a compatibility source during rollout. HALO reads these tables
 with its existing `SUPABASE_SECRET_KEY`; no AWS log access is needed.
 
+For Noise missed-schedule detection, also apply the Noise repository's
+`supabase/migrate_schedule_heartbeats.sql` in the shared config Supabase project.
+Until it exists, the Noise Lambda backs off heartbeat writes for five minutes
+after a missing-table response and HALO reports the schedule check unavailable.
+After migration, normal scheduled invocations establish one baseline per route;
+no backfill or scheduler change is required.
+
 ## Verify after deploy
 
 ```bash

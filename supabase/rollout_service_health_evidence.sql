@@ -185,3 +185,64 @@ $$;
 revoke all on function vibration.finish_ppv_alert_with_evidence(bigint, boolean, text, jsonb) from public, anon, authenticated;
 grant execute on function vibration.finish_ppv_alert_with_evidence(bigint, boolean, text, jsonb) to service_role;
 
+
+-- usecase-wohhup-noise-meter-alerts/supabase/migrate_service_health_events.sql
+-- Additive Data Health anomaly evidence owned by noise-meters.
+-- Apply before deploying the writer. Only service-role clients may read or insert.
+create table if not exists "noise-meters".service_health_events (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null check (event_type in ('handler_failure', 'run_failure', 'delivery_failure')),
+  route text,
+  project_code text,
+  reason text not null check (length(reason) between 1 and 500),
+  occurred_at timestamptz not null default now()
+);
+create index if not exists service_health_events_occurred_at_idx
+  on "noise-meters".service_health_events (occurred_at desc);
+alter table "noise-meters".service_health_events enable row level security;
+revoke all on "noise-meters".service_health_events from anon, authenticated;
+grant select, insert on "noise-meters".service_health_events to service_role;
+
+
+-- usecase-wohhup-noise-meter-alerts/supabase/migrate_schedule_heartbeats.sql
+-- One bounded row per Noise scheduled route. This proves a handler returned,
+-- including invocations that correctly had no project work.
+create table if not exists "noise-meters".noise_schedule_heartbeats (
+  route text primary key check (length(route) between 1 and 150),
+  last_seen_at timestamptz not null
+);
+alter table "noise-meters".noise_schedule_heartbeats enable row level security;
+revoke all on "noise-meters".noise_schedule_heartbeats from anon, authenticated;
+grant select, insert, update on "noise-meters".noise_schedule_heartbeats to service_role;
+
+
+-- usecase-subcon-manpower-activities/supabase/migrations/20261027_service_health_events.sql
+-- Additive Data Health anomaly evidence owned by manpower_activity.
+-- Apply before deploying the writer. Only service-role clients may read or insert.
+create table if not exists "manpower_activity".service_health_events (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null check (event_type in ('handler_failure', 'run_failure', 'delivery_failure')),
+  route text,
+  project_code text,
+  reason text not null check (length(reason) between 1 and 500),
+  occurred_at timestamptz not null default now()
+);
+create index if not exists service_health_events_occurred_at_idx
+  on "manpower_activity".service_health_events (occurred_at desc);
+alter table "manpower_activity".service_health_events enable row level security;
+revoke all on "manpower_activity".service_health_events from anon, authenticated;
+grant select, insert on "manpower_activity".service_health_events to service_role;
+
+
+-- usecase-subcon-manpower-activities/supabase/migrations/20261027_schedule_heartbeats.sql
+-- One bounded completion watermark per externally scheduled Subcon rule.
+create table if not exists manpower_activity.subcon_schedule_heartbeats (
+  schedule_key text primary key check (length(schedule_key) between 1 and 100),
+  route text not null check (length(route) between 1 and 150),
+  last_seen_at timestamptz not null,
+  last_started_at timestamptz not null
+);
+alter table manpower_activity.subcon_schedule_heartbeats enable row level security;
+revoke all on manpower_activity.subcon_schedule_heartbeats from anon, authenticated;
+grant select, insert, update on manpower_activity.subcon_schedule_heartbeats to service_role;
+

@@ -613,7 +613,7 @@ export const openapiDocument = {
         tags: ["discovery"],
         summary: "Recent scheduled run evidence for an open HALO dashboard",
         description:
-          "Reads the two most recent scheduled hourly checkpoints from Haze's per-project run log, the newest run of WBGT scrape, Ailytics hourly summary, Issue Chaser severity check and Vibration scrape, and one completion watermark for each of Noise's 16 verified UTC routes. A null or unavailable source cannot prove a missed run; a source without a historical baseline is also not treated as a confirmed missed run. Noise route completions and handler errors are separate evidence. The dashboard polls this while visible. No WhatsApp message is sent.",
+          "Reads the two most recent scheduled hourly checkpoints from Haze's per-project run log, the newest run of WBGT scrape, Ailytics hourly summary, Issue Chaser severity check and Vibration scrape, one completion watermark for each of Noise's 16 verified UTC routes, and one for each of Subcon's six UTC rules. The two Subcon manpower times have independent baselines. A null or unavailable source cannot prove a missed run; a source without a historical baseline is also not treated as a confirmed missed run. Route completions and handler errors are separate evidence. The dashboard polls this while visible. No WhatsApp message is sent.",
         responses: {
           "200": { description: "Per-service scheduled run evidence and explicit read states.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
           "401": errorResponses["401"],

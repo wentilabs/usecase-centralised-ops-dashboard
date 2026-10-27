@@ -5,6 +5,7 @@ import { completedHazeHourlySlots, missingFrequentRunEntries, missingHazeHourlyE
 import { summarise } from "../lib/health-board";
 import { formatHealthCurrentIssues } from "../lib/health-report";
 import { completedNoiseTicks, missingNoiseScheduleEntries, NOISE_SCHEDULES } from "../lib/noise-schedule-health";
+import { completedSubconTicks, missingSubconScheduleEntries, SUBCON_SCHEDULES } from "../lib/subcon-schedule-health";
 
 test("two completed haze hours with no project run become one current issue", () => {
   const evidence = {
@@ -96,6 +97,35 @@ test("Noise needs a baseline and two completed due times before a missed route i
   assert.deepEqual(missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "ready", routes: [{ route, lastSeenAt: "2026-10-27T10:02:00Z" }] }), []);
   const entries = missingNoiseScheduleEntries({ checkedAt: "2026-10-27T10:25:00Z", state: "ready", routes: [{ route, lastSeenAt: "2026-10-27T10:01:00Z" }] });
   assert.deepEqual(entries.map((entry) => entry.projectCode), [route]);
+  assert.equal(entries[0]?.scope, "service");
+  assert.equal(entries[0]?.colour, "red");
+});
+
+test("Subcon's two manpower rules have independent UTC due times", () => {
+  assert.equal(SUBCON_SCHEDULES.length, 6);
+  const early = SUBCON_SCHEDULES.find((schedule) => schedule.key === "manpower-summary-0205")!;
+  const late = SUBCON_SCHEDULES.find((schedule) => schedule.key === "manpower-summary-0805")!;
+  assert.deepEqual(completedSubconTicks("2026-10-27T08:21:00Z", early), [
+    "2026-10-26T02:05:00.000Z", "2026-10-27T02:05:00.000Z",
+  ]);
+  assert.deepEqual(completedSubconTicks("2026-10-27T08:21:00Z", late), [
+    "2026-10-26T08:05:00.000Z", "2026-10-27T08:05:00.000Z",
+  ]);
+  const weekly = SUBCON_SCHEDULES.find((schedule) => schedule.key === "housekeeping-photos-saturday-2000")!;
+  assert.deepEqual(completedSubconTicks("2026-10-27T08:21:00Z", weekly), [
+    "2026-10-17T20:00:00.000Z", "2026-10-24T20:00:00.000Z",
+  ]);
+});
+
+test("Subcon only flags a rule with a baseline older than two completed runs", () => {
+  const checkedAt = "2026-10-27T08:21:00Z";
+  const early = { scheduleKey: "manpower-summary-0205", lastStartedAt: "2026-10-25T02:05:00Z" };
+  const late = { scheduleKey: "manpower-summary-0805", lastStartedAt: "2026-10-27T08:05:00Z" };
+  assert.deepEqual(missingSubconScheduleEntries(null), []);
+  assert.deepEqual(missingSubconScheduleEntries({ checkedAt, state: "unavailable", schedules: [early] }), []);
+  assert.deepEqual(missingSubconScheduleEntries({ checkedAt, state: "ready", schedules: [] }), []);
+  const entries = missingSubconScheduleEntries({ checkedAt, state: "ready", schedules: [early, late] });
+  assert.deepEqual(entries.map((entry) => entry.projectCode), ["manpower-summary-0205"]);
   assert.equal(entries[0]?.scope, "service");
   assert.equal(entries[0]?.colour, "red");
 });

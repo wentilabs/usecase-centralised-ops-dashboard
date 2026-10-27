@@ -46,13 +46,17 @@ event writer. Noise additionally reads its service-owned
 scheduled route. Its 16 UTC rules were verified against the live scheduler on
 27 Oct 2026. A route becomes a current issue only after an observed baseline and
 two due invocations with no newer completion, allowing 15 minutes for a handler
-to return. A missing baseline or unreadable table is shown as incomplete
+to return. Subcon uses the same conservative rule for six UTC scheduler rules;
+its two `/daily-manpower-summary` times have separate baselines so one cannot
+hide the other. A missing baseline or unreadable table is shown as incomplete
 coverage, never inferred as a missed run. A heartbeat proves a route returned;
 recorded handler errors and project run errors remain separate anomalies. Apply
-Noise's `supabase/migrate_schedule_heartbeats.sql` before deploying its writer;
-the first scheduled return then establishes each route's baseline. Subcon
-missed-run inference awaits verification of its live external schedule; its
-recorded run failures remain visible.
+Noise's `supabase/migrate_schedule_heartbeats.sql` and Subcon's
+`supabase/migrations/20261027_schedule_heartbeats.sql` before using these
+checks; the first scheduled return then establishes each rule's baseline.
+Subcon only records an invocation if it starts within 30 minutes of the
+scheduled UTC time; an unrelated manual invocation cannot establish a baseline
+or clear a missed-run issue. Its recorded run failures remain visible.
 Set `HALO_HAZE_MISSING_RUN_MONITOR=false` in the HALO host environment and
 redeploy to disable this inference without changing any service or database row.
 

@@ -19,6 +19,7 @@ import { readLightningHealth, type LightningHealth, type LightningNotice } from 
 import { describePostgrestError } from "./postgrest-error";
 import { completedHazeHourlySlots, type FrequentRunEvidence, type HazeHourlyEvidence } from "./scheduled-run-health";
 import type { NoiseScheduleEvidence } from "./noise-schedule-health";
+import type { SubconScheduleEvidence } from "./subcon-schedule-health";
 import {
   MANUAL_SOURCE_MARKER,
   groupLimitsByMeter,
@@ -1106,6 +1107,21 @@ export async function listNoiseScheduleEvidence(): Promise<NoiseScheduleEvidence
     return { checkedAt, state: "ready", routes };
   } catch {
     return { checkedAt, state: "unavailable", routes: [] };
+  }
+}
+
+/** Unreadable table and uninitialized rules are explicit coverage gaps. */
+export async function listSubconScheduleEvidence(): Promise<SubconScheduleEvidence> {
+  const checkedAt = new Date().toISOString();
+  try {
+    const result = await request("subcon_schedule_heartbeats?select=schedule_key,last_started_at&limit=20", { schema: "manpower_activity" });
+    if (!result.ok || !Array.isArray(result.body) || result.body.length >= 20) return { checkedAt, state: "unavailable", schedules: [] };
+    const schedules = (result.body as Record<string, unknown>[]).flatMap((row) =>
+      typeof row.schedule_key === "string" && typeof row.last_started_at === "string" && Number.isFinite(Date.parse(row.last_started_at))
+        ? [{ scheduleKey: row.schedule_key, lastStartedAt: row.last_started_at }] : []);
+    return { checkedAt, state: "ready", schedules };
+  } catch {
+    return { checkedAt, state: "unavailable", schedules: [] };
   }
 }
 

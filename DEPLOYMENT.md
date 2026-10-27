@@ -77,6 +77,11 @@ after a missing-table response and HALO reports the schedule check unavailable.
 After migration, normal scheduled invocations establish one baseline per route;
 no backfill or scheduler change is required.
 
+For Subcon missed-schedule detection, apply the Subcon repository's
+`supabase/migrations/20261027_schedule_heartbeats.sql`. Its writer similarly
+backs off while the table is absent. Each of the six verified scheduler rules
+gets its own baseline, including the two times for the manpower route.
+
 ## Verify after deploy
 
 ```bash

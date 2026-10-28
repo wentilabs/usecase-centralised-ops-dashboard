@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { EndpointMessages } from "./EndpointMessages";
+import { NoiseSourceProfilesPanel } from "./NoiseSourceProfilesPanel";
 import { ServiceTag } from "./ServiceTag";
 import { dataHealthDetail, healthKey, type ProjectHealth } from "@/lib/data-health";
 import {
@@ -24,8 +25,8 @@ import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "
  *
  * Three things it deliberately does NOT do.
  *
- * It shows no credential values — only the names of the variables that hold
- * them. HALO does not have these secrets and must not start holding them.
+ * Noise source credentials are managed in the restricted profile editor below,
+ * not in project rows or the public source guide.
  *
  * It states a schedule only where `load-model/crons.ts` can prove one, because
  * that file was read off the AWS console while the service READMEs disagree
@@ -36,11 +37,12 @@ import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "
  * It is a mirror, not a document. Everything below is derived from
  * `lib/source-model.ts`, which the tests check against the pinned contracts.
  */
-export function DeveloperGuide({ rows, errors, health }: {
+export function DeveloperGuide({ rows, errors, health, canEdit }: {
   rows: Partial<Record<ServiceKey, ProjectConfigRow[]>>;
   errors: Partial<Record<ServiceKey, string>>;
   /** Ingestion health per project, from the shared data-health reader. */
   health: Map<string, ProjectHealth>;
+  canEdit: boolean;
 }) {
   return (
     // Narrower gutter than the sibling pages: this one is a wide reference
@@ -65,6 +67,8 @@ export function DeveloperGuide({ rows, errors, health }: {
           health={health}
         />
       ))}
+
+      {canEdit ? <NoiseSourceProfilesPanel /> : null}
 
       <EndpointMessages rows={rows} />
 
@@ -472,10 +476,10 @@ function PerProjectTable({ service, rows, error, health }: {
                   <td className="py-2 pr-4 align-top">
                     {profile ? (
                       <div className="flex flex-col gap-0.5">
-                        {profile.credentialEnv.map((name) => (
-                          <span key={name} className="font-mono text-[11px] text-muted-foreground">
-                            {name}
-                          </span>
+                        {service === "noise" ? (
+                          <span className="text-[11px] text-muted-foreground">HALO-managed source profile</span>
+                        ) : profile.credentialEnv.map((name) => (
+                          <span key={name} className="font-mono text-[11px] text-muted-foreground">{name}</span>
                         ))}
                       </div>
                     ) : null}

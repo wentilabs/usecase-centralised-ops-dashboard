@@ -215,7 +215,7 @@ export const SERVICE_SOURCES: Record<ServiceKey, ServiceSource> = {
 /**
  * A per-project upstream choice, as the service's own registry defines it.
  *
- * `credentialEnv` names variables; it never carries values. `workerMode` is
+ * `credentialEnv` is retained for migration diagnostics. `workerMode` is
  * included because it explains a class of incident that otherwise looks
  * mysterious: a `dedicated` profile scrapes alone, so one slow vendor cannot
  * stall the others, while `pooled` projects share a browser and do queue
@@ -228,7 +228,7 @@ export type SourceProfile = {
   /** Which upstream this profile actually talks to. */
   upstream: string;
   loginUrl: string;
-  /** Environment variable NAMES for the sign-in, never their values. */
+  /** Legacy environment variable names used by Noise as a migration fallback. */
   credentialEnv: string[];
   workerMode?: "pooled" | "single" | "dedicated";
   note?: string;
@@ -239,7 +239,7 @@ const NOISELYNX_LOGIN = "https://www.noiselynx.com/noiselynx/Login.aspx";
 /**
  * Mirror of `lib/noise-source-registry.js` in the noise repo.
  *
- * Six profiles, four upstreams: three of them are NoiseLynx under different
+ * Seven profiles, four upstreams: four of them are NoiseLynx under different
  * sign-ins, and three are separate vendors entirely. That distinction is the
  * whole reason this table exists — "the noise scraper is broken" is a different
  * problem depending on which of the four a project sits on.
@@ -268,6 +268,14 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
     upstream: "NoiseLynx",
     loginUrl: NOISELYNX_LOGIN,
     credentialEnv: ["NOISELYNX_USERNAME_SVS", "NOISELYNX_PASSWORD_SVS"],
+    workerMode: "single",
+  },
+  egh: {
+    profile: "egh",
+    label: "NoiseLynx (EGH sign-in)",
+    upstream: "NoiseLynx",
+    loginUrl: NOISELYNX_LOGIN,
+    credentialEnv: ["NOISE_LYNX_EGH_USERNAME", "NOISE_LYNX_EGH_PASSWORD"],
     workerMode: "single",
   },
   geoscan: {

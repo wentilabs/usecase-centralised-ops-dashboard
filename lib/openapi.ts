@@ -722,6 +722,45 @@ export const openapiDocument = {
         },
       },
     },
+    "/api/noise/source-profiles": {
+      get: {
+        operationId: "listNoiseSourceProfiles",
+        tags: ["configuration"],
+        summary: "Read Noise source profiles for HALO editors",
+        description: "Returns Noise source credentials, Browserbase settings, and saved context IDs by proxying the token-protected Noise API. Requires a signed-in HALO editor session; responses are private and never cacheable.",
+        responses: {
+          "200": { description: "Source profiles keyed by profile code.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+          "401": errorResponses["401"],
+          "403": errorResponses["403"],
+          "503": { description: "The Noise profile table could not be read." },
+        },
+      },
+      put: {
+        operationId: "saveNoiseSourceProfile",
+        tags: ["configuration"],
+        summary: "Save one Noise source profile",
+        description: "Writes one allow-listed source profile and its Browserbase context IDs through the Noise service API. Noise owns and writes `noise-meters.noise_source_profiles`. Requires a signed-in HALO editor session.",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["profileCode", "settings", "contexts"],
+            properties: {
+              profileCode: { type: "string", enum: ["default", "whgd", "svs", "egh", "geoscan", "trackmaster", "alphalab", "browserbase"] },
+              settings: { type: "object", additionalProperties: true },
+              contexts: { type: "object", additionalProperties: { type: "string" } },
+            },
+          } } },
+        },
+        responses: {
+          "200": { description: "Profile saved." },
+          "400": errorResponses["400"],
+          "401": errorResponses["401"],
+          "403": errorResponses["403"],
+          "503": { description: "The Noise profile table could not be updated." },
+        },
+      },
+    },
     "/api/noise-limits": {
       get: {
         operationId: "listNoiseLimits",

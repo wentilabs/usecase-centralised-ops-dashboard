@@ -19,10 +19,8 @@ export const metadata: Metadata = { title: "Developer" };
  * debug when you're not here." The answer existed, spread across seven
  * repositories, which is no use to someone holding a phone at 2am.
  *
- * Read-only and open to read-only accounts, deliberately. The whole point is
- * that anyone covering can open it, and it exposes nothing a service row does
- * not already show — no credential value appears here, only the name of the
- * variable that holds one.
+ * Source and service details are readable to dashboard accounts. Credential
+ * profile values are loaded only by the editor-only profile panel.
  */
 export default async function DeveloperPage() {
   const session = await getDashboardSession();
@@ -52,6 +50,7 @@ export default async function DeveloperPage() {
       rows={rows}
       errors={errors}
       health={health}
+      canEdit={session.canEdit}
     />
   );
 }

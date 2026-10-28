@@ -40,6 +40,14 @@ import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "
 
 const REQUEST_TIMEOUT_MS = 8000;
 
+export type NoiseSourceProfile = {
+  profile_code: string;
+  settings: Record<string, unknown>;
+  contexts: Record<string, unknown>;
+  updated_at?: string;
+  updated_by?: string | null;
+};
+
 function config() {
   const url = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
   const key = process.env.SUPABASE_SECRET_KEY ?? "";
@@ -137,6 +145,47 @@ const configCache = createTtlCache<ServiceKey, ProjectConfigRow[]>(
 /** Forget one service's rows, or all of them. Called before every write. */
 export function invalidateConfigs(service?: ServiceKey) {
   configCache.forget(service);
+}
+
+async function callNoiseSourceProfiles(method: "GET" | "PUT", body?: unknown) {
+  const baseUrl = process.env.NOISE_API_URL?.trim().replace(/\/+$/, "");
+  const token = process.env.HALO_DATA_HEALTH_TOKEN?.trim().replace(/^Bearer\s+/i, "") ?? "";
+  if (!baseUrl || !/^https:\/\//i.test(baseUrl) || token.length < 32) {
+    throw new Error("Noise source profile API settings are incomplete");
+  }
+  const response = await fetch(`${baseUrl}/api/noise-source-profiles`, {
+    method,
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || result?.success !== true) {
+    throw new Error(`Noise source profile API failed (${response.status})`);
+  }
+  return result;
+}
+
+/** HALO proxies profile management to Noise; only the Noise service touches its table. */
+export async function listNoiseSourceProfiles(): Promise<Record<string, NoiseSourceProfile>> {
+  const result = await callNoiseSourceProfiles("GET");
+  return (result.profiles ?? {}) as Record<string, NoiseSourceProfile>;
+}
+
+/** Save profile values through Noise's token-protected management API. */
+export async function saveNoiseSourceProfile(
+  profileCode: string,
+  settings: Record<string, unknown>,
+  contexts: Record<string, unknown>,
+  actor: string,
+): Promise<NoiseSourceProfile> {
+  const result = await callNoiseSourceProfiles("PUT", { profileCode, settings, contexts, updatedBy: actor });
+  if (!result.profile) throw new Error("Noise source profile API returned no row");
+  return result.profile as NoiseSourceProfile;
 }
 
 /** Which services are currently remembered, for diagnostics. */

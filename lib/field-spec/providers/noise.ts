@@ -6,7 +6,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
   readonlyFields: ["project_code", "created_at", "updated_at"],
   checkEnums: {
     company: [...COMPANIES],
-    source_type: ["default", "whgd", "svs", "geoscan", "trackmaster", "alphalab"],
+    source_type: ["default", "whgd", "svs", "egh", "geoscan", "trackmaster", "alphalab"],
   },
   fields: {
     company: {
@@ -23,7 +23,7 @@ export const noiseFieldProvider: ServiceFieldProvider = {
     },
     source_type: {
       label: "Upstream source",
-      help: "Selects the upstream adapter and its isolated credentials or browser context. NoiseLynx profiles are `default`, `whgd`, and `svs`; the other supported adapters are `geoscan`, `trackmaster`, and `alphalab`. The legacy value `noiselynx` normalises to `default`; unknown values are rejected rather than silently routed.",
+      help: "Selects the upstream adapter and its isolated credentials or browser context. NoiseLynx profiles are `default`, `whgd`, `svs`, and `egh`; the other supported adapters are `geoscan`, `trackmaster`, and `alphalab`. The legacy value `noiselynx` normalises to `default`; unknown values are rejected rather than silently routed.",
     },
     timezone: { label: "Timezone" },
 

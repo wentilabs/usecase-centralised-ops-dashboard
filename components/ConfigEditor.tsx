@@ -8,6 +8,7 @@ import { RouteHint } from "./RouteHint";
 import { GroupPicker } from "./GroupPicker";
 import { MeterPicker } from "./MeterPicker";
 import { VibrationSource } from "./VibrationSource";
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { VibrationMeterLimits } from "./VibrationMeterLimits";
 import { SensorGroupPicker } from "./SensorGroupPicker";
 import { WbgtSensorLabelEditor } from "./WbgtSensorLabelEditor";
@@ -267,6 +268,9 @@ export function ConfigEditor({
   );
   const [note, setNote] = useState(initialNote ?? "");
   const [busy, setBusy] = useState(false);
+  // The confirmation closes on a backdrop click like Escape does (back to the form, nothing
+  // saved), but not while the write is in flight.
+  const dismissConfirm = useBackdropDismiss(!busy, () => setConfirming(false));
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<AuditEntry[] | null>(null);
 
@@ -763,7 +767,7 @@ export function ConfigEditor({
       </aside>
 
       {confirming ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4" {...dismissConfirm}>
           <div className="max-h-[85vh] w-[min(560px,92vw)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-background p-4 shadow-soft md:max-h-[80vh] md:p-5">
             <h3 className="mb-3 text-base font-semibold">Apply to Supabase?</h3>
             <div className="mb-4 text-sm">

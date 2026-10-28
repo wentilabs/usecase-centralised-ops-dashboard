@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { LoadStamps } from "./LoadStamps";
+import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { RefreshHealthButton } from "./RefreshHealthButton";
 import type { Load } from "@/lib/load-stamps";
 
@@ -138,8 +139,11 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
     window.setTimeout(() => setCopyStatus(""), 2200);
   };
 
+  // Click the backdrop to close, like every other dialog here.
+  const dismiss = useBackdropDismiss(true, onClose);
+
   return (
-    <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health">
+    <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health" {...dismiss}>
       <section className="mx-auto flex max-h-full max-w-6xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
         <header className="flex items-start gap-3 border-b border-border p-5">
           <div>

@@ -63,7 +63,7 @@ export const noiseOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "default",
-        help: "Which NoiseLynx credentials the scraper uses: default, whgd or svs.",
+        help: "Choose the scraper profile. NoiseLynx supports default, whgd, svs and egh; other sources use geoscan, trackmaster or alphalab.",
       },
       {
         column: "google_sheet_id",

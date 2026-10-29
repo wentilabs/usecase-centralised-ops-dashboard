@@ -1,5 +1,5 @@
 {
-  "reportUrl": null,
+  "reportUrl": "https://halo.wentilabs.com/api/data-health/copy-errors",
   "mode": "investigate-only",
   "timezone": "Asia/Singapore",
   "localTime": "15:00",

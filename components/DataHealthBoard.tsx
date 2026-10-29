@@ -9,7 +9,8 @@ import type { Load } from "@/lib/load-stamps";
 
 import { SERVICES, type ServiceKey } from "@/lib/services";
 import type { BoardSummary, Incident } from "@/lib/health-board";
-import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects, standaloneHealthIncidents } from "@/lib/health-report";
+import { healthErrorProjects, standaloneHealthIncidents } from "@/lib/health-report";
+import { formatCopyErrorsReport } from "@/lib/copy-errors";
 import type { Bar } from "@/lib/health-timeline";
 import { groupHandlerFailures, type HandlerFailureReport } from "@/lib/handler-failures";
 import { scheduleCoverage, type ServiceScheduleEvidence } from "@/lib/service-schedule-health";
@@ -118,20 +119,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
   }, [handlerReadRevision]);
   const copyErrors = async () => {
     try {
-      const processReport = formatHealthErrorReport(strips);
-      const issueReport = formatHealthCurrentIssues(summary.incidents, errorProjects);
-      const hasProcessErrors = errorProcessCount > 0;
-      const report = issueReport
-        ? hasProcessErrors ? `${processReport}\n\n${issueReport}` : `HALO Data Health report\n\n${issueReport}`
-        : processReport;
-      const handlerLines = handlerGroups.map((group) =>
-        `${SERVICES[group.service].label} | ${processTime(group.firstAt)}–${processTime(group.lastAt)} SGT | ${group.route ?? "route unknown"} | ${group.eventType} | ${group.occurrences} record${group.occurrences === 1 ? "" : "s"}${group.projects.length ? ` | Projects: ${group.projects.join(", ")}` : ""}${group.unscoped ? " | Includes unscoped records" : ""} | ${group.reason}`,
-      );
-      const incomplete = handlerReport?.sources.filter((source) => source.state === "unavailable" || source.state === "partial") ?? [];
-      const coverageLine = handlerReadState !== "ready"
-        ? `\nAnomaly evidence ${handlerReadState === "loading" ? "still loading" : "unavailable"}; absence of records is not evidence of health.`
-        : incomplete.length ? `\nIncomplete anomaly evidence: ${incomplete.map((source) => SERVICES[source.service].label).join(", ")}` : "";
-      await navigator.clipboard.writeText(handlerLines.length || coverageLine ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}${coverageLine}` : report);
+      await navigator.clipboard.writeText(formatCopyErrorsReport({ summary, strips, handlerReport, handlerReadState }));
       setCopyStatus("Copied");
     } catch {
       setCopyStatus("Copy unavailable");

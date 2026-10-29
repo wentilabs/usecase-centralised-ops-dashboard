@@ -80,6 +80,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/auth/")) return NextResponse.next();
+  // This machine route verifies its own dedicated report token in the Node runtime.
+  if (pathname === "/api/data-health/copy-errors" && request.method === "GET") return NextResponse.next();
   // This one machine route verifies its own shared token in the Node runtime.
   if (pathname === "/api/data-health/notify" && request.method === "POST") return NextResponse.next();
 

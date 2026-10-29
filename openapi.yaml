@@ -808,6 +808,23 @@ paths:
                 type: object
                 additionalProperties: true
         "401": *a1
+  /api/data-health/copy-errors:
+    get:
+      operationId: getDataHealthCopyErrors
+      tags:
+        - discovery
+      summary: Read the plain-text Data Health Copy errors report
+      description: Returns the same plain-text process errors, current issues and recent service anomalies assembled by the dashboard's Copy errors button. Requires the dedicated HALO_DAILY_ERROR_REPORT_TOKEN bearer credential, which grants access only to this GET route. It does not use the dashboard session, notification token, or Supabase token table. The response is private and uncached. A failure to read core Data Health sources returns 503 rather than an empty report. This operation is read-only and cannot refresh caches, send notifications, run jobs, or change configuration.
+      responses:
+        "200":
+          description: The plain-text Copy errors report.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401": *a1
+        "503":
+          description: HALO could not read core Data Health report sources.
   /api/data-health/notify:
     post:
       operationId: notifyDataHealth

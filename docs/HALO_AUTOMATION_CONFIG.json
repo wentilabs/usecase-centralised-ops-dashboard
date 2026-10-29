@@ -1,0 +1,16 @@
+{
+  "reportUrl": null,
+  "mode": "investigate-only",
+  "timezone": "Asia/Singapore",
+  "localTime": "15:00",
+  "services": {
+    "ailytics": "mdw-lambda-ailytics",
+    "haze": "usecase-haze-alerts",
+    "lightning": "usecase-lightning-alerts",
+    "noise": "usecase-wohhup-noise-meter-alerts",
+    "wbgt": "usecase-wohhup-wbgt-alerts",
+    "subcon": "usecase-subcon-manpower-activities",
+    "issueChaser": "usecase-issue-chaser",
+    "vibration": "usecase-wohhup-vibration"
+  }
+}

@@ -56,6 +56,7 @@ dependency bump could silently break — run `npm test` before every deploy.
    | `VISO_URL` | optional; `https://viso.wenti.io`. Makes each group chip link to `VISO_URL/go/<chatId>`, which resolves the chat's company in Viso and redirects. Server-side by design, so it can change without a rebuild. Viso sits behind Cloudflare Access, which preserves the deep link across sign-in |
    | `AILYTICS_DISCOVERY_URL` | server-only URL for Ailytics `POST /get-telegram-group-discoveries`. The onboarding inbox uses it to list Telegram groups where `@WentiAilyticsBot` has been seen |
    | `LAMBDA_AUTH_TLK_KEY` | server-only raw Lambda key, with **no** `Bearer ` prefix. HALO adds the prefix only when its server proxy calls the discovery endpoint |
+   | `HALO_DAILY_ERROR_REPORT_TOKEN` | server-only dedicated bearer token for `GET /api/data-health/copy-errors`; does not grant access to other HALO routes |
 
    Do **not** set `LOCAL_AUTH_BYPASS` in Amplify. It is ignored in production
    anyway, but leaving it out avoids any doubt.

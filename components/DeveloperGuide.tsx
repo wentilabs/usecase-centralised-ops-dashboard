@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { EndpointMessages } from "./EndpointMessages";
 import { NoiseSourceProfilesPanel } from "./NoiseSourceProfilesPanel";
+import { WbgtSourceProfilesPanel } from "./WbgtSourceProfilesPanel";
 import { ServiceTag } from "./ServiceTag";
 import { dataHealthDetail, healthKey, type ProjectHealth } from "@/lib/data-health";
 import {
@@ -25,7 +26,7 @@ import { SERVICES, SERVICE_KEYS, type ProjectConfigRow, type ServiceKey } from "
  *
  * Three things it deliberately does NOT do.
  *
- * Noise source credentials are managed in the restricted profile editor below,
+ * Noise and WBGT source credentials are managed in restricted profile editors,
  * not in project rows or the public source guide.
  *
  * It states a schedule only where `load-model/crons.ts` can prove one, because
@@ -69,6 +70,7 @@ export function DeveloperGuide({ rows, errors, health, canEdit }: {
       ))}
 
       {canEdit ? <NoiseSourceProfilesPanel /> : null}
+      {canEdit ? <WbgtSourceProfilesPanel /> : null}
 
       <EndpointMessages rows={rows} />
 

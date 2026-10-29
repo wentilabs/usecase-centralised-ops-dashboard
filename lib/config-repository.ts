@@ -48,6 +48,8 @@ export type NoiseSourceProfile = {
   updated_by?: string | null;
 };
 
+export type WbgtSourceProfile = NoiseSourceProfile;
+
 function config() {
   const url = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
   const key = process.env.SUPABASE_SECRET_KEY ?? "";
@@ -186,6 +188,46 @@ export async function saveNoiseSourceProfile(
   const result = await callNoiseSourceProfiles("PUT", { profileCode, settings, contexts, updatedBy: actor });
   if (!result.profile) throw new Error("Noise source profile API returned no row");
   return result.profile as NoiseSourceProfile;
+}
+
+async function callWbgtSourceProfiles(method: "GET" | "POST", body?: unknown) {
+  const baseUrl = process.env.WBGT_API_URL?.trim().replace(/\/+$/, "");
+  const token = process.env.HALO_DATA_HEALTH_TOKEN?.trim().replace(/^Bearer\s+/i, "") ?? "";
+  if (!baseUrl || !/^https:\/\//i.test(baseUrl) || token.length < 32) {
+    throw new Error("WBGT source profile API settings are incomplete");
+  }
+  const response = await fetch(`${baseUrl}/api/wbgt-source-profiles`, {
+    method,
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || result?.success !== true) {
+    throw new Error(`WBGT source profile API failed (${response.status})`);
+  }
+  return result;
+}
+
+/** HALO proxies WBGT profile management; only WBGT reads and writes its table. */
+export async function listWbgtSourceProfiles(): Promise<Record<string, WbgtSourceProfile>> {
+  const result = await callWbgtSourceProfiles("GET");
+  return (result.profiles ?? {}) as Record<string, WbgtSourceProfile>;
+}
+
+export async function saveWbgtSourceProfile(
+  profileCode: string,
+  settings: Record<string, unknown>,
+  contexts: Record<string, unknown>,
+  actor: string,
+): Promise<WbgtSourceProfile> {
+  const result = await callWbgtSourceProfiles("POST", { profileCode, settings, contexts, updatedBy: actor });
+  if (!result.profile) throw new Error("WBGT source profile API returned no row");
+  return result.profile as WbgtSourceProfile;
 }
 
 /** Which services are currently remembered, for diagnostics. */

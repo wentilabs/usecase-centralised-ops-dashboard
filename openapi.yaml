@@ -997,6 +997,65 @@ paths:
         "403": *a2
         "503":
           description: The Noise profile table could not be updated.
+  /api/wbgt/source-profiles:
+    get:
+      operationId: listWbgtSourceProfiles
+      tags:
+        - configuration
+      summary: Read WBGT source profiles for HALO editors
+      description: Returns WBGT NoiseLynx credentials, shared Browserbase settings, and saved context IDs by proxying the token-protected WBGT API. Requires a signed-in HALO editor session; responses are private and never cacheable.
+      responses:
+        "200":
+          description: Source profiles keyed by profile code.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+        "403": *a2
+        "503":
+          description: The WBGT profile table could not be read.
+    post:
+      operationId: saveWbgtSourceProfile
+      tags:
+        - configuration
+      summary: Save one WBGT source profile
+      description: Writes one allow-listed source profile and its Browserbase context through the WBGT service API. WBGT owns and writes `wbgts.wbgt_source_profiles`. Requires a signed-in HALO editor session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - profileCode
+                - settings
+                - contexts
+              properties:
+                profileCode:
+                  type: string
+                  enum:
+                    - default
+                    - whgd
+                    - svs
+                    - pentaocean
+                    - browserbase
+                settings:
+                  type: object
+                  additionalProperties: true
+                contexts:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Profile saved.
+        "400": *a3
+        "401": *a1
+        "403": *a2
+        "503":
+          description: The WBGT profile table could not be updated.
   /api/noise-limits:
     get:
       operationId: listNoiseLimits

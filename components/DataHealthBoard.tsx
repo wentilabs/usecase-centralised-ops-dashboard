@@ -134,7 +134,7 @@ export function DataHealthBoard({ summary, strips, smsGatewayReading = { gateway
 
   return (
     <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health" {...dismiss}>
-      <section className="mx-auto flex max-h-full max-w-6xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
+      <section className="mx-auto flex max-h-full max-w-6xl flex-col xl:max-w-[100rem] rounded-2xl border border-border bg-background shadow-2xl">
         <header className="flex items-start gap-3 border-b border-border p-5">
           <div>
             <h2 className="text-xl font-semibold">Data Health</h2>
@@ -202,7 +202,7 @@ export function DataHealthBoard({ summary, strips, smsGatewayReading = { gateway
             <div>
               <h3 className="mb-1 text-sm font-semibold">Issues by service</h3>
               <p className="mb-3 text-[11px] text-muted-foreground">Process errors from the last 48 hours and current health findings.</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                 {servicesWithIssues.map((service) => {
                   const projects = errorsByService.get(service) ?? [];
                   const incidents = issuesByService.get(service) ?? [];

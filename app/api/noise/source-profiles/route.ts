@@ -21,7 +21,7 @@ function editorDenied() {
   return NextResponse.json({ error: "Editor access is required to manage Noise source profiles." }, { status: 403 });
 }
 
-/** Credential values are returned only to signed-in HALO editors. */
+/** GET returns credential values only to signed-in HALO editors. */
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

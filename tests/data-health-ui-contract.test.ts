@@ -61,7 +61,8 @@ test("Data Health is automatic, anchored to the card's base, and offers no polic
   assert.doesNotMatch(rowCode, /DeliveryOutcome|healthBadge/, "the delivery badge returns when there is an outcome to put in it");
   assert.match(board, /checked automatically/i, "the board must label covered signals as automatic");
   assert.match(board, /Copy all red and orange Data Health process errors/, "the board provides one pasteable report action");
-  assert.match(board, /formatHealthErrorReport\(strips\)/, "the copied report uses the process history already shown in HALO");
+  assert.match(board, /formatCopyErrorsReport\(\{ summary, strips,/, "the copied report uses the process history already shown in HALO");
+  assert.match(await source("lib/copy-errors.ts"), /formatHealthErrorReport\(strips\)/, "and that report is built from the same strips");
   assert.doesNotMatch(board, /Set up policy|database migration required/i, "the board must not offer the retired policy flow");
 });
 

@@ -162,7 +162,10 @@ test("the page is open to anyone who can open the dashboard", async () => {
   // canEdit. It writes nothing, and the people covering are exactly the ones
   // most likely to hold a read-only account.
   assert.match(page, /if \(!session\.allowed\) redirect\("\/unauthorized"\)/);
-  assert.doesNotMatch(page, /canEdit/, "this page has nothing to gate on write access");
+  // `canEdit` is passed down only to show the editor-only credential panels; it never decides
+  // who may open the page.
+  assert.doesNotMatch(page, /if \(!session\.canEdit\)|redirect\([^)]*\)[^;]*canEdit/, "opening the page must not require write access");
+  assert.match(page, /canEdit=\{session\.canEdit\}/);
   // One unreachable schema must not blank the page.
   assert.match(page, /Promise\.allSettled/);
 });

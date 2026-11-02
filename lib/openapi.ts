@@ -779,7 +779,7 @@ export const openapiDocument = {
         operationId: "saveNoiseSourceProfile",
         tags: ["configuration"],
         summary: "Save one Noise source profile",
-        description: "Writes one allow-listed source profile and its Browserbase context IDs through the Noise service API. Noise owns and writes `noise-meters.noise_source_profiles`. Requires a signed-in HALO editor session.",
+        description: "Writes one allow-listed source profile and its Browserbase context IDs through the Noise service API. This changes the live credentials the Noise scraper signs in with on its next run, so it takes effect in production. Noise owns and writes `noise-meters.noise_source_profiles`. Requires a signed-in HALO editor session.",
         requestBody: {
           required: true,
           content: { "application/json": { schema: {
@@ -818,7 +818,7 @@ export const openapiDocument = {
         operationId: "saveWbgtSourceProfile",
         tags: ["configuration"],
         summary: "Save one WBGT source profile",
-        description: "Writes one allow-listed source profile and its Browserbase context through the WBGT service API. WBGT owns and writes `wbgts.wbgt_source_profiles`. Requires a signed-in HALO editor session.",
+        description: "Writes one allow-listed source profile and its Browserbase context through the WBGT service API. This changes the live credentials the WBGT scraper signs in with on its next run, so it takes effect in production. WBGT owns and writes `wbgts.wbgt_source_profiles`. Requires a signed-in HALO editor session.",
         requestBody: {
           required: true,
           content: { "application/json": { schema: {

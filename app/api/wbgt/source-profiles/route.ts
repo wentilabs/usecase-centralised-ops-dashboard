@@ -18,6 +18,7 @@ function editorDenied() {
   return NextResponse.json({ error: "Editor access is required to manage WBGT source profiles." }, { status: 403 });
 }
 
+/** GET returns credential values only to signed-in HALO editors. */
 export async function GET() {
   const session = await getDashboardSession();
   if (!session.allowed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -1802,6 +1802,13 @@ test("every API route authenticates and gates on an allowed session", async () =
       continue;
     }
 
+    if (route === "app/api/data-health/copy-errors/route.ts") {
+      // The daily automation reads this with a bearer token, not a browser session.
+      assert.match(code, /timingSafeEqual/, `${route} must compare the token in constant time`);
+      assert.match(code, /if \(!authorized\(request\)\)/, `${route} must reject unauthenticated calls`);
+      continue;
+    }
+
     assert.match(code, /getDashboardSession\(\)/, `${route} does not establish a session`);
     if (ANSWERS_BEFORE_ALLOWED.has(route)) continue;
     assert.match(
@@ -2920,7 +2927,7 @@ test("noise exposes every supported source and keeps hourly row filtering distin
   });
 
   assert.deepEqual(spec.fields.source_type.options, [
-    "default", "whgd", "svs", "geoscan", "trackmaster", "alphalab",
+    "default", "whgd", "svs", "egh", "geoscan", "trackmaster", "alphalab",
   ]);
   assert.match(spec.fields.source_type.help, /unknown values are rejected/i);
   assert.match(spec.fields.hourly_exceeded_meters_only.help, /does not change scraping/i);

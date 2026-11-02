@@ -208,10 +208,10 @@ export function faultEntries(faults: Record<string, string>): BoardEntry[] {
  * code would be and `scope: "service"`. `signal` says which question they answer: the tick is "did it
  * run", the feed is ingestion.
  */
-export function noticeEntries(notices: { id: "tick" | "feed"; colour: HealthColour; label: string; detail: string | null }[]): BoardEntry[] {
+export function noticeEntries(notices: { id: "tick" | "feed" | `sms-gateway:${string}`; name?: string; colour: HealthColour; label: string; detail: string | null }[]): BoardEntry[] {
   return notices.map((notice) => ({
     service: "lightning" as const,
-    projectCode: notice.id === "tick" ? "tick" : "NEA feed",
+    projectCode: notice.name ?? (notice.id === "tick" ? "tick" : "NEA feed"),
     signal: notice.id === "tick" ? ("run" as const) : ("ingestion" as const),
     colour: notice.colour,
     label: notice.label,

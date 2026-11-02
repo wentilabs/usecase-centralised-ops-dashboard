@@ -825,6 +825,42 @@ paths:
         "401": *a1
         "503":
           description: HALO could not read core Data Health report sources.
+  /api/data-health/sms-gateways:
+    get:
+      operationId: listSmsGatewayHealth
+      tags:
+        - discovery
+      summary: SMS gateway phone identities and current heartbeat freshness
+      description: Reads lightning.sms_gateway_health without a cache. Each gateway includes its configured phone number, enabled state, latest server receipt, elapsed seconds, heartbeat interval, delayed and critical thresholds, and latest scheduled monitor evaluation. Status is calculated from receipt age at read time. No received heartbeat means unknown; unreadable evidence returns 503. Requires a signed-in HALO viewer.
+      responses:
+        "200":
+          description: Current gateway rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+        "503":
+          description: Gateway health unavailable.
+  /api/data-health/sms-gateways/monitor:
+    post:
+      operationId: monitorSmsGatewayHealth
+      tags:
+        - discovery
+      summary: Evaluate missing SMS gateway pings and notify the internal group
+      description: Machine route called by the lightning Lambda's one-minute EventBridge relay. Requires HALO_DATA_HEALTH_TOKEN as a Bearer token. Evaluates gateway receipt age, persists offline incidents, and sends pending offline/recovery events through HALO's existing internal sender. This can send real WhatsApp messages. Durable claims prevent repeated sends; ambiguous outcomes remain unconfirmed. Gateway recovery means authenticated ping reception resumed, not proof of SMS delivery.
+      responses:
+        "200":
+          description: Incident and notification counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": *a1
+        "503":
+          description: Evaluation or notification failed.
   /api/data-health/notify:
     post:
       operationId: notifyDataHealth

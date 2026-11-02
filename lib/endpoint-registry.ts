@@ -342,6 +342,8 @@ export const NOT_A_MESSAGE: Record<string, string> = {
   "issueChaser:/api/issue-chaser-operator-preview": "Builds a run for the operator to inspect; sends nothing.",
   "lightning:/api/episodes-list": "A read of stored episodes.",
   "lightning:/api/episodes-evidence": "A read of stored detections.",
+  "lightning:/api/sms-gateway-heartbeat": "Receives signed device pings; updates gateway liveness without a client message.",
+  "lightning:/api/sms-gateway-monitor": "Relays to HALO gateway incident evaluation and internal notifications; Lightning does not render the message.",
   "noise:/api/scrape-noiselynx": "Ingests readings.",
   "noise:/api/halo-data-health": "Invokes HALO's health notification route; Noise does not render the message.",
   "noise:/api/noise-limit-refresh": "Refreshes limits from the source of record.",

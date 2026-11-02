@@ -84,6 +84,7 @@ export async function middleware(request: NextRequest) {
   if (pathname === "/api/data-health/copy-errors" && request.method === "GET") return NextResponse.next();
   // This one machine route verifies its own shared token in the Node runtime.
   if (pathname === "/api/data-health/notify" && request.method === "POST") return NextResponse.next();
+  if (pathname === "/api/data-health/sms-gateways/monitor" && request.method === "POST") return NextResponse.next();
 
   const auth = await updateSupabaseSession(request);
   const isPublic = isPublicPath(pathname);

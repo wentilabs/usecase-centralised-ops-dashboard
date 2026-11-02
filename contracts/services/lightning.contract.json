@@ -5,6 +5,8 @@
   "routes": [
     { "method": "POST", "path": "/api/lightning-tick", "kind": "scheduled", "authentication": "optional-service-key" },
     { "method": "POST", "path": "/api/lightning-sms", "kind": "webhook", "authentication": "sms-hmac" },
+    { "method": "POST", "path": "/api/sms-gateway-heartbeat", "kind": "webhook", "authentication": "sms-hmac" },
+    { "method": "POST", "path": "/api/sms-gateway-monitor", "kind": "scheduled", "authentication": "optional-service-key" },
     { "method": "POST", "path": "/api/lightning-kickoff", "kind": "scheduled", "authentication": "optional-service-key" },
     { "method": "GET", "path": "/api/lightning-report", "kind": "read", "authentication": "none" },
     { "method": "POST", "path": "/api/episodes-list", "kind": "operator", "authentication": "optional-service-key" },

@@ -18,6 +18,8 @@ import { BAR_COUNT, WINDOW_HOURS, stripsFrom, type Bar } from "./health-timeline
 import { healthKey, type ProjectHealth } from "./data-health";
 import { listProjectHealth } from "./data-health-repository";
 import { readLightningHealth, type LightningHealth, type LightningNotice } from "./lightning-health";
+import { readSmsGatewayHealth } from "./sms-gateway-repository";
+import { smsGatewayNotices } from "./sms-gateway-health";
 import { describePostgrestError } from "./postgrest-error";
 import { completedHazeHourlySlots, type FrequentRunEvidence, type HazeHourlyEvidence } from "./scheduled-run-health";
 import { collectFrequentRunEvidence } from "./frequent-run-evidence";
@@ -1346,7 +1348,10 @@ export async function listNotificationEstateHealth(): Promise<ProjectHealth[]> {
 
 /** What is wrong with the Lightning service as a whole: the tick, and the NEA feed. */
 export async function listServiceNotices(): Promise<LightningNotice[]> {
-  return (await lightningHealth()).notices;
+  const [lightning, gateways] = await Promise.all([
+    lightningHealth(), readSmsGatewayHealth().catch(() => null),
+  ]);
+  return [...lightning.notices, ...smsGatewayNotices(gateways)];
 }
 
 /** Independently read bounded route watermarks; an unreadable source is not healthy. */

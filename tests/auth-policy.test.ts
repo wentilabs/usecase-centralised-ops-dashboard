@@ -1788,7 +1788,7 @@ test("every API route authenticates and gates on an allowed session", async () =
    * needs it: someone who has been refused and is trying to find out why.
    */
   const ANSWERS_BEFORE_ALLOWED = new Set(["app/api/session/route.ts"]);
-  const MACHINE_TOKEN_ROUTES = new Set(["app/api/data-health/notify/route.ts"]);
+  const MACHINE_TOKEN_ROUTES = new Set(["app/api/data-health/notify/route.ts", "app/api/data-health/sms-gateways/monitor/route.ts"]);
 
   for (const route of routes) {
     const source = await readFile(resolve(process.cwd(), route), "utf8");
@@ -1797,9 +1797,8 @@ test("every API route authenticates and gates on an allowed session", async () =
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
     if (MACHINE_TOKEN_ROUTES.has(route)) {
-      assert.match(code, /timingSafeEqual\(/, `${route} must compare the machine token safely`);
-      assert.match(code, /HALO_DATA_HEALTH_TOKEN/, `${route} must require the dedicated token`);
-      assert.match(code, /if \(!authorized\(request\)\)/, `${route} must reject unauthenticated calls`);
+      assert.match(code, /from "@\/lib\/health-notification-transport"/, `${route} must import the tested machine-token guard`);
+      assert.match(code, /if \(!(authorized|healthNotificationAuthorized)\(request\)\)/, `${route} must reject unauthenticated calls`);
       continue;
     }
 

@@ -22,6 +22,8 @@ import { ProjectCard } from "./ProjectCard";
 import { ProjectSheet } from "./ProjectSheet";
 import { ServiceDrawer } from "./ServiceDrawer";
 import { DataHealthBoard } from "./DataHealthBoard";
+import { useSmsGatewayHealth } from "./SmsGatewayHealth";
+import { mergeSmsGatewayNotices } from "@/lib/sms-gateway-health";
 import { HealthStrip } from "./HealthStrip";
 import { RefreshHealthButton } from "./RefreshHealthButton";
 import { refreshUpdates } from "@/lib/health-refresh";
@@ -210,6 +212,7 @@ export function DashboardShell({
   }, []);
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [healthRefreshedAt, setHealthRefreshedAt] = useState<string | null>(null);
+  const smsGatewayReading = useSmsGatewayHealth(healthRefreshedAt);
   const [healthRefreshFailed, setHealthRefreshFailed] = useState(false);
 
   /**
@@ -286,14 +289,15 @@ export function DashboardShell({
         ...boardEntries(rows, healthByProject),
         ...deliveryEntries(projectStrips, boardSignalFor),
         ...faultEntries(projectFaults),
-        ...noticeEntries(serviceNotices),
+        ...noticeEntries(mergeSmsGatewayNotices(serviceNotices,
+          smsGatewayReading.state === "loading" ? undefined : smsGatewayReading.gateways)),
         ...missingHazeHourlyEntries(rows.haze ?? [], hazeHourlyEvidence),
         ...missingFrequentRunEntries(rows, frequentRunEvidence),
         ...missingNoiseScheduleEntries(noiseScheduleEvidence),
         ...missingSubconScheduleEntries(subconScheduleEvidence),
         ...missingServiceScheduleEntries(serviceScheduleEvidence),
       ]),
-    [rows, healthByProject, projectStrips, projectFaults, serviceNotices, hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence, serviceScheduleEvidence],
+    [rows, healthByProject, projectStrips, projectFaults, serviceNotices, smsGatewayReading, hazeHourlyEvidence, frequentRunEvidence, noiseScheduleEvidence, subconScheduleEvidence, serviceScheduleEvidence],
   );
   const [editing, setEditing] = useState<{
     service: ServiceData;
@@ -901,6 +905,7 @@ export function DashboardShell({
         <DataHealthBoard
           summary={healthSummary}
           strips={projectStrips}
+          smsGatewayReading={smsGatewayReading}
           hazeHourlyCheckUnavailable={historyLoad.state === "done" && hazeHourlyEvidence === null}
           frequentRunEvidence={frequentRunEvidence}
           noiseScheduleEvidence={noiseScheduleEvidence}

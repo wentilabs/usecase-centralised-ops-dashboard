@@ -212,7 +212,7 @@ test("a service-wide chip is not a button, and the page carries the notices", as
   const board = await readFile(resolve("components/DataHealthBoard.tsx"), "utf8");
   assert.equal(board.match(/incident\.scope === "service"/g)?.length, 2, "in both the issues and the late-readings lists");
   assert.match(await readFile(resolve("app/api/project-strips/route.ts"), "utf8"), /listServiceNotices/);
-  assert.match(await readFile(resolve("components/DashboardShell.tsx"), "utf8"), /noticeEntries\(serviceNotices\)/);
+  assert.match(await readFile(resolve("components/DashboardShell.tsx"), "utf8"), /noticeEntries\(mergeSmsGatewayNotices\(serviceNotices,/);
 });
 
 test("every bar says which kind of process it was", async () => {

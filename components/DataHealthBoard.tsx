@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { LoadStamps } from "./LoadStamps";
+import { SmsGatewayHealth, type SmsGatewayRead } from "./SmsGatewayHealth";
 import { useBackdropDismiss } from "@/lib/backdrop-dismiss";
 import { RefreshHealthButton } from "./RefreshHealthButton";
 import type { Load } from "@/lib/load-stamps";
@@ -57,9 +58,10 @@ function processTime(value: string): string {
  * A row carries the service's own status text rather than a rewording of it,
  * because the next thing the reader does is search logs for that exact string.
  */
-export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, noiseScheduleEvidence = null, subconScheduleEvidence = null, serviceScheduleEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
+export function DataHealthBoard({ summary, strips, smsGatewayReading = { gateways: null, state: "loading" }, hazeHourlyCheckUnavailable = false, frequentRunEvidence = null, noiseScheduleEvidence = null, subconScheduleEvidence = null, serviceScheduleEvidence = null, onClose, onOpenProject, onRefresh, loads, refreshing = false, refreshedAt = null, refreshFailed = false }: {
   summary: BoardSummary;
   strips: Record<string, Bar[]>;
+  smsGatewayReading?: SmsGatewayRead;
   hazeHourlyCheckUnavailable?: boolean;
   frequentRunEvidence?: FrequentRunEvidence | null;
   noiseScheduleEvidence?: NoiseScheduleEvidence | null;
@@ -195,6 +197,7 @@ export function DataHealthBoard({ summary, strips, hazeHourlyCheckUnavailable = 
 
         {/* Each service keeps its own reading space so process history and current findings share the grid. */}
         <div className="flex flex-col gap-7 overflow-y-auto px-5 pb-7 pt-5">
+          <SmsGatewayHealth reading={smsGatewayReading} />
           {servicesWithIssues.length ? (
             <div>
               <h3 className="mb-1 text-sm font-semibold">Issues by service</h3>

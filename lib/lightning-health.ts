@@ -51,7 +51,8 @@ export const STOP_GRACE_MS = 30 * MINUTE;
 /** Something about the whole Lightning service, not one project. */
 export type LightningNotice = {
   /** `tick` is "did it run"; `feed` is "is NEA answering". */
-  id: "tick" | "feed";
+  id: "tick" | "feed" | `sms-gateway:${string}`;
+  name?: string;
   colour: HealthColour;
   /** Plain sentence in the service's own terms. */
   label: string;

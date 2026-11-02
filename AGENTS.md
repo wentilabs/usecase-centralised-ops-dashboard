@@ -781,6 +781,21 @@ one; the fix is for each service to reconcile its queue ids through `outbound/st
 and write `dropped…`/`failed…` back (HALO already reads those prefixes as red). Do not
 build a HALO-side poller.
 
+## SMS gateway monitoring
+
+**SMS gateway health uses receipt time and configured phone identity.**
+`lib/sms-gateway-health.ts` turns the uncached `lightning.sms_gateway_health`
+projection into findings; the database owns freshness thresholds. The board's
+gateway section refreshes every 15 seconds. The separate one-minute Lightning
+EventBridge relay invokes `/api/data-health/sms-gateways/monitor`, using the
+existing HALO machine token/internal sender and durable incident claims.
+Never infer the gateway number from an incoming SMS sender, call a missing
+receipt Healthy, or equate recovery with verified SMS delivery. For heartbeat
+configuration, migration, Android setup or rollback, read Lightning's
+`docs/SMS_GATEWAY_HEARTBEAT.md` and this repo's `docs/DATA_HEALTH.md`.
+Source: `components/SmsGatewayHealth.tsx`, `lib/sms-gateway-repository.ts`,
+`tests/sms-gateway-health.test.ts`, and Lightning's `test/sms-gateway-sql.test.js`.
+
 ## Pending: the monthly noise report
 
 The WBGT half is done — repinned at `7a32a66`, with route hints, a delivery

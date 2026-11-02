@@ -88,7 +88,7 @@ export function healthSummary(input: {
   }
   for (const notice of input.notices) {
     if (notice.colour === "red" || notice.colour === "amber") {
-      add("lightning", notice.id === "tick" ? "Lightning tick" : "NEA feed", notice.colour, "Current service issue", notice.label);
+      add("lightning", notice.name ?? (notice.id === "tick" ? "Lightning tick" : "NEA feed"), notice.colour, "Current service issue", notice.label);
     }
   }
 

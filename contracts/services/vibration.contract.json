@@ -30,18 +30,6 @@
     },
     {
       "method": "POST",
-      "path": "/test-notification",
-      "kind": "diagnostic",
-      "authentication": "optional-service-key"
-    },
-    {
-      "method": "POST",
-      "path": "/api/test-notification",
-      "kind": "diagnostic",
-      "authentication": "optional-service-key"
-    },
-    {
-      "method": "POST",
       "path": "/api/vibration-report",
       "kind": "operator",
       "authentication": "optional-service-key"
@@ -97,7 +85,7 @@
         "group": "runtime",
         "mutable": false,
         "role": "runtime-state",
-        "help": "'site' rows are HALO cards; 'legacy_target' rows are WIRS inputs and are never listed."
+        "help": "All retained configuration rows are HALO-managed site rows; this column remains as the row identity guard."
       },
       "enabled": {
         "label": "Project enabled",
@@ -146,7 +134,9 @@
         "group": "alerts",
         "mutable": true,
         "role": "configuration",
-        "options": ["SKW_format"],
+        "options": [
+          "SKW_format"
+        ],
         "help": "Formatter used by automatic PPV threshold alerts. SKW_format is the current alert wording."
       },
       "created_at": {
@@ -169,9 +159,110 @@
   "health": {
     "scheduleTimezone": "UTC",
     "schedules": [
-      {"key":"vibration-kickoff","route":"/api/vibration-kickoff","name":"Vibration kickoff","minutes":[30],"hours":[23]},
-      {"key":"vibration-test-notification","route":"/test-notification","name":"Vibration test notification","minutes":[0],"hours":[14]},
-      {"key":"vibration-scrape","route":"/api/vibration-scrape","name":"Vibration scrape","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]}
+      {
+        "key": "vibration-kickoff",
+        "route": "/api/vibration-kickoff",
+        "name": "Vibration kickoff",
+        "minutes": [
+          30
+        ],
+        "hours": [
+          23
+        ]
+      },
+      {
+        "key": "vibration-scrape",
+        "route": "/api/vibration-scrape",
+        "name": "Vibration scrape",
+        "minutes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59
+        ],
+        "hours": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ]
+      }
     ],
     "granularity": {
       "ingestion": "project",
@@ -180,9 +271,9 @@
     },
     "statuses": {
       "scraped": "green",
-      "discovered": "green",
       "awaiting_otp": "amber",
-      "sent": "green"
+      "sent": "green",
+      "authenticated": "green"
     }
   }
 }

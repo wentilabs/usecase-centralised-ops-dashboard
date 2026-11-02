@@ -4,9 +4,8 @@ import { COMPANIES } from "../types";
 /**
  * Service-owned semantic overlay for a Vibration SITE row.
  *
- * The table also holds legacy WIRS target rows (`config_kind = 'legacy_target'`),
- * which HALO never lists; their selector columns are null on a site row and hidden
- * here. Scraping reads `vibration_source_targets`; site delivery settings serve
+ * HALO lists only site rows (`config_kind = 'site'`). Scraping reads
+ * `vibration_source_targets`; site delivery settings serve
  * manual PPV reports, morning kickoff reports and enabled PPV threshold alerts.
  */
 export const vibrationFieldProvider: ServiceFieldProvider = {
@@ -49,11 +48,6 @@ export const vibrationFieldProvider: ServiceFieldProvider = {
     lambda_url: { label: "Send-message URL", help: "Listener endpoint used by reports and PPV alerts." },
     project_code: { hidden: true },
     config_kind: { hidden: true },
-    meter_label: { hidden: true },
-    wirs_project: { hidden: true },
-    wirs_zone: { hidden: true },
-    wirs_instrument_type: { hidden: true },
-    wirs_instrument: { hidden: true },
     created_at: { hidden: true },
     updated_at: { hidden: true },
   },

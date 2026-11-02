@@ -521,7 +521,7 @@ export const SERVICE_STORAGE: Record<ServiceKey, Storage> = {
       { table: "vibration_source_targets", holds: "which portal sensors map to which project and meter, and whether each is enabled" },
       { table: "vibration_meter_ppv_limits", holds: "the provisional approved PPV limit and warning percentages per meter; policy storage only until alerts are enabled" },
       { table: "vibration_job_runs", holds: "every scrape invocation, with its status and errors — one row per run, not per project" },
-      { table: "vibration_project_configs", holds: "the site row HALO writes (config_kind = 'site'); legacy WIRS targets share the table" },
+      { table: "vibration_project_configs", holds: "the site row HALO writes (config_kind = 'site')" },
     ],
     debugOrder: [
       "Does the site's table hold rows from the last few hours? Newest ingested_at tells you when HALO's source last wrote.",

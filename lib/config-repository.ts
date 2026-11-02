@@ -238,9 +238,7 @@ export function cachedConfigServices(): ServiceKey[] {
 }
 
 /**
- * `&column=eq.value` for a service that keeps rows besides its projects in the same
- * table, or nothing. A read without it would list Vibration's 277 legacy WIRS targets
- * as project cards.
+ * `&column=eq.value` for a service that keeps non-project rows in the same table.
  */
 function rowFilterParam(service: ServiceKey): string {
   const only = SERVICES[service].rowFilter;

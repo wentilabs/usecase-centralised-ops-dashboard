@@ -17,8 +17,9 @@
  * Two repos have no route docs at all; they get a spec listing their routes
  * with that stated plainly, which is more useful than a confident guess.
  *
- *   node scripts/build-service-openapi.mjs            # write every repo
+ *   node scripts/build-service-openapi.mjs            # write generated specs, preserve manual overrides
  *   node scripts/build-service-openapi.mjs --check    # report drift, write nothing
+ *   node scripts/build-service-openapi.mjs --only <repo-directory> # update one repo
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -26,6 +27,11 @@ import YAML from "yaml";
 
 const ROOT = resolve(process.env.ESTATE_ROOT ?? "..");
 const CHECK = process.argv.includes("--check");
+const ONLY_INDEX = process.argv.indexOf("--only");
+const ONLY_REPO = ONLY_INDEX >= 0 ? process.argv[ONLY_INDEX + 1] : null;
+if (ONLY_INDEX >= 0 && (!ONLY_REPO || ONLY_REPO.startsWith("--"))) {
+  throw new Error("--only requires a repository directory name");
+}
 
 const REPOS = [
   { dir: "usecase-wohhup-wbgt-alerts", title: "WBGT Alerts",
@@ -263,8 +269,18 @@ function openapiType(declared) {
 
 const summaryReport = [];
 
-for (const repo of REPOS) {
+const selectedRepos = ONLY_REPO ? REPOS.filter((repo) => repo.dir === ONLY_REPO) : REPOS;
+if (ONLY_REPO && selectedRepos.length === 0) throw new Error(`Unknown repository directory: ${ONLY_REPO}`);
+
+for (const repo of selectedRepos) {
   const dir = join(ROOT, repo.dir);
+  const existingSpecPath = join(dir, "openapi.yml");
+  let existingSpec = "";
+  try { existingSpec = readFileSync(existingSpecPath, "utf8"); } catch {}
+  if (!ONLY_REPO && existingSpec.startsWith("# Based on usecase-wohhup-ops-dashboard/scripts/build-service-openapi.mjs.")) {
+    summaryReport.push(`${repo.dir.padEnd(46)} preserved manual OpenAPI override`);
+    continue;
+  }
   let files;
   try { files = sourceFiles(dir); } catch { summaryReport.push(`${repo.dir}: NOT FOUND, skipped`); continue; }
 
@@ -343,12 +359,18 @@ for (const repo of REPOS) {
     });
   }
 
-  const ordered = [...routes.values()].sort((a, b) => a.path.localeCompare(b.path));
-  if (!ordered.length) lines.push("  {}");
-
+  const ordered = [...routes.values()].sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+  const routesByPath = new Map();
   for (const route of ordered) {
+    if (!routesByPath.has(route.path)) routesByPath.set(route.path, []);
+    routesByPath.get(route.path).push(route);
+  }
+  if (!routesByPath.size) lines.push("  {}");
+
+  for (const [path, pathRoutes] of routesByPath) {
+    lines.push(`  ${path}:`);
+    for (const route of pathRoutes) {
     const ailyticsReplay = repo.dir === "mdw-lambda-ailytics" && route.path === "/ailytics-safety/test-reply-resend";
-    lines.push(`  ${route.path}:`);
     lines.push(`    ${route.method.toLowerCase()}:`);
     const fact = facts.get(route.path) ?? {};
     // The docblock's prose wins; the README fills in where a docblock opens
@@ -438,6 +460,7 @@ for (const repo of REPOS) {
     );
     if (ailyticsReplay) lines.push('        "409": { description: Rejected — no confirmed Pending image quote is available }');
     lines.push('        "500": { description: Handler failure }');
+    }
   }
 
   if (undocumented.length) {
@@ -467,7 +490,10 @@ for (const repo of REPOS) {
     process.exitCode = 1;
     continue;
   }
-  const pathCount = Object.keys(parsed?.paths ?? {}).length;
+  const operationCount = Object.values(parsed?.paths ?? {}).reduce(
+    (count, operations) => count + Object.keys(operations).filter((method) => ["get", "post", "put", "patch", "delete"].includes(method)).length,
+    0,
+  );
   const missingSummary = Object.entries(parsed?.paths ?? {})
     .filter(([, ops]) => Object.values(ops).some((op) => !op.summary))
     .map(([path]) => path);
@@ -475,8 +501,8 @@ for (const repo of REPOS) {
     console.error(`${repo.dir}: no summary for ${missingSummary.join(", ")}`);
     process.exitCode = 1;
   }
-  if (pathCount !== ordered.length) {
-    console.error(`${repo.dir}: emitted ${ordered.length} routes but ${pathCount} parsed back`);
+  if (operationCount !== ordered.length) {
+    console.error(`${repo.dir}: emitted ${ordered.length} routes but ${operationCount} parsed back`);
     process.exitCode = 1;
   }
   let existing = null;

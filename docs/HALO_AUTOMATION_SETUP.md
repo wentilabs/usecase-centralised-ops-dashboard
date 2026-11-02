@@ -81,16 +81,25 @@ and that it is not the `/api/data-health/notify` route.
 
 ## 6. Set up the daily investigation
 
-Use the existing **WH centralised services** local project in Codex. Create a
-standalone local scheduled task using `HALO_AUTOMATION_PROMPT.md`, daily at
-15:00 in `Asia/Singapore`. Keep `mode` as `investigate-only`: the task may read
-the eight service repositories and report likely causes, but must not edit
-service code, push branches or create PRs. Run the prompt manually first and
-confirm it fetches the report and investigates the correct repositories.
+Use the existing **WH centralised services** local project in Codex. The checked-in
+configuration now sets `mode` to `draft-pr`, and
+`HALO_AUTOMATION_PROMPT.md` records the user's authorization for unattended
+feature-branch pushes and draft PRs in exactly the eight mapped repositories.
+Update the existing **Daily HALO error investigation** scheduled task's saved
+instructions to record the same explicit authorization and continue reading
+`HALO_AUTOMATION_PROMPT.md`; the task must stop at investigation until both
+places show the same scope. Use the existing daily schedule at 15:00 in
+`Asia/Singapore`. The prompt requires fetching the mapped default branch and
+creating an isolated feature branch from it: `main` for seven services and
+`master` for Vibration.
 
-The Mac and Codex app need to be available for local scheduled runs. Verify the
-schedule preview uses Singapore time before enabling it. A later change to
-allow draft PRs needs a separate explicit authorization.
+Review Codex's local scheduled-task permission mode before relying on unattended
+PR creation. The run needs permission to write isolated worktrees and access
+GitHub for fetch, push and draft-PR creation. Do not select Full Access solely
+for this task; use the narrowest available permissions. The Mac and Codex app
+need to be available for local scheduled runs. Verify the schedule preview uses
+Singapore time. Run it manually first and confirm it fetches the current report,
+maps each service to the listed repository and uses the mapped branch base.
 
 ## Disable or rotate
 

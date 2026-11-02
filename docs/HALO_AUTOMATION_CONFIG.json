@@ -1,6 +1,6 @@
 {
   "reportUrl": "https://halo.wentilabs.com/api/data-health/copy-errors",
-  "mode": "investigate-only",
+  "mode": "draft-pr",
   "timezone": "Asia/Singapore",
   "localTime": "15:00",
   "services": {

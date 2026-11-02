@@ -29,7 +29,7 @@ export type ServiceDefinition = {
    * Rows that are not project cards share the table with ones that are. Only
    * rows whose `column` equals `value` are listed, and new rows are created with
    * it, so a service that keeps other kinds of row beside its projects (Vibration's
-   * legacy WIRS targets) never shows them as cards.
+   * non-site rows never shows them as cards.
    */
   rowFilter?: { column: string; value: string };
 };
@@ -68,7 +68,7 @@ export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
   },
   // Source-first: sites are read from the portals by an externally scheduled
   // scrape, and every site owns a physical `<code>_vibration_data_daily` table.
-  // The table also holds the 277 legacy WIRS targets, which are not cards.
+  // HALO exposes only site rows as cards.
   vibration: {
     key: "vibration",
     label: "Vibration",

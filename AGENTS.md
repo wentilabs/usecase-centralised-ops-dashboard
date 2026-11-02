@@ -1623,19 +1623,8 @@ The eighth service, added from the vibration repo's `docs/HALO_ONBOARDING.md`
 (contract pinned from its `master`, not `main`). It differs from the other seven in
 ways that are easy to get wrong:
 
-- **The table holds two kinds of row.** `vibration_project_configs` has 277 legacy WIRS
-  targets (`config_kind = 'legacy_target'`) beside the site rows. `SERVICES.vibration.rowFilter`
-  (`config_kind = 'site'`) is applied on list, get and update, and `insertConfig` forces the
-  kind on create — `tests/vibration.test.ts` pins all four. A read without it lists 277 cards.
-- **`enabled` gates scraping — once the vibration repo's `migrate_site_enabled_gates_scraping.sql`
-  is applied.** The scraper reads `vibration_project_source_targets`, which now also requires the
-  site to be enabled; it is shown as "Project enabled", first in the card, like every service. It
-  gates scraping only: the test notification reads `config_kind = 'legacy_target'` rows and a site
-  row never sends anything. A new site is created disabled, so it is enabled before its first
-  scrape. The sources panel reads `vibration_source_targets` directly, because a disabled site
-  vanishes from the gated view and would otherwise read as having no source.
-- **A site sends nothing**, so there are no mutes, no delivery groups (the columns exist and are
-  hidden), no `?` preview (`NO_PREVIEWS`) and no outbound load (`vibrationLoadProvider`).
+- **Vibration config rows are site rows.** HALO filters `config_kind = 'site'`; legacy WIRS targets and its test-notification path have been retired. OTP challenge and signed webhook flows remain available. A new site is created disabled, so it is enabled before its first scrape. The sources panel reads `vibration_source_targets` directly, because a disabled site vanishes from the gated view and would otherwise read as having no source.
+- **Sites deliver reports and alerts.** Delivery groups configure PPV reports, kickoff messages, and PPV threshold alerts. The old WIRS test notification and its scheduled load entry have been removed.
 - **Creation needs a prepared source target.** The insert trigger refuses a site whose code has
   no enabled row in `vibration_source_targets`; HALO cannot create one and holds no portal
   credentials. The dialog says so.
@@ -1659,4 +1648,3 @@ blocks** — the service's own refusal is the authority — and a table HALO cou
 answers `null`, shown as "could not check", never as missing. To add one, add an entry to
 the service's onboarding provider; no UI change is needed. `tests/vibration.test.ts` pins
 which services declare one.
-

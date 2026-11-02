@@ -1,8 +1,31 @@
 # Daily HALO error investigation prompt
 
 Investigate the latest HALO “Copy errors” report across the eight
-existing centralised service repositories. Produce a daily consolidated report.
-Use Asia/Singapore for reporting dates. Do not produce changes just to produce PRs.
+centralised service repositories listed below. Produce a daily consolidated
+report. Use Asia/Singapore for reporting dates. Do not produce changes just to
+produce PRs.
+
+## Exact service-to-repository map
+
+Use only these repository directories and their `origin` remotes. Resolve each
+directory relative to the parent directory of `usecase-wohhup-ops-dashboard`.
+The origin remote must match the listed GitHub repository; if it does not, stop
+for that service and report the mismatch.
+
+| HALO service key | Service name | Local repository directory | GitHub origin repository | Branch base |
+|---|---|---|---|---|
+| `ailytics` | Ailytics | `mdw-lambda-ailytics` | `wentilabs/mdw-lambda-ailytics` | `main` |
+| `haze` | Haze | `usecase-haze-alerts` | `wentilabs/usecase-haze-alerts` | `main` |
+| `lightning` | Lightning | `usecase-lightning-alerts` | `wentilabs/usecase-lightning-alerts` | `main` |
+| `noise` | Noise | `usecase-wohhup-noise-meter-alerts` | `wentilabs/usecase-wohhup-noise-meter-alerts` | `main` |
+| `wbgt` | WBGT | `usecase-wohhup-wbgt-alerts` | `wentilabs/usecase-wohhup-wbgt-alerts` | `main` |
+| `subcon` | Subcon Activities | `usecase-subcon-manpower-activities` | `wentilabs/usecase-subcon-manpower-activties` | `main` |
+| `issueChaser` | Issue Chaser | `usecase-issue-chaser` | `wentilabs/usecase-issue-chaser` | `main` |
+| `vibration` | Vibration | `usecase-wohhup-vibration` | `wentilabs/usecase-wohhup-vibration` | `master` |
+
+The Subcon GitHub repository is spelled `activties` (without the second `i`)
+in its actual origin URL; preserve that exact spelling. Do not inspect or change
+other repositories.
 
 ## Configuration and authority
 
@@ -12,14 +35,22 @@ Start in the existing WH centralised services project. Locate
 to the dashboard's parent directory. Do not move, rename or restructure files.
 Do not expand the configured service list or infer a different remote.
 
-The checked-in mode is `investigate-only`. In this mode, read code and existing
-GitHub PRs/issues and report proposed fixes, but do not edit service code, commit,
-push or create PRs. A changed mode alone is not authorization. Only use
-`draft-pr` after the user has explicitly authorized unattended branch pushes and
-draft PR creation for these repositories, and that authorization is recorded in
-the scheduled task instructions. If authorization or mode is unclear, stop at
-investigation. Never enable a schedule, deploy, run migrations, change production
-configuration, send site messages, merge, or push directly to a default branch.
+The checked-in mode is `draft-pr`. The user has explicitly authorized
+unattended feature-branch pushes and draft PR creation for exactly the eight
+repositories mapped above. This authorization is recorded here; before making
+any changes, also verify the scheduled task's own saved instructions explicitly
+record this same authorization. If the scheduled-task authorization is absent,
+unclear or broader/narrower than this scope, stop at investigation and report
+that the scheduled-task instructions need updating. Do not infer authorization
+from this file alone.
+
+In `investigate-only` mode, read code and existing GitHub PRs/issues and report
+proposed fixes, but do not edit service code, commit, push or create PRs. In
+`draft-pr` mode, implement only a well-supported, minimal fix meeting the
+criteria below, then push an isolated feature branch and create a DRAFT PR.
+Never merge, deploy, run migrations, change production configuration, send site
+messages, or push directly to any default branch. Do not produce changes just
+to produce PRs.
 
 ## Retrieve and verify
 
@@ -87,10 +118,17 @@ previously rejected proposal without new evidence.
 
 ## Implement only in explicitly authorized draft-pr mode
 
-Record original checkout status without touching unrelated work. Discover the
-remote's actual default branch; do not assume main (Vibration may use master).
-Create a separate worktree and named branch from an up-to-date default-branch
-revision. Fail safely if fetch, worktree isolation or permissions fail; never
+Record original checkout status without touching unrelated work. For each
+repository, use the branch base in the service map above. Verify that branch is
+the repository's current default branch, then fetch the latest `origin/<branch>`
+immediately before starting work. Create a separate worktree with a uniquely
+named feature branch directly from that fetched revision (for example,
+`codex/halo-<service>-<short-fingerprint>`). Do not base work on a local branch,
+another remote, a stale tracking ref, or a different branch. If the mapped
+branch is not the current default, does not exist, or cannot be fetched, stop
+for that service and report the blocker; do not silently substitute another
+branch. Vibration uses `origin/master`; the other seven services use
+`origin/main`. Fail safely if fetch, worktree isolation or permissions fail; never
 fall back to editing the original checkout. Use a reviewable minimal change and
 focused regression tests, then the affected repo's required offline architecture,
 documentation, SQL, contract, type and behavior checks. Do not load production

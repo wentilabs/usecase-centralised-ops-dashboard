@@ -48,15 +48,24 @@ const MOBILE_PILL_LIMIT = 4;
 function Chip({
   label,
   value,
+  sub,
   title,
   href,
 }: {
   label: string;
   value: string;
+  /** A quieter second line under the value, e.g. the id behind a group's name. */
+  sub?: string;
   title?: string;
   href?: string;
 }) {
   const className = "rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[11px]";
+  const body = (
+    <>
+      <span className="text-muted-foreground">{label}</span> {value}
+      {sub ? <span className="block max-w-[28ch] truncate text-[9px] leading-tight text-muted-foreground/70">{sub}</span> : null}
+    </>
+  );
 
   if (href) {
     return (
@@ -67,14 +76,14 @@ function Chip({
         title={title}
         className={`${className} relative z-10 hover:border-primary hover:text-primary`}
       >
-        <span className="text-muted-foreground">{label}</span> {value}
+        {body}
       </a>
     );
   }
 
   return (
     <span title={title} className={className}>
-      <span className="text-muted-foreground">{label}</span> {value}
+      {body}
     </span>
   );
 }
@@ -319,6 +328,8 @@ export function ProjectCard({
                 key={chatId}
                 label={groupIcon(role)}
                 value={groupNames[chatId] ?? chatId}
+                // The id sits beneath the name; with no name resolved the id is already the title.
+                sub={groupNames[chatId] && groupNames[chatId] !== chatId ? chatId : undefined}
                 // Keep the id reachable — it is what Supabase actually stores.
                 title={
                   [role, groupNames[chatId] ? `${groupNames[chatId]} · ${chatId}` : chatId]

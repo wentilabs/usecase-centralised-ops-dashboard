@@ -85,7 +85,7 @@ export const wbgtOnboarding: OnboardDefinition = {
         required: false,
         notNull: true,
         fallback: "default",
-        help: "default, whgd, svs or pentaocean. Each needs its own credentials and Browserbase context on the Lambda.",
+        help: "default, whgd, svs, pentaocean or obaya_egh. Each needs its own credentials and Browserbase context on the Lambda.",
       },
       // Hidden, and ON for a new project. Same rule as haze and lightning: a
       // site that works Sundays or holidays has them turned off in the editor,

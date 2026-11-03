@@ -318,13 +318,21 @@ export const NOISE_SOURCE_PROFILES: Record<string, SourceProfile> = {
 /**
  * Mirror of `scrapers/cloudlynx-wbgt/profile.js`.
  *
- * All four are the same portal under different sign-ins — unlike noise, where
+ * All five are the same portal under different sign-ins — unlike noise, where
  * three of the six profiles are other companies. Each profile also gets its own
  * Browserbase context, so one sign-in's cookies cannot corrupt another's.
  */
 const CLOUDLYNX_LOGIN = "https://www.noiselynx.com/cloudlynxamr/Login.aspx";
 
 export const WBGT_SOURCE_PROFILES: Record<string, SourceProfile> = {
+  obaya_egh: {
+    profile: "obaya_egh",
+    label: "CloudLynx (Obaya EGH sign-in)",
+    upstream: "CloudLynx AMR",
+    loginUrl: CLOUDLYNX_LOGIN,
+    credentialEnv: ["NOISELYNX_OBAYA_EGH_USERNAME", "NOISELYNX_OBAYA_EGH_PASSWORD"],
+    note: "Obayashi-Santarli Joint Venture (Bedok Hospital). Device: WBGT EGH Bedok (WC-31).",
+  },
   default: {
     profile: "default",
     label: "CloudLynx (default sign-in)",

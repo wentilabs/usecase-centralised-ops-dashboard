@@ -5,6 +5,8 @@
   "routes": [
     { "method": "GET", "path": "/version", "kind": "diagnostic", "authentication": "none" },
     { "method": "POST", "path": "/api/wbgt-scrape", "kind": "scheduled", "authentication": "none" },
+    { "method": "GET", "path": "/api/wbgt-source-profiles", "kind": "operator", "authentication": "lambda-auth" },
+    { "method": "POST", "path": "/api/wbgt-source-profiles", "kind": "operator", "authentication": "lambda-auth" },
     { "method": "POST", "path": "/api/wbgt-hourly", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/wbgt-5min", "kind": "scheduled", "authentication": "none" },
     { "method": "POST", "path": "/api/wbgt-data-health", "kind": "scheduled", "authentication": "none" },
@@ -53,7 +55,7 @@
       "monthly_sheet_id": { "label": "Monthly monitoring workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Receives monitoring records and, when enabled, the Water Parade Log projection." },
       "monthly_sheet_fill_mode": { "label": "Monthly fill mode", "group": "sheets", "mutable": true, "role": "policy-selector", "help": "window uses ±15 minutes; nearest maps sparse manual readings to the nearest tracked hour within 30 minutes.", "options": ["window", "nearest"] },
       "debug_google_sheet_id": { "label": "Debug workbook", "group": "sheets", "mutable": true, "role": "configuration", "help": "Optional diagnostic sink for cron, message, and scrape logs." },
-      "source_type": { "label": "Login profile", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the NoiseLynx credential/browser profile, not the source gate.", "options": ["default", "whgd", "svs", "pentaocean"] },
+      "source_type": { "label": "Login profile", "group": "source", "mutable": true, "role": "policy-selector", "help": "Selects the NoiseLynx credential/browser profile, not the source gate.", "options": ["default", "whgd", "svs", "pentaocean", "obaya_egh"] },
       "telegram_chat_ids": { "label": "Telegram photo chats", "group": "source", "mutable": true, "role": "configuration", "help": "Chats permitted to submit meter photos; one enabled project per source chat is enforced (INV-WBGT-14)." },
       "telegram_manual_sensor_label": { "label": "Telegram sensor override", "group": "source", "mutable": true, "role": "configuration", "help": "Legacy Telegram Bot photo sensor override; new channel flows derive labels automatically." },
       "whatsapp_wbgt_source_chat_ids": { "label": "WhatsApp photo chats", "group": "source", "mutable": true, "role": "configuration", "help": "WhatsApp groups permitted to submit meter photos; one enabled project per source chat is enforced (INV-WBGT-14)." },

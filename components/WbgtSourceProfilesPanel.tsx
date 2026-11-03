@@ -7,6 +7,7 @@ const PROFILE_LABELS: Record<string, string> = {
   whgd: "NoiseLynx · WHGD",
   svs: "NoiseLynx · SVS",
   pentaocean: "NoiseLynx · Pentaocean",
+  obaya_egh: "NoiseLynx · Obaya EGH",
   browserbase: "Shared Browserbase settings",
 };
 
@@ -15,6 +16,7 @@ const PROFILE_FIELDS: Record<string, { settings: string[]; contexts: string[] }>
   whgd: { settings: ["username", "password"], contexts: ["main"] },
   svs: { settings: ["username", "password"], contexts: ["main"] },
   pentaocean: { settings: ["username", "password"], contexts: ["main"] },
+  obaya_egh: { settings: ["username", "password"], contexts: ["main"] },
   browserbase: { settings: ["apiKey", "projectId"], contexts: [] },
 };
 

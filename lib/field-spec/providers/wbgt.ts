@@ -11,7 +11,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     poc_alert_minimum_band: ["yellow", "orange", "red"],
     intermittent_reports_formatter: ["red15", "red30"],
     monthly_sheet_fill_mode: ["window", "nearest"],
-    source_type: ["default", "whgd", "svs", "pentaocean"],
+    source_type: ["default", "whgd", "svs", "pentaocean", "obaya_egh"],
     // A plain text column with a CHECK, not a pg enum, so PostgREST reports it
     // as `{"format":"text"}` with no values — and a select with no options
     // cannot be set to anything. five_min_alert_threshold beside it IS an enum
@@ -28,7 +28,7 @@ export const wbgtFieldProvider: ServiceFieldProvider = {
     enabled: { label: "Project enabled", help: "Master switch — off means no job touches this project." },
     source_type: {
       label: "Login profile",
-      help: "Which CloudLynx login this project uses: `default`, `whgd`, `svs` or `pentaocean`. It changes who reads the meters, not which meters are read, so switching it does not change the data. `pentaocean` needs its own credentials set up first; the old value `noiselynx` behaves as `default`.",
+      help: "Which CloudLynx login this project uses: `default`, `whgd`, `svs`, `pentaocean` or `obaya_egh`. It changes who reads the meters, not which meters are read, so switching it does not change the data. Each profile needs its own credentials set up first; the old value `noiselynx` behaves as `default`.",
     },
     timezone: { label: "Timezone" },
 

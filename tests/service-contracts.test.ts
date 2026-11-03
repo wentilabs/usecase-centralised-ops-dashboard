@@ -152,7 +152,7 @@ test("Noise pins all twenty open routes and distinguishes scheduled from operato
 test("WBGT pins cron paths while separating HMAC ingress from intentionally open routes", () => {
   const routes = SERVICE_CONTRACTS.wbgt.routes;
   const byPath = Object.fromEntries(routes.map((route) => [route.path, route]));
-  assert.equal(routes.length, 18);
+  assert.equal(routes.length, 20);
   assert.equal(byPath["/api/wbgt-telegram-external-channels"].authentication, "required-hmac");
   // 7a32a66. The monthly report joins the cron surface rather than the operator
   // one: its production trigger is a schedule with an empty body, and HALO's
@@ -167,6 +167,9 @@ test("WBGT pins cron paths while separating HMAC ingress from intentionally open
   assert.equal(byPath["/api/water-parade-daily-summary"].kind, "scheduled");
   assert.equal(byPath["/api/water-parade-daily-summary"].authentication, "none");
   assert.equal(byPath["/api/wbgt/readings"].kind, "read");
+  const profileRoutes = routes.filter((route) => route.path === "/api/wbgt-source-profiles");
+  assert.deepEqual(profileRoutes.map((route) => route.method).sort(), ["GET", "POST"]);
+  assert.ok(profileRoutes.every((route) => route.authentication === "lambda-auth" && route.kind === "operator"));
 });
 
 test("every contracted field carries the semantic metadata HALO needs", () => {

@@ -11,6 +11,7 @@ const PROFILE_FIELDS: Record<string, { settings: string[]; contexts: string[] }>
   whgd: { settings: ["username", "password"], contexts: ["main"] },
   svs: { settings: ["username", "password"], contexts: ["main"] },
   pentaocean: { settings: ["username", "password"], contexts: ["main"] },
+  obaya_egh: { settings: ["username", "password"], contexts: ["main"] },
   browserbase: { settings: ["apiKey", "projectId"], contexts: [] },
 };
 

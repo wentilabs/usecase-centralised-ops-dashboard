@@ -825,7 +825,7 @@ export const openapiDocument = {
             type: "object",
             required: ["profileCode", "settings", "contexts"],
             properties: {
-              profileCode: { type: "string", enum: ["default", "whgd", "svs", "pentaocean", "browserbase"] },
+              profileCode: { type: "string", enum: ["default", "whgd", "svs", "pentaocean", "obaya_egh", "browserbase"] },
               settings: { type: "object", additionalProperties: true },
               contexts: { type: "object", additionalProperties: { type: "string" } },
             },

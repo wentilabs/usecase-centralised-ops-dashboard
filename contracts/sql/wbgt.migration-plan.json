@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "schema": "wbgts",
   "freshInstall": "setup.sql",
+  "cleanInstallBundle": "fresh_install.sql",
   "freshInstallAllowedDestructiveOperations": ["drop-column", "drop-table"],
   "freshInstallPrecondition": "On an existing database, back up the schema and confirm the retired top-of-hour snapshot columns and table are no longer consumed before re-running setup.sql.",
   "upgrades": [
@@ -33,7 +34,9 @@
     { "id": "data-health-listener-acceptance", "file": "migrate_data_health_listener_acceptance.sql", "requires": ["data-health"] },
     { "id": "run-log-started-at-index", "file": "migrate_run_log_started_at_index.sql", "requires": ["data-health-listener-acceptance"] },
     { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
-    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
+    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] },
+    { "id": "wbgt-source-profiles", "file": "migrate_wbgt_source_profiles.sql", "requires": [] },
+    { "id": "obaya-egh-source-profile", "file": "migrate_obaya_egh_source_profile.sql", "requires": ["wbgt-source-profiles"] }
   ],
   "operationalUtilities": [
     { "file": "schedule_job_runs_cleanup.sql", "purpose": "Install the named pg_cron job that deletes WBGT job-run audit rows older than 30 days.", "targetSchemas": ["cron"] }

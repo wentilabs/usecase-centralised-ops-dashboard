@@ -51,7 +51,7 @@ test("no profile is described that its service does not offer", () => {
   }
 });
 
-test("noise keeps its four upstreams apart, and WBGT is one portal with four sign-ins", () => {
+test("noise keeps its four upstreams apart, and WBGT is one portal with five sign-ins", () => {
   // The distinction the whole table exists for. Three of noise's six profiles
   // are NoiseLynx under different logins; the other three are other companies,
   // and "the noise scraper is down" means something different for each.
@@ -314,4 +314,13 @@ test("lightning's SMS route is a real inbound route, not just prose", () => {
   assert.ok(SERVICE_SOURCES.lightning.inbound.includes("POST /api/lightning-sms"));
   const declared = new Set(SERVICE_CONTRACTS.lightning!.routes.map((route) => `${route.method} ${route.path}`));
   assert.ok(declared.has("POST /api/lightning-sms"));
+});
+
+test("Obaya EGH is selectable and described with the exact CloudLynx device", async () => {
+  const profile = sourceProfileFor("wbgt", { source_type: "obaya_egh" } as ProjectConfigRow);
+  assert.equal(profile?.profile, "obaya_egh");
+  assert.match(profile?.note ?? "", /WBGT EGH Bedok \(WC-31\)/);
+  for (const path of ["components/WbgtSourceProfilesPanel.tsx", "app/api/wbgt/source-profiles/route.ts"]) {
+    assert.match(await source(path), /obaya_egh: \{ settings: \["username", "password"\], contexts: \["main"\] \}/);
+  }
 });

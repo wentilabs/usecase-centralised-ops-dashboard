@@ -1093,6 +1093,7 @@ paths:
                     - whgd
                     - svs
                     - pentaocean
+                    - obaya_egh
                     - browserbase
                 settings:
                   type: object

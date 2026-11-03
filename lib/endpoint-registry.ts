@@ -355,6 +355,7 @@ export const NOT_A_MESSAGE: Record<string, string> = {
   "subcon:/daily-housekeeping-sheet": "Projects housekeeping state into the workbook.",
   "subcon:/refresh-housekeeping-photos": "Refreshes stored photo links.",
   "wbgt:/api/wbgt-scrape": "Ingests readings.",
+  "wbgt:/api/wbgt-source-profiles": "Reads or saves CloudLynx login credentials and isolated Browserbase contexts; sends no message.",
   "wbgt:/api/wbgt-sheet-fill": "Writes readings to the workbook.",
   "wbgt:/api/wbgt-sheet-export": "Writes readings to the workbook.",
   "wbgt:/api/wbgt-telegram": "Inbound Telegram intake.",

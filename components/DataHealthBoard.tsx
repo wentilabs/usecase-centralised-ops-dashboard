@@ -135,7 +135,8 @@ export function DataHealthBoard({ summary, strips, smsGatewayReading = { gateway
   return (
     <div className="pt-safe-dialog fixed inset-0 z-50 bg-black/65 p-3 md:p-8" role="dialog" aria-modal="true" aria-label="Data Health" {...dismiss}>
       <section className="mx-auto flex max-h-full max-w-6xl flex-col xl:max-w-[100rem] rounded-2xl border border-border bg-background shadow-2xl">
-        <header className="flex items-start gap-3 border-b border-border p-5">
+        {/* Buttons above the text on a phone: beside it they squeezed the summary into a sliver. */}
+        <header className="flex flex-col-reverse gap-3 border-b border-border p-4 md:flex-row md:items-start md:p-5">
           <div>
             <h2 className="text-xl font-semibold">Data Health</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -173,7 +174,7 @@ export function DataHealthBoard({ summary, strips, smsGatewayReading = { gateway
               </p>
             ) : null}
           </div>
-          <div className="ml-auto flex flex-wrap items-start justify-end gap-2">
+          <div className="flex flex-wrap items-start justify-end gap-2 md:ml-auto">
             {onRefresh ? (
               <RefreshHealthButton onRefresh={refreshBoard} refreshing={refreshing} refreshedAt={refreshedAt} failed={refreshFailed} />
             ) : null}

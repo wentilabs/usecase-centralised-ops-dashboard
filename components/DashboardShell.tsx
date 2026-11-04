@@ -599,6 +599,20 @@ export function DashboardShell({
         </button>
       </header>
 
+      {/* Data Health on a phone: the same strip the desktop header carries, opening the
+          same board. Its own row, because the top bar is already full. */}
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none]">
+          <HealthStrip summary={healthSummary} onOpen={() => setDataHealthOpen(true)} />
+        </div>
+        <RefreshHealthButton
+          onRefresh={() => void refreshHealth()}
+          refreshing={refreshingHealth}
+          refreshedAt={healthRefreshedAt}
+          failed={healthRefreshFailed}
+        />
+      </div>
+
       {/* A sentence beats hunting for one field in a thirty-row form, which makes
           this more useful on a phone than on a desktop — so it gets its own
           full-width row rather than being squeezed into the header beside the

@@ -67,6 +67,7 @@ test("the Haze route contract pins the externally configured endpoint surface", 
   assert.deepEqual(
     SERVICE_CONTRACTS.haze.routes.map(({ method, path, kind, authentication }) => ({ method, path, kind, authentication })),
     [
+      { method: "POST", path: "/api/haze-sheet-sync", kind: "scheduled", authentication: "optional-service-key" },
       { method: "POST", path: "/api/haze-ingest", kind: "scheduled", authentication: "none" },
       { method: "POST", path: "/api/haze-hourly", kind: "scheduled", authentication: "none" },
       { method: "POST", path: "/api/haze-kickoff", kind: "scheduled", authentication: "none" },

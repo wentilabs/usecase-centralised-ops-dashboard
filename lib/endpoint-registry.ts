@@ -331,6 +331,8 @@ export const HELP_COLUMNS: Record<string, string> = {
  * Keyed `service:path`.
  */
 export const NOT_A_MESSAGE: Record<string, string> = {
+  "haze:/api/haze-sheet-sync": "Writes the regional Haze log in Google Sheets; sends no messages.",
+  "lightning:/api/lightning-sheet-sync": "Writes accepted NEA/SMS stoppages in Google Sheets; sends no messages.",
   "ailytics:/telegram-webhook": "Inbound Telegram intake.",
   "ailytics:/ailytics-safety/whatsapp-events": "Inbound WhatsApp events; it classifies replies and closes issues.",
   "haze:/api/haze-ingest": "Ingests readings from the public feed.",

@@ -13,6 +13,7 @@ export const hazeFieldProvider: ServiceFieldProvider = {
     advisory_format: ["default", "wohhup", "wohhup-tsc", "wohhup-2.5+forecast", "wohhup-2.5+forecast_TRI", "wohhup-2.5+forecast+24", "ir2-24h+2.5"],
   },
   fields: {
+    google_sheet_id: { label: 'Weather log sheet', widget: 'sheet', help: 'Optional Google spreadsheet ID or URL. The 23:30 SGT sheet-sync job creates Haze (<PROJECT-CODE>), using this project’s configured NEA region. Blank disables sheet logging without changing advisories. Share the workbook with the Haze service account.' },
     company: {
       label: "Company",
       help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
@@ -136,5 +137,6 @@ export const hazeFieldProvider: ServiceFieldProvider = {
       title: "POC escalation",
       fields: ["enable_poc_mentions", "poc_mentions_at_least", "poc_mentions_pm2.5_at_least", "poc_alert_wa_groups", "poc_phone_numbers", "manpower_sheet_id"],
     },
+    { title: 'Sheets', fields: ['google_sheet_id'] },
   ],
 };

@@ -233,5 +233,6 @@ export const hazeOnboarding: OnboardDefinition = {
         notNull: false,
         envDefault: "DEFAULT_LAMBDA_URL_SEND",
       },
+      { column: 'google_sheet_id', label: 'Weather log sheet', kind: 'sheet', required: false, notNull: false, help: 'Optional destination for Haze (<PROJECT-CODE>); share with the Haze service account. Blank leaves logging off.' },
     ],
   };

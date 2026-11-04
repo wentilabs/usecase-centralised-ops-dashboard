@@ -13,6 +13,7 @@ export const lightningFieldProvider: ServiceFieldProvider = {
     sms_lightning_format: ["TRI-style"],
   },
   fields: {
+    google_sheet_id: { label: 'Weather log sheet', widget: 'sheet', help: 'Optional Google spreadsheet ID or URL. The 23:30 SGT sheet-sync job creates Lightning (<PROJECT-CODE>) with separate NEA/SMS stoppages. Blank disables sheet logging without changing alerts. Share the workbook with the Lightning service account.' },
     company: {
       label: "Company",
       help: "Labelling only — nothing reads it. Blank means it could not be worked out when the project was set up.",
@@ -199,5 +200,6 @@ export const lightningFieldProvider: ServiceFieldProvider = {
         "manpower_sheet_id",
       ],
     },
+    { title: 'Sheets', fields: ['google_sheet_id'] },
   ],
 };

@@ -225,5 +225,6 @@ export const lightningOnboarding: OnboardDefinition = {
         notNull: false,
         envDefault: "DEFAULT_LAMBDA_URL_SEND",
       },
+      { column: 'google_sheet_id', label: 'Weather log sheet', kind: 'sheet', required: false, notNull: false, help: 'Optional destination for Lightning (<PROJECT-CODE>); share with the Lightning service account. Blank leaves logging off.' },
     ],
   };

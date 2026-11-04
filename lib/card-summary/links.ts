@@ -1,4 +1,5 @@
 import type { ProjectConfigRow, ServiceKey } from "../services";
+import { readSheetId } from '../jobs';
 
 /**
  * A card's outbound links.
@@ -17,7 +18,10 @@ export function autoLinks(service: ServiceKey, config: ProjectConfigRow): CardLi
   const sheet = (id: unknown) => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(id))}/edit`;
   const links: CardLink[] = [];
   if (config.monthly_sheet_id) links.push({ label: "📗 Monthly sheet", href: sheet(config.monthly_sheet_id) });
-  if (config.google_sheet_id) links.push({ label: "📗 Analysis sheet", href: sheet(config.google_sheet_id) });
+  if (service === 'haze' || service === 'lightning') {
+    const id = readSheetId(config.google_sheet_id);
+    if (id) links.push({ label: service === 'haze' ? '📗 Haze log' : '📗 Lightning log', href: sheet(id) });
+  } else if (config.google_sheet_id) links.push({ label: "📗 Analysis sheet", href: sheet(config.google_sheet_id) });
   if (service === "noise") {
     // Always offered, even with no limit rows stored — "nothing is being
     // assessed against a limit" is the most important thing this view can say,

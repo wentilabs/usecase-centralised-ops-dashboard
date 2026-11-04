@@ -29,7 +29,9 @@
     { "id": "listener-queue-acceptance", "file": "listener-queue-acceptance.sql", "requires": [] },
     { "id": "service-health-events", "file": "service-health-events.sql", "requires": [] },
     { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] },
-    { "id": "sms-gateway-heartbeat", "file": "sms-gateway-heartbeat.sql", "requires": [] }
+    { "id": "sms-gateway-heartbeat", "file": "sms-gateway-heartbeat.sql", "requires": [] },
+    { "id": "lightning-downtime", "file": "lightning-downtime.sql", "requires": ["lightning-sms", "listener-queue-acceptance"] },
+    {"id": "sheet-sync", "file": "sheet-sync.sql", "requires": ["lightning-downtime"]}
   ],
   "dataMigrations": [
     {

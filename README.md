@@ -75,3 +75,13 @@ environment (`SUPABASE_SECRET_KEY` is server-only and must never be prefixed
 with `NEXT_PUBLIC_`). Run
 [`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) once and
 expose the `ops` schema in Supabase → Settings → API.
+
+## Optional Haze and Lightning logs
+
+Both project editors and onboarding forms accept optional `google_sheet_id` IDs or
+Google Sheets URLs. Cards show a Haze log / Lightning log pill only for a usable ID;
+blank and placeholder values show none. Apply each service's additive
+`supabase/sheet-sync.sql` before configuring destinations. The independent sync
+routes use persistent progress with an empty `{}` payload; enable their 23:30 SGT
+schedules after deploying and checking workbook/service-account access. HALO saves
+configuration and links to the workbook; it does not run the sheet job.

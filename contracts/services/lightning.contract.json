@@ -9,6 +9,8 @@
     { "method": "POST", "path": "/api/sms-gateway-monitor", "kind": "scheduled", "authentication": "optional-service-key" },
     { "method": "POST", "path": "/api/lightning-kickoff", "kind": "scheduled", "authentication": "optional-service-key" },
     { "method": "GET", "path": "/api/lightning-report", "kind": "read", "authentication": "none" },
+    { "method": "POST", "path": "/api/lightning-downtime", "kind": "read", "authentication": "optional-service-key" },
+    {"method": "POST", "path": "/api/lightning-sheet-sync", "kind": "scheduled", "authentication": "optional-service-key"},
     { "method": "POST", "path": "/api/episodes-list", "kind": "operator", "authentication": "optional-service-key" },
     { "method": "POST", "path": "/api/episodes-evidence", "kind": "operator", "authentication": "optional-service-key" },
     { "method": "GET", "path": "/health", "kind": "diagnostic", "authentication": "none" },
@@ -19,6 +21,7 @@
     "table": "lightning_project_configs",
     "identityColumn": "project_code",
     "fields": {
+      "google_sheet_id": {"label": "Weather log sheet", "group": "sheets", "mutable": true, "role": "configuration", "help": "Optional destination for Lightning (<PROJECT-CODE>). Empty disables the independent sheet job; share with the service account. The nightly 23:30 SGT job resumes from persistent checkpoints."},
       "project_code": { "label": "Project code", "group": "identity", "mutable": false, "role": "identity", "help": "Uppercase project identity constrained to letters, digits, and hyphens." },
       "company": { "label": "Company", "group": "identity", "mutable": true, "role": "configuration", "help": "Operator-facing identity only; Lightning runtime behavior does not read it." },
       "site_address": { "label": "Site address", "group": "identity", "mutable": true, "role": "configuration", "help": "Human-readable location; routing and evaluation use coordinates." },
@@ -69,7 +72,8 @@
     "schedules": [
       {"key":"lightning-tick","route":"/api/lightning-tick","name":"Lightning tick","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]},
       {"key":"lightning-kickoff","route":"/api/lightning-kickoff","name":"Lightning kickoff","minutes":[30],"hours":[23]},
-      {"key":"lightning-health","route":"/health","name":"Lightning healthcheck","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],"method":"GET"}
+      {"key":"lightning-health","route":"/health","name":"Lightning healthcheck","minutes":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59],"hours":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],"method":"GET"},
+      {"key": "lightning-sheet-sync", "route": "/api/lightning-sheet-sync", "name": "Lightning sheet sync", "minutes": [30], "hours": [15]}
     ],
     "granularity": { "ingestion": "service", "run": "service", "delivery": "project" },
     "statuses": { "NOT_APPLICABLE": "green", "PENDING": "green", "SENT": "green", "DELIVERED": "green", "QUEUED": "green", "UNCONFIRMED": "amber", "PARTIAL": "amber", "FAILED": "red", "SUPPRESSED_OUTSIDE_WORKING_HOURS": "green", "SUPPRESSED_SUNDAY": "green", "SUPPRESSED_PUBLIC_HOLIDAY": "green", "SUPPRESSED_SMS_DISABLED": "green", "RUNNING": "green", "SKIPPED_LOCK": "green", "COMPLETED": "green", "COMPLETED_WITH_ERRORS": "amber" }

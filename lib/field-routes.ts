@@ -142,6 +142,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
   ],
 
   haze: [
+    { routes: ["POST /api/haze-sheet-sync"], columns: ["google_sheet_id"] },
     {
       routes: ["POST /api/haze-hourly"],
       columns: [
@@ -165,6 +166,7 @@ const FIELD_ROUTES: Record<ServiceKey, RouteBinding[]> = {
   ],
 
   lightning: [
+    { routes: ["POST /api/lightning-sheet-sync"], columns: ["google_sheet_id"] },
     {
       routes: ["POST /api/lightning-tick"],
       columns: [

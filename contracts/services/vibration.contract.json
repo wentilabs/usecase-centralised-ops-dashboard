@@ -99,7 +99,7 @@
         "group": "delivery",
         "mutable": true,
         "role": "feature-flag",
-        "help": "Include this enabled project in the morning kickoff report. The report sends the latest per-meter PPV and most recent project scrape status to the project's configured WhatsApp groups; it does not trigger a scrape."
+        "help": "Include this enabled project in the morning kickoff report. The report sends the latest per-meter PPV with observation times to the project's configured WhatsApp groups; it does not trigger a scrape."
       },
       "client_id": {
         "label": "Client ID",
@@ -273,7 +273,10 @@
       "scraped": "green",
       "awaiting_otp": "amber",
       "sent": "green",
-      "authenticated": "green"
+      "authenticated": "green",
+      "queued": "green",
+      "partially_sent": "amber",
+      "unconfirmed": "red"
     }
   }
 }

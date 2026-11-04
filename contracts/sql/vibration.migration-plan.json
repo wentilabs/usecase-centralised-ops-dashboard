@@ -2,8 +2,11 @@
   "schemaVersion": 1,
   "schema": "vibration",
   "freshInstall": "legacy/setup.sql",
+  "cleanInstallBundle": "fresh_install.sql",
   "freshInstallAllowedDestructiveOperations": [
+    "delete-rows",
     "drop-column",
+    "drop-index",
     "drop-table"
   ],
   "freshInstallPrecondition": "legacy/setup.sql includes destructive cleanup; use it only on an empty schema and then apply every upgrade below in order.",
@@ -52,7 +55,9 @@
     {
       "id": "ppv-health-delivery-evidence",
       "file": "migrate_ppv_health_delivery_evidence.sql",
-      "requires": ["ppv-alert-delivery"]
+      "requires": [
+        "ppv-alert-delivery"
+      ]
     },
     {
       "id": "vibration-formatter",
@@ -68,14 +73,33 @@
         "vibration-formatter"
       ]
     },
-    { "id": "service-health-events", "file": "migrate_service_health_events.sql", "requires": [] },
-    { "id": "service-schedule-heartbeats", "file": "migrate_service_schedule_heartbeats.sql", "requires": [] }
+    {
+      "id": "service-health-events",
+      "file": "migrate_service_health_events.sql",
+      "requires": []
+    },
+    {
+      "id": "service-schedule-heartbeats",
+      "file": "migrate_service_schedule_heartbeats.sql",
+      "requires": []
+    },
+    {
+      "id": "report-delivery-strip",
+      "file": "migrate_report_delivery_strip.sql",
+      "requires": [
+        "ppv-health-delivery-evidence",
+        "vibration-kickoff"
+      ]
+    }
   ],
   "operationalUtilities": [
     "checks/prepared-targets.sql",
     "checks/skw-project-readiness.sql",
     "checks/skw-meter-ppv-limits.sql",
-    "checks/ppv-alert-readiness.sql"
+    "checks/ppv-alert-readiness.sql",
+    "checks/legacy-wirs-inventory.sql",
+    "checks/scrape-cadence.sql",
+    "checks/report-delivery-strip.sql"
   ],
   "destructiveUtilities": [
     {
@@ -85,6 +109,17 @@
         "drop-table"
       ],
       "precondition": "Run only after the project-table writer is deployed and a project scrape succeeded; it deletes shared source observations."
+    },
+    {
+      "id": "wipe-legacy-wirs-data",
+      "file": "legacy/wipe-legacy-wirs-data.sql",
+      "allowedDestructiveOperations": [
+        "delete-rows",
+        "drop-column",
+        "drop-index",
+        "drop-table"
+      ],
+      "precondition": "Run after confirming the inventory and before cleanup_shared_observations.sql. Deletes WIRS targets and shared readings while preserving site rows, project readings, PRO-TEC targets, OTP challenges, and webhook events."
     }
   ]
 }

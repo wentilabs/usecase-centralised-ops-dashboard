@@ -522,6 +522,7 @@ whether the scheduled job ran and what it decided. They are different signals.
 | Haze | `haze.haze_notification_events` | `delivery_status` | `project_code` |
 | Lightning | `lightning.lightning_events` | `delivery_status` | `project_code` |
 | Issue Chaser | `issue_chaser.outbound_submissions` | `status` | `project_code` |
+| Vibration | `vibration.vibration_delivery_history` (combined reports and PPV alerts) | `status` | `project_code` |
 
 The other services are deliberately absent from the **delivery-ledger** reader:
 
@@ -558,6 +559,19 @@ phone destinations masked. Vibration PPV failure events are visible through
 is applied, new PPV alert rows also retain per-recipient IDs. Before that
 migration HALO reads failed PPV rows but does not treat old sent rows without
 identifiers as proof of acceptance.
+
+After Vibration's `migrate_report_delivery_strip.sql`, its project strip reads
+`vibration_delivery_history`, combining that PPV evidence with
+`vibration_report_deliveries`. Bars name `ppv-alert`, `kickoff`, `site-report`
+or `alert-preview`, and show each recipient's accepted queue/message IDs.
+Queued acceptance is green, mixed outcomes amber, and failed or unconfirmed
+outcomes red, as declared by Vibration's contract. Read-only previews create no
+rows. Explicit test sends are labelled. Existing reports are not backfilled;
+new report rows begin after the writer deployment. The view retains old alert
+history; while it is unavailable, HALO uses the previous PPV reader (and its
+failed-alert-only fallback if acceptance evidence is not installed). A readable
+empty view remains empty rather than substituting stale success. Revert the
+reader/writer to roll back while retaining the additive table and view.
 
 **Which table is an integration detail, what the statuses mean is not.** The
 mapping above lives in HALO because only HALO needs it; the colour of

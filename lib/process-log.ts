@@ -233,16 +233,22 @@ const SOURCES: Partial<Record<ServiceKey, Source>> = {
     board: true,
   },
   vibration: {
-    schema: "vibration", table: "vibration_alert_deliveries", projectColumn: "project_code",
+    schema: "vibration", table: "vibration_delivery_history", projectColumn: "project_code",
     statusColumn: "status", timeColumn: "created_at", errorColumn: "last_error",
-    extraColumns: ["health_deliveries"], probeColumn: "health_deliveries",
-    filter: "or=(status.eq.failed,health_deliveries.not.is.null)", fixedKind: "ppv-alert", signal: "delivery", board: true,
-    // Before the additive migration, failed alerts are still visible; old sent
-    // rows without acceptance IDs cannot prove a successful delivery.
+    kindColumn: "operation", extraColumns: ["health_deliveries"], signal: "delivery", board: true,
+    // During rollout keep the existing PPV strip until the combined view exists.
     fallback: {
       schema: "vibration", table: "vibration_alert_deliveries", projectColumn: "project_code",
       statusColumn: "status", timeColumn: "created_at", errorColumn: "last_error",
-      filter: "status=eq.failed", fixedKind: "ppv-alert", signal: "delivery", board: true,
+      extraColumns: ["health_deliveries"], probeColumn: "health_deliveries",
+      filter: "or=(status.eq.failed,health_deliveries.not.is.null)", fixedKind: "ppv-alert", signal: "delivery", board: true,
+      // Before the additive migration, failed alerts are still visible; old sent
+      // rows without acceptance IDs cannot prove a successful delivery.
+      fallback: {
+        schema: "vibration", table: "vibration_alert_deliveries", projectColumn: "project_code",
+        statusColumn: "status", timeColumn: "created_at", errorColumn: "last_error",
+        filter: "status=eq.failed", fixedKind: "ppv-alert", signal: "delivery", board: true,
+      },
     },
   },
 };
@@ -361,7 +367,7 @@ export async function readProcessWindow(
   // Use the fallback ONLY when the primary's table cannot be read at all. One
   // tiny request, and the whole result is cached for five minutes. Not "when it
   // is empty" — see `Source.fallback`.
-  if (source.fallback && !(await tableReadable(source, request))) source = source.fallback;
+  while (source.fallback && !(await tableReadable(source, request))) source = source.fallback;
 
   const { schema, table, projectColumn, statusColumn, timeColumn, errorColumn, kindColumn, extraColumns = [], filter, fixedKind } = source;
   const rows = await readPaged(

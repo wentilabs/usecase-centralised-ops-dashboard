@@ -77,6 +77,7 @@ test("Vibration falls back to failed alerts when the acceptance evidence migrati
   const paths: string[] = [];
   const rows = await readProcessWindow("vibration", async (path) => {
     paths.push(path);
+    if (path.startsWith("vibration_delivery_history?")) return { ok: false, body: null };
     if (path.includes("select=created_at,health_deliveries&limit=1")) return { ok: false, body: null };
     return { ok: true, body: [{ project_code: "AST", status: "failed", created_at: "2026-10-27T04:00:00Z", last_error: "unconfirmed" }] };
   }, 100, "2026-10-27T00:00:00Z");

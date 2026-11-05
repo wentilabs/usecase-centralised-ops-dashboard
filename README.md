@@ -76,6 +76,25 @@ with `NEXT_PUBLIC_`). Run
 [`supabase/config_audit_setup.sql`](./supabase/config_audit_setup.sql) once and
 expose the `ops` schema in Supabase → Settings → API.
 
+## Ailytics queue exceptions
+
+An explicit listener `notFound` on an `unconfirmed` activity link remains a
+standing delivery exception. Its message distinguishes the saved listener-check
+time from the current database-read time, states that automatic polling has
+stopped, and includes current activity classification, lifecycle, Telegram and
+activity IDs, the stored WhatsApp message ID, submission/check execution
+evidence when available, and the recorded history tab/row pointer. A pointer
+does not verify current sheet presence. Legacy rows without a successful
+pre-submission write receipt report `not_recorded`; HALO does not infer it.
+
+The listener's missing-ID list is batch evidence and can span projects/groups.
+Seven-day retention is not proof that an individual ID expired. A terminal
+Telegram classification does not prove its WhatsApp image was sent. A stored
+message ID alongside an unconfirmed link is reported as inconsistent state.
+HALO does not resend, repair links, read Google Sheets or recheck the listener
+when producing this message. Verify those sources separately before classifying
+the actual send as successful or failed. Existing fault severity is preserved.
+
 ## Optional Haze and Lightning logs
 
 Both project editors and onboarding forms accept optional `google_sheet_id` IDs or

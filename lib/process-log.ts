@@ -1,6 +1,7 @@
 import { colourForRun, type HealthColour } from "./health-status";
 import { logLines } from "./log-lines";
 import { readPaged } from "./paged-read";
+import { ailyticsQueueFault } from "./ailytics-queue-fault";
 import type { ServiceKey } from "./services";
 
 /**
@@ -513,11 +514,12 @@ export async function readProjectFaults(
 async function readAilyticsQueueFaults(
   request: (path: string, init: { schema: string }) => Promise<{ ok: boolean; body: unknown }>,
 ): Promise<ProjectFault[]> {
+  const observedAt = new Date().toISOString();
   const rows = await readPaged(
     request,
     (after, limit) => {
       const query = new URLSearchParams({
-        select: "id,listener_queue_id,whatsapp_group_id,send_response,activity:cctv_activity_events!inner(project_config:project_configs!inner(project_code))",
+        select: "id,activity_event_id,listener_queue_id,whatsapp_group_id,delivery_status,outbound_whatsapp_message_id,send_response,activity:cctv_activity_events!inner(id,classification,lifecycle_status,telegram_message_id,activity_history_row_number,project_config:project_configs!inner(project_code,activity_history_tab))",
         delivery_status: "eq.unconfirmed",
         "send_response->queueReconciliation->latest->>outcome": "eq.not_found",
         order: "id.asc",
@@ -534,22 +536,8 @@ async function readAilyticsQueueFaults(
     const activity = row.activity as Record<string, unknown> | null;
     const config = activity?.project_config as Record<string, unknown> | null;
     const projectCode = String(config?.project_code ?? "").trim();
-    const sendResponse = row.send_response as Record<string, unknown> | null;
-    const reconciliation = sendResponse?.queueReconciliation as Record<string, unknown> | null;
-    const latest = reconciliation?.latest as Record<string, unknown> | null;
-    // Keep a local guard as well as the server-side JSON filter. A malformed
-    // relation or a stale PostgREST cache must never invent a standing fault.
-    if (!projectCode || latest?.outcome !== "not_found") continue;
-
-    const queueId = String(latest.queueId ?? row.listener_queue_id ?? "unknown");
-    const groupId = String(row.whatsapp_group_id ?? "unknown group");
-    const checkedAt = String(latest.checkedAt ?? "time unavailable");
-    const details = {
-      listenerNotFound: latest.notFound ?? null,
-      ...(latest.retentionDays == null ? {} : { retentionDays: latest.retentionDays }),
-      ...(latest.item == null ? {} : { item: latest.item }),
-    };
-    const message = `WhatsApp listener reported queue ID ${queueId} notFound for ${groupId}; checked ${checkedAt}; evidence=${JSON.stringify(details)}`;
+    const message = ailyticsQueueFault(row, observedAt);
+    if (!projectCode || !message) continue;
     byProject.set(projectCode, [...(byProject.get(projectCode) ?? []), message]);
   }
 

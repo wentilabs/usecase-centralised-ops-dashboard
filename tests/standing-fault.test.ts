@@ -43,6 +43,8 @@ test("an explicit Ailytics listener notFound is a standing project fault", async
     id: "link-1",
     listener_queue_id: "48713",
     whatsapp_group_id: "1203@g.us",
+    delivery_status: "unconfirmed",
+    outbound_whatsapp_message_id: null,
     send_response: {
       queueReconciliation: {
         latest: {
@@ -54,7 +56,7 @@ test("an explicit Ailytics listener notFound is a standing project fault", async
         },
       },
     },
-    activity: { project_config: { project_code: "PENTA" } },
+    activity: { id: "activity-1", classification: "COMPLIANT", lifecycle_status: "compliant", project_config: { project_code: "PENTA" } },
   };
 
   const faults = await readProjectFaults("ailytics", async (path, init) => {
@@ -68,10 +70,15 @@ test("an explicit Ailytics listener notFound is a standing project fault", async
   assert.equal(requestedPath.split("?")[0], "whatsapp_activity_links");
   assert.equal(query.get("delivery_status"), "eq.unconfirmed");
   assert.equal(query.get("send_response->queueReconciliation->latest->>outcome"), "eq.not_found");
-  assert.match(query.get("select") ?? "", /activity:cctv_activity_events!inner\(project_config:project_configs!inner\(project_code\)\)/);
+  assert.match(query.get("select") ?? "", /outbound_whatsapp_message_id/);
+  assert.match(query.get("select") ?? "", /classification,lifecycle_status,telegram_message_id,activity_history_row_number/);
   assert.equal(faults.length, 1);
   assert.equal(faults[0].projectCode, "PENTA");
-  assert.match(faults[0].message, /queue ID 48713 notFound for 1203@g\.us/);
+  assert.match(faults[0].message, /queue ID 48713 for 1203@g\.us/);
+  assert.match(faults[0].message, /last listener lookup=notFound at 2026-10-26T09:00:00.000Z/);
+  assert.match(faults[0].message, /automatic polling=stopped/);
+  assert.match(faults[0].message, /activity=COMPLIANT \/ compliant/);
+  assert.match(faults[0].message, /WhatsApp message ID=none stored/);
 
   const entries = faultEntries({ [healthKey("ailytics", "PENTA")]: faults[0].message });
   assert.equal(entries.length, 1);

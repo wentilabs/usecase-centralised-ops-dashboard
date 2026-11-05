@@ -781,6 +781,18 @@ one; the fix is for each service to reconcile its queue ids through `outbound/st
 and write `dropped…`/`failed…` back (HALO already reads those prefixes as red). Do not
 build a HALO-side poller.
 
+**Ailytics `notFound` is a saved reconciliation exception.** HALO selects current
+`unconfirmed` activity links with latest outcome `not_found`; the listener-check
+time can be old because those links are no longer automatically polled. Report
+current classification, lifecycle and message-ID fields alongside that evidence.
+A terminal Telegram classification is not WhatsApp send confirmation, and a
+history-row pointer is not proof of current sheet presence. Label legacy write
+receipts and execution IDs as unavailable. The listener's missing-ID list is a
+batch that may span projects; `retentionDays` is a policy, not proof of expiry.
+Keep the existing severity until a separate product decision changes it.
+Source: `lib/ailytics-queue-fault.ts`, `lib/process-log.ts`;
+regressions: `tests/ailytics-queue-fault.test.ts`, `tests/standing-fault.test.ts`.
+
 ## SMS gateway monitoring
 
 **SMS gateway health uses receipt time and configured phone identity.**

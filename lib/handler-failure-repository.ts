@@ -23,12 +23,12 @@ export async function listHandlerFailures(): Promise<HandlerFailureReport> {
     checkedAt, failures: [], sources: SERVICE_KEYS.map((service) => ({ service, state: "unavailable" })),
   };
   const since = new Date(Date.parse(checkedAt) - 48 * 60 * 60_000).toISOString();
-  const suffix = `occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.desc&limit=101`;
+  const suffix = `occurred_at=gte.${encodeURIComponent(since)}&occurred_at=lte.${encodeURIComponent(checkedAt)}&order=occurred_at.desc&limit=101`;
   const vibrationRunsPromise = readRows(url, key, "vibration",
-    `vibration_job_runs?select=status,error_message,details,started_at&status=in.(partial,failed)&started_at=gte.${encodeURIComponent(since)}&order=started_at.desc&limit=101`)
+    `vibration_job_runs?select=status,error_message,details,started_at&status=in.(partial,failed)&started_at=gte.${encodeURIComponent(since)}&started_at=lte.${encodeURIComponent(checkedAt)}&order=started_at.desc&limit=101`)
     .catch(() => ({ ok: false, status: 0, rows: null }));
   const results = await Promise.all(SERVICE_KEYS.map(async (service) => {
-    const legacyPromise = readRows(url, key, "ops", `service_handler_failures?select=service_key,route,reason,occurred_at&service_key=eq.${encodeURIComponent(service)}&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.desc&limit=101`)
+    const legacyPromise = readRows(url, key, "ops", `service_handler_failures?select=service_key,route,reason,occurred_at&service_key=eq.${encodeURIComponent(service)}&occurred_at=gte.${encodeURIComponent(since)}&occurred_at=lte.${encodeURIComponent(checkedAt)}&order=occurred_at.desc&limit=101`)
       .catch(() => ({ ok: false, status: 0, rows: null }));
     try {
       const result = await readRows(url, key, SERVICES[service].schema,

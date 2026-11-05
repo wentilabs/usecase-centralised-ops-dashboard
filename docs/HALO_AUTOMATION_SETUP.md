@@ -107,3 +107,13 @@ Pause or remove the scheduled task to stop future retrieval. To revoke its
 access, remove or replace `HALO_DAILY_ERROR_REPORT_TOKEN` in Amplify and update
 or delete the matching Keychain item. The route fails closed if its token is
 missing or shorter than 32 characters.
+
+## Report evidence metadata
+
+Copy errors and the read-only report route include the anomaly reader's
+`checkedAt`, inclusive UTC bounds for its 48-hour query, and every service's
+ready, legacy, partial, unavailable or loading read state, including empty
+results. These states describe evidence availability, not service health.
+Process histories have separately collected rolling windows and per-project
+limits; standing current issues may be older. Missing findings never prove
+health. The anomaly queries exclude records newer than their `checkedAt`.

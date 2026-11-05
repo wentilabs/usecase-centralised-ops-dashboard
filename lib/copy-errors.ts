@@ -1,4 +1,4 @@
-import { SERVICES } from "./services";
+import { SERVICES, SERVICE_KEYS } from "./services";
 import { formatHealthCurrentIssues, formatHealthErrorReport, healthErrorProjects } from "./health-report";
 import { groupHandlerFailures, type HandlerFailureReport } from "./handler-failures";
 import type { BoardSummary } from "./health-board";
@@ -33,5 +33,23 @@ export function formatCopyErrorsReport(input: {
   const coverageLine = handlerReadState !== "ready"
     ? `\nAnomaly evidence ${handlerReadState === "loading" ? "still loading" : "unavailable"}; absence of records is not evidence of health.`
     : incomplete.length ? `\nIncomplete anomaly evidence: ${incomplete.map((source) => SERVICES[source.service].label).join(", ")}` : "";
-  return handlerLines.length || coverageLine ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}${coverageLine}` : report;
+  const checkedAt = handlerReport?.checkedAt;
+  const validCheckedAt = checkedAt && Number.isFinite(Date.parse(checkedAt)) ? checkedAt : null;
+  const metadata = [
+    `Anomaly checkedAt: ${validCheckedAt ?? "unavailable"}`,
+    validCheckedAt
+      ? `Anomaly query window: ${new Date(Date.parse(validCheckedAt) - 48 * 60 * 60_000).toISOString()} <= timestamp <= ${validCheckedAt} (48 hours; UTC)`
+      : "Anomaly query window: unavailable",
+    "Scope: process history uses separately collected rolling 48-hour reads and per-project limits; current issues may predate that window.",
+    "Anomaly source coverage:",
+    ...SERVICE_KEYS.map((service) => {
+      const state = handlerReadState === "ready"
+        ? handlerReport?.sources.find((source) => source.service === service)?.state ?? "unavailable"
+        : handlerReadState;
+      return `- ${SERVICES[service].label}: ${state}`;
+    }),
+    "Coverage describes recorded evidence reads, not service health. Legacy coverage is limited to older handler records; partial coverage may omit records. Absence of findings does not establish health.",
+  ].join("\n");
+  const findings = handlerLines.length || coverageLine ? `${report}\n\nRecent service anomalies\n${handlerLines.join("\n")}${coverageLine}` : report;
+  return `${metadata}\n\n${findings}`;
 }

@@ -129,3 +129,11 @@ nothing by itself —
 Reuse the existing `HALO_DATA_HEALTH_*` sender/token environment. The additive tables and separate one-minute EventBridge relay belong to Lightning; follow its `docs/SMS_GATEWAY_HEARTBEAT.md`. HALO’s authenticated read and monitor routes are under `/api/data-health/sms-gateways`. The digest schedule stays unchanged.
 
 An existing HTTP cron may POST an empty body or `{}` to Lightning’s `/api/sms-gateway-monitor` every minute instead of using EventBridge. If Lightning has `SERVICE_API_KEY` configured, the cron must send that key in `x-api-key` or a Bearer header. Empty headers work only with no service key. Phone pings continue to use the separate signed heartbeat route.
+
+## Local production build
+
+Run `npm run build:local`, then `npm run start -- --hostname 127.0.0.1`
+to serve the built app at http://127.0.0.1:5178. The local build uses Webpack
+to avoid Turbopack CSS worker port-binding restrictions in constrained agent
+environments. Amplify continues to use `npm run build`. Production-mode auth
+still applies; use `npm run dev` for the documented loopback development flow.
